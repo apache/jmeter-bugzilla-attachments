@@ -1,0 +1,290 @@
+Index: bin/user.properties
+===================================================================
+--- bin/user.properties	(revision 1676359)
++++ bin/user.properties	(working copy)
+@@ -62,3 +62,20 @@
+ 
+ # Enable Proxy request debug
+ #log_level.jmeter.protocol.http.proxy.HttpRequestHdr=DEBUG
++
++#---------------------------------------------------------------------------
++# JMX Backup configuration
++#---------------------------------------------------------------------------
++#Enable backups of the .jmx file when the test plan is saved.
++#When enabled, before the .jmx is saved, it will be backed up to a subfolder whose name is built
++#from the .jmx file and suffixed by .backups, ex. test-plan.jmx.backups
++#Backup file names are suffixed by their save date, ex: test-plan.jmx.20150501.150027
++#jmeter.gui.action.save.backup_when_saving=true
++
++#Set the maximum time (in hours) the backup files should be preserved since the most recent save time.
++#By default no expiration time is set which means we keep backups for ever.
++#jmeter.gui.action.save.keep_backup_max_hours=0
++
++#Set the maximum number of backup files that should be preserved. By default 10 backups will be kept.
++#Setting this to zero will cause the backups to not being deleted (unless keep_backup_max_hours is set to a non nul value)
++#jmeter.gui.action.save.keep_backup_max_count=10
+Index: src/core/org/apache/jmeter/gui/action/Save.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Save.java	(revision 1676360)
++++ src/core/org/apache/jmeter/gui/action/Save.java	(working copy)
+@@ -21,15 +21,28 @@
+ import java.awt.event.ActionEvent;
+ import java.io.File;
+ import java.io.FileOutputStream;
++import java.io.IOException;
++import java.text.DateFormat;
++import java.text.ParseException;
++import java.text.SimpleDateFormat;
++import java.util.ArrayList;
++import java.util.Calendar;
++import java.util.Collections;
++import java.util.Comparator;
++import java.util.Date;
+ import java.util.HashSet;
+ import java.util.Iterator;
+ import java.util.LinkedList;
++import java.util.List;
+ import java.util.Set;
+ 
+ import javax.swing.JFileChooser;
+ import javax.swing.JOptionPane;
+ 
++import org.apache.commons.io.FileUtils;
+ import org.apache.commons.io.FilenameUtils;
++import org.apache.commons.io.filefilter.IOFileFilter;
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.control.gui.TestFragmentControllerGui;
+ import org.apache.jmeter.engine.TreeCloner;
+ import org.apache.jmeter.exceptions.IllegalUserActionException;
+@@ -56,6 +69,12 @@
+ public class Save implements Command {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private static final String JMX_BACKUP_WHEN_SAVING = "jmeter.gui.action.save.backup_when_saving";
++    
++    private static final String JMX_BACKUP_MAX_HOURS = "jmeter.gui.action.save.keep_backup_max_hours";
++    
++    private static final String JMX_BACKUP_MAX_COUNT = "jmeter.gui.action.save.keep_backup_max_count";
++    
+     public static final String JMX_FILE_EXTENSION = ".jmx"; // $NON-NLS-1$
+ 
+     private static final Set<String> commands = new HashSet<String>();
+@@ -166,7 +185,16 @@
+                 GuiPackage.getInstance().setTestPlanFile(updateFile);
+             }
+         }
+-
++        
++        // backup existing file according to user.properties settings
++        List<File> backupFilesToBeDeleted = Collections.emptyList();
++        File fileToBackup = new File(updateFile);
++        try {
++            backupFilesToBeDeleted = createBackupFile(fileToBackup);
++        } catch (Exception ex) {
++            log.error("Failed to create a backup for " + fileToBackup.getName(), ex);
++        }
++        
+         try {
+             convertSubTree(subTree);
+         } catch (Exception err) {
+@@ -181,6 +209,16 @@
+                 subTree = GuiPackage.getInstance().getTreeModel().getTestPlan(); // refetch, because convertSubTree affects it
+                 ActionRouter.getInstance().doActionNow(new ActionEvent(subTree, e.getID(), ActionNames.SUB_TREE_SAVED));
+             }
++            
++            // delete deletable backups : here everything when right so we can
++            // proceed to deletion
++            for (File deleteMe : backupFilesToBeDeleted) {
++                try {
++                    FileUtils.deleteQuietly(deleteMe);
++                } catch (Exception ex) {
++                    log.warn("Failed to delete backup file " + deleteMe.getName());
++                }
++            }
+         } catch (Throwable ex) {
+             log.error("Error saving tree:", ex);
+             if (ex instanceof Error){
+@@ -195,6 +233,100 @@
+         }
+         GuiPackage.getInstance().updateCurrentGui();
+     }
++    
++    /**
++     * <p>
++     * Create a backup copy of the specified file whose name will be formed as
++     * follows:<br>
++     * <code>{file_name}.{date_as_yyyyMMdd-HHmmss}</code><br>
++     * <br>
++     * The backup copy will reside in a subfolder whose name will be the
++     * specified file name suffixed by .backups.
++     * </p>
++     * <p>
++     * Backup is controlled by the following user properties :<br>
++     * <li>
++     * <code>jmeter.gui.action.save.backup_when_saving : (true|false) Enables or Disables backup</code>
++     * </li>
++     * <li>
++     * <code>jmeter.gui.action.save.keep_backup_max_hours : (int) Number of hours to keep backups since the most recent save time</code>
++     * </li>
++     * <li>
++     * <code>jmeter.gui.action.save.keep_backup_max_count : (int) Max number of backups to keep</code>
++     * </li>
++     * </p>
++     * 
++     * @param file
++     *            The file to create a backup from
++     * @return A list of files that should be deleted after backup has been done
++     *         according to properties defined in <code>user.properties</code>
++     */
++    private List<File> createBackupFile(File file) {
++        List<File> emptyList = Collections.emptyList();
++        final char suffixSeparator = '.';
++        final String suffixDateFormatPattern = "yyyyMMdd-HHmmss";
++        boolean shouldBackup = JMeterUtils.getPropDefault(JMX_BACKUP_WHEN_SAVING, true);
++        if (!shouldBackup) {
++            return emptyList;
++        }
++        // No expiration date is set by default
++        int keepHours = JMeterUtils.getPropDefault(JMX_BACKUP_MAX_HOURS, 0);
++        // Limit to 10 backups max by default
++        int keepCount = JMeterUtils.getPropDefault(JMX_BACKUP_MAX_COUNT, 10);
++        SimpleDateFormat suffixDateFormat = new SimpleDateFormat(suffixDateFormatPattern);
++        Date now = new Date();
++        final String baseName = file.getName();
++        final String backupName = baseName + suffixSeparator + suffixDateFormat.format(now);
++        File backupDir = new File(file.getParentFile(), baseName + ".backups"); //$NON-NLS-1$
++        File backupFile = new File(backupDir, backupName);
++        try {
++            backupDir.mkdirs();
++            FileUtils.copyFile(file, backupFile);
++        } catch (IOException e) {
++            log.error("Failed to backup file :" + file.getAbsolutePath(), e); //$NON-NLS-1$
++            return emptyList;
++        }
++        PrivateDateSuffixFileFilter dateSuffixFileFilter = new PrivateDateSuffixFileFilter(baseName, suffixSeparator, suffixDateFormat);
++        List<File> backupFiles = new ArrayList<File>(FileUtils.listFiles(backupDir, dateSuffixFileFilter, null));
++        List<File> toBeDeleted = new ArrayList<File>();
++        if (keepHours > 0) {
++            Calendar cal = Calendar.getInstance();
++            cal.setTime(now);
++            cal.add(Calendar.HOUR_OF_DAY, -keepHours);
++            Date cutoffDate = cal.getTime();
++            // mark files older than the oldest date to be deleted
++            for (File f : backupFiles) {
++                String dateSuffix = f.getName().substring(baseName.length() + 1);
++                try {
++                    if (suffixDateFormat.parse(dateSuffix).before(cutoffDate)) {
++                        toBeDeleted.add(f);
++                    }
++                } catch (ParseException pe) {
++                    // should never happen but ignore and do not mark for
++                    // deletion
++                    log.error("Wrong backup file suffix for " + f.getName()); //$NON-NLS-1$
++                }
++            }
++        }
++        // ensure that we keep at most keepCount backups unless keepCount is not
++        // set
++        if (keepCount > 0) {
++            if (backupFiles.size() > keepCount) {
++                // we keep only younger backups
++                Collections.sort(backupFiles, new Comparator<File>() {
++                    @Override
++                    public int compare(File o1, File o2) {
++                        return o1.getName().compareTo(o2.getName());
++                    }
++                });
++                List<File> youngestMaxCountFiles = backupFiles.subList(backupFiles.size() - keepCount, backupFiles.size());
++                List<File> oldestFiles = new ArrayList<File>(backupFiles);
++                oldestFiles.removeAll(youngestMaxCountFiles);
++                toBeDeleted.addAll(oldestFiles);
++            }
++        }
++        return toBeDeleted;
++    }
+ 
+     /**
+      * Check nodes does not contain a node of type TestPlan or ThreadGroup
+@@ -221,4 +353,82 @@
+             tree.replaceKey(item, testElement);
+         }
+     }
++    
++    /**
++     * <p>
++     * Filter to be used with commons-io that select files whose names matches
++     * the following format:<br>
++     * <code>{prefix}{separator}{date_format_suffix}</code> <br>
++     * <br/>
++     * Example: <code>test-plan.jmx.20150101.152014</code>
++     * </p>
++     */
++    private static class PrivateDateSuffixFileFilter implements IOFileFilter {
++
++        private String fileNamePrefix;
++        private DateFormat suffixDateFormat;
++        private char suffixSeparator;
++
++        /**
++         * Create a new IOFileFilter that will accept files whose name matches
++         * this pattern: <code>{prefix}{separator}{date_suffix}</code>
++         * 
++         * @param fileNamePrefix
++         *            Filename prefix to be searched
++         * @param suffixSeparator
++         *            Character used as the suffix separator
++         * @param suffixDateFormat
++         *            The {@link DateFormat} to be used to elect files whose
++         *            suffix are parseable by that {@link DateFormat}
++         */
++        public PrivateDateSuffixFileFilter(String fileNamePrefix, char suffixSeparator, DateFormat suffixDateFormat) {
++            if (StringUtils.isEmpty(fileNamePrefix)) {
++                throw new IllegalArgumentException("baseFileName cannot be null or empty !"); //$NON-NLS-1$
++            }
++            if (suffixDateFormat == null) {
++                throw new IllegalArgumentException("suffixDateFormat cannot be null !"); //$NON-NLS-1$
++            }
++            this.fileNamePrefix = fileNamePrefix;
++            this.suffixDateFormat = suffixDateFormat;
++            this.suffixSeparator = suffixSeparator;
++        }
++
++        @Override
++        public boolean accept(File dir, String name) {
++            if(name.equals(fileNamePrefix)) {
++                return false;
++            }
++            boolean accept = false;
++            int prefixIdx = name.indexOf(fileNamePrefix);
++            // ensure file name starts with the good prefix and that it is
++            // longer
++            if (prefixIdx == 0 && name.length() > fileNamePrefix.length()) {
++                // look for suffix
++                String suffix = name.substring(fileNamePrefix.length());
++                // first char after prefix must be the suffix separator
++                if (suffix.charAt(0) == suffixSeparator && suffix.length() > 1) {
++                    try {
++                        // check that suffix matches the date format
++                        suffixDateFormat.parse(suffix.substring(1));
++                        accept = true;
++                    } catch (ParseException pe) {
++                        // suffix is not of the right format
++                        accept = false;
++                    }
++                } else {
++                    // suffix separator is wrong
++                    accept = false;
++                }
++            } else {
++                // file name does not start with the baseFileName
++                accept = false;
++            }
++            return accept;
++        }
++
++        @Override
++        public boolean accept(File file) {
++            return accept(file.getParentFile(), file.getName());
++        }
++    }
+ }

@@ -1,0 +1,21 @@
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(revision 1325705)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(working copy)
+@@ -188,9 +188,13 @@
+             } else if (PREPARED_SELECT.equals(_queryType)) {
+                 PreparedStatement pstmt = getPreparedStatement(conn);
+                 setArguments(pstmt);
+-                boolean hasResultSet = pstmt.execute();
+-                String sb = resultSetsToString(pstmt,hasResultSet,null);
+-                return sb.getBytes(ENCODING);
++                ResultSet rs = null;
++                try {
++                    rs = pstmt.executeQuery();
++                    return getStringFromResultSet(rs).getBytes(ENCODING);
++                } finally {
++                    close(rs);
++                }
+             } else if (PREPARED_UPDATE.equals(_queryType)) {
+                 PreparedStatement pstmt = getPreparedStatement(conn);
+                 setArguments(pstmt);

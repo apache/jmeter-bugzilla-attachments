@@ -1,0 +1,136 @@
+--- jmeter-testbed-2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2007-01-11 11:13:35.000000000 +0100
++++ jakarta-jmeter-2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2006-11-14 20:25:55.000000000 +0100
+@@ -55,7 +55,7 @@
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+ 	private static final int MAX_CONN_RETRIES = 10; // Maximum connection retries
+-
++	
+ 	static {// TODO - document what this is doing and why
+ 		System.setProperty("java.protocol.handler.pkgs", // $NON-NLS-1$ 
+                 JMeterUtils.getPropDefault("ssl.pkgs", // $NON-NLS-1$
+@@ -208,6 +208,13 @@
+ 	protected byte[] readResponse(HttpURLConnection conn, SampleResult res) throws IOException {
+ 		byte[] readBuffer = getThreadContext().getReadBuffer();
+ 		BufferedInputStream in;
++		
++		if ((conn.getContentLength() == 0) && JMeterUtils.getPropDefault("httpsampler.obey_contentlength", false)) {
++			log.info("Content-Length: 0, not reading http-body");
++			res.setResponseHeaders(getResponseHeaders(conn));
++			return new byte[0];
++		}
++
+ 		try {
+             // works OK even if ContentEncoding is null
+ 			if (ENCODING_GZIP.equals(conn.getContentEncoding())) {
+@@ -218,17 +225,19 @@
+ 		} catch (IOException e) {
+ 			// TODO JDK1.4: if (!e.getCause() instanceof FileNotFoundException)
+ 			// JDK1.4: {
+-            // TODO: what about other 4xx errors? Do we need to log them?
+-			if (conn.getResponseCode() != 404) // for JDK1.3
+-			{
+-				log.error("readResponse: "+e.toString());
+-				// JDK1.4: Throwable cause = e.getCause();
+-				// JDK1.4: if (cause != null){
+-				// JDK1.4: log.error("Cause: "+cause);
+-				// JDK1.4: }
+-			}
++
+ 			// Normal InputStream is not available
+-			in = new BufferedInputStream(conn.getErrorStream());
++			InputStream errorStream = conn.getErrorStream();
++			if (errorStream == null) {
++				log.info("Error Response Code: "+conn.getResponseCode()+", Server sent no Errorpage");
++				res.setResponseHeaders(getResponseHeaders(conn));
++				return new byte[0];
++			}
++			else {
++				log.info("Error Response Code: "+conn.getResponseCode());
++			}
++			in = new BufferedInputStream(errorStream);
++			
+ 		} catch (Exception e) {
+ 			log.error("readResponse: "+e.toString());
+ 			// JDK1.4: Throwable cause = e.getCause();
+@@ -237,6 +246,7 @@
+ 			// JDK1.4: }
+ 			in = new BufferedInputStream(conn.getErrorStream());
+ 		}
++		
+ 		java.io.ByteArrayOutputStream w = new ByteArrayOutputStream();
+ 		int x = 0;
+ 		boolean first = true;
+@@ -269,7 +279,8 @@
+ 		// headerBuf.append(" ");
+ 		// headerBuf.append(conn.getResponseMessage());
+ 		headerBuf.append("\n"); //$NON-NLS-1$
+-
++		
++		
+         String hfk;
+ 		for (int i = 1; (hfk=conn.getHeaderFieldKey(i)) != null; i++) {
+             // TODO - why is this not saved? A: it might be a proxy server specific field.
+@@ -280,7 +291,8 @@
+                 headerBuf.append(conn.getHeaderField(i));
+                 headerBuf.append("\n"); // $NON-NLS-1$
+             }
+-		}
++		} 
++		
+ 		return headerBuf.toString();
+ 	}
+ 
+@@ -431,16 +443,17 @@
+             }
+ 			// Request sent. Now get the response:
+ 			byte[] responseData = readResponse(conn, res);
+-
++				
+ 			res.sampleEnd();
+ 			// Done with the sampling proper.
+ 
+ 			// Now collect the results into the HTTPSampleResult:
+-
+ 			res.setResponseData(responseData);
+-
++			
++			
+ 			int errorLevel = conn.getResponseCode();
+             String respMsg = conn.getResponseMessage();
++            
+             if (errorLevel == -1){// Bug 38902 - sometimes -1 seems to be returned unnecessarily
+                 try {
+                     errorLevel = Integer.parseInt(respMsg.substring(0, 3));
+@@ -451,14 +464,16 @@
+             }
+ 			res.setResponseCode(Integer.toString(errorLevel));
+ 			res.setSuccessful(isSuccessCode(errorLevel));
+-
++			
+ 			res.setResponseMessage(respMsg);
+-
++			
+ 			String ct = conn.getContentType();
+ 			res.setContentType(ct);// e.g. text/html; charset=ISO-8859-1
+             res.setEncodingAndType(ct);
+ 
+ 			res.setResponseHeaders(getResponseHeaders(conn));
++			
++					
+ 			if (res.isRedirect()) {
+ 				res.setRedirectLocation(conn.getHeaderField(HEADER_LOCATION));
+ 			}
+@@ -476,9 +491,11 @@
+ 			log.debug("End : sample");
+ 			return res;
+ 		} catch (IOException e) {
++			
+ 			res.sampleEnd();
++			
+ 			// We don't want to continue using this connection, even if KeepAlive is set
+-            conn.disconnect();
++			conn.disconnect();
+             conn=null; // Don't process again
+ 			return errorResult(e, res);
+ 		} finally {

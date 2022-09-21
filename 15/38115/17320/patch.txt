@@ -1,0 +1,95 @@
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java	(revision 359489)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java	(working copy)
+@@ -234,21 +234,82 @@
+ 	 * @return the encoded string
+ 	 */
+ 	public static String decode(String string, String encoding) throws UnsupportedEncodingException {
+-		if (decodeMethod != null) {
+-			// JDK1.4: return URLDecoder.decode(string, encoding);
+-			Object args[] = { string, encoding };
++		if (string == null)
++			return (null);
++
++		// use the specified encoding to extract bytes out of the
++		// given string so that the encoding is not lost. If an
++		// encoding is not specified, let it use platform default
++		byte[] bytes = null;
++		try {
++			if (encoding == null) {
++				bytes = string.getBytes();
++			} else {
++				bytes = string.getBytes(encoding);
++			}
++		} catch (UnsupportedEncodingException uee) {
++		}
++
++		return URLDecode(bytes, encoding);
++
++	}
++
++    /**
++	 * Decode and return the specified URL-encoded byte array.
++	 * 
++	 * @param bytes
++	 *            The url-encoded byte array
++	 * @param enc
++	 *            The encoding to use; if null, the default encoding is used
++	 * @exception IllegalArgumentException
++	 *                if a '%' character is not followed by a valid 2-digit
++	 *                hexadecimal number
++	 */
++	public static String URLDecode(byte[] bytes, String enc) {
++
++		if (bytes == null)
++			return (null);
++
++		int len = bytes.length;
++		int ix = 0;
++		int ox = 0;
++		while (ix < len) {
++			byte b = bytes[ix++]; // Get byte to test
++			if (b == '+') {
++				b = (byte) ' ';
++			} else if (b == '%') {
++				b = (byte) ((convertHexDigit(bytes[ix++]) << 4) + convertHexDigit(bytes[ix++]));
++			}
++			bytes[ox++] = b;
++		}
++		if (enc != null) {
+ 			try {
+-				return (String) decodeMethod.invoke(null, args);
++				return new String(bytes, 0, ox, enc);
+ 			} catch (Exception e) {
+ 				log.warn("Error trying to decode", e);
+-				return string;
+ 			}
+-		} else {
+-			return URLDecoder.decode(string); // JDK1.3
+ 		}
++		return new String(bytes, 0, ox);
++
+ 	}
+ 
+-	/**
++    /**
++	 * Convert a byte character value to hexidecimal digit value.
++	 * 
++	 * @param b
++	 *            the character value byte
++	 */
++	private static byte convertHexDigit(byte b) {
++		if ((b >= '0') && (b <= '9'))
++			return (byte) (b - '0');
++		if ((b >= 'a') && (b <= 'f'))
++			return (byte) (b - 'a' + 10);
++		if ((b >= 'A') && (b <= 'F'))
++			return (byte) (b - 'A' + 10);
++		return 0;
++	}
++
++    /**
+ 	 * Simple-minded String.replace() for JDK1.3 Should probably be recoded...
+ 	 * 
+ 	 * @param source

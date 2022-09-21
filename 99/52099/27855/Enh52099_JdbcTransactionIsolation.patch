@@ -1,0 +1,148 @@
+Index: DataSourceElement.java
+===================================================================
+--- DataSourceElement.java	(revision 1189747)
++++ DataSourceElement.java	(working copy)
+@@ -49,7 +49,7 @@
+     private static final long serialVersionUID = 233L;
+ 
+     private transient String dataSource, driver, dbUrl, username, password, checkQuery, poolMax, connectionAge, timeout,
+-            trimInterval;
++            trimInterval, transactionIsolation;
+ 
+     private transient boolean keepAlive, autocommit;
+ 
+@@ -269,6 +269,18 @@
+             }
+             if (dsc != null) {
+                 conn=dsc.getConnection();
++                int transactionIsolation = DataSourceElementBeanInfo.getTransactionIsolationMode(getTransactionIsolation());
++                if (transactionIsolation >= 0 && conn.getTransactionIsolation() != transactionIsolation) {
++                    try {
++                        // make sure setting the new isolation mode is done in an auto committed transaction
++                        conn.setTransactionIsolation(transactionIsolation);
++                        log.debug("Setting transaction isolation: " + transactionIsolation + " @"
++                                + System.identityHashCode(dsc));
++                    } catch (SQLException ex) {
++                        log.error("Could not set transaction isolation: " + transactionIsolation + " @"
++                                + System.identityHashCode(dsc));
++                    }
++                }
+             }
+             return conn;
+         }
+@@ -464,4 +476,20 @@
+     public void setKeepAlive(boolean keepAlive) {
+         this.keepAlive = keepAlive;
+     }
++
++    /**
++     * @return Returns the transaction isolation level
++     */
++    public String getTransactionIsolation() {
++        return transactionIsolation;
++    }
++
++    /**
++     * @param transactionIsolation
++     *            The transaction isolation level to set. <code>NULL</code> to
++     *            use the default of the driver.
++     */
++    public void setTransactionIsolation(String transactionIsolation) {
++        this.transactionIsolation = transactionIsolation;
++    }
+ }
+Index: DataSourceElementBeanInfo.java
+===================================================================
+--- DataSourceElementBeanInfo.java	(revision 1189748)
++++ DataSourceElementBeanInfo.java	(working copy)
+@@ -22,15 +22,39 @@
+ package org.apache.jmeter.protocol.jdbc.config;
+ 
+ import java.beans.PropertyDescriptor;
++import java.sql.Connection;
++import java.util.ResourceBundle;
+ 
+ import org.apache.jmeter.testbeans.BeanInfoSupport;
+ 
+ public class DataSourceElementBeanInfo extends BeanInfoSupport {
++    private static String[] TRANSACTION_ISOLATION_MODE_TAGS = null;
++
++    private static int[] TRANSACTION_ISOLATION_MODES = null;
++
+     public DataSourceElementBeanInfo() {
+         super(DataSourceElement.class);
++
++        if (TRANSACTION_ISOLATION_MODE_TAGS == null) {
++            ResourceBundle rb = (ResourceBundle) getBeanDescriptor().getValue(RESOURCE_BUNDLE);
++            TRANSACTION_ISOLATION_MODE_TAGS = new String[5];
++            TRANSACTION_ISOLATION_MODES = new int[5];
++            TRANSACTION_ISOLATION_MODE_TAGS[0] = rb.getString("transactionIsolation.none");
++            TRANSACTION_ISOLATION_MODES[0] = Connection.TRANSACTION_NONE;
++            TRANSACTION_ISOLATION_MODE_TAGS[1] = rb.getString("transactionIsolation.readCommitted");
++            TRANSACTION_ISOLATION_MODES[1] = Connection.TRANSACTION_READ_COMMITTED;
++            TRANSACTION_ISOLATION_MODE_TAGS[2] = rb.getString("transactionIsolation.readUncommitted");
++            TRANSACTION_ISOLATION_MODES[2] = Connection.TRANSACTION_READ_UNCOMMITTED;
++            TRANSACTION_ISOLATION_MODE_TAGS[3] = rb.getString("transactionIsolation.repeatableRead");
++            TRANSACTION_ISOLATION_MODES[3] = Connection.TRANSACTION_REPEATABLE_READ;
++            TRANSACTION_ISOLATION_MODE_TAGS[4] = rb.getString("transactionIsolation.serializable");
++            TRANSACTION_ISOLATION_MODES[4] = Connection.TRANSACTION_SERIALIZABLE;
++        }
++
+         createPropertyGroup("varName", new String[] { "dataSource" });
+ 
+-        createPropertyGroup("pool", new String[] { "poolMax", "timeout", "trimInterval", "autocommit" });
++        createPropertyGroup("pool", new String[] { "poolMax", "timeout", "trimInterval", "autocommit",
++                "transactionIsolation" });
+ 
+         createPropertyGroup("keep-alive", new String[] { "keepAlive", "connectionAge", "checkQuery" });
+ 
+@@ -51,6 +75,10 @@
+         p = property("autocommit");
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, Boolean.TRUE);
++        p = property("transactionIsolation");
++        p.setValue(NOT_UNDEFINED, Boolean.FALSE);
++        p.setValue(DEFAULT, "");
++        p.setValue(TAGS, TRANSACTION_ISOLATION_MODE_TAGS);
+         p = property("keepAlive");
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, Boolean.TRUE);
+@@ -73,4 +101,19 @@
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, "");
+     }
++
++    public static int getTransactionIsolationMode(String tag) {
++        if (!(tag == null || "".equals(tag))) {
++            try {
++                return Integer.parseInt(tag);
++            } catch (NumberFormatException nex) {
++                for (int i = 0; i < TRANSACTION_ISOLATION_MODE_TAGS.length; i++) {
++                    if (tag.equals(TRANSACTION_ISOLATION_MODE_TAGS[i])) {
++                        return TRANSACTION_ISOLATION_MODES[i];
++                    }
++                }
++            }
++        }
++        return -1;
++    }
+ }
+Index: DataSourceElementResources.properties
+===================================================================
+--- DataSourceElementResources.properties	(revision 1189751)
++++ DataSourceElementResources.properties	(working copy)
+@@ -41,4 +41,11 @@
+ trimInterval.displayName=Idle Cleanup Interval (ms)
+ trimInterval.shortDescription=The pool removes extra idle connections at regular intervals
+ keepAlive.displayName=Keep-Alive
+-keepAlive.shortDescription=Whether the pool should validate connections.  If no, Connection Age and Validation Query are ignored.
+\ No newline at end of file
++keepAlive.shortDescription=Whether the pool should validate connections.  If no, Connection Age and Validation Query are ignored.
++transactionIsolation.displayName=Transaction Isolation
++transactionIsolation.shortDescription=Transaction Isolation Level.
++transactionIsolation.none=None
++transactionIsolation.readCommitted=Read Committed
++transactionIsolation.readUncommitted=Read Uncommitted
++transactionIsolation.repeatableRead=Repeatable Read
++transactionIsolation.serializable=Serializable
+\ No newline at end of file

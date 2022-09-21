@@ -1,0 +1,166 @@
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(revision 1302102)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(working copy)
+@@ -131,29 +131,11 @@
+      * @see org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()
+      */
+     public TestElement createTestElement() {
+-        PublisherSampler sampler = new PublisherSampler();
+-        this.configureTestElement(sampler);
+-        sampler.setUseJNDIProperties(String.valueOf(useProperties.isSelected()));
+-        sampler.setJNDIIntialContextFactory(jndiICF.getText());
+-        sampler.setProviderUrl(urlField.getText());
+-        sampler.setConnectionFactory(jndiConnFac.getText());
+-        sampler.setDestination(jmsDestination.getText());
+-        sampler.setUsername(jmsUser.getText());
+-        sampler.setPassword(jmsPwd.getText());
+-        sampler.setTextMessage(textMessage.getText());
+-        sampler.setInputFile(messageFile.getFilename());
+-        sampler.setRandomPath(randomFile.getFilename());
+-        sampler.setConfigChoice(configChoice.getText());
+-        sampler.setMessageChoice(msgChoice.getText());
+-        sampler.setIterations(iterations.getText());
+-        sampler.setUseAuth(useAuth.isSelected());
+-        sampler.setUseNonPersistentDelivery(useNonPersistentDelivery.isSelected());
+-        Arguments args = (Arguments) jmsPropertiesPanel.createTestElement();
+-        sampler.setJMSProperties(args);
++      PublisherSampler sampler = new PublisherSampler();
++      setupSamplerProperties(sampler);
+ 
+-        return sampler;
+-    }
+-
++      return sampler;
++  }
+     /**
+      * Modifies a given TestElement to mirror the data in the gui components.
+      *
+@@ -161,26 +143,35 @@
+      */
+     public void modifyTestElement(TestElement s) {
+         PublisherSampler sampler = (PublisherSampler) s;
+-        this.configureTestElement(sampler);
+-        sampler.setUseJNDIProperties(String.valueOf(useProperties.isSelected()));
+-        sampler.setJNDIIntialContextFactory(jndiICF.getText());
+-        sampler.setProviderUrl(urlField.getText());
+-        sampler.setConnectionFactory(jndiConnFac.getText());
+-        sampler.setDestination(jmsDestination.getText());
+-        sampler.setUsername(jmsUser.getText());
+-        sampler.setPassword(jmsPwd.getText());
+-        sampler.setTextMessage(textMessage.getText());
+-        sampler.setInputFile(messageFile.getFilename());
+-        sampler.setRandomPath(randomFile.getFilename());
+-        sampler.setConfigChoice(configChoice.getText());
+-        sampler.setMessageChoice(msgChoice.getText());
+-        sampler.setIterations(iterations.getText());
+-        sampler.setUseAuth(useAuth.isSelected());
++        setupSamplerProperties(sampler);
+         sampler.setDestinationStatic(destSetup.getText().equals(DEST_SETUP_STATIC));
+-        sampler.setUseNonPersistentDelivery(useNonPersistentDelivery.isSelected());
+-        Arguments args = (Arguments) jmsPropertiesPanel.createTestElement();
+-        sampler.setJMSProperties(args);
++    }
+ 
++    /**
++     * Initialize the provided {@link PublisherSampler} with all the values as configured in the GUI.
++     * 
++     * @param sampler {@link PublisherSampler} instance
++     */
++    private void setupSamplerProperties(final PublisherSampler sampler) {
++      this.configureTestElement(sampler);
++      sampler.setUseJNDIProperties(String.valueOf(useProperties.isSelected()));
++      sampler.setJNDIIntialContextFactory(jndiICF.getText());
++      sampler.setProviderUrl(urlField.getText());
++      sampler.setConnectionFactory(jndiConnFac.getText());
++      sampler.setDestination(jmsDestination.getText());
++      sampler.setUsername(jmsUser.getText());
++      sampler.setPassword(jmsPwd.getText());
++      sampler.setTextMessage(textMessage.getText());
++      sampler.setInputFile(messageFile.getFilename());
++      sampler.setRandomPath(randomFile.getFilename());
++      sampler.setConfigChoice(configChoice.getText());
++      sampler.setMessageChoice(msgChoice.getText());
++      sampler.setIterations(iterations.getText());
++      sampler.setUseAuth(useAuth.isSelected());
++      sampler.setUseNonPersistentDelivery(useNonPersistentDelivery.isSelected());
++     
++      Arguments args = (Arguments) jmsPropertiesPanel.createTestElement();
++      sampler.setJMSProperties(args);
+     }
+ 
+     /**
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java	(revision 1302102)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java	(working copy)
+@@ -17,6 +17,9 @@
+ 
+ package org.apache.jmeter.protocol.jms.sampler;
+ 
++import java.io.FileInputStream;
++import java.io.ObjectInputStream;
++import java.io.Serializable;
+ import java.lang.reflect.InvocationTargetException;
+ import java.lang.reflect.Method;
+ import java.util.HashMap;
+@@ -76,6 +79,8 @@
+ 
+     // Cache for file. Only used by sample() in a single thread
+     private String file_contents = null;
++    // Cache for object-file.
++    private Serializable file_object_contents = null;
+ 
+     public PublisherSampler() {
+     }
+@@ -168,7 +173,9 @@
+                     Message msg = publisher.publish(m, getDestination(), getJMSProperties().getArgumentsAsMap());
+                     Utils.messageProperties(propBuffer, msg);
+                 } else if (JMSPublisherGui.OBJECT_MSG_RSC.equals(type)){
+-                    throw new JMSException(type+ " is not yet supported");
++                    Serializable omsg = getObjectContent();
++                    Message msg = publisher.publish(omsg, getDestination(), getJMSProperties().getArgumentsAsMap());
++                    Utils.messageProperties(propBuffer, msg);
+                 } else {
+                     throw new JMSException(type+ " is not recognised");                    
+                 }
+@@ -252,6 +259,39 @@
+         return tf.getText();
+     }
+ 
++    /**
++     * This method will either return the 'cached' object loaded previously from a file,
++     * or it will attempt to load the file for the first time.
++     * 
++     * @return Serialized object as loaded from the specified input file
++     */
++    private Serializable getObjectContent() {
++      if (file_object_contents == null) {
++        file_object_contents = getFileObjectContent(getInputFile());
++      }
++      return file_object_contents;
++    }
++    
++    /**
++     * Try to load an object from a provided file, so that it can be used as body
++     * for a JMS message.
++     * An {@link IllegalStateException} will be thrown if loading the object fails.
++     * 
++     * @param path Path to the file that will be serialized
++     * @return Serialized object instance
++     */
++    private Serializable getFileObjectContent(final String path) {
++      Serializable readObject = null;
++      try {
++        ObjectInputStream input = new ObjectInputStream(new FileInputStream(path));
++        readObject = (Serializable) input.readObject();
++      } catch (Exception e) {
++        log.error(e.getLocalizedMessage(), e);
++        throw new IllegalStateException("Unable to load object instance from file", e);
++      }
++      return readObject;
++    }
++    
+     // ------------- get/set properties ----------------------//
+     /**
+      * set the source of the message

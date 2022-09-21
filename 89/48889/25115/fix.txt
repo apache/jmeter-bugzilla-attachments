@@ -1,0 +1,20 @@
+in StatisticalSampleResult:
+
+change
+    public static String getKey(SampleEvent event) {
+        StringBuffer sb = new StringBuffer(80);
+        sb.append(event.getResult().getSampleLabel()).append("-").append(event.getThreadGroup());
+        return sb.toString();
+    }
+
+to
+
+    public static String getKey(SampleEvent event) {
+        StringBuffer sb = new StringBuffer(80);
+        sb.append(event.getResult().getSampleLabel()).append("-").append(event.getResult().getThreadName());
+        return sb.toString();
+    }
+
+Note: event.getThreadGroup is the same for all threads. This leads to the calculation of averages like
+
+(max(endtime over all threads) - min(starttime over all threads) ) / number of samples. As most of the time all threads are running this leads to averages beeing to low by a factor of total number of threads.

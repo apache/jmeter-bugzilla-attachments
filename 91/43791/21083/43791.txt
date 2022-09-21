@@ -1,0 +1,39 @@
+Index: C:/ASF/Eclipse_WS_JMeter/JMeter/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/Receiver.java
+===================================================================
+--- C:/ASF/Eclipse_WS_JMeter/JMeter/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/Receiver.java	(revision 591651)
++++ C:/ASF/Eclipse_WS_JMeter/JMeter/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/Receiver.java	(working copy)
+@@ -75,13 +75,16 @@
+ 				if (reply != null) {
+ 
+ 					if (log.isDebugEnabled()) {
+-						log.debug("Received message, correlation id:" + reply.getJMSCorrelationID());
++						log.debug("Received message, correlation id:"
++								+ reply.getJMSCorrelationID());
+ 					}
+ 
+ 					if (reply.getJMSCorrelationID() == null) {
+-						log.warn("Received message with correlation id null. Discarding message ...");
++						log
++								.warn("Received message with correlation id null. Discarding message ...");
+ 					} else {
+-						MessageAdmin.getAdmin().putReply(reply.getJMSCorrelationID(), reply);
++						MessageAdmin.getAdmin().putReply(
++								reply.getJMSCorrelationID(), reply);
+ 					}
+ 				}
+ 
+@@ -90,9 +93,12 @@
+ 			}
+ 		}
+ 		// not active anymore
+-		if (session != null) {
++		// close consumer, session & connection
++		if (consumer != null) {
+ 			try {
+-				session.close();
++				consumer.close();
++				if (session != null)
++					session.close();
+ 				if (conn != null)
+ 					conn.close();
+ 			} catch (JMSException e) {

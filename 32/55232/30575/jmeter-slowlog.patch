@@ -1,0 +1,126 @@
+diff -ru jmeter/src/core/org/apache/jmeter/reporters/ResultCollectorHelper.java jmeter-slowlog/src/core/org/apache/jmeter/reporters/ResultCollectorHelper.java
+--- jmeter/src/core/org/apache/jmeter/reporters/ResultCollectorHelper.java	2013-07-10 14:31:01.271219418 +0400
++++ jmeter-slowlog/src/core/org/apache/jmeter/reporters/ResultCollectorHelper.java	2013-07-10 17:47:28.463840561 +0400
+@@ -31,11 +31,13 @@
+     private final Visualizer visualizer;
+     private final boolean errorsOnly;
+     private final boolean successOnly;
++    private final String slowlog;
+ 
+     public ResultCollectorHelper(ResultCollector resultCollector, Visualizer visualizer) {
+         this.visualizer = visualizer;
+         this.errorsOnly = resultCollector.isErrorLogging();
+         this.successOnly = resultCollector.isSuccessOnlyLogging();
++        this.slowlog = resultCollector.getSlowlog();
+     }
+ 
+     public void add(SampleResult sample){
+diff -ru jmeter/src/core/org/apache/jmeter/reporters/ResultCollector.java jmeter-slowlog/src/core/org/apache/jmeter/reporters/ResultCollector.java
+--- jmeter/src/core/org/apache/jmeter/reporters/ResultCollector.java	2013-07-10 14:31:01.271219418 +0400
++++ jmeter-slowlog/src/core/org/apache/jmeter/reporters/ResultCollector.java	2013-07-10 17:46:05.715843006 +0400
+@@ -95,6 +95,8 @@
+     private static final String ERROR_LOGGING = "ResultCollector.error_logging"; // $NON-NLS-1$
+ 
+     private static final String SUCCESS_ONLY_LOGGING = "ResultCollector.success_only_logging"; // $NON-NLS-1$
++    
++    private static final String SLOWLOG = "slowlog";
+ 
+     /** AutoFlush on each line */
+     private static final boolean SAVING_AUTOFLUSH = JMeterUtils.getPropDefault("jmeter.save.saveservice.autoflush", false); //$NON-NLS-1$
+@@ -207,6 +209,14 @@
+             removeProperty(SUCCESS_ONLY_LOGGING);
+         }
+     }
++    
++    public String getSlowlog() {
++    	return getPropertyAsString(SLOWLOG);
++    }
++    
++    public void setSlowlog(String slowlog) {
++    	setProperty(SLOWLOG, slowlog);
++    }
+ 
+     public boolean isSuccessOnlyLogging() {
+         return getPropertyAsBoolean(SUCCESS_ONLY_LOGGING,false);
+@@ -524,8 +534,15 @@
+     @Override
+     public void sampleOccurred(SampleEvent event) {
+         SampleResult result = event.getResult();
++        
++        int slowlog;
++        try{
++        	slowlog = Integer.parseInt(getSlowlog());
++        } catch (NumberFormatException nfe) {
++        	slowlog = 0;
++        }
+ 
+-        if (isSampleWanted(result.isSuccessful())) {
++        if (isSampleWanted(result.isSuccessful()) && slowlog <= result.getTime()) {
+             sendToVisualizer(result);
+             if (out != null && !isResultMarked(result) && !this.isStats) {
+                 SampleSaveConfiguration config = getSaveConfig();
+diff -ru jmeter/src/core/org/apache/jmeter/resources/messages.properties jmeter-slowlog/src/core/org/apache/jmeter/resources/messages.properties
+--- jmeter/src/core/org/apache/jmeter/resources/messages.properties	2013-07-10 14:31:01.271219418 +0400
++++ jmeter-slowlog/src/core/org/apache/jmeter/resources/messages.properties	2013-07-10 18:03:22.051812386 +0400
+@@ -929,6 +929,7 @@
+ size_assertion_label=Size in bytes\:
+ size_assertion_size_test=Size to Assert
+ size_assertion_title=Size Assertion
++slow_log_only=Slow log
+ smime_assertion_issuer_dn=Issuer distinguished name
+ smime_assertion_message_position=Execute assertion on message at position
+ smime_assertion_not_signed=Message not signed
+diff -ru jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java jmeter-slowlog/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java
+--- jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	2013-07-10 14:31:01.287219417 +0400
++++ jmeter-slowlog/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	2013-07-10 18:01:48.623815146 +0400
+@@ -26,6 +26,7 @@
+ import javax.swing.JButton;
+ import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
++import javax.swing.JTextField;
+ import javax.swing.event.ChangeEvent;
+ import javax.swing.event.ChangeListener;
+ 
+@@ -120,6 +121,9 @@
+ 
+     /* A checkbox choosing whether or not only successes should be logged. */
+     private final JCheckBox successOnlyLogging;
++    
++    /* A checkbox choosing whether or not only responses larger or equal slowlog should be logged. */
++    private final JTextField slowlogOnlyLogging;
+ 
+     protected ResultCollector collector = new ResultCollector();
+ 
+@@ -147,6 +151,7 @@
+                 }
+             }
+         });
++        slowlogOnlyLogging = new JTextField(JMeterUtils.getResString("log_slowlog_only")); // $NON-NLS-1$
+         JButton saveConfigButton = new JButton(JMeterUtils.getResString("config_save_settings")); // $NON-NLS-1$
+         saveConfigButton.addActionListener(new ActionListener() {
+             @Override
+@@ -166,6 +171,8 @@
+         filePanel.add(new JLabel(JMeterUtils.getResString("log_only"))); // $NON-NLS-1$
+         filePanel.add(errorLogging);
+         filePanel.add(successOnlyLogging);
++        filePanel.add(new JLabel(JMeterUtils.getResString("slow_log_only")));
++        filePanel.add(slowlogOnlyLogging);
+         filePanel.add(saveConfigButton);
+ 
+     }
+@@ -275,6 +282,7 @@
+             ResultCollector rc = (ResultCollector) c;
+             rc.setErrorLogging(errorLogging.isSelected());
+             rc.setSuccessOnlyLogging(successOnlyLogging.isSelected());
++            rc.setSlowlog(slowlogOnlyLogging.getText());
+             rc.setFilename(getFile());
+             collector = rc;
+         }
+@@ -288,6 +296,7 @@
+         ResultCollector rc = (ResultCollector) el;
+         errorLogging.setSelected(rc.isErrorLogging());
+         successOnlyLogging.setSelected(rc.isSuccessOnlyLogging());
++        slowlogOnlyLogging.setText(rc.getSlowlog());
+         if (collector == null) {
+             collector = new ResultCollector();
+         }

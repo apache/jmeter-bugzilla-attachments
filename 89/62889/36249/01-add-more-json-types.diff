@@ -1,0 +1,56 @@
+diff --git a/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java b/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java
+index d25eebd13..1664c162d 100644
+--- a/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java
++++ b/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java
+@@ -25,8 +25,10 @@ import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
++import net.minidev.json.JSONArray;
+ import net.minidev.json.JSONObject;
+ import net.minidev.json.JSONStyle;
++import net.minidev.json.JSONValue;
+ import net.minidev.json.parser.JSONParser;
+ import net.minidev.json.parser.ParseException;
+ 
+@@ -57,7 +59,7 @@ public class RenderAsJSON extends SamplerResultTab implements ResultRenderer {
+     public static String prettyJSON(String json) {
+         return prettyJSON(json, TAB_SEPARATOR);
+     }
+-    
++
+     /**
+      * Pretty-print JSON text
+      * @param json input text
+@@ -71,6 +73,12 @@ public class RenderAsJSON extends SamplerResultTab implements ResultRenderer {
+             if (o instanceof JSONObject) {
+                 return ((JSONObject) o)
+                         .toJSONString(new PrettyJSONStyle(tabSeparator));
++            } else if (o instanceof JSONArray) {
++                return ((JSONArray) o)
++                        .toJSONString(new PrettyJSONStyle(tabSeparator));
++            } else if (o instanceof JSONValue) {
++                return ((JSONValue) o)
++                        .toJSONString(new PrettyJSONStyle(tabSeparator));
+             }
+         } catch (ParseException e) {
+             return json;
+diff --git a/test/src/org/apache/jmeter/visualizers/TestRenderAsJson.java b/test/src/org/apache/jmeter/visualizers/TestRenderAsJson.java
+index 6bb646acb..6e5a09317 100644
+--- a/test/src/org/apache/jmeter/visualizers/TestRenderAsJson.java
++++ b/test/src/org/apache/jmeter/visualizers/TestRenderAsJson.java
+@@ -59,9 +59,13 @@ public class TestRenderAsJson {
+         assertEquals("{\n}", prettyJSON("{}"));
+     }
+ 
++    @Test
++    public void testRenderResultComplexArray() throws Exception {
++        assertEquals("[\n" + TAB + "1,\n" + TAB + "{\n" + TAB + TAB + "\"A\": \"B\"\n" + TAB + "}\n]", prettyJSON("[1,{\"A\":\"B\"}]"));
++    }
+     @Test
+     public void testRenderResultSimpleArray() throws Exception {
+-        assertEquals("[]", prettyJSON("[]"));
++        assertEquals("[\n]", prettyJSON("[]"));
+     }
+ 
+     @Test

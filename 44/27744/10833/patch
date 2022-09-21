@@ -1,0 +1,48 @@
+Index: src/components/org/apache/jmeter/modifiers/CounterConfig.java
+===================================================================
+retrieving revision 1.20
+diff -u -r1.20 CounterConfig.java
+--- src/components/org/apache/jmeter/modifiers/CounterConfig.java	22 Feb 2004 19:17:22 -0000	1.20
++++ src/components/org/apache/jmeter/modifiers/CounterConfig.java	17 Mar 2004 18:39:02 -0000
+@@ -26,6 +26,8 @@
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.IntegerProperty;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -51,7 +53,8 @@
+      */
+     public synchronized void iterationStart(LoopIterationEvent event)
+     {
+-        JMeterVariables variables = getThreadContext().getVariables();
++    	JMeterContext ctx = JMeterContextService.getContext();
++    	JMeterVariables variables = ctx.getVariables();
+         int start = getStart(), end = getEnd(), increment = getIncrement();
+         if (!isPerUser())
+         {
+Index: src/core/org/apache/jmeter/threads/JMeterContextService.java
+===================================================================
+retrieving revision 1.7
+diff -u -r1.7 JMeterContextService.java
+--- src/core/org/apache/jmeter/threads/JMeterContextService.java	13 Feb 2004 02:21:39 -0000	1.7
++++ src/core/org/apache/jmeter/threads/JMeterContextService.java	17 Mar 2004 18:39:03 -0000
+@@ -48,14 +48,14 @@
+         }
+     }
+ 
+-    static public JMeterContext getContext()
++    synchronized static public JMeterContext getContext()
+     {
+ 
+         init();
+ 
+         JMeterContext context =
+             (JMeterContext) contextMap.get(Thread.currentThread().getName());
+-
++        
+         if (context == null)
+         {
+             context = new JMeterContext();

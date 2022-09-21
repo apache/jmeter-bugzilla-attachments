@@ -1,0 +1,186 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 1179953)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -45,6 +45,7 @@
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
++import org.apache.jmeter.protocol.http.control.Cookie;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+ import org.apache.jmeter.protocol.http.parser.HTMLParseException;
+@@ -62,6 +63,7 @@
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jmeter.testelement.property.IntegerProperty;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+@@ -275,8 +277,10 @@
+ 
+     private boolean dynamicPath = false;// Set false if spaces are already encoded
+ 
+-
+-
++    /**
++     * Thread Local holder for CookieManager when downloading embedded resources in Concurrent Download Mode
++     */
++    static ThreadLocal<CookieManager> cookieManagerTL = new ThreadLocal<CookieManager>(); 
+     ////////////////////// Code ///////////////////////////
+ 
+     public HTTPSamplerBase() {
+@@ -739,7 +743,17 @@
+     }
+ 
+     public CookieManager getCookieManager() {
+-        return (CookieManager) getProperty(COOKIE_MANAGER).getObjectValue();
++        if(cookieManagerTL != null && cookieManagerTL.get() != null) {
++            if(log.isDebugEnabled()) {
++                log.debug("Thread "+ Thread.currentThread().getName()+" is using TL CookieManager:"+cookieManagerTL.get());
++            }
++            return cookieManagerTL.get();
++        } else {
++            if(log.isDebugEnabled()) {
++                log.debug("Thread "+ Thread.currentThread().getName()+" is using Non TL CookieManager");
++            }
++            return (CookieManager) getProperty(COOKIE_MANAGER).getObjectValue();
++        }
+     }
+ 
+     public void setCacheManager(CacheManager value) {
+@@ -1021,7 +1035,7 @@
+     public SampleResult sample() {
+         SampleResult res = null;
+         try {
+-            res = sample(getUrl(), getMethod(), false, 0);
++                res = sample(getUrl(), getMethod(), false, 0);
+             res.setSampleLabel(getName());
+             return res;
+         } catch (Exception e) {
+@@ -1110,7 +1124,7 @@
+             }
+             
+             // For concurrent get resources
+-            final List<Callable<HTTPSampleResult>> liste = new ArrayList<Callable<HTTPSampleResult>>();
++            final List<Callable<AsynSamplerResultHolder>> liste = new ArrayList<Callable<AsynSamplerResultHolder>>();
+             
+             while (urls.hasNext()) {
+                 Object binURL = urls.next(); // See catch clause below
+@@ -1137,7 +1151,7 @@
+                         
+                         if (isConcurrentDwn()) {
+                             // if concurrent download emb. resources, add to a list for async gets later
+-                            liste.add(new ASyncSample(url, GET, false, frameDepth + 1));
++                            liste.add(new ASyncSample(url, GET, false, frameDepth + 1, getCookieManager()));
+                         } else {
+                             // default: serial download embedded resources
+                             HTTPSampleResult binRes = sample(url, GET, false, frameDepth + 1);
+@@ -1171,19 +1185,28 @@
+                 boolean tasksCompleted = false;
+                 try {
+                     // sample all resources with threadpool
+-                    final List<Future<HTTPSampleResult>> retExec = exec.invokeAll(liste);
++                    final List<Future<AsynSamplerResultHolder>> retExec = exec.invokeAll(liste);
+                     // call normal shutdown (wait ending all tasks)
+                     exec.shutdown();
+                     // put a timeout if tasks couldn't terminate
+                     exec.awaitTermination(AWAIT_TERMINATION_TIMEOUT, TimeUnit.SECONDS);
++                    CookieManager cookieManager = getCookieManager();
+ 
+                     // add result to main sampleResult
+-                    for (Future<HTTPSampleResult> future : retExec) {
+-                        HTTPSampleResult binRes;
++                    for (Future<AsynSamplerResultHolder> future : retExec) {
++                        AsynSamplerResultHolder binRes;
+                         try {
+                             binRes = future.get(1, TimeUnit.MILLISECONDS);
+-                            res.addSubResult(binRes);
+-                            res.setSuccessful(res.isSuccessful() && binRes.isSuccessful());
++                            if(cookieManager != null) {
++                                CollectionProperty cookies = binRes.getCookies();
++                                PropertyIterator iter = cookies.iterator();
++                                while (iter.hasNext()) {
++                                    Cookie cookie = (Cookie) iter.next().getObjectValue();
++                                    cookieManager.add(cookie) ;
++                                }
++                            }
++                            res.addSubResult(binRes.getResult());
++                            res.setSuccessful(res.isSuccessful() && binRes.getResult().isSuccessful());
+                         } catch (TimeoutException e) {
+                             errorResult(e, res);
+                         }
+@@ -1674,23 +1697,65 @@
+      * Callable class to sample asynchronously resources embedded
+      *
+      */
+-    public class ASyncSample implements Callable<HTTPSampleResult> {
++    public class ASyncSample implements Callable<AsynSamplerResultHolder> {
+         final private URL url;
+         final private String method;
+         final private boolean areFollowingRedirect;
+         final private int depth;
++        private CookieManager cookieManager;
+ 
+         public ASyncSample(URL url, String method,
+-                boolean areFollowingRedirect, int depth){
++                boolean areFollowingRedirect, int depth, CookieManager cookieManager){
+             this.url = url;
+             this.method = method;
+             this.areFollowingRedirect = areFollowingRedirect;
+             this.depth = depth;
++            if(cookieManager != null) {
++                this.cookieManager = (CookieManager) cookieManager.clone();
++            } 
+         }
+ 
+-        public HTTPSampleResult call() {
+-            return sample(url, method, areFollowingRedirect, depth);
++        public AsynSamplerResultHolder call() {
++            try {
++                if(cookieManager != null) {
++                    cookieManagerTL.set(this.cookieManager);
++                }
++                HTTPSampleResult httpSampleResult = HTTPSamplerBase.this.sample(url, method, areFollowingRedirect, depth);
++                if(cookieManager != null) {
++                    CollectionProperty cookies = cookieManager.getCookies();
++                    return new AsynSamplerResultHolder(httpSampleResult, cookies);
++                } else {
++                    return new AsynSamplerResultHolder(httpSampleResult, new CollectionProperty());
++                }
++            } finally {
++                cookieManagerTL.remove();
++            }   
+         }
+     }
+-}
+-
++    
++    private static class AsynSamplerResultHolder {
++        private HTTPSampleResult result;
++        private CollectionProperty cookies;
++        /**
++         * @param result
++         * @param cookies
++         */
++        public AsynSamplerResultHolder(HTTPSampleResult result, CollectionProperty cookies) {
++            super();
++            this.result = result;
++            this.cookies = cookies;
++        }
++        /**
++         * @return the result
++         */
++        public HTTPSampleResult getResult() {
++            return result;
++        }
++        /**
++         * @return the cookies
++         */
++        public CollectionProperty getCookies() {
++            return cookies;
++        }
++    }
++}
+\ No newline at end of file

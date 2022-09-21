@@ -1,0 +1,104 @@
+*** /home/jmheight/jakarta-jmeter/src/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	Wed Oct 24 19:34:31 2001
+--- UrlConfigGui.java	Tue Oct 30 11:02:13 2001
+***************
+*** 57,60 ****
+--- 57,61 ----
+  import javax.swing.*;
+  import javax.swing.border.*;
++ import javax.swing.event.*;
+  import java.awt.event.*;
+  import java.awt.*;
+***************
+*** 76,80 ****
+   */
+  
+! public class UrlConfigGui extends JPanel implements ModelSupported,KeyListener,ActionListener
+  {
+  	private static String DOMAIN = "domain";
+--- 77,81 ----
+   */
+  
+! public class UrlConfigGui extends JPanel implements ModelSupported,KeyListener,ActionListener, DocumentListener
+  {
+  	private static String DOMAIN = "domain";
+***************
+*** 86,89 ****
+--- 87,91 ----
+  	private static String HTTPS = "https";
+  	private static String SEND_PARAM = "sendparam";
++         private static String BODY = "body";
+  
+  	private JTextField domain;
+***************
+*** 94,97 ****
+--- 96,100 ----
+  	private JRadioButton http;
+  	private JRadioButton https;
++         private JTextArea    body;
+  
+  	protected NamePanel namePanel;
+***************
+*** 113,116 ****
+--- 116,126 ----
+  		domain.setText((String)model.getProperty(UrlConfig.DOMAIN));
+  		path.setText((String)model.getProperty(UrlConfig.PATH));
++   
++ 		if (body != null) {
++                   String urlBody = (String)model.getProperty(UrlConfig.BODY);
++                   if (urlBody != null)
++                     body.setText(urlBody);
++                   else body.setText("");
++ 		}
+  
+  		Object portI = model.getProperty(UrlConfig.PORT);
+***************
+*** 177,180 ****
+--- 187,191 ----
+  		webRequestPanel.add(getPathPanel());
+  		webRequestPanel.add(getParameterPanel());
++                 webRequestPanel.add(getBodyPanel());
+  
+  		if (displayName)
+***************
+*** 324,327 ****
+--- 335,351 ----
+  	}
+  
++ 	protected JPanel getBodyPanel()
++ 	{
++ 		JPanel panel = new JPanel();
++ 		panel.setLayout(new VerticalLayout());
++ 		panel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
++ 		
++ 		panel.add(new JLabel("Message Body"));//(JMeterUtils.getResString("protocol")));
++                 body = new JTextArea(5,20);
++                 body.getDocument().addDocumentListener(this);
++                 body.setName(BODY);
++                 panel.add(new JScrollPane(body));
++                 return panel;
++         }
+  	protected JPanel getParameterPanel()
+  	{
+***************
+*** 394,397 ****
+--- 418,437 ----
+  			model.putProperty(UrlConfig.PROTOCOL,"https");
+  		}
++ 	}
++ 
++ 	private void documentChanged(DocumentEvent e) {
++ 		  model.putProperty(UrlConfig.BODY, body.getText()); 
++ 	}
++      
++ 	public void insertUpdate(DocumentEvent e) {
++ 		documentChanged(e);
++ 	}
++ 
++ 	public void removeUpdate(DocumentEvent e) {
++ 		documentChanged(e);
++ 	}
++ 
++ 	public void changedUpdate(DocumentEvent e) {
++ 		documentChanged(e);
+  	}
+  }

@@ -1,0 +1,273 @@
+Index: test/src/org/apache/jmeter/extractor/TestRegexExtractor.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- test/src/org/apache/jmeter/extractor/TestRegexExtractor.java	(revision 1fd878224be65731eebf4a2cfbf3faec5f13a219)
++++ test/src/org/apache/jmeter/extractor/TestRegexExtractor.java	(revision )
+@@ -19,8 +19,6 @@
+ package org.apache.jmeter.extractor;
+ 
+ 
+-import java.net.URL;
+-
+ import junit.framework.TestCase;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -28,6 +26,8 @@
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+ 
++import java.net.URL;
++
+ public class TestRegexExtractor extends TestCase {
+         private RegexExtractor extractor;
+ 
+@@ -220,20 +220,20 @@
+             extractor.setTemplate("$1$");
+             extractor.setMatchNumber(1);
+             assertTrue("useBody should be true", extractor.useBody());
+-            assertFalse("useHdrs should be false", extractor.useHeaders());
++            assertFalse("useHdrs should be false", extractor.useResponseHeaders());
+             assertFalse("useURL should be false", extractor.useUrl());
+             extractor.setUseField(RegexExtractor.USE_BODY);
+             assertTrue("useBody should be true", extractor.useBody());
+-            assertFalse("useHdrs should be false", extractor.useHeaders());
++            assertFalse("useHdrs should be false", extractor.useResponseHeaders());
+             assertFalse("useURL should be false", extractor.useUrl());
+-            extractor.setUseField(RegexExtractor.USE_HDRS);
+-            assertTrue("useHdrs should be true", extractor.useHeaders());
++            extractor.setUseField(RegexExtractor.USE_RESPONSE_HDRS);
++            assertTrue("useHdrs should be true", extractor.useResponseHeaders());
+             assertFalse("useBody should be false", extractor.useBody());
+             assertFalse("useURL should be false", extractor.useUrl());
+             extractor.process();
+             assertEquals("Value1", vars.get("regVal"));
+             extractor.setUseField(RegexExtractor.USE_URL);
+-            assertFalse("useHdrs should be false", extractor.useHeaders());
++            assertFalse("useHdrs should be false", extractor.useResponseHeaders());
+             assertFalse("useBody should be false", extractor.useBody());
+             assertTrue("useURL should be true", extractor.useUrl());
+         }
+@@ -243,7 +243,7 @@
+             extractor.setTemplate("$1$");
+             extractor.setMatchNumber(1);
+             extractor.setUseField(RegexExtractor.USE_URL);
+-            assertFalse("useHdrs should be false", extractor.useHeaders());
++            assertFalse("useHdrs should be false", extractor.useResponseHeaders());
+             assertFalse("useBody should be false", extractor.useBody());
+             assertTrue("useURL should be true", extractor.useUrl());
+             extractor.process();
+@@ -258,7 +258,7 @@
+             extractor.setTemplate("$1$");
+             extractor.setMatchNumber(1);
+             extractor.setUseField(RegexExtractor.USE_CODE);
+-            assertFalse("useHdrs should be false", extractor.useHeaders());
++            assertFalse("useHdrs should be false", extractor.useResponseHeaders());
+             assertFalse("useBody should be false", extractor.useBody());
+             assertFalse("useURL should be false", extractor.useUrl());
+             assertFalse("useMessage should be false", extractor.useMessage());
+@@ -266,7 +266,7 @@
+             extractor.process();
+             assertEquals("abcd",vars.get("regVal"));
+             extractor.setUseField(RegexExtractor.USE_MESSAGE);
+-            assertFalse("useHdrs should be false", extractor.useHeaders());
++            assertFalse("useHdrs should be false", extractor.useResponseHeaders());
+             assertFalse("useBody should be false", extractor.useBody());
+             assertFalse("useURL should be false", extractor.useUrl());
+             assertTrue("useMessage should be true", extractor.useMessage());
+Index: src/core/org/apache/jmeter/resources/messages.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1fd878224be65731eebf4a2cfbf3faec5f13a219)
++++ src/core/org/apache/jmeter/resources/messages.properties	(revision )
+@@ -776,11 +776,12 @@
+ regex_params_values_field=Parameter values regex group number
+ regex_params_ref_name_field=Regular Expression Reference Name
+ regex_params_title=RegEx User Parameters
+-regex_source=Response Field to check
++regex_source=Field to check
+ regex_src_body=Body
+ regex_src_body_as_document=Body as a Document
+ regex_src_body_unescaped=Body (unescaped)
+-regex_src_hdrs=Headers
++regex_src_hdrs_resp=Resp. Headers
++regex_src_hdrs_req=Req. Headers
+ regex_src_url=URL
+ regexfunc_param_1=Regular expression used to search previous sample - or variable.
+ regexfunc_param_2=Template for the replacement string, using groups from the regular expression.  Format is $[group]$.  Example $1$.
+Index: src/components/org/apache/jmeter/extractor/RegexExtractor.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/components/org/apache/jmeter/extractor/RegexExtractor.java	(revision 1fd878224be65731eebf4a2cfbf3faec5f13a219)
++++ src/components/org/apache/jmeter/extractor/RegexExtractor.java	(revision )
+@@ -18,11 +18,6 @@
+ 
+ package org.apache.jmeter.extractor;
+ 
+-import java.io.Serializable;
+-import java.util.ArrayList;
+-import java.util.Collections;
+-import java.util.List;
+-
+ import org.apache.commons.lang3.StringEscapeUtils;
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -35,13 +30,13 @@
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ import org.apache.oro.text.MalformedCachePatternException;
+-import org.apache.oro.text.regex.MatchResult;
+-import org.apache.oro.text.regex.Pattern;
+-import org.apache.oro.text.regex.PatternMatcher;
+-import org.apache.oro.text.regex.PatternMatcherInput;
+-import org.apache.oro.text.regex.Perl5Compiler;
+-import org.apache.oro.text.regex.Perl5Matcher;
++import org.apache.oro.text.regex.*;
+ 
++import java.io.Serializable;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++
+ // @see org.apache.jmeter.extractor.TestRegexExtractor for unit tests
+ 
+ public class RegexExtractor extends AbstractScopedTestElement implements PostProcessor, Serializable {
+@@ -61,7 +56,8 @@
+      *
+      *  Do not change these values!
+     */
+-    public static final String USE_HDRS = "true"; // $NON-NLS-1$
++    public static final String USE_RESPONSE_HDRS = "response_headers"; // $NON-NLS-1$
++    public static final String USE_REQUEST_HDRS = "request_headers"; // $NON-NLS-1$
+     public static final String USE_BODY = "false"; // $NON-NLS-1$
+     public static final String USE_BODY_UNESCAPED = "unescaped"; // $NON-NLS-1$
+     public static final String USE_BODY_AS_DOCUMENT = "as_document"; // $NON-NLS-1$
+@@ -171,7 +167,8 @@
+ 
+     private String getInputString(SampleResult result) {
+         String inputString = useUrl() ? result.getUrlAsString() // Bug 39707
+-                : useHeaders() ? result.getResponseHeaders()
++                : useResponseHeaders() ? result.getResponseHeaders()
++                : useRequestHeaders() ? result.getRequestHeaders()
+                 : useCode() ? result.getResponseCode() // Bug 43451
+                 : useMessage() ? result.getResponseMessage() // Bug 43451
+                 : useUnescapedBody() ? StringEscapeUtils.unescapeHtml4(result.getResponseDataAsString())
+@@ -431,8 +428,12 @@
+         return getPropertyAsString(TEMPLATE);
+     }
+ 
+-    public boolean useHeaders() {
+-        return USE_HDRS.equalsIgnoreCase( getPropertyAsString(MATCH_AGAINST));
++    public boolean useResponseHeaders() {
++        return USE_RESPONSE_HDRS.equalsIgnoreCase(getPropertyAsString(MATCH_AGAINST));
++    }
++
++    public boolean useRequestHeaders() {
++        return USE_REQUEST_HDRS.equalsIgnoreCase(getPropertyAsString(MATCH_AGAINST));
+     }
+ 
+     // Allow for property not yet being set (probably only applies to Test cases)
+Index: src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java	(revision 1fd878224be65731eebf4a2cfbf3faec5f13a219)
++++ src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java	(revision )
+@@ -18,18 +18,6 @@
+ 
+ package org.apache.jmeter.extractor.gui;
+ 
+-import java.awt.BorderLayout;
+-import java.awt.GridBagConstraints;
+-import java.awt.GridBagLayout;
+-import java.util.List;
+-
+-import javax.swing.BorderFactory;
+-import javax.swing.Box;
+-import javax.swing.ButtonGroup;
+-import javax.swing.JComponent;
+-import javax.swing.JPanel;
+-import javax.swing.JRadioButton;
+-
+ import org.apache.jmeter.extractor.RegexExtractor;
+ import org.apache.jmeter.processor.gui.AbstractPostProcessorGui;
+ import org.apache.jmeter.testelement.AbstractScopedTestElement;
+@@ -37,6 +25,10 @@
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.gui.JLabeledTextField;
+ 
++import javax.swing.*;
++import java.awt.*;
++import java.util.List;
++
+ /**
+  * Regular Expression Extractor Post-Processor GUI
+  */
+@@ -59,8 +51,10 @@
+ 
+     private JRadioButton useBodyAsDocument;
+ 
+-    private JRadioButton useHeaders;
++    private JRadioButton useResponseHeaders;
+ 
++    private JRadioButton useRequestHeaders;
++
+     private JRadioButton useURL;
+ 
+     private JRadioButton useCode;
+@@ -85,7 +79,8 @@
+         if (el instanceof RegexExtractor){
+             RegexExtractor re = (RegexExtractor) el;
+             showScopeSettings(re, true);
+-            useHeaders.setSelected(re.useHeaders());
++            useResponseHeaders.setSelected(re.useResponseHeaders());
++            useRequestHeaders.setSelected(re.useRequestHeaders());
+             useBody.setSelected(re.useBody());
+             useUnescapedBody.setSelected(re.useUnescapedBody());
+             useBodyAsDocument.setSelected(re.useBodyAsDocument());
+@@ -165,7 +160,8 @@
+         useBody = new JRadioButton(JMeterUtils.getResString("regex_src_body")); //$NON-NLS-1$
+         useUnescapedBody = new JRadioButton(JMeterUtils.getResString("regex_src_body_unescaped")); //$NON-NLS-1$
+         useBodyAsDocument = new JRadioButton(JMeterUtils.getResString("regex_src_body_as_document")); //$NON-NLS-1$
+-        useHeaders = new JRadioButton(JMeterUtils.getResString("regex_src_hdrs")); //$NON-NLS-1$
++        useResponseHeaders = new JRadioButton(JMeterUtils.getResString("regex_src_hdrs_resp")); //$NON-NLS-1$
++        useRequestHeaders = new JRadioButton(JMeterUtils.getResString("regex_src_hdrs_req")); //$NON-NLS-1$
+         useURL = new JRadioButton(JMeterUtils.getResString("regex_src_url")); //$NON-NLS-1$
+         useCode = new JRadioButton(JMeterUtils.getResString("assertion_code_resp")); //$NON-NLS-1$
+         useMessage = new JRadioButton(JMeterUtils.getResString("assertion_message_resp")); //$NON-NLS-1$
+@@ -174,7 +170,8 @@
+         group.add(useBody);
+         group.add(useUnescapedBody);
+         group.add(useBodyAsDocument);
+-        group.add(useHeaders);
++        group.add(useResponseHeaders);
++        group.add(useRequestHeaders);
+         group.add(useURL);
+         group.add(useCode);
+         group.add(useMessage);
+@@ -182,7 +179,8 @@
+         panel.add(useBody);
+         panel.add(useUnescapedBody);
+         panel.add(useBodyAsDocument);
+-        panel.add(useHeaders);
++        panel.add(useResponseHeaders);
++        panel.add(useRequestHeaders);
+         panel.add(useURL);
+         panel.add(useCode);
+         panel.add(useMessage);
+@@ -193,7 +191,8 @@
+         useBody.setActionCommand(RegexExtractor.USE_BODY);
+         useUnescapedBody.setActionCommand(RegexExtractor.USE_BODY_UNESCAPED);
+         useBodyAsDocument.setActionCommand(RegexExtractor.USE_BODY_AS_DOCUMENT);
+-        useHeaders.setActionCommand(RegexExtractor.USE_HDRS);
++        useResponseHeaders.setActionCommand(RegexExtractor.USE_RESPONSE_HDRS);
++        useRequestHeaders.setActionCommand(RegexExtractor.USE_REQUEST_HDRS);
+         useURL.setActionCommand(RegexExtractor.USE_URL);
+         useCode.setActionCommand(RegexExtractor.USE_CODE);
+         useMessage.setActionCommand(RegexExtractor.USE_MESSAGE);

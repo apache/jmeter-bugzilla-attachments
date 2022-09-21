@@ -1,0 +1,2613 @@
+Index: test/src/org/apache/jmeter/threads/MockJMeterContext.java
+===================================================================
+--- test/src/org/apache/jmeter/threads/MockJMeterContext.java	(revision 0)
++++ test/src/org/apache/jmeter/threads/MockJMeterContext.java	(revision 0)
+@@ -0,0 +1,242 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.threads;
++
++import org.apache.jmeter.engine.StandardJMeterEngine;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++
++/**
++ * <p>
++ * A Mock implementation of <code>JMeterContext</code>
++ * </p>
++ * <p>
++ * The normal way of obtaining <code>JMeterContext</code> is via
++ * {@link JMeterContextService#getContext()} which relies on
++ * <code>ThreadLocal</code> variables. In unit tests setting up threads is
++ * difficult. This Mock allows you to "swap out" what should be returned during
++ * your unit tests so that one thread can be used to run the tests. Setting the
++ * <code>delegate</code> allows you to do the "swap out"
++ * </p>
++ *
++ */
++public class MockJMeterContext extends JMeterContext {
++
++	private JMeterContext delegate;
++
++	/**
++	 * @return Factory method for creating <code>JMeterContext</code> since its
++	 *         visibility is "default" and not available outside of this
++	 *         package.
++	 */
++	public static JMeterContext newJMeterContext() {
++		return new JMeterContext();
++	}
++
++	/**
++	 * @return the delegate
++	 */
++	public JMeterContext getDelegate() {
++		return delegate;
++	}
++
++	/**
++	 * @param delegate
++	 *            the delegate to set
++	 */
++	public void setDelegate(JMeterContext delegate) {
++		this.delegate = delegate;
++	}
++
++	/**
++	 * @return
++	 * @see java.lang.Object#hashCode()
++	 */
++	public int hashCode() {
++		return delegate.hashCode();
++	}
++
++	/**
++	 *
++	 * @see org.apache.jmeter.threads.JMeterContext#clear()
++	 */
++	public void clear() {
++		delegate.clear();
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getVariables()
++	 */
++	public JMeterVariables getVariables() {
++		return delegate.getVariables();
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getReadBuffer()
++	 */
++	public byte[] getReadBuffer() {
++		return delegate.getReadBuffer();
++	}
++
++	/**
++	 * @param vars
++	 * @see org.apache.jmeter.threads.JMeterContext#setVariables(org.apache.jmeter.threads.JMeterVariables)
++	 */
++	public void setVariables(JMeterVariables vars) {
++		delegate.setVariables(vars);
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getPreviousResult()
++	 */
++	public SampleResult getPreviousResult() {
++		return delegate.getPreviousResult();
++	}
++
++	/**
++	 * @param result
++	 * @see org.apache.jmeter.threads.JMeterContext#setPreviousResult(org.apache.jmeter.samplers.SampleResult)
++	 */
++	public void setPreviousResult(SampleResult result) {
++		delegate.setPreviousResult(result);
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getCurrentSampler()
++	 */
++	public Sampler getCurrentSampler() {
++		return delegate.getCurrentSampler();
++	}
++
++	/**
++	 * @param sampler
++	 * @see org.apache.jmeter.threads.JMeterContext#setCurrentSampler(org.apache.jmeter.samplers.Sampler)
++	 */
++	public void setCurrentSampler(Sampler sampler) {
++		delegate.setCurrentSampler(sampler);
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getPreviousSampler()
++	 */
++	public Sampler getPreviousSampler() {
++		return delegate.getPreviousSampler();
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getThreadNum()
++	 */
++	public int getThreadNum() {
++		return delegate.getThreadNum();
++	}
++
++	/**
++	 * @param threadNum
++	 * @see org.apache.jmeter.threads.JMeterContext#setThreadNum(int)
++	 */
++	public void setThreadNum(int threadNum) {
++		delegate.setThreadNum(threadNum);
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getThread()
++	 */
++	public JMeterThread getThread() {
++		return delegate.getThread();
++	}
++
++	/**
++	 * @param obj
++	 * @return
++	 * @see java.lang.Object#equals(java.lang.Object)
++	 */
++	public boolean equals(Object obj) {
++		return delegate.equals(obj);
++	}
++
++	/**
++	 * @param thread
++	 * @see org.apache.jmeter.threads.JMeterContext#setThread(org.apache.jmeter.threads.JMeterThread)
++	 */
++	public void setThread(JMeterThread thread) {
++		delegate.setThread(thread);
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getThreadGroup()
++	 */
++	public AbstractThreadGroup getThreadGroup() {
++		return delegate.getThreadGroup();
++	}
++
++	/**
++	 * @param threadgrp
++	 * @see org.apache.jmeter.threads.JMeterContext#setThreadGroup(org.apache.jmeter.threads.AbstractThreadGroup)
++	 */
++	public void setThreadGroup(AbstractThreadGroup threadgrp) {
++		delegate.setThreadGroup(threadgrp);
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#getEngine()
++	 */
++	public StandardJMeterEngine getEngine() {
++		return delegate.getEngine();
++	}
++
++	/**
++	 * @param engine
++	 * @see org.apache.jmeter.threads.JMeterContext#setEngine(org.apache.jmeter.engine.StandardJMeterEngine)
++	 */
++	public void setEngine(StandardJMeterEngine engine) {
++		delegate.setEngine(engine);
++	}
++
++	/**
++	 * @return
++	 * @see org.apache.jmeter.threads.JMeterContext#isSamplingStarted()
++	 */
++	public boolean isSamplingStarted() {
++		return delegate.isSamplingStarted();
++	}
++
++	/**
++	 * @param b
++	 * @see org.apache.jmeter.threads.JMeterContext#setSamplingStarted(boolean)
++	 */
++	public void setSamplingStarted(boolean b) {
++		delegate.setSamplingStarted(b);
++	}
++
++	/**
++	 * @return
++	 * @see java.lang.Object#toString()
++	 */
++	public String toString() {
++		return delegate.toString();
++	}
++}
+Index: test/src/org/apache/jmeter/timers/ConstantThroughputTimerTestData.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/ConstantThroughputTimerTestData.java	(revision 0)
++++ test/src/org/apache/jmeter/timers/ConstantThroughputTimerTestData.java	(revision 0)
+@@ -0,0 +1,356 @@
++package org.apache.jmeter.timers;
++
++import static org.apache.jmeter.timers.Copy_Commons_Lang_2_5_Reflect.getDeclaredField;
++import static org.apache.jmeter.timers.Copy_Commons_Lang_2_5_Reflect.writeDeclaredStaticField;
++import static org.junit.Assert.assertEquals;
++
++import java.lang.reflect.Field;
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.List;
++import java.util.ResourceBundle;
++
++import org.apache.jmeter.testbeans.BeanInfoSupport;
++import org.apache.jmeter.threads.AbstractThreadGroup;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.MockJMeterContext;
++
++/**
++ * Data class for bundling test data around.
++ */
++public class ConstantThroughputTimerTestData {
++	private static ConstantThroughputTimerBeanInfo BEAN_INFO = new ConstantThroughputTimerBeanInfo();
++
++	/**
++	 * this thread only
++	 */
++	public static final String CALC_MODE_1 = "calcMode.1";
++
++	/**
++	 * all active threads
++	 */
++	public static final String CALC_MODE_2 = "calcMode.2";
++
++	/**
++	 * all active threads in current thread group
++	 */
++	public static final String CALC_MODE_3 = "calcMode.3";
++
++	/**
++	 * all active threads (shared)
++	 */
++	public static final String CALC_MODE_4 = "calcMode.4";
++
++	/**
++	 * all active threads in current thread group (shared)
++	 */
++	public static final String CALC_MODE_5 = "calcMode.5";
++
++	/**
++	 * Mock JMeterContext which requires a delegate to the actual context.
++	 * Actual contexts are in <code>ConstantThroughputTimerTestData</code>
++	 */
++	private static MockJMeterContext mockJMeterContext = new MockJMeterContext();
++
++	private static ResourceBundle RESOURCE_BUNDLE = (ResourceBundle) BEAN_INFO
++			.getBeanDescriptor().getValue(BeanInfoSupport.RESOURCE_BUNDLE);
++
++	public static final String RESOURCE_BUNDLE_KEY_CALC_MODE_PREFIX = "calcMode.";
++
++	/**
++	 * Go through the test data list and create additional <code>TestData</code>
++	 * instances for each thread in the thread groups.
++	 *
++	 * @param testDataList
++	 *            the test data list
++	 */
++	public static void createAdditionalThreads(
++			List<ConstantThroughputTimerTestData> testDataList) {
++		List<ConstantThroughputTimerTestData> additional = new ArrayList<ConstantThroughputTimerTestData>();
++
++		for (int i = 0; i < testDataList.size(); i++) {
++			ConstantThroughputTimerTestData testData = testDataList.get(i);
++			additional.addAll(testData.createAddtionalThreads());
++		}
++
++		testDataList.addAll(additional);
++	}
++
++	/**
++	 * Setup <code>JMeterContextService.numberOfActiveThreads</code> based on
++	 * the test data list provided.
++	 *
++	 * @param testDataList
++	 *            the test data list
++	 * @throws IllegalAccessException
++	 *             failed to setup
++	 *             <code>JMeterContextService.numberOfActiveThreads</code>
++	 */
++	public static void setupJMeterContextService_numberOfActiveThreads(
++			List<ConstantThroughputTimerTestData> testDataList)
++			throws IllegalAccessException {
++
++		int numberOfActiveThreads = testDataList.size();
++
++		writeDeclaredStaticField(JMeterContextService.class,
++				"numberOfActiveThreads", numberOfActiveThreads, true);
++		int numberOfThreads = JMeterContextService.getNumberOfThreads();
++		assertEquals(numberOfActiveThreads, numberOfThreads);
++	}
++
++	/**
++	 * Setup JMeterContextService.threadContext to use the "delegate"
++	 * MockJMeterContext
++	 *
++	 * @throws IllegalAccessException
++	 *             failed to setup JMeterContextService.threadContext
++	 * @throws IllegalArgumentException
++	 *             failed to setup JMeterContextService.threadContext
++	 */
++	public static void setupJMeterContextService_threadContext()
++			throws IllegalArgumentException, IllegalAccessException {
++		Field threadContextField = getDeclaredField(JMeterContextService.class,
++				"threadContext", true);
++		@SuppressWarnings("unchecked")
++		// We know this is the correct type
++		ThreadLocal<JMeterContext> context = (ThreadLocal<JMeterContext>) threadContextField
++				.get(null);
++		context.set(mockJMeterContext);
++	}
++
++	private String calcMode;
++
++	private List<SimulationEvent> events = new ArrayList<SimulationEvent>();
++
++	private JMeterContext jmeterContext;
++
++	private long msPerRequest;
++
++	private double throughput;
++
++	private ConstantThroughputTimer timer;
++
++	private String timerId;
++
++	public ConstantThroughputTimerTestData() {
++		this.jmeterContext = MockJMeterContext.newJMeterContext();
++		this.jmeterContext
++				.setThreadGroup(new org.apache.jmeter.threads.ThreadGroup());
++
++		ConstantThroughputTimer timer = new ConstantThroughputTimer();
++		setTimer(timer);
++	}
++
++	/**
++	 * <p>
++	 * Create a copy of the specified instance.
++	 * </p>
++	 * <p>
++	 * Some properties will be shared from the instance:
++	 * <ul>
++	 * <li><code>threadGroup</code>
++	 * <li><code>events</code>, only if the <code>calcMode</code> is one of the
++	 * shared modes.
++	 * </ul>
++	 * </p>
++	 *
++	 * @param original
++	 *            instance to make a copy from
++	 * @param count
++	 *            the instance count being requests
++	 */
++	private ConstantThroughputTimerTestData(
++			ConstantThroughputTimerTestData original, int count) {
++		/**
++		 * this() sets up jmeterContext and timer
++		 */
++		this();
++		jmeterContext.setThreadGroup(original.jmeterContext.getThreadGroup());
++		setCalcMode(original.calcMode);
++		if (CALC_MODE_4.equals(calcMode) || CALC_MODE_5.equals(calcMode)) {
++			events = original.events;
++		} else {
++			events = new ArrayList<SimulationEvent>();
++			events.addAll(original.events);
++		}
++		setThroughput(original.throughput); // Also sets msPerRequest
++		timerId = original.timerId + "/" + count;
++	}
++
++	/**
++	 * Make this Test Data the currently active one.
++	 */
++	public void activate() {
++		mockJMeterContext.setDelegate(jmeterContext);
++	}
++
++	/**
++	 * @param event
++	 *            the event to add to the events list
++	 */
++	public void addEvent(SimulationEvent event) {
++		events.add(event);
++	}
++
++	/**
++	 * <p>
++	 * Uses the JMeter <code>numberOfThreads</code> (i.e. active threads in the
++	 * thread group) not the property <code>NumThreads</code>, which is on the
++	 * test plan.
++	 * </p>
++	 *
++	 * @return a list (potentially empty) for any additional threads, as defined
++	 *         in the <code>numberOfThreadsInThreadGroup</code>
++	 */
++	private Collection<ConstantThroughputTimerTestData> createAddtionalThreads() {
++		List<ConstantThroughputTimerTestData> additional = new ArrayList<ConstantThroughputTimerTestData>();
++
++		int numberOfThreadsInThreadGroup = jmeterContext.getThreadGroup()
++				.getNumberOfThreads();
++		for (int i = 1; i < numberOfThreadsInThreadGroup; i++) {
++			additional.add(new ConstantThroughputTimerTestData(this, i + 1));
++		}
++
++		return additional;
++	}
++
++	/**
++	 * @return the timer
++	 */
++	public ConstantThroughputTimer getTimer() {
++		return timer;
++	}
++
++	/**
++	 * @return the timerId
++	 */
++	public String getTimerId() {
++		return timerId;
++	}
++
++	/**
++	 * @return peek at the first event without removing it
++	 */
++	public SimulationEvent peekFirstEvent() {
++		return events.isEmpty() ? null : events.get(0);
++	}
++
++	/**
++	 * @return remove the first event
++	 */
++	public SimulationEvent removeFirstEvent() {
++		return events.isEmpty() ? null : events.remove(0);
++	}
++
++	/**
++	 * Setting the calcMode will also <code>activate</code> this Test Data.
++	 *
++	 * @param mode
++	 *            the mode to set
++	 */
++	public void setCalcMode(String mode) {
++		activate();
++		this.calcMode = mode;
++		String modeStringFromResourceBundle = RESOURCE_BUNDLE.getString(mode);
++		timer.setCalcMode(modeStringFromResourceBundle);
++	}
++
++	/**
++	 * <p>
++	 * Note: Will also set <code>throughput</code> and update the
++	 * <code>timer</code>
++	 * </p>
++	 *
++	 * @param msPerRequest
++	 *            the msPerRequest to set
++	 */
++	public void setMsPerRequest(long msPerRequest) {
++		setThroughput(ConstantThroughputTimer.MILLISEC_PER_MIN / msPerRequest);
++	}
++
++	/**
++	 * <p>
++	 * Sets the JMeter <code>numberOfThreads</code> (i.e. active threads in the
++	 * thread group) not the property <code>NumThreads</code>, which is on the
++	 * test plan.
++	 * </p>
++	 *
++	 * @param numberOfThreadsInThreadGroup
++	 *            the number of threads in the thread group
++	 * @throws IllegalAccessException
++	 *             failed to set AbstractThreadGroup.numberOfThreads property
++	 */
++	public void setNumberOfThreadsInThreadGroup(int numberOfThreadsInThreadGroup) {
++		Field numberOfThreadsField = Copy_Commons_Lang_2_5_Reflect
++				.getDeclaredField(AbstractThreadGroup.class, "numberOfThreads",
++						true);
++		try {
++			Copy_Commons_Lang_2_5_Reflect.writeField(numberOfThreadsField,
++					jmeterContext.getThreadGroup(),
++					numberOfThreadsInThreadGroup, false);
++		} catch (IllegalAccessException e) {
++			throw new RuntimeException(
++					"Unexpected failure to set property AbstractThreadGroup.numberOfThreads",
++					e);
++		}
++	}
++
++	/**
++	 * <p>
++	 * Note: Will also set <code>msPerRequest</code> and update the
++	 * <code>timer</code>.
++	 * </p>
++	 *
++	 * @param throughput
++	 *            the throughput to set
++	 */
++	public void setThroughput(double throughput) {
++		this.throughput = throughput;
++		this.msPerRequest = (long) (ConstantThroughputTimer.MILLISEC_PER_MIN / throughput);
++		timer.setThroughput(throughput);
++	}
++
++	/**
++	 * @param timer
++	 *            the timer to set
++	 */
++	public void setTimer(ConstantThroughputTimer timer) {
++		this.timer = timer;
++	}
++
++	/**
++	 * @param timerId
++	 *            the timerId to set
++	 */
++	public void setTimerId(String timerId) {
++		this.timerId = timerId;
++	}
++
++	/**
++	 * {@inheritDoc}
++	 */
++	@Override
++	public String toString() {
++		StringBuilder builder = new StringBuilder();
++		builder.append("TestData[");
++		builder.append("timerId=");
++		builder.append(timerId);
++		builder.append(",ConstantThroughputTimer=0x");
++		builder.append(Integer.toHexString(System.identityHashCode(timer)));
++		builder.append(",calcMode=");
++		builder.append(calcMode);
++		builder.append(",throughput=");
++		builder.append(throughput);
++		builder.append(",msPerRequest=");
++		builder.append(msPerRequest);
++		builder.append(",threadCount=");
++		builder.append(jmeterContext.getThreadGroup().getNumberOfThreads());
++		builder.append(",events=");
++		builder.append(events.toString());
++		builder.append("]");
++
++		return builder.toString();
++	}
++
++}
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/timers/PackageTest.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/PackageTest.java	(revision 1146933)
++++ test/src/org/apache/jmeter/timers/PackageTest.java	(working copy)
+@@ -13,7 +13,7 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- * 
++ *
+  */
+ 
+ package org.apache.jmeter.timers;
+@@ -32,27 +32,46 @@
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private SimulationClock simulationClock = new SimulationClock();
++
+     public PackageTest(String arg0) {
+         super(arg0);
+     }
+ 
++    @Override
++    protected void setUp() throws Exception {
++        super.setUp();
++        ThroughputInfo.setSystemClock(simulationClock);
++    }
++
++    @Override
++    protected void tearDown() throws Exception {
++        ThroughputInfo.setSystemClock(new ThroughputInfo.SystemClock());
++        super.tearDown();
++    }
++
+     public void testTimer1() throws Exception {
+         ConstantThroughputTimer timer = new ConstantThroughputTimer();
+         assertEquals(0,timer.getCalcModeInt());// Assume this thread only
+         timer.setThroughput(60.0);// 1 per second
+         long delay = timer.delay(); // Initialise
+-        assertEquals(0,delay);
+-        Thread.sleep(500);
+-        assertEquals("Expected delay of approx 500",500, timer.delay(), 50);
++        assertEquals(0,delay); // First one runs immediately
++        simulationClock.increaseTime(500);
++        delay = timer.delay();
++        log.info("testTimer1: new delay = " + delay);
++        long diff=Math.abs(delay-500);
++        assertTrue("Delay is approximately 500",diff<=50);
+     }
+ 
+     public void testTimer2() throws Exception {
+         ConstantThroughputTimer timer = new ConstantThroughputTimer();
+         assertEquals(0,timer.getCalcModeInt());// Assume this thread only
+         timer.setThroughput(60.0);// 1 per second
+-        assertEquals(1000,timer.calculateCurrentTarget(0)); // Should delay for 1 second
++        assertEquals(0, timer.delay()); // First one runs immediately
++        assertEquals(1000,timer.delay()); // Should delay for 1 second
++        simulationClock.increaseTime(1000);
+         timer.setThroughput(60000.0);// 1 per milli-second
+-        assertEquals(1,timer.calculateCurrentTarget(0)); // Should delay for 1 milli-second
++        assertEquals(1,timer.delay()); // Should delay for 1 milli-second
+     }
+ 
+     public void testTimer3() throws Exception {
+@@ -61,20 +80,24 @@
+         ResourceBundle rb = (ResourceBundle) bi.getBeanDescriptor().getValue(BeanInfoSupport.RESOURCE_BUNDLE);
+         timer.setCalcMode(rb.getString("calcMode.2")); //$NON-NLS-1$ - all threads
+         assertEquals(1,timer.getCalcModeInt());// All threads
++        assertEquals(0,JMeterContextService.getNumberOfThreads());
+         for(int i=1; i<=10; i++){
+             TestJMeterContextService.incrNumberOfThreads();
+         }
+         assertEquals(10,JMeterContextService.getNumberOfThreads());
+         timer.setThroughput(600.0);// 10 per second
+-        assertEquals(1000,timer.calculateCurrentTarget(0)); // Should delay for 1 second
++        assertEquals(0, timer.delay()); // First one runs immediately
++        assertEquals(1000,timer.delay()); // Should delay for 1 second
++        simulationClock.increaseTime(1000);
+         timer.setThroughput(600000.0);// 10 per milli-second
+-        assertEquals(1,timer.calculateCurrentTarget(0)); // Should delay for 1 milli-second
++        assertEquals(1,timer.delay()); // Should delay for 1 milli-second
++        simulationClock.increaseTime(1);
+         for(int i=1; i<=990; i++){
+             TestJMeterContextService.incrNumberOfThreads();
+         }
+         assertEquals(1000,JMeterContextService.getNumberOfThreads());
+         timer.setThroughput(60000000.0);// 1000 per milli-second
+-        assertEquals(1,timer.calculateCurrentTarget(0)); // Should delay for 1 milli-second
++        assertEquals(1,timer.delay()); // Should delay for 1 milli-second
+     }
+ 
+     public void testTimerBSH() throws Exception {
+@@ -85,15 +108,15 @@
+         }
+         BeanShellTimer timer = new BeanShellTimer();
+         long delay;
+-        
++
+         timer.setScript("\"60\"");
+         delay = timer.delay();
+         assertEquals(60,delay);
+-        
++
+         timer.setScript("60");
+         delay = timer.delay();
+         assertEquals(60,delay);
+-        
++
+         timer.setScript("5*3*4");
+         delay = timer.delay();
+         assertEquals(60,delay);
+Index: test/src/org/apache/jmeter/timers/simulator_mode5.txt
+===================================================================
+--- test/src/org/apache/jmeter/timers/simulator_mode5.txt	(revision 0)
++++ test/src/org/apache/jmeter/timers/simulator_mode5.txt	(revision 0)
+@@ -0,0 +1,58 @@
++#
++# Constant Throughput Timer Simulator file
++# See simulator_template.txt for full explanation of files contents.
++#
++
++#  calcMode.5=all active threads in current thread group (shared)
++# Delay is <code>msPerRequest</code>.
++# The difference with the simulator in calc mode "all active threads in current thread group (shared)"
++# is that each thread group will get a single event stream shared amongst the threads in the thread group,
++# instead of each thread getting a copy of the event stream.
++# For "all active threads in current thread group (shared)" each timer uses its own delay,
++# but the calculation is based on when the last thread within the thread group was run at.
++
++# delay = target time <= current time ? 0 : target time - simulation time
++#   where target time = previous time + msPerRequest
++Simulation Time, 1m5t1[5000], 2m5t3[3000], 3m5t5[10000],
++              0,         d=0,         d=0,          d=0,  # For "all active threads in current thread group (shared)" Constant Throughput Timers only the first thread in each thread group will be at time 0 with no delay.
++           1000,            ,            ,             ,  # Subsequent Threads delays are calculated based on the previous time and each thread in the thread group shares the event stream.
++           2000,            ,      d=1000,             ,  # timer 2 : target time = 0 + 3000 = 3000; delay = 3000 - 2000 = 1000
++           3000,            ,           X,             ,
++           4000,      d=1000,            ,             ,  # timer 1 : target time = 0 + 5000 = 5000; delay = 5000 - 4000 = 1000
++           5000,           X,            ,             ,
++           6000,            ,         d=0,             ,  # timer 2 : target time = 3000 + 3000 = 6000; delay = 0
++           7000,            ,            ,       d=3000,  # timer 3 : target time = 0 + 10000 = 10000; delay = 10000 - 7000 = 3000
++           8000,            ,            ,             ,
++           9000,            ,           X,             ,
++          10000,           X,         d=0,            X,  # timer 2 : target time = 6000 + 3000 = 9000; delay = 0
++          11000,         d=0,      d=2000,             ,  # timer 2 : target time = 10000 + 3000 = 13000; delay = 13000 - 11000 = 2000
++          12000,            ,           X,             ,
++          13000,            ,      d=3000,             ,  # timer 2 : target time = 13000 + 3000 = 16000; delay = 16000 - 13000 = 3000
++          14000,            ,            ,             ,
++          15000,           X,           X,             ,
++          16000,            ,            ,       d=4000,  # timer 3 : target time = 10000 + 10000 = 20000; delay = 20000 - 16000 = 4000
++          17000,            ,            ,             ,
++          18000,            ,           X,      d=12000,  # timer 3 : target time = 20000 + 10000 = 30000; delay = 30000 - 18000 = 12000
++          19000,            ,            ,             ,
++          20000,           X,            ,            X,
++          21000,            ,           X,             ,
++          22000,            ,            ,             ,
++          23000,            ,            ,             ,
++          24000,            ,           X,             ,
++          25000,           X,            ,             ,
++          26000,            ,            ,             ,
++          27000,            ,           X,             ,
++          28000,            ,            ,             ,
++          29000,            ,            ,             ,
++          30000,           X,           X,            X,
++          31000,            ,            ,             ,
++          32000,            ,            ,             ,
++          33000,            ,            ,             ,
++          34000,            ,            ,             ,
++          35000,            ,            ,             ,
++          36000,            ,            ,             ,
++          37000,            ,            ,             ,
++          38000,            ,            ,             ,
++          39000,            ,            ,             ,
++          40000,            ,            ,            X,
++          41000,            ,            ,          d=0,  # timer 3 : target time = 30000 + 10000 = 40000; delay = 0
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/timers/ConstantThroughputTimerTest.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/ConstantThroughputTimerTest.java	(revision 0)
++++ test/src/org/apache/jmeter/timers/ConstantThroughputTimerTest.java	(revision 0)
+@@ -0,0 +1,616 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.timers;
++
++import java.lang.reflect.Field;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.timers.ConstantThroughputTimerTestData;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class ConstantThroughputTimerTest extends JMeterTestCase {
++
++	private static final Logger LOG = LoggingManager.getLoggerForClass();
++
++	/**
++	 * Simulation Clock used to manage "SystemClock" time during tests
++	 */
++	private SimulationClock simulationClock;
++
++	public ConstantThroughputTimerTest(String arg0) {
++		super(arg0);
++	}
++
++	/**
++	 * <p>
++	 * This "simulates" which test data has the next event. In order to handle
++	 * shared mode appropriately the "nextEvent" needs to be moved to the end of
++	 * the list otherwise the same test data will be returned each time and none
++	 * of the other "threads" (which sit after this in the list) will get a
++	 * turn.
++	 * </p>
++	 *
++	 * @param testDataList
++	 *            the list of test data
++	 * @return the test data that contains the next event in the simulation, or
++	 *         null if the are no more events. Non-null next events will be
++	 *         moved to the end of the <code>List</code>
++	 */
++	private ConstantThroughputTimerTestData getNextEvent(
++			List<ConstantThroughputTimerTestData> testDataList) {
++
++		ConstantThroughputTimerTestData nextTestData = null;
++		long nextTestDataEventAt = 0;
++		for (ConstantThroughputTimerTestData testData : testDataList) {
++			SimulationEvent simulationEvent = testData.peekFirstEvent();
++			if (simulationEvent != null) {
++				if (nextTestData == null
++						|| simulationEvent.getClockOffset() < nextTestDataEventAt) {
++					nextTestData = testData;
++					nextTestDataEventAt = simulationEvent.getClockOffset();
++				}
++			}
++		}
++		if (nextTestData != null) {
++			assertTrue("Moving nextTestData to end failed",
++					testDataList.remove(nextTestData));
++			assertTrue("Moving nextTestData to end failed",
++					testDataList.add(nextTestData));
++		}
++		return nextTestData;
++	}
++
++	/**
++	 * Run the simulation against the test data list provided.
++	 *
++	 * @param testDataList
++	 *            the test data for the simulation
++	 * @throws Exception
++	 *             simulation failures.
++	 */
++	private void runSimulation(
++			List<ConstantThroughputTimerTestData> testDataList)
++			throws Exception {
++
++		ConstantThroughputTimerTestData
++				.setupJMeterContextService_numberOfActiveThreads(testDataList);
++		LOG.info("Active Thread Count = "
++				+ JMeterContextService.getNumberOfThreads());
++
++		testStarted(testDataList);
++
++		while (true) {
++			ConstantThroughputTimerTestData nextTestData = getNextEvent(testDataList);
++			if (nextTestData == null) {
++				break;
++			}
++			nextTestData.activate();
++
++			SimulationEvent currentEvent = nextTestData.peekFirstEvent();
++			simulationClock.setOffset(currentEvent.getClockOffset());
++
++			long expectedDelay = currentEvent.getDelay();
++
++			LOG.info("Invocation at SimulationClock.offset="
++					+ simulationClock.getOffset() + " expect delay of "
++					+ expectedDelay + " for Test " + nextTestData);
++			long actualDelay = nextTestData.getTimer().delay();
++			if (actualDelay > 9223300000000000000L) {
++				/*
++				 * The above values roughly Double.INFINITY - "current time"
++				 * failing to call setThroughput causes a division by zero
++				 * (hence INFINITY) but the delay is based on the time as well
++				 */
++				fail("setThroughput() was not called on test data: "
++						+ nextTestData);
++			}
++			assertEquals("Invocation at " + simulationClock.toString()
++					+ ", for " + nextTestData, expectedDelay, actualDelay);
++
++			nextTestData.removeFirstEvent();
++		}
++
++		testEnded(testDataList);
++	}
++
++	/**
++	 * Sets up the <code>ThroughputInfo.systemClock</code> to be a
++	 * <code>SimulationClock</code>.
++	 *
++	 * @throws Exception
++	 *             setUp failures
++	 */
++	@Override
++	protected void setUp() throws Exception {
++		super.setUp();
++		simulationClock = new SimulationClock();
++		ThroughputInfo.setSystemClock(simulationClock);
++
++		ConstantThroughputTimerTestData
++				.setupJMeterContextService_threadContext();
++	}
++
++	/**
++	 * Resets the <code>ThroughputInfo.systemClock</code> to
++	 * <code>ThroughputInfo.SystemClock</code>
++	 *
++	 * @throws Exception
++	 *             tearDown failures
++	 */
++	@Override
++	protected void tearDown() throws Exception {
++        ConstantThroughputTimerTestData
++            .setupJMeterContextService_numberOfActiveThreads(Collections.<ConstantThroughputTimerTestData>emptyList());
++		ThroughputInfo.setSystemClock(new ThroughputInfo.SystemClock());
++		super.tearDown();
++	}
++
++	/**
++	 * Mode 1 "This Thead Only", In this test threads take
++	 * <code>msPerRequest</code> to complete. i.e. on the optimal boundaries.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode1ThisThreadOnly() throws Exception {
++		LOG.info("testDelayMode1ThisThreadOnly");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(1);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_1);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(5000, 0));
++		testData.addEvent(new SimulationEvent(10000, 0));
++		testData.addEvent(new SimulationEvent(15000, 0));
++		testData.addEvent(new SimulationEvent(20000, 0));
++		testData.addEvent(new SimulationEvent(25000, 0));
++		testData.addEvent(new SimulationEvent(30000, 0));
++		testData.addEvent(new SimulationEvent(35000, 0));
++		testData.addEvent(new SimulationEvent(40000, 0));
++		testData.addEvent(new SimulationEvent(45000, 0));
++		testData.addEvent(new SimulationEvent(50000, 0));
++		testData.addEvent(new SimulationEvent(55000, 0));
++		testData.addEvent(new SimulationEvent(60000, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 2 "All Active Threads", the delay is
++	 * <code>msPerRequest * AllActiveThread Count</code>.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode2AllActiveThreads_ManyThreads() throws Exception {
++		LOG.info("testDelayMode2AllActiveThreads_ManyThreads");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(200);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_2);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 1, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 2, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 3, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 4, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 5, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 2 "All Active Threads", the delay is
++	 * <code>msPerRequest * AllActiveThread Count</code>, for one thread is the
++	 * same as Mode 1.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode2AllActiveThreads_OneThread() throws Exception {
++		LOG.info("testDelayMode2AllActiveThreads_OneThread");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(1);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_2);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(5000, 0));
++		testData.addEvent(new SimulationEvent(10000, 0));
++		testData.addEvent(new SimulationEvent(15000, 0));
++		testData.addEvent(new SimulationEvent(20000, 0));
++		testData.addEvent(new SimulationEvent(25000, 0));
++		testData.addEvent(new SimulationEvent(30000, 0));
++		testData.addEvent(new SimulationEvent(35000, 0));
++		testData.addEvent(new SimulationEvent(40000, 0));
++		testData.addEvent(new SimulationEvent(45000, 0));
++		testData.addEvent(new SimulationEvent(50000, 0));
++		testData.addEvent(new SimulationEvent(55000, 0));
++		testData.addEvent(new SimulationEvent(60000, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 2 "All Active Threads", the delay is
++	 * <code>msPerRequest * AllActiveThread Count</code>.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode2AllActiveThreads_TwoThreads() throws Exception {
++		LOG.info("testDelayMode2AllActiveThreads_TwoThreads");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(2);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_2);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(10000, 0));
++		testData.addEvent(new SimulationEvent(20000, 0));
++		testData.addEvent(new SimulationEvent(30000, 0));
++		testData.addEvent(new SimulationEvent(40000, 0));
++		testData.addEvent(new SimulationEvent(50000, 0));
++		testData.addEvent(new SimulationEvent(60000, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 3 "All Active Threads in Thread Group", the delay is
++	 * <code>msPerRequest * active ThreadsInThreadGroup Count</code>.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode3AllActiveThreadsInThreadGroup_ManyThreads()
++			throws Exception {
++		LOG.info("testDelayMode3AllActiveThreadsInThreadGroup_ManyThreads");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(200);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_3);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 1, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 2, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 3, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 4, 0));
++		testData.addEvent(new SimulationEvent(5000 * 200 * 5, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 3 "All Active Threads in Thread Group", the delay is
++	 * <code>msPerRequest * ThreadsInThreadGroup Count</code>. For 1 Thread this
++	 * is the same as Mode 1.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode3AllActiveThreadsInThreadGroup_OneThread()
++			throws Exception {
++		LOG.info("testDelayMode3AllActiveThreadsInThreadGroup_OneThread");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(1);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_3);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(5000, 0));
++		testData.addEvent(new SimulationEvent(10000, 0));
++		testData.addEvent(new SimulationEvent(15000, 0));
++		testData.addEvent(new SimulationEvent(20000, 0));
++		testData.addEvent(new SimulationEvent(25000, 0));
++		testData.addEvent(new SimulationEvent(30000, 0));
++		testData.addEvent(new SimulationEvent(35000, 0));
++		testData.addEvent(new SimulationEvent(40000, 0));
++		testData.addEvent(new SimulationEvent(45000, 0));
++		testData.addEvent(new SimulationEvent(50000, 0));
++		testData.addEvent(new SimulationEvent(55000, 0));
++		testData.addEvent(new SimulationEvent(60000, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 3 "All Active Threads in Thread Group", the delay is
++	 * <code>msPerRequest * ThreadsInThreadGroup Count</code>.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode3AllActiveThreadsInThreadGroup_TwoThreads()
++			throws Exception {
++		LOG.info("testDelayMode3AllActiveThreadsInThreadGroup_TwoThreads");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(2);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_3);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(10000, 0));
++		testData.addEvent(new SimulationEvent(20000, 0));
++		testData.addEvent(new SimulationEvent(30000, 0));
++		testData.addEvent(new SimulationEvent(40000, 0));
++		testData.addEvent(new SimulationEvent(50000, 0));
++		testData.addEvent(new SimulationEvent(60000, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 4 "All Active Threads (Shared)", the delay is a constant
++	 * <code>msPerRequest</code> but each thread shares the
++	 * <code>previousTime</code> a request was invoked.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode4AllActiveThreadsShared_OneThread()
++			throws Exception {
++		LOG.info("testDelayMode4AllActiveThreadsShared");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(1);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_4);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(5000, 0));
++		testData.addEvent(new SimulationEvent(10000, 0));
++		testData.addEvent(new SimulationEvent(15000, 0));
++		testData.addEvent(new SimulationEvent(20000, 0));
++		testData.addEvent(new SimulationEvent(25000, 0));
++		testData.addEvent(new SimulationEvent(30000, 0));
++		testData.addEvent(new SimulationEvent(35000, 0));
++		testData.addEvent(new SimulationEvent(40000, 0));
++		testData.addEvent(new SimulationEvent(45000, 0));
++		testData.addEvent(new SimulationEvent(50000, 0));
++		testData.addEvent(new SimulationEvent(55000, 0));
++		testData.addEvent(new SimulationEvent(60000, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Mode 5 "All Active Threads In Thread Group(Shared)", the delay is a
++	 * constant <code>msPerRequest</code> but each thread in the thread group
++	 * shares the <code>previousTime</code> a request was invoked.
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testDelayMode5AllActiveThreadsInThreadGroupShared_OneThread()
++			throws Exception {
++		LOG.info("testDelayMode5AllActiveThreadsInThreadGroupShared");
++
++		ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++		testData.setThroughput(12.0);
++		testData.setNumberOfThreadsInThreadGroup(1);
++		testData.setCalcMode(ConstantThroughputTimerTestData.CALC_MODE_5);
++
++		testData.addEvent(new SimulationEvent(0, 0));
++		testData.addEvent(new SimulationEvent(5000, 0));
++		testData.addEvent(new SimulationEvent(10000, 0));
++		testData.addEvent(new SimulationEvent(15000, 0));
++		testData.addEvent(new SimulationEvent(20000, 0));
++		testData.addEvent(new SimulationEvent(25000, 0));
++		testData.addEvent(new SimulationEvent(30000, 0));
++		testData.addEvent(new SimulationEvent(35000, 0));
++		testData.addEvent(new SimulationEvent(40000, 0));
++		testData.addEvent(new SimulationEvent(45000, 0));
++		testData.addEvent(new SimulationEvent(50000, 0));
++		testData.addEvent(new SimulationEvent(55000, 0));
++		testData.addEvent(new SimulationEvent(60000, 0));
++
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++		simulation.add(testData);
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		runSimulation(simulation);
++	}
++
++	/**
++	 * Notify all the timers in the list of test data that the tests have ended.
++	 *
++	 * @param testDataList
++	 *            varargs list of test data to notify
++	 */
++	private void testEnded(List<ConstantThroughputTimerTestData> testDataList) {
++		for (ConstantThroughputTimerTestData testData : testDataList) {
++			testData.getTimer().testEnded();
++		}
++	}
++
++	/**
++	 * Test Mode 1 timers from simulation file simulator_mode1.txt
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testMode1Timers() throws Exception {
++		ConstantThroughPutTimerSimulation simulation = new ConstantThroughPutTimerSimulation();
++		List<ConstantThroughputTimerTestData> testDataList = simulation
++				.loadSimulationFile("org/apache/jmeter/timers/simulator_mode1.txt");
++
++		runSimulation(testDataList);
++	}
++
++	/**
++	 * Test Mode 2 timers from simulation file simulator_mode2.txt
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testMode2Timers() throws Exception {
++		ConstantThroughPutTimerSimulation simulation = new ConstantThroughPutTimerSimulation();
++		List<ConstantThroughputTimerTestData> testDataList = simulation
++				.loadSimulationFile("org/apache/jmeter/timers/simulator_mode2.txt");
++
++		runSimulation(testDataList);
++	}
++
++	/**
++	 * Test Mode 3 timers from simulation file simulator_mode3.txt
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testMode3Timers() throws Exception {
++		ConstantThroughPutTimerSimulation simulation = new ConstantThroughPutTimerSimulation();
++		List<ConstantThroughputTimerTestData> testDataList = simulation
++				.loadSimulationFile("org/apache/jmeter/timers/simulator_mode3.txt");
++
++		runSimulation(testDataList);
++	}
++
++	/**
++	 * Test Mode 4 timers from simulation file simulator_mode4.txt
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testMode4Timers() throws Exception {
++		ConstantThroughPutTimerSimulation simulation = new ConstantThroughPutTimerSimulation();
++		List<ConstantThroughputTimerTestData> testDataList = simulation
++				.loadSimulationFile("org/apache/jmeter/timers/simulator_mode4.txt");
++
++		runSimulation(testDataList);
++	}
++
++	/**
++	 * Test Mode 5 timers from simulation file simulator_mode5.txt
++	 *
++	 * @throws Exception
++	 *             test failures
++	 */
++	public void testMode5Timers() throws Exception {
++		ConstantThroughPutTimerSimulation simulation = new ConstantThroughPutTimerSimulation();
++		List<ConstantThroughputTimerTestData> testDataList = simulation
++				.loadSimulationFile("org/apache/jmeter/timers/simulator_mode5.txt");
++
++		runSimulation(testDataList);
++	}
++
++	/**
++	 * Notify all the timers in the list of test data that the tests are
++	 * starting.
++	 *
++	 * @param testDataList
++	 *            list of test data to notify
++	 */
++	private void testStarted(List<ConstantThroughputTimerTestData> testDataList) {
++		for (ConstantThroughputTimerTestData testData : testDataList) {
++			testData.activate();
++			testData.getTimer().testStarted();
++		}
++	}
++}
++
++/**
++ * JMeter depends on commons-lang:2.4. These methods are copied from 2.5
++ *
++ * TODO: Delete when dependency upgraded.
++ */
++class Copy_Commons_Lang_2_5_Reflect {
++	public static Field getDeclaredField(Class<?> cls, String fieldName,
++			boolean forceAccess) {
++		if (cls == null) {
++			throw new IllegalArgumentException("The class must not be null");
++		}
++		if (fieldName == null) {
++			throw new IllegalArgumentException(
++					"The field name must not be null");
++		}
++		try {
++			// only consider the specified class by using getDeclaredField()
++			Field field = cls.getDeclaredField(fieldName);
++			field.setAccessible(true);
++			return field;
++		} catch (NoSuchFieldException e) {
++		}
++		return null;
++	}
++
++	public static void writeDeclaredStaticField(Class<?> cls, String fieldName,
++			Object value, boolean forceAccess) throws IllegalAccessException {
++		Field field = getDeclaredField(cls, fieldName, forceAccess);
++		if (field == null) {
++			throw new IllegalArgumentException("Cannot locate declared field "
++					+ cls.getName() + "." + fieldName);
++		}
++		// already forced access above, don't repeat it here:
++		writeField(field, (Object) null, value, false);
++	}
++
++	public static void writeField(Field field, Object target, Object value,
++			boolean forceAccess) throws IllegalAccessException {
++		if (field == null) {
++			throw new IllegalArgumentException("The field must not be null");
++		}
++		field.set(target, value);
++	}
++}
+Index: test/src/org/apache/jmeter/timers/simulator_template.txt
+===================================================================
+--- test/src/org/apache/jmeter/timers/simulator_template.txt	(revision 0)
++++ test/src/org/apache/jmeter/timers/simulator_template.txt	(revision 0)
+@@ -0,0 +1,75 @@
++#
++# Constant Throughput Timer Simulator template file
++#
++# Lines starting with # are comments and ignored.
++# Lines can also include # and the rest of the line is considered a comment.
++#
++# The first line is the Timer declarations.
++# The first line's column is ignored as this is the header name for the clock time
++# Each other column is of the form
++#   <n>'m'<m>'t'<t>'['<msPerRequest']'
++# where
++#   n = the id of the timer
++#   m = mode number (See Available Modes below)
++#   t = number of threads in the ThreadGroup the Constant Throughput Timer belongs to
++#   msPerRequest = the milliseconds per request this Timer is optimally trying to hit
++#    (it's easier to think in milliseconds per request than throughput)
++#    You can convert between the two with the following formula:
++#       msPerRequest = 60000 / throughput
++# e.g.
++#   1[5000] (Timer id 1, with a 5000 milliseconds per request)
++#
++# Each subsequent line is a simluation clock event.
++# The first column is the elapsed time in milliseconds since the start of the simulation.
++# Each other column is of the form
++#   d=<delay> | 'X'
++# where
++#   delay = the delay in milliseconds expected when this timer requests
++#			to be scheduled again by the Constant Throughput Timer.
++#           i.e. All the previous time the Sampler was busy sending its Request
++#   'X' = a marker that shows where the optimal time for this timer would be.
++#         Not used at all, just a visual marker for people reading the files.
++# e.g.
++#  d=0 (A delay of zero, used when the next request happens after a millisecond per request length,
++#       or if it hits the optimal time boundary)
++#
++# If a row does not have any d= values then it has no effect on the simulation.
++# These are included to make it easier for people reading the files.
++
++# Available Modes
++#  calcMode.1=this thread only
++#  calcMode.2=all active threads
++#  calcMode.3=all active threads in current thread group
++#  calcMode.4=all active threads (shared)
++#  calcMode.5=all active threads in current thread group (shared)
++
++# Assumptions:
++#  * There is only one Constant Throughput Timer per ThreadGroup (Having more than one probably doesn't work the way you think it will)
++
++# delay = target time <= current time ? 0 : target time - simulation time
++#   where target time = previous time + msPerRequest
++Simulation Time, 1m1t1[5000], 2m1t1[3000], 3m1t2[10000],
++              0,         d=0,         d=0,          d=0,  # For non-shared Constant Throughput Timers the first request will be at time 0 with no delay.
++           1000,            ,            ,             ,  # The choice of time increments is up to you, and there is no need to keep them uniform.
++           2000,            ,            ,             ,
++           3000,      d=2000,           X,             ,  # Here timer 1's request has completed, so there is a delay of 2000ms (target time = 0 + 5000 = 5000; delay = 5000 - 3000 = 2000) until the next optimal request boundary.  It is also timer 2's optimal boundary, but it has been missed this time.
++           4000,            ,         d=0,             ,  # timer 2 finally finshes, having missed the optimal boundary there is no delay (target time = 0 + 3000 = 3000; delay = 0) in starting the next request.
++           5000,           X,            ,             ,
++           6000,      d=4000,           X,             ,  # timer 1 : target time = 5000 + 5000 = 10000; delay = 10000 - 6000 = 4000
++           6999,            ,         d=1,             ,  # timer 2 finishes, with 1ms to spare before the next optimal boundary. : target time = 4000 + 3000 = 7000; delay = 7000 - 6999 = 1
++           7000,            ,            ,             ,  # Note: at 3000 msPerRequest the second optimal boundary is 6000, BUT the last request finished at 4000, so this makes the bounday 7000 (4000 + 3000)
++           8000,            ,            ,             ,
++           9000,            ,            ,             ,
++          10000,           X,            ,            X,  # Note 'X' is for readability only, from this point on only interested in timer 3 so no more X's have been marked for timer 1 and 2
++          50000,            ,            ,            X,
++          51000,            ,            ,          d=0,  # timer 3 finally finishes.  A 10,000 msPerRequest means 6 per minute.  But there are only 10s left in the current minute
++          52000,            ,            ,             ,  # Note that Constant Throughput Timer does not average out request times to achieve throughput,
++          53000,            ,            ,             ,  # if you miss more than one optimal boundary then that time slice is gone forever and will never be caught up.
++          54000,            ,            ,       d=7000,  # i.e. Even though the Timer is requesting another slice, the delay wont be d=0 to ensure we fit more requests in the minute
++          55000,            ,            ,             ,  # but instead will be the difference between now and the next boundary.
++          56000,            ,            ,             ,  # And the delay is 7000 : target time = 51000 + 10000 = 61000; delay = 61000 - 54000 = 7000
++          57000,            ,            ,             ,
++          58000,            ,            ,             ,
++          59000,            ,            ,             ,
++          60000,            ,            ,            X,
++          61000,            ,            ,             ,
+Index: test/src/org/apache/jmeter/timers/SimulationEvent.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/SimulationEvent.java	(revision 0)
++++ test/src/org/apache/jmeter/timers/SimulationEvent.java	(revision 0)
+@@ -0,0 +1,62 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.timers;
++
++/**
++ * <p>
++ * A Simulation Event for <code>ConstantThroughputTimer</code>.
++ * </p>
++ * <p>
++ * Events happen at the specified <code>clockOffset</code> and expect that the
++ * <code>ConstantThroughputTimer</code> will have a delay of <code>delay</code>.
++ * </p>
++ */
++public class SimulationEvent {
++	private int clockOffset;
++	private int delay;
++
++	public SimulationEvent(int clockOffset, int delay) {
++		this.clockOffset = clockOffset;
++		this.delay = delay;
++	}
++
++	/**
++	 * @return the clockOffset the events occurs on
++	 */
++	public int getClockOffset() {
++		return clockOffset;
++	}
++
++	/**
++	 * @return the delay expected by the <code>ConstantThroughputTimer</code>
++	 *         when calculating the next time an event will occur
++	 */
++	public int getDelay() {
++		return delay;
++	}
++
++	/**
++	 * {@inheritDoc}
++	 */
++	@Override
++	public String toString() {
++		return "SimulationEvent [clockOffset=" + clockOffset + ", delay="
++				+ delay + "]";
++	}
++
++}
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/timers/simulator_mode2.txt
+===================================================================
+--- test/src/org/apache/jmeter/timers/simulator_mode2.txt	(revision 0)
++++ test/src/org/apache/jmeter/timers/simulator_mode2.txt	(revision 0)
+@@ -0,0 +1,31 @@
++#
++# Constant Throughput Timer Simulator file
++# See simulator_template.txt for full explanation of files contents.
++#
++
++#  calcMode.2=all active threads
++# Total Active threads in this simulation = 1 + 3 + 5 = 9
++# Delay is <code>msPerRequest * AllActiveThread Count</code>.
++# Timer 1 delay = 5000 * 9 = 45,000
++# Timer 2 delay = 3000 * 9 = 27,000
++# Timer 3 delay = 10000 * 9 = 90,000
++
++# delay = target time <= current time ? 0 : target time - simulation time
++#   where target time = previous time + msPerRequest
++Simulation Time, 1m2t1[5000], 2m2t3[3000], 3m2t5[10000],
++              0,         d=0,         d=0,          d=0,  # For non-shared Constant Throughput Timers the first request will be at time 0 with no delay.
++           4000,            ,     d=23000,             ,  # timer 2 : target time = 0 + 27000 = 270000; delay = 27000 - 4000 = 23000
++           5000,     d=40000,            ,             ,  # timer 1 : target time = 0 + 45000 = 45000; delay = 45000 - 5000 = 40000
++          27000,            ,           X,             ,
++          30000,            ,     d=24000,             ,  # timer 2 : target time = 27000 + 27000 = 54000; delay = 54000 - 30000 = 24000
++          45000,           X,            ,             ,
++          54000,            ,           X,             ,
++          70000,            ,            ,      d=20000,  # timer 3 : target time = 0 + 90000 = 90000; delay = 90000 - 70000 = 20000
++          81000,            ,           X,             ,
++          90000,           X,            ,            X,
++         108000,            ,           X,             ,
++         135000,           X,            ,             ,
++         180000,           X,            ,            X,
++         269500,            ,            ,          d=0,  # timer 3 : target time = 90000 + 90000 = 180000; delay = 0
++         270000,           X,            ,            X,
++
+Index: test/src/org/apache/jmeter/timers/SimulationClock.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/SimulationClock.java	(revision 0)
++++ test/src/org/apache/jmeter/timers/SimulationClock.java	(revision 0)
+@@ -0,0 +1,130 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.timers;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * A Simluation Clock used in unit testing instead of java.lang.System
++ */
++public class SimulationClock extends ThroughputInfo.SystemClock {
++
++	private static final Logger LOG = LoggingManager.getLoggerForClass();
++
++	/**
++	 * <p>
++	 * See {@link ThroughputInfo#calculateDelay(long)}.
++	 * </p>
++	 * This needs to be set to something larger than the first delay expected.
++	 * Setting to Jan 1 2000 0:00
++	 */
++	private long intialTime = 946647000000L;
++
++	/**
++	 * When was the current time last logged, so that the it is only logged when
++	 * the time changes.
++	 */
++	private long lastLoggedCurrentTime = 0L;
++
++	/**
++	 * The offset from the initial time.
++	 */
++	private long offset = 0L;
++
++	/**
++	 * @return <code>initialTime + offset</code>
++	 */
++	@Override
++	public long getCurrentTime() {
++		logTime();
++		return getCurrentTimeInternal();
++	}
++
++	/**
++	 * @return the current time used internally by other code.
++	 */
++	private long getCurrentTimeInternal() {
++		return intialTime + offset;
++	}
++
++	/**
++	 * @return the offset
++	 */
++	public long getOffset() {
++		return offset;
++	}
++
++	/**
++	 * @param increment
++	 *            the amount in milliseconds to increment the simulation clock
++	 *            by
++	 */
++	public void increaseTime(long increment) {
++		if (increment < 0) {
++			throw new IllegalStateException(
++					"Negative increments are not allowed");
++		}
++		offset += increment;
++		logTime();
++	}
++
++	/**
++	 * Log the time, but only if it hasn't changed since the last time it was
++	 * logged.
++	 */
++	private void logTime() {
++		long currentTime = getCurrentTimeInternal();
++		if (lastLoggedCurrentTime != currentTime) {
++			LOG.info(toString());
++			lastLoggedCurrentTime = currentTime;
++		}
++	}
++
++	/**
++	 * {@inheritDoc}
++	 */
++	@Override
++	public String toString() {
++		return "Offset = " + offset;
++	}
++
++	/**
++	 * @param initialTime
++	 *            new initial simulation time
++	 */
++	public void setInitialTime(long initialTime) {
++		this.intialTime = initialTime;
++		logTime();
++	}
++
++	/**
++	 * @param offset
++	 *            the offset to set
++	 */
++	public void setOffset(long offset) {
++		if (offset < this.offset) {
++			throw new IllegalStateException("Offset (" + offset
++					+ ") must be larger than the current offset )"
++					+ this.offset + ".");
++		}
++		this.offset = offset;
++		logTime();
++	}
++
++}
+Index: test/src/org/apache/jmeter/timers/simulator_mode4.txt
+===================================================================
+--- test/src/org/apache/jmeter/timers/simulator_mode4.txt	(revision 0)
++++ test/src/org/apache/jmeter/timers/simulator_mode4.txt	(revision 0)
+@@ -0,0 +1,81 @@
++#
++# Constant Throughput Timer Simulator file
++# See simulator_template.txt for full explanation of files contents.
++#
++
++#  calcMode.4=all active threads (shared)
++# Delay is <code>msPerRequest</code>.
++# The difference with the simulator in calc mode "all active threads (shared mode)"
++# is that each thread group will share a single event stream instead of getting a copy of the event stream.
++# For "all active threads (shared mode)" each timer uses its own delay,
++# but the calculation is based on when the last thread was run at.
++# This makes the simulation file trickier to read since all columns need to be considered when calculating the expected delay.
++# If multiple columns all have values at the same simulation time, then the simulator runs them left to right
++# Optimal boundaries are not marked as its too complicated - each thread has their own optimal value based on the thread's start time.
++# It also gets confusing because threads can request a new start time any time before the actual thread start time needed.
++# Generally, if you are going to use this mode then all timers would use the same msPerRequest.
++Simulation Time, 1m4t1[5000], 2m4t3[3000], 3m4t5[10000],
++              0,         d=0,      d=3000,      d=13000,  # For "all active threads (shared mode)" Constant Throughput Timers only the first thread to make the request will be at time 0 with no delay.
++           1000,            ,            ,             ,  # Subsequent Threads delays are calculated based on the previous time and each thread group shares the event stream.
++           2000,            ,            ,             ,  # delay = target time <= current time ? 0 : target time - simulation time
++           3000,            ,            ,             ,  # where target time = previous time + msPerRequest
++           4000,            ,            ,             ,  # timer 2 : target time = 0 + 3000 = 3000; delay = 3000 - 0 = 3000
++           5000,            ,            ,             ,  # timer 3 : target time = 3000 + 10000 = 130000; delay = 13000 - 0 = 13000
++           6000,            ,            ,             ,
++           7000,            ,            ,      d=16000,  # timer 3 : target time = 13000 + 10000 = 23000; delay = 23000 - 7000 = 16000
++           8000,            ,            ,             ,
++           9000,     d=19000,            ,             ,  # timer 1 : target time = 23000 + 5000 = 28000; delay = 28000 - 9000 = 19000
++          10000,            ,            ,             ,
++          11000,            ,            ,             ,
++          12000,            ,            ,             ,
++          13000,            ,            ,             ,  # 3rd thread start time
++          14000,            ,            ,             ,
++          15000,            ,            ,             ,
++          16000,            ,            ,             ,
++          17000,            ,            ,             ,
++          18000,            ,            ,             ,
++          19000,            ,            ,             ,
++          20000,            ,            ,             ,
++          21000,            ,            ,             ,
++          22000,            ,            ,             ,
++          23000,            ,            ,             ,  # 4th thread start time
++          24000,            ,            ,             ,
++          25000,            ,            ,             ,
++          26000,            ,            ,             ,
++          27000,            ,            ,             ,
++          28000,            ,            ,             ,  # 5th thread start time
++          29000,            ,            ,             ,
++          30000,            ,            ,             ,
++          31000,            ,            ,             ,
++          32000,            ,            ,             ,
++          33000,            ,         d=0,             ,  # 6th thread start time, timer 2 : target time = 28000 + 5000 = 33000; delay = 0
++          34000,            ,      d=2000,             ,  # timer 2 : target time = 33000 + 3000 = 36000; delay = 36000 - 34000 = 2000
++          35000,            ,            ,             ,
++          36000,            ,            ,             ,  # 7th thread start time
++          37000,            ,            ,             ,
++          38000,            ,            ,       d=8000,  # timer 3 : target time = 36000 + 10000 = 46000; delay = 46000 - 38000 = 8000
++          39000,            ,            ,             ,
++          40000,            ,            ,             ,
++          41000,            ,            ,             ,
++          42000,            ,            ,             ,
++          43000,            ,            ,             ,
++          44000,            ,            ,             ,
++          45000,            ,            ,             ,
++          46000,            ,            ,             , # 8th thread start time
++          47000,            ,            ,             ,
++          48000,            ,            ,             ,
++          49000,            ,            ,             ,
++          50000,            ,            ,             ,
++          50999,         d=1,            ,             , # timer 1 : target time = 46000 + 5000 = 51000; delay = 51000 - 50999 = 1
++          51000,            ,            ,             , # 9th thread start time
++          52000,            ,            ,             ,
++          53000,            ,            ,             ,
++          54000,            ,            ,             ,
++          55000,            ,            ,             ,
++          56000,            ,            ,             ,
++          57000,            ,            ,             ,
++          58000,            ,            ,             ,
++          59000,            ,            ,             ,
++          60000,            ,            ,             ,
++          61000,            ,            ,             ,
++          61001,            ,            ,          d=0, # timer 3 : target time = 51000 + 10000 = 61000; delay = 0
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/timers/simulator_mode3.txt
+===================================================================
+--- test/src/org/apache/jmeter/timers/simulator_mode3.txt	(revision 0)
++++ test/src/org/apache/jmeter/timers/simulator_mode3.txt	(revision 0)
+@@ -0,0 +1,34 @@
++#
++# Constant Throughput Timer Simulator file
++# See simulator_template.txt for full explanation of files contents.
++#
++
++#  calcMode.3=all active threads in current thread group
++# Delay is <code>msPerRequest * ThreadsInThreadGroup Count</code>.
++# Timer 1 delay = 5000 * 1 = 5,000
++# Timer 2 delay = 3000 * 3 = 9,000
++# Timer 3 delay = 10000 * 5 = 50,000
++
++# delay = target time <= current time ? 0 : target time - simulation time
++#   where target time = previous time + msPerRequest
++Simulation Time, 1m3t1[5000], 2m3t3[3000], 3m3t5[10000],
++              0,         d=0,         d=0,          d=0,  # For non-shared Constant Throughput Timers the first request will be at time 0 with no delay.
++           1000,      d=4000,            ,             ,  # timer 1 : target time = 0 + 5000 = 5000; delay = 5000 - 1000 = 4000
++           4000,            ,      d=5000,             ,  # timer 2 : target time = 0 + 9000 = 9000; delay = 9000 - 4000 = 5000
++           5000,           X,            ,             ,
++           9000,            ,           X,             ,
++          10000,           X,            ,             ,
++          15000,           X,            ,             ,
++          18000,            ,         d=0,             ,  # timer 2 : target time = 9000 + 9000 = 18000; delay = 0
++          20000,           X,            ,             ,
++          27000,            ,         d=0,             ,  # timer 2 : target time = 18000 + 9000 = 27000; delay = 0
++          30000,            ,      d=6000,             ,  # timer 2 : target time = 27000 + 9000 = 36000; delay = 36000 - 30000 = 6000
++          36000,            ,           X,             ,
++          45000,           X,            ,             ,
++          50000,           X,            ,          d=0,  # timer 3 : target time = 0 + 50000 = 50000; delay = 0;
++          70000,            ,            ,      d=30000,  # timer 3 : target time = 50000 + 50000 = 100000; delay = 100000 - 70000 = 30000
++         100000,           X,            ,            X,
++         150500,           X,            ,            X,
++         150500,            ,            ,          d=0,  # timer 3 : target time = 10000 + 50000 = 150000; delay = 0
++         200000,           X,            ,            X,
++
+Index: test/src/org/apache/jmeter/timers/simulator_mode1.txt
+===================================================================
+--- test/src/org/apache/jmeter/timers/simulator_mode1.txt	(revision 0)
++++ test/src/org/apache/jmeter/timers/simulator_mode1.txt	(revision 0)
+@@ -0,0 +1,31 @@
++#
++# Constant Throughput Timer Simulator file
++# See simulator_template.txt for full explanation of files contents.
++#
++
++#  calcMode.1=this thread only
++Simulation Time, 1m1t1[5000], 2m1t1[3000], 3m1t2[10000],
++              0,         d=0,         d=0,          d=0,  # For non-shared Constant Throughput Timers the first request will be at time 0 with no delay.
++           1000,            ,            ,             ,
++           2000,            ,            ,             ,
++           3000,      d=2000,           X,             ,  # Here timer 1's request has completed, so there is a delay of 2000ms until the next optimal request boundary.  It is also timer 2's optimal boundary, but it has been missed this time.
++           4000,            ,         d=0,             ,  # timer 2 finally finshes, having missed the optimal boundary there is no delay in starting the next request.
++           5000,           X,            ,             ,
++           6000,      d=4000,           X,             ,  # timer 1 finishes, there is a delay of 4000ms until the next optimal boundary.
++           6999,            ,         d=1,             ,  # timer 2 finishes, with 1ms to spare before the next optimal boundary.
++           7000,            ,            ,             ,  # Note: at 3000 msPerRequest the second optimal boundary is 6000, BUT the last request finished at 4000, so this makes the bounday 7000 (4000 + 3000)
++           8000,            ,            ,             ,
++           9000,            ,           X,             ,
++          10000,           X,            ,            X,  # Note 'X' is for readability only, from this point on only interested in timer 3 so no more X's have been marked for timer 1 and 2
++          50000,            ,            ,            X,
++          51000,            ,            ,          d=0,  # timer 3 finally finishes.  A 10,000 msPerRequest means 6 per minute.  But there are only 10s left in the current minute
++          52000,            ,            ,             ,  # Note that Constant Throughput Timer does not average out request times to achieve throughput,
++          53000,            ,            ,             ,  # if you miss more than one optimal boundary then that time slice is gone forever and will never be caught up.
++          54000,            ,            ,       d=7000,  # i.e. Even though the Timer is requesting another slice, the delay wont be d=0 to ensure we fit more requests in the minute
++          55000,            ,            ,             ,  # but instead will be the difference between now and the next boundary.
++          56000,            ,            ,             ,  # And the delay is 10000 from the previous time, i.e. 54000 + 10000 = 61000
++          57000,            ,            ,             ,
++          58000,            ,            ,             ,
++          59000,            ,            ,             ,
++          60000,            ,            ,            X,
++          61000,            ,            ,             ,
+Index: test/src/org/apache/jmeter/timers/ConstantThroughPutTimerSimulation.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/ConstantThroughPutTimerSimulation.java	(revision 0)
++++ test/src/org/apache/jmeter/timers/ConstantThroughPutTimerSimulation.java	(revision 0)
+@@ -0,0 +1,357 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.timers;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.InputStreamReader;
++import java.io.LineNumberReader;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++import org.apache.commons.lang.StringUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * <p>
++ * Builds {@link ConstantThroughputTimerTestData} from a simulation file.
++ * </p>
++ * <p>
++ * See simulator_template.txt for an example file explaining the format
++ * </p>
++ */
++public class ConstantThroughPutTimerSimulation {
++
++	/** Logger */
++	private static final Logger LOG = LoggingManager.getLoggerForClass();
++
++	/**
++	 * The separator of the simulation file is comma
++	 */
++	private static final String SEPARATOR = ",";
++
++	/**
++	 * Regular expression pattern for the header
++	 */
++	private static final Pattern PATTERN_HEADER = Pattern
++			.compile("(\\d+)m(\\d)t(\\d+)\\[(\\d+)\\]");
++
++	/**
++	 * Regular expression pattern for the columns
++	 */
++	private static final Pattern PATTERN_COLUMN = Pattern.compile("d=(\\d+)");
++
++	/**
++	 *
++	 * @param simulationFileName
++	 *            the file name of the simulation. Uses
++	 *            {@link ClassLoader#getResourceAsStream(String)} to find the
++	 *            file
++	 * @return the InputStream containging the contents of the file
++	 * @throws IOException
++	 *             failed to obtain file
++	 */
++	private InputStream getSimulationFile(String simulationFileName)
++			throws IOException {
++		return getClass().getClassLoader().getResourceAsStream(
++				simulationFileName);
++	}
++
++	/**
++	 * Load the specified <code>simulationFileName</code> (Using
++	 * {@link ClassLoader#getResourceAsStream(String)}) and return a list of
++	 * configured TestData representing the simulation.
++	 *
++	 * @param simulationFileName
++	 *            the file name of the simulation. Uses
++	 *            {@link ClassLoader#getResourceAsStream(String)} to find the
++	 *            file
++	 * @return a list of configured TestData
++	 * @throws IOException
++	 *             failed to obtain file
++	 * @throws SimulationParseException
++	 *             failed to parse simulation file
++	 */
++	public List<ConstantThroughputTimerTestData> loadSimulationFile(
++			String simulationFileName) throws IOException,
++			SimulationParseException {
++		return parse(simulationFileName);
++	}
++
++	/**
++	 * @param simulationFileName
++	 *            the name of the simulation file
++	 * @return the simulation <code>TestData</code>
++	 * @throws IOException
++	 *             failed to load the simulation file
++	 * @throws SimulationParseException
++	 *             failed to parse simulation file
++	 */
++	private List<ConstantThroughputTimerTestData> parse(
++			String simulationFileName) throws IOException,
++			SimulationParseException {
++		InputStream simulationFile = getSimulationFile(simulationFileName);
++		if (simulationFile == null) {
++			throw new SimulationParseException("Unable to locate simulation file: " + simulationFileName, 0);
++		}
++		List<ConstantThroughputTimerTestData> simulation = new ArrayList<ConstantThroughputTimerTestData>();
++
++		LineNumberReader simulationInput = new LineNumberReader(
++				new InputStreamReader(simulationFile));
++		String line = null;
++
++		boolean parsingBody = false;
++		try {
++			while ((line = simulationInput.readLine()) != null) {
++				line = stripComments(line);
++				if (StringUtils.isNotBlank(line)) {
++					if (!parsingBody) {
++						parseHeader(simulation, line);
++						parsingBody = true;
++
++					} else {
++						parseBody(simulation, line);
++					}
++				}
++			}
++		} catch (SimulationParseException e) {
++			e.setLineNumber(simulationInput.getLineNumber());
++			e.setFileName(simulationFileName);
++			throw e;
++		}
++
++		ConstantThroughputTimerTestData.createAdditionalThreads(simulation);
++
++		return simulation;
++	}
++
++	/**
++	 * @param simulation
++	 *            the simulation list of <code>TestData</code>
++	 * @param line
++	 *            the line to parse
++	 * @throws SimulationParseException
++	 *             failed to parse simulation file
++	 */
++	private void parseBody(List<ConstantThroughputTimerTestData> simulation,
++			String line) throws SimulationParseException {
++		String[] columns = line.split(SEPARATOR);
++		if (columns.length <= 1) {
++			throw new SimulationParseException("No Events defined",
++					line.length() + 1);
++		}
++
++		String clockTimeAsString = columns[0].trim();
++		int clockTime = 0;
++		try {
++			clockTime = Integer.parseInt(clockTimeAsString);
++		} catch (NumberFormatException e) {
++			throw new SimulationParseException(
++					"Malformed Simulation Clock Time: " + clockTimeAsString,
++					computeColumnNumber(columns, 0));
++
++		}
++
++		for (int i = 1; i < columns.length; i++) {
++			String column = columns[i].trim();
++			if (StringUtils.isBlank(column)) {
++				// ignore blank columns
++				continue;
++			}
++
++			if (i > simulation.size()) {
++				throw new SimulationParseException("Too many events defined",
++						computeColumnNumber(columns, i));
++			}
++
++			if (column.equalsIgnoreCase("X")) {
++				// Ignore optimal time boundary indicators
++				continue;
++			}
++
++			Matcher matcher = PATTERN_COLUMN.matcher(column);
++			if (!matcher.matches()) {
++				throw new SimulationParseException(
++						"Malformed delay: " + column, computeColumnNumber(
++								columns, i));
++			}
++			int delay = 0;
++			try {
++				delay = Integer.parseInt(matcher.group(1));
++			} catch (NumberFormatException e) {
++				throw new SimulationParseException(
++						"Malformed delay: " + column, computeColumnNumber(
++								columns, i));
++			}
++
++			SimulationEvent event = new SimulationEvent(clockTime, delay);
++			int simulationIndex = i - 1; /*
++										 * columnIndex includes clockTime,
++										 * simulationIndex doesn't
++										 */
++			LOG.debug("Adding event to TestData: "
++					+ simulation.get(simulationIndex).getTimerId() + ", "
++					+ event);
++			simulation.get(simulationIndex).addEvent(event);
++		}
++
++	}
++
++	/**
++	 * @param simulation
++	 *            the list to build for the simulation
++	 * @param line
++	 *            the line to parse
++	 * @throws SimulationParseException
++	 *             failed to parse simulation file
++	 */
++	private void parseHeader(List<ConstantThroughputTimerTestData> simulation,
++			String line) throws SimulationParseException {
++		String[] headers = line.split(SEPARATOR);
++		if (headers.length <= 1) {
++			throw new SimulationParseException("No Timers defined",
++					line.length() + 1);
++		}
++		// Ignore the first header as its the Simulation Clock name
++		for (int i = 1; i < headers.length; i++) {
++			String header = headers[i].trim();
++			Matcher matcher = PATTERN_HEADER.matcher(header);
++			if (!matcher.matches()) {
++				throw new SimulationParseException("Header " + header
++						+ " did not match expected format : "
++						+ PATTERN_HEADER.toString(), computeColumnNumber(
++						headers, i));
++			}
++			String timerId = matcher.group(1);
++			String mode = ConstantThroughputTimerTestData.RESOURCE_BUNDLE_KEY_CALC_MODE_PREFIX
++					+ matcher.group(2);
++			String numberOfThreads = matcher.group(3);
++			String msPerRequest = matcher.group(4);
++
++			ConstantThroughputTimerTestData testData = new ConstantThroughputTimerTestData();
++			testData.setTimerId(timerId);
++			testData.setCalcMode(mode);
++			try {
++				testData.setNumberOfThreadsInThreadGroup(Integer
++						.parseInt(numberOfThreads));
++			} catch (NumberFormatException e) {
++				throw new SimulationParseException(
++						"Malformed number of threads in header: " + header,
++						computeColumnNumber(headers, i));
++			}
++			try {
++				testData.setMsPerRequest(Integer.parseInt(msPerRequest));
++			} catch (NumberFormatException e) {
++				throw new SimulationParseException(
++						"Malformed msPerRequest in header: " + header,
++						computeColumnNumber(headers, i));
++			}
++
++			LOG.debug(testData.toString());
++			simulation.add(testData);
++		}
++	}
++
++	/**
++	 * @param columns
++	 *            array of columns
++	 * @param columnIndex
++	 *            the column index
++	 * @return
++	 */
++	private int computeColumnNumber(String[] columns, int columnIndex) {
++		int columnNumber = 1;
++		for (int i = 0; i < columnIndex; i++) {
++			// extra for the stripped separator character
++			columnNumber += columns[i].length() + 1;
++		}
++		return columnNumber;
++	}
++
++	/**
++	 * @param line
++	 *            the line to strip comments from
++	 * @return the line with all characters from a # to the end stripped
++	 */
++	private String stripComments(String line) {
++		return line.replaceAll("#.*", "");
++	}
++}
++
++class SimulationParseException extends Exception {
++
++	/**
++	 * serialVersionUID
++	 */
++	private static final long serialVersionUID = 1L;
++
++	/**
++	 * Offset into the line where the parsing error occurred.
++	 */
++	private int offset;
++
++	/**
++	 * The lineNumber of where the parsing error occurred.
++	 */
++	private int lineNumber;
++
++	/**
++	 * The simulation filename of where the parsing error occurred.
++	 */
++	private String fileName;
++
++	public SimulationParseException(String message, int offset) {
++		super(message);
++		this.offset = offset;
++	}
++
++	@Override
++	public String getMessage() {
++		return "Simulation Parsing exception in " + fileName + ":" + lineNumber
++				+ ":" + offset + " " + super.getMessage();
++	}
++
++	/**
++	 * @param offset
++	 *            the offset to set
++	 */
++	public void setOffset(int offset) {
++		this.offset = offset;
++	}
++
++	/**
++	 * @param lineNumber
++	 *            the lineNumber to set
++	 */
++	public void setLineNumber(int lineNumber) {
++		this.lineNumber = lineNumber;
++	}
++
++	/**
++	 * @param fileName
++	 *            the fileName to set
++	 */
++	public void setFileName(String fileName) {
++		this.fileName = fileName;
++	}
++
++}
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/timers/ThroughputInfo.java
+===================================================================
+--- src/components/org/apache/jmeter/timers/ThroughputInfo.java	(revision 0)
++++ src/components/org/apache/jmeter/timers/ThroughputInfo.java	(revision 0)
+@@ -0,0 +1,103 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.timers;
++
++import java.io.Serializable;
++
++/**
++ * Manages the throughput information in a thread safe way.
++ */
++public class ThroughputInfo implements Serializable {
++    private static final long serialVersionUID = 1;
++
++	/**
++	 * Extracted out for unit testing. See class javadoc.
++	 */
++	private static SystemClock SYSTEM_CLOCK = new SystemClock();
++
++	/**
++	 * Extracted out for unit testing. Java should optimize this away in
++	 * production.
++	 */
++	protected static class SystemClock {
++
++		/**
++		 * @return <code>System.currentTimeMillis</code>
++		 */
++		public long getCurrentTime() {
++			return System.currentTimeMillis();
++		}
++	}
++
++	/**
++	 * Only used for unit testing to set a simulation clock instead of
++	 * java.lang.System.
++	 *
++	 * @param systemClock
++	 *            the system clock to use
++	 */
++	protected static void setSystemClock(SystemClock systemClock) {
++		SYSTEM_CLOCK = systemClock;
++	}
++
++	/**
++	 * The time, in milliseconds, when the last scheduled event occurred.
++	 *
++	 * @GuardedBy("this")
++	 */
++	private long lastScheduledTime = 0;
++
++	/**
++	 * <p>
++	 * Calculate the delay needed to reach the target time of
++	 * <code>lastScheduledTime + delay</code>
++	 * </p>
++	 *
++	 * @param delay
++	 *            the delay before the next scheduled event
++	 * @return return 0 if the current time has already past the target time,
++	 *         target time - current time otherwise.
++	 */
++	public synchronized long calculateDelay(long delay) {
++		final long currentTime = SYSTEM_CLOCK.getCurrentTime();
++
++		/*
++		 * If lastScheduledTime is zero, then target will be in the past. This
++		 * is what we want, so first sample is run without a delay. (This is
++		 * only true if the currentTime is at greater than <code>delay</code>
++		 * seconds after midnight, January 1, 1970 UTC)
++		 */
++		long targetTime = lastScheduledTime + delay;
++		if (currentTime > targetTime) {
++			// We're behind schedule -- try to catch up:
++			lastScheduledTime = currentTime;
++			return 0;
++		}
++		lastScheduledTime = targetTime;
++		return targetTime - currentTime;
++
++	}
++
++	/**
++	 * Reset the <code>lastScheduledTime</code> to zero.
++	 */
++	public synchronized void reset() {
++		lastScheduledTime = 0;
++	}
++
++}
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java
+===================================================================
+--- src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java	(revision 1146933)
++++ src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java	(working copy)
+@@ -19,7 +19,6 @@
+ package org.apache.jmeter.timers;
+ 
+ import java.util.concurrent.ConcurrentHashMap;
+-import java.util.concurrent.ConcurrentMap;
+ 
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.testbeans.TestBean;
+@@ -37,25 +36,29 @@
+  * samples per unit of time approaches a given constant as much as possible.
+  *
+  * There are two different ways of pacing the requests:
+- * - delay each thread according to when it last ran
+- * - delay each thread according to when any thread last ran
++ * <ul>
++ * <li>delay each thread according to when it last ran</li>
++ * <li>delay each thread according to when any thread last ran</li>
++ * </ul>
+  */
+ public class ConstantThroughputTimer extends AbstractTestElement implements Timer, TestListener, TestBean {
+-    private static final long serialVersionUID = 3;
++    private static final long serialVersionUID = 4;
+ 
+-    private static class ThroughputInfo{
+-        final Object MUTEX = new Object();
+-        long lastScheduledTime = 0;
+-    }
++    private static final int CALC_MODE_1_THIS_THREAD_ONLY = 0;
++    private static final int CALC_MODE_2_ALL_ACTIVE_THREADS = 1;
++    private static final int CALC_MODE_3_ALL_ACTIVE_THREADS_IN_CURRENT_THREAD_GROUP = 2;
++    private static final int CALC_MODE_4_ALL_ACTIVE_THREADS_SHARED = 3;
++    private static final int CALC_MODE_5_ALL_ACTIVE_THREADS_IN_CURRENT_THREAD_GROUP_SHARED = 4;
++
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    private static final double MILLISEC_PER_MIN = 60000.0;
++    protected static final double MILLISEC_PER_MIN = 60000.0;
+ 
+     /**
+      * Target time for the start of the next request. The delay provided by the
+      * timer will be calculated so that the next request happens at this time.
+      */
+-    private long previousTime = 0;
++    private ThroughputInfo throughputInfo = new ThroughputInfo();
+ 
+     private String calcMode; // String representing the mode
+                                 // (Locale-specific)
+@@ -71,7 +74,7 @@
+     private final static ThroughputInfo allThreadsInfo = new ThroughputInfo();
+ 
+     //For holding the ThrougputInfo objects for all ThreadGroups. Keyed by AbstractThreadGroup objects
+-    private final static ConcurrentMap<AbstractThreadGroup, ThroughputInfo> threadGroupsInfoMap =
++    private final static ConcurrentHashMap<AbstractThreadGroup, ThroughputInfo> threadGroupsInfoMap =
+         new ConcurrentHashMap<AbstractThreadGroup, ThroughputInfo>();
+ 
+ 
+@@ -109,10 +112,33 @@
+         return modeInt;
+     }
+ 
++    /**
++     * Setting this has the side effect of sharing <code>throughputInfo</code> if the mode is
++     * <em>shared</em>.
++     *
++     * @param mode
++     *            the delay calculation mode
++     */
+     public void setCalcMode(String mode) {
+         this.calcMode = mode;
+         // TODO find better way to get modeInt
+         this.modeInt = ConstantThroughputTimerBeanInfo.getCalcModeAsInt(calcMode);
++
++        switch (modeInt) {
++        case CALC_MODE_4_ALL_ACTIVE_THREADS_SHARED:
++            throughputInfo = allThreadsInfo;
++            break;
++
++        case CALC_MODE_5_ALL_ACTIVE_THREADS_IN_CURRENT_THREAD_GROUP_SHARED:
++            final org.apache.jmeter.threads.AbstractThreadGroup group = JMeterContextService
++                    .getContext().getThreadGroup();
++            /*
++             * Share the first thread's throughputInfo
++             */
++            threadGroupsInfoMap.putIfAbsent(group, throughputInfo);
++            throughputInfo = threadGroupsInfoMap.get(group);
++            break;
++        }
+     }
+ 
+     /**
+@@ -121,89 +147,56 @@
+      * @see org.apache.jmeter.timers.Timer#delay()
+      */
+     public long delay() {
+-        long currentTime = System.currentTimeMillis();
+-
+-        /*
+-         * If previous time is zero, then target will be in the past.
+-         * This is what we want, so first sample is run without a delay.
+-        */
+-        long currentTarget = previousTime  + calculateDelay();
+-        if (currentTime > currentTarget) {
+-            // We're behind schedule -- try to catch up:
+-            previousTime = currentTime;
+-            return 0;
+-        }
+-        previousTime = currentTarget;
+-        return currentTarget - currentTime;
++        return throughputInfo.calculateDelay(calculateDelayForMode());
+     }
+ 
+     /**
+-     * @param currentTime
+-     * @return new Target time
++     * <p>
++     * Calculate the delay based on the mode
++     * </p>
++     *
++     * @return the delay (how long before another request should be made) in
++     *         milliseconds
+      */
+-    // TODO - is this used? (apart from test code)
+-    protected long calculateCurrentTarget(long currentTime) {
+-        return currentTime + calculateDelay();
+-    }
+-
+-    // Calculate the delay based on the mode
+-    private long calculateDelay() {
++    private long calculateDelayForMode() {
+         long delay = 0;
+         // N.B. we fetch the throughput each time, as it may vary during a test
+         double msPerRequest = (MILLISEC_PER_MIN / getThroughput());
+         switch (modeInt) {
+-        case 1: // Total number of threads
++        case CALC_MODE_2_ALL_ACTIVE_THREADS:
++            /*
++             * Each request is allowed to run every msPerRequest. Each thread
++             * can run a request, so each thread needs to be delayed by the
++             * total pool size of threads to keep the expected throughput.
++             */
+             delay = (long) (JMeterContextService.getNumberOfThreads() * msPerRequest);
+             break;
+ 
+-        case 2: // Active threads in this group
++        case CALC_MODE_3_ALL_ACTIVE_THREADS_IN_CURRENT_THREAD_GROUP:
++            /*
++             * Each request is allowed to run every msPerRequest. Each thread
++             * can run a request, so each thread needs to be delayed by the
++             * total pool size of threads to keep the expected throughput.
++             */
+             delay = (long) (JMeterContextService.getContext().getThreadGroup().getNumberOfThreads() * msPerRequest);
+             break;
+ 
+-        case 3: // All threads - alternate calculation
+-            delay = calculateSharedDelay(allThreadsInfo,(long) msPerRequest);
++        /*
++         * The following modes all fall through for the default
++         */
++        case CALC_MODE_1_THIS_THREAD_ONLY:
++        case CALC_MODE_4_ALL_ACTIVE_THREADS_SHARED:
++        case CALC_MODE_5_ALL_ACTIVE_THREADS_IN_CURRENT_THREAD_GROUP_SHARED:
++        default:
++            delay = (long) msPerRequest;
+             break;
+-
+-        case 4: //All threads in this group - alternate calculation
+-            final org.apache.jmeter.threads.AbstractThreadGroup group =
+-                JMeterContextService.getContext().getThreadGroup();
+-            ThroughputInfo groupInfo = threadGroupsInfoMap.get(group);
+-            if (groupInfo == null) {
+-                groupInfo = new ThroughputInfo();
+-                ThroughputInfo previous = threadGroupsInfoMap.putIfAbsent(group, groupInfo);
+-                if (previous != null) { // We did not replace the entry
+-                    groupInfo = previous; // so use the existing one
+-                }
+-            }
+-            delay = calculateSharedDelay(groupInfo,(long) msPerRequest);
+-            break;
+-
+-        default: // e.g. 0
+-            delay = (long) msPerRequest; // i.e. * 1
+-            break;
+         }
+         return delay;
+     }
+ 
+-    private long calculateSharedDelay(ThroughputInfo info, long milliSecPerRequest) {
+-        final long now = System.currentTimeMillis();
+-        final long calculatedDelay;
+-
+-        //Synchronize on the info object's MUTEX to ensure
+-        //Multiple threads don't update the scheduled time simultaneously
+-        synchronized (info.MUTEX) {
+-            final long nextRequstTime = info.lastScheduledTime + milliSecPerRequest;
+-            info.lastScheduledTime = Math.max(now, nextRequstTime);
+-            calculatedDelay = info.lastScheduledTime - now;
+-        }
+-
+-        return Math.max(calculatedDelay, 0);
+-    }
+-
+     private synchronized void reset() {
+-        allThreadsInfo.lastScheduledTime = 0;
+-        threadGroupsInfoMap.clear();
+-        previousTime = 0;
++        throughputInfo = new ThroughputInfo();
++        setCalcMode(calcMode);
+     }
+ 
+     /**
+@@ -234,6 +227,14 @@
+      * {@inheritDoc}
+      */
+     public void testEnded() {
++        /*
++         * There is no way to clean up static variables. The best place to do
++         * that is in the testEnded() call as this wont affect a running test.
++         * If these are in testStarted then they affect already initialised
++         * objects.
++         */
++        allThreadsInfo.reset();
++        threadGroupsInfoMap.clear();
+     }
+ 
+     /**
+Index: build.xml
+===================================================================
+--- build.xml	(revision 1146933)
++++ build.xml	(working copy)
+@@ -570,6 +570,11 @@
+         <path refid="classpath"/>
+       </classpath>
+     </javac>
++  	<copy todir="${build.test}">
++        <fileset dir="${src.test}">
++            <exclude name="**/*.java"/>
++        </fileset>
++    </copy>
+   </target>
+ 
+   <target name="compile-ftp" depends="compile-jorphan,compile-core" description="Compile components specific to FTP sampling.">
+@@ -2112,7 +2117,7 @@
+             <param name="_check_exists" value="true"/>
+         </antcall>
+     </target>
+-    
++
+     <target name="checkstyle">
+         <taskdef resource="checkstyletask.properties"
+                  classpath="${lib.opt}/checkstyle-5.3-all.jar"/>

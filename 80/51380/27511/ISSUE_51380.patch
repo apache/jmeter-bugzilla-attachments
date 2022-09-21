@@ -1,0 +1,263 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(working copy)
+@@ -42,4 +42,11 @@
+             boolean areFollowingRedirect, int depth) {
+         return hc.sample(u, method, areFollowingRedirect, depth);
+     }
++
++	/** {@inheritDoc} */
++	@Override
++	protected void notifySSLContextWasReset() {
++		// NOOP
++		hc.notifySSLContextWasReset();
++	}
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	(working copy)
+@@ -655,4 +655,9 @@
+         }
+         return conn != null;
+     }
++
++	/** {@inheritDoc} */
++	public void notifySSLContextWasReset() {
++		// NOOP
++	}
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java	(working copy)
+@@ -78,4 +78,11 @@
+         }
+         return false;
+     }
++
++	@Override
++	protected void notifySSLContextWasReset() {
++		if (impl != null) {
++			impl.notifySSLContextWasReset();
++		}
++	}
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -70,6 +70,8 @@
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.JsseSSLManager;
++import org.apache.jmeter.util.SSLManager;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+@@ -233,6 +235,12 @@
+     private static final String RESPONSE_PARSERS= // list of parsers
+         JMeterUtils.getProperty("HTTPResponse.parsers");//$NON-NLS-1$
+ 
++	// BEGIN 51380
++	// Control reuse of cached SSL Context in subsequent iterations
++	private static final boolean USE_CACHED_SSL_CONTEXT = JMeterUtils
++			.getPropDefault("https.use.cached.ssl.context", true);
++	// END 51380
++    
+     static{
+         String []parsers = JOrphanUtils.split(RESPONSE_PARSERS, " " , true);// returns empty array for null
+         for (int i=0;i<parsers.length;i++){
+@@ -258,6 +266,9 @@
+             parsersForType.put("text/html", ""); //$NON-NLS-1$ //$NON-NLS-2$
+             log.info("No response parsers defined: text/html only will be scanned for embedded resources");
+         }
++        
++		log.info("Reuse SSL session context on subsequent iterations: "
++				+ USE_CACHED_SSL_CONTEXT);
+     }
+ 
+     // Bug 49083
+@@ -1234,13 +1245,27 @@
+         testEnded();
+     }
+ 
+-    /**
+-     * {@inheritDoc}
+-     */
+-    public void testIterationStart(LoopIterationEvent event) {
+-    }
++	/**
++	 * {@inheritDoc}
++	 */
++	public void testIterationStart(LoopIterationEvent event) {
++		// BEGIN 51380
++		if (!USE_CACHED_SSL_CONTEXT) {
++			JsseSSLManager sslMgr = (JsseSSLManager) SSLManager.getInstance();
++			sslMgr.resetContext();
++			notifySSLContextWasReset();
++		}
++		// END 51380
++	}
+ 
+-    /**
++	/**
++	 * Free thread connections Related to ISSUE 51380
++	 */
++	protected void notifySSLContextWasReset() {
++		// NOOP
++	}
++
++	/**
+      * {@inheritDoc}
+      */
+     public void testStarted() {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/AjpSampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/AjpSampler.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/AjpSampler.java	(working copy)
+@@ -140,6 +140,11 @@
+         body = null;
+         stringBody = null;
+     }
++    
++    @Override
++    public void notifySSLContextWasReset() {
++        // NOOP
++    }
+ 
+     private void setupConnection(URL url,
+                  String method,
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -1047,7 +1047,14 @@
+     @Override
+     public void threadFinished() {
+         log.debug("Thread Finished");
+-        // Does not need to be synchronised, as all access is from same thread
++        closeThreadLocalConnections();
++    }
++
++	/**
++	 * 
++	 */
++	private void closeThreadLocalConnections() {
++		// Does not need to be synchronised, as all access is from same thread
+         Map<HttpClientKey, HttpClient> map = HTTPCLIENTS.get();
+         if ( map != null ) {
+             for ( HttpClient cl : map.values() ) {
+@@ -1055,7 +1062,7 @@
+             }
+             map.clear();
+         }
+-    }
++	}
+ 
+     public boolean interrupt() {
+         HttpUriRequest request = currentRequest;
+@@ -1069,5 +1076,10 @@
+         }
+         return request != null;
+     }
+-
++    
++    /** {@inheritDoc} */
++	public void notifySSLContextWasReset() {
++		log.debug("closeThreadLocalConnections called");
++		closeThreadLocalConnections();
++	}
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(working copy)
+@@ -1071,7 +1071,15 @@
+     public void threadFinished() {
+         log.debug("Thread Finished");
+ 
+-        // Does not need to be synchronised, as all access is from same thread
++        closeThreadLocalConnections();
++    }
++
++
++	/**
++	 * 
++	 */
++	private void closeThreadLocalConnections() {
++		// Does not need to be synchronised, as all access is from same thread
+         Map<HostConfiguration, HttpClient> map = httpClients.get();
+ 
+         if ( map != null ) {
+@@ -1084,7 +1092,7 @@
+             }
+             map.clear();
+         }
+-    }
++	}
+ 
+     /** {@inheritDoc} */
+     public boolean interrupt() {
+@@ -1100,4 +1108,9 @@
+         return client != null;
+     }
+ 
++	/** {@inheritDoc} */
++	public void notifySSLContextWasReset() {
++		log.debug("freeThreadConnections called");
++		closeThreadLocalConnections();
++	}
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPAbstractImpl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPAbstractImpl.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPAbstractImpl.java	(working copy)
+@@ -251,4 +251,8 @@
+         testElement.setUseKeepAlive(b);
+     }
+ 
++	/**
++	 * Close thread connection
++	 */
++	public abstract void notifySSLContextWasReset();
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(revision 1171010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(working copy)
+@@ -73,4 +73,10 @@
+     protected void setSavedClient(HttpClient savedClient) {
+         hc.savedClient = savedClient;
+     }
++
++	/** {@inheritDoc} */
++	@Override
++	protected void notifySSLContextWasReset() {
++		hc.notifySSLContextWasReset();
++	}
+ }
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1166194)
++++ bin/jmeter.properties	(working copy)
+@@ -74,6 +74,8 @@
+ # List of protocols to enable (unlikely to be needed):
+ #https.socket.protocols=SSLv2Hello SSLv3 TLSv1
+ 
++# Control if we allow reuse of cached SSL context between iterations
++https.use.cached.ssl.context=false
+ #---------------------------------------------------------------------------
+ # Look and Feel configuration
+ #---------------------------------------------------------------------------
+@@ -186,7 +188,7 @@
+ # log_level.[package_name].[classname]=[PRIORITY_LEVEL]
+ # But omit "org.apache" from the package name.  The classname is optional.  Further examples below.
+ 
+-log_level.jmeter=INFO
++log_level.jmeter=DEBUG
+ log_level.jmeter.junit=DEBUG
+ #log_level.jmeter.control=DEBUG
+ #log_level.jmeter.testbeans=DEBUG

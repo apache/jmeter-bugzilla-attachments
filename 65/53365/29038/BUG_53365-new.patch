@@ -1,0 +1,316 @@
+Index: src/core/org/apache/jmeter/util/JSR223TestElement.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JSR223TestElement.java	(revision 1356029)
++++ src/core/org/apache/jmeter/util/JSR223TestElement.java	(working copy)
+@@ -43,6 +43,20 @@
+ public abstract class JSR223TestElement extends AbstractTestElement
+     implements Serializable, Cloneable
+ {
++    /**
++     * Initialization On Demand Holder pattern
++     */
++    private static class LazyHolder {
++        public static final ScriptEngineManager INSTANCE = new ScriptEngineManager();
++    }
++ 
++    /**
++     * @return ScriptEngineManager singleton
++     */
++    public static ScriptEngineManager getInstance() {
++            return LazyHolder.INSTANCE;
++    }
++    
+     private static final long serialVersionUID = 233L;
+ 
+     //++ For TestBean implementations only
+@@ -79,13 +93,19 @@
+        return o;
+     }
+ 
+-    protected ScriptEngineManager getManager() {
+-        ScriptEngineManager sem = new ScriptEngineManager();
+-        initManager(sem);
+-        return sem;
++    protected ScriptEngine getScriptEngine() throws ScriptException {
++        final String lang = getScriptLanguage();
++
++        ScriptEngine scriptEngine = getInstance().getEngineByName(lang);
++        if (scriptEngine == null) {
++            throw new ScriptException("Cannot find engine named: "+lang);
++        }
++
++        initScriptEngine(scriptEngine);
++        return scriptEngine;
+     }
+ 
+-    protected void initManager(ScriptEngineManager sem) {
++    protected void initScriptEngine(ScriptEngine sem) {
+         final String label = getName();
+         final String fileName = getFilename();
+         final String scriptParameters = getParameters();
+@@ -116,15 +136,8 @@
+     }
+ 
+ 
+-    protected Object processFileOrScript(ScriptEngineManager sem) throws IOException, ScriptException {
+-
+-        final String lang = getScriptLanguage();
+-        ScriptEngine scriptEngine = sem.getEngineByName(lang);
+-        if (scriptEngine == null) {
+-            throw new ScriptException("Cannot find engine named: "+lang);
+-        }
+-
+-        File scriptFile = new File(getFilename());
++    protected Object processFileOrScript(ScriptEngine scriptEngine) throws IOException, ScriptException {
++        File scriptFile = new File(getFilename());        
+         if (scriptFile.exists()) {
+             BufferedReader fileReader = null;
+             try {
+@@ -136,7 +149,6 @@
+         } else {
+             return scriptEngine.eval(getScript());
+         }
+-
+     }
+ 
+     /**
+@@ -184,5 +196,4 @@
+     public void setScriptLanguage(String s) {
+         scriptLanguage = s;
+     }
+-
+-}
++}
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/extractor/JSR223PostProcessor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/JSR223PostProcessor.java	(revision 1356029)
++++ src/components/org/apache/jmeter/extractor/JSR223PostProcessor.java	(working copy)
+@@ -20,7 +20,7 @@
+ 
+ import java.io.IOException;
+ 
+-import javax.script.ScriptEngineManager;
++import javax.script.ScriptEngine;
+ import javax.script.ScriptException;
+ 
+ import org.apache.jmeter.processor.PostProcessor;
+@@ -36,15 +36,13 @@
+     private static final long serialVersionUID = 232L;
+ 
+     public void process() {
+-
+         try {
+-            ScriptEngineManager sem = getManager();
+-            if(sem == null) { return; }
+-            processFileOrScript(sem);
++            ScriptEngine scriptEngine = getScriptEngine();
++            processFileOrScript(scriptEngine);
+         } catch (ScriptException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         } catch (IOException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         }
+     }
+ }
+Index: src/components/org/apache/jmeter/assertions/JSR223Assertion.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/JSR223Assertion.java	(revision 1356029)
++++ src/components/org/apache/jmeter/assertions/JSR223Assertion.java	(working copy)
+@@ -20,7 +20,7 @@
+ 
+ import java.io.IOException;
+ 
+-import javax.script.ScriptEngineManager;
++import javax.script.ScriptEngine;
+ import javax.script.ScriptException;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -38,23 +38,17 @@
+     public AssertionResult getResult(SampleResult response) {
+         AssertionResult result = new AssertionResult(getName());
+         try {
+-            ScriptEngineManager mgr = getManager();
+-            if (mgr == null) {
+-                result.setFailure(true);
+-                result.setError(true);
+-                result.setFailureMessage("JSR223 Manager not found");
+-                return result;
+-            }
+-            mgr.put("SampleResult", response);
+-            mgr.put("AssertionResult", result);
+-            processFileOrScript(mgr);
++            ScriptEngine scriptEngine = getScriptEngine();
++            scriptEngine.put("SampleResult", response);
++            scriptEngine.put("AssertionResult", result);
++            processFileOrScript(scriptEngine);
+             result.setError(false);
+         } catch (IOException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+             result.setError(true);
+             result.setFailureMessage(e.toString());
+         } catch (ScriptException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+             result.setError(true);
+             result.setFailureMessage(e.toString());
+         }
+Index: src/components/org/apache/jmeter/visualizers/JSR223Listener.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/JSR223Listener.java	(revision 1356029)
++++ src/components/org/apache/jmeter/visualizers/JSR223Listener.java	(working copy)
+@@ -20,7 +20,7 @@
+ 
+ import java.io.IOException;
+ 
+-import javax.script.ScriptEngineManager;
++import javax.script.ScriptEngine;
+ import javax.script.ScriptException;
+ 
+ import org.apache.jmeter.samplers.SampleEvent;
+@@ -41,15 +41,14 @@
+ 
+     public void sampleOccurred(SampleEvent event) {
+         try {
+-            ScriptEngineManager sem = getManager();
+-            if (sem == null) { return; }
+-            sem.put("sampleEvent", event);
+-            sem.put("sampleResult", event.getResult());
+-            processFileOrScript(sem);
++            ScriptEngine scriptEngine = getScriptEngine();
++            scriptEngine.put("sampleEvent", event);
++            scriptEngine.put("sampleResult", event.getResult());
++            processFileOrScript(scriptEngine);
+         } catch (ScriptException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         } catch (IOException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         }
+     }
+ 
+Index: src/components/org/apache/jmeter/modifiers/JSR223PreProcessor.java
+===================================================================
+--- src/components/org/apache/jmeter/modifiers/JSR223PreProcessor.java	(revision 1356029)
++++ src/components/org/apache/jmeter/modifiers/JSR223PreProcessor.java	(working copy)
+@@ -20,7 +20,7 @@
+ 
+ import java.io.IOException;
+ 
+-import javax.script.ScriptEngineManager;
++import javax.script.ScriptEngine;
+ import javax.script.ScriptException;
+ 
+ import org.apache.jmeter.processor.PreProcessor;
+@@ -36,15 +36,13 @@
+     private static final long serialVersionUID = 232L;
+ 
+     public void process() {
+-
+         try {
+-            ScriptEngineManager sem = getManager();
+-            if(sem == null) { return; }
+-            processFileOrScript(sem);
++            ScriptEngine scriptEngine = getScriptEngine();
++            processFileOrScript(scriptEngine);
+         } catch (ScriptException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         } catch (IOException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         }
+     }
+ }
+Index: src/components/org/apache/jmeter/timers/JSR223Timer.java
+===================================================================
+--- src/components/org/apache/jmeter/timers/JSR223Timer.java	(revision 1356029)
++++ src/components/org/apache/jmeter/timers/JSR223Timer.java	(working copy)
+@@ -20,7 +20,7 @@
+ 
+ import java.io.IOException;
+ 
+-import javax.script.ScriptEngineManager;
++import javax.script.ScriptEngine;
+ import javax.script.ScriptException;
+ 
+ import org.apache.jmeter.testbeans.TestBean;
+@@ -37,22 +37,19 @@
+     public long delay() {
+         long delay = 0;
+         try {
+-            ScriptEngineManager mgr = getManager();
+-            if (mgr == null) {
+-                return 0; 
+-            }
+-            Object o = processFileOrScript(mgr);
++            ScriptEngine scriptEngine = getScriptEngine();
++            Object o = processFileOrScript(scriptEngine);
+             if (o == null) {
+                 log.warn("Script did not return a value");
+                 return 0;
+             }
+             delay = Long.valueOf(o.toString()).longValue();
+         } catch (NumberFormatException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         } catch (IOException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         } catch (ScriptException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+         }
+         return delay;
+     }
+Index: src/protocol/java/org/apache/jmeter/protocol/java/sampler/JSR223Sampler.java
+===================================================================
+--- src/protocol/java/org/apache/jmeter/protocol/java/sampler/JSR223Sampler.java	(revision 1356029)
++++ src/protocol/java/org/apache/jmeter/protocol/java/sampler/JSR223Sampler.java	(working copy)
+@@ -23,7 +23,7 @@
+ import java.util.HashSet;
+ import java.util.Set;
+ 
+-import javax.script.ScriptEngineManager;
++import javax.script.ScriptEngine;
+ import javax.script.ScriptException;
+ 
+ import org.apache.jmeter.config.ConfigTestElement;
+@@ -58,15 +58,9 @@
+         result.setDataType(SampleResult.TEXT);
+         result.sampleStart();
+         try {
+-            ScriptEngineManager mgr = getManager();
+-            if (mgr == null) {
+-                result.setSuccessful(false);
+-                result.setResponseCode("500"); // $NON-NLS-1$
+-                result.setResponseMessage("Could not instantiate ScriptManager");
+-                return result;
+-            }
+-            mgr.put("SampleResult",result);
+-            Object ret = processFileOrScript(mgr);
++            ScriptEngine scriptEngine = getScriptEngine();
++            scriptEngine.put("SampleResult",result);
++            Object ret = processFileOrScript(scriptEngine);
+             result.setSuccessful(true);
+             result.setResponseCodeOK();
+             result.setResponseMessageOK();
+@@ -74,12 +68,12 @@
+                 result.setResponseData(ret.toString(), null);
+             }
+         } catch (IOException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+             result.setSuccessful(false);
+             result.setResponseCode("500"); // $NON-NLS-1$
+             result.setResponseMessage(e.toString());
+         } catch (ScriptException e) {
+-            log.warn("Problem in JSR223 script "+e);
++            log.warn("Problem in JSR223 script "+e, e);
+             result.setSuccessful(false);
+             result.setResponseCode("500"); // $NON-NLS-1$
+             result.setResponseMessage(e.toString());

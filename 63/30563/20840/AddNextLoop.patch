@@ -1,0 +1,189 @@
+--- core/org/apache/jmeter/control/LoopController.java	Wed Apr 05 20:33:18 2006
++++ core/org/apache/jmeter/control/LoopController.java	Mon Sep 17 17:36:06 2007
+@@ -18,6 +18,8 @@
+ package org.apache.jmeter.control;
+ 
+ import java.io.Serializable;
++import java.util.ArrayList;
++import java.util.List;
+ 
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+@@ -109,6 +111,40 @@
+ 			return null;
+ 		}
+ 		return next();
++	}
++	/**
++	 * ReInitializes all of the controllers below the passed one
++	 * @param c
++	 * @throws NextIsNullException
++	 */
++	private void deepReInitialize(Controller c) throws NextIsNullException{
++		List subs=null;
++		GenericController gc = (GenericController)c;
++		subs=gc.getSubControllers();	
++		for(int i=0;i<subs.size();i++){
++			try{
++				deepReInitialize((Controller)subs.get(i));
++			}catch(ClassCastException E){}
++		}
++		try{
++			((LoopController)gc).resetLoopCount();
++		}catch(ClassCastException E){
++			gc.reInitialize();	
++		}
++		
++	}
++	public void reset() throws NextIsNullException {
++		int loops=this.loopCount;
++		deepReInitialize(this);
++		this.loopCount=loops+1;
++		if (endOfLoop()) {
++			if (!getContinueForever()) {
++				setDone(true);
++			} else {
++				resetLoopCount();
++			}
++			return;
++		}
+ 	}
+ 
+ 	protected void incrementLoopCount() {
+--- core/org/apache/jmeter/engine/StandardJMeterEngine.java	Tue Jun 06 22:50:06 2006
++++ core/org/apache/jmeter/engine/StandardJMeterEngine.java	Mon Aug 27 18:38:37 2007
+@@ -360,6 +360,7 @@
+             JMeterContextService.addTotalThreads(numThreads);
+ 			boolean onErrorStopTest = group.getOnErrorStopTest();
+ 			boolean onErrorStopThread = group.getOnErrorStopThread();
++			boolean onErrorRestartThread = group.getOnErrorRestartThread();
+ 			String groupName = group.getName();
+ 			int rampUp = group.getRampUp();
+ 			float perThreadDelay = ((float) (rampUp * 1000) / (float) numThreads);
+@@ -389,6 +390,7 @@
+ 				jmeterThread.setEngine(this);
+ 				jmeterThread.setOnErrorStopTest(onErrorStopTest);
+ 				jmeterThread.setOnErrorStopThread(onErrorStopThread);
++				jmeterThread.setOnErrorRestartThread(onErrorRestartThread);
+ 
+ 				Thread newThread = new Thread(jmeterThread);
+ 				newThread.setName(jmeterThread.getThreadName());
+--- core/org/apache/jmeter/resources/messages.properties	Sun Jun 04 00:47:50 2006
++++ core/org/apache/jmeter/resources/messages.properties	Mon Sep 17 12:53:25 2007
+@@ -571,6 +571,7 @@
+ sampler_label=Label
+ sampler_on_error_action=Action to be taken after a Sampler error
+ sampler_on_error_continue=Continue
++sampler_on_error_restart=Next Loop
+ sampler_on_error_stop_test=Stop Test
+ sampler_on_error_stop_thread=Stop Thread
+ save=Save
+--- core/org/apache/jmeter/threads/gui/ThreadGroupGui.java	Thu Sep 01 18:21:06 2005
++++ core/org/apache/jmeter/threads/gui/ThreadGroupGui.java	Mon Aug 27 18:14:22 2007
+@@ -83,9 +83,12 @@
+ 	// Sampler error action buttons
+ 	private JRadioButton continueBox;
+ 
++	private JRadioButton restartThrdBox;
++	
+ 	private JRadioButton stopThrdBox;
+ 
+ 	private JRadioButton stopTestBox;
++	
+ 
+ 	public ThreadGroupGui() {
+ 		super();
+@@ -126,7 +129,8 @@
+ 	private void setSampleErrorBoxes(ThreadGroup te) {
+ 		stopTestBox.setSelected(te.getOnErrorStopTest());
+ 		stopThrdBox.setSelected(te.getOnErrorStopThread());
+-		continueBox.setSelected(!te.getOnErrorStopThread() && !te.getOnErrorStopTest());
++		restartThrdBox.setSelected(te.getOnErrorRestartThread());
++		continueBox.setSelected(!te.getOnErrorStopThread() && !te.getOnErrorStopTest() & !te.getOnErrorRestartThread());
+ 	}
+ 
+ 	private String onSampleError() {
+@@ -134,7 +138,8 @@
+ 			return ThreadGroup.ON_SAMPLE_ERROR_STOPTEST;
+ 		if (stopThrdBox.isSelected())
+ 			return ThreadGroup.ON_SAMPLE_ERROR_STOPTHREAD;
+-
++		if(restartThrdBox.isSelected())
++			return ThreadGroup.ON_SAMPLE_ERROR_RESTARTTHREAD;
+ 		// Defaults to continue
+ 		return ThreadGroup.ON_SAMPLE_ERROR_CONTINUE;
+ 	}
+@@ -267,6 +272,10 @@
+ 		group.add(continueBox);
+ 		continueBox.setSelected(true);
+ 		panel.add(continueBox);
++		
++		restartThrdBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_restart"));
++		group.add(restartThrdBox);
++		panel.add(restartThrdBox);
+ 
+ 		stopThrdBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_stop_thread"));
+ 		group.add(stopThrdBox);
+--- core/org/apache/jmeter/threads/JMeterThread.java	Mon May 22 00:59:56 2006
++++ core/org/apache/jmeter/threads/JMeterThread.java	Mon Sep 17 17:29:27 2007
+@@ -26,6 +26,7 @@
+ import org.apache.jmeter.assertions.Assertion;
+ import org.apache.jmeter.assertions.AssertionResult;
+ import org.apache.jmeter.control.Controller;
++import org.apache.jmeter.control.LoopController;
+ import org.apache.jmeter.engine.StandardJMeterEngine;
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.engine.event.LoopIterationListener;
+@@ -96,6 +97,8 @@
+ 	private boolean onErrorStopTest;
+ 
+ 	private boolean onErrorStopThread;
++	
++	private boolean onErrorRestartThread;
+ 
+ 	public static final String PACKAGE_OBJECT = "JMeterThread.pack"; // $NON-NLS-1$
+ 
+@@ -260,6 +263,10 @@
+ 							if (result.isStopTest() || (!result.isSuccessful() && onErrorStopTest)) {
+ 								stopTest();
+ 							}
++							if (!result.isSuccessful() && onErrorRestartThread){
++								LoopController tController = (LoopController) ((ThreadGroup)controller).getSamplerController();
++								tController.reset();
++							}
+ 						}
+ 						if (scheduler) {
+ 							// checks the scheduler to stop the iteration
+@@ -540,6 +547,11 @@
+ 		onErrorStopThread = b;
+ 	}
+ 
++	public void setOnErrorRestartThread(boolean b) {
++		onErrorRestartThread = b;
++	}
++
++	
+ 	public ThreadGroup getThreadGroup() {
+ 		return threadGroup;
+ 	}
+--- core/org/apache/jmeter/threads/ThreadGroup.java	Tue Jul 12 21:51:10 2005
++++ core/org/apache/jmeter/threads/ThreadGroup.java	Mon Aug 27 18:12:33 2007
+@@ -69,6 +69,8 @@
+ 	public final static String ON_SAMPLE_ERROR = "ThreadGroup.on_sample_error"; // int
+ 
+ 	public final static String ON_SAMPLE_ERROR_CONTINUE = "continue";
++	
++	public final static String ON_SAMPLE_ERROR_RESTARTTHREAD = "restartthread";
+ 
+ 	public final static String ON_SAMPLE_ERROR_STOPTHREAD = "stopthread";
+ 
+@@ -437,6 +439,9 @@
+ 	 */
+ 	public boolean getOnErrorStopTest() {
+ 		return getPropertyAsString(ThreadGroup.ON_SAMPLE_ERROR).equalsIgnoreCase(ON_SAMPLE_ERROR_STOPTEST);
++	}
++	public boolean getOnErrorRestartThread() {
++		return getPropertyAsString(ThreadGroup.ON_SAMPLE_ERROR).equalsIgnoreCase(ON_SAMPLE_ERROR_RESTARTTHREAD);
+ 	}
+ 
+ }

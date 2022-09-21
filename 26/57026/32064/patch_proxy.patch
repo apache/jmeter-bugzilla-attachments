@@ -1,0 +1,45 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1627952)
++++ bin/jmeter.properties	(working copy)
+@@ -541,11 +541,11 @@
+ # properties have the prefix "proxy".
+ #---------------------------------------------------------------------------
+ 
+-# If the recorder detects a gap of at least 1s (default) between HTTP requests,
++# If the recorder detects a gap of at least 5s (default) between HTTP requests,
+ # it assumes that the user has clicked a new URL
+-#proxy.pause=1000
++#proxy.pause=5000
+ 
+-# Add numeric prefix to Sampler names (default false)
++# Add numeric prefix to Sampler names (default true)
+ #proxy.number.requests=true
+ 
+ # List of URL patterns that will be added to URL Patterns to exclude
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/AbstractSamplerCreator.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/AbstractSamplerCreator.java	(revision 1627952)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/AbstractSamplerCreator.java	(working copy)
+@@ -63,7 +63,7 @@
+      * Optionally number the requests
+      */
+     private static final boolean numberRequests =
+-        JMeterUtils.getPropDefault("proxy.number.requests", false); // $NON-NLS-1$
++        JMeterUtils.getPropDefault("proxy.number.requests", true); // $NON-NLS-1$
+ 
+     private static volatile int requestNumber = 0;// running number
+     
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 1627952)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -163,7 +163,7 @@
+     private static final String SAMPLER_TYPE_HTTP_SAMPLER_HC4 = "2";
+ 
+     private static final long sampleGap =
+-        JMeterUtils.getPropDefault("proxy.pause", 1000); // $NON-NLS-1$
++        JMeterUtils.getPropDefault("proxy.pause", 5000); // $NON-NLS-1$
+     // Detect if user has pressed a new link
+ 
+     // for ssl connection

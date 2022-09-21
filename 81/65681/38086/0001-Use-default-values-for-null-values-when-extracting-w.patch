@@ -1,0 +1,103 @@
+From b9f34edf74a3201f507a8efc17ffba46e20d961d Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 13 Nov 2021 15:46:37 +0100
+Subject: [PATCH] Use default values for null values when extracting with
+ JSONPostProcessor
+
+---
+ .../extractor/json/jsonpath/JSONManager.java  |  2 +-
+ .../json/jsonpath/JSONPostProcessor.java      | 24 +++++++++++--------
+ 2 files changed, 15 insertions(+), 11 deletions(-)
+
+diff --git a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java
+index f156f3d7c8..c3f3371e64 100644
+--- a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java
++++ b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java
+@@ -95,7 +95,7 @@ public class JSONManager {
+         if (obj instanceof JSONArray) {
+             return ((JSONArray)obj).toJSONString();
+         }
+-        return obj == null ? "" : obj.toString(); //$NON-NLS-1$
++        return obj == null ? null : obj.toString();
+     }
+ 
+ }
+diff --git a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+index 3e7c5cf8be..2200827fe7 100644
+--- a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
++++ b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+@@ -123,7 +123,7 @@ public class JSONPostProcessor
+             handleListResult(vars, defaultValues, i, matchNumber, currentRefName, extractedValues);
+         } else {
+             // else just one value extracted
+-            handleSingleResult(vars, matchNumber, currentRefName, extractedValues);
++            handleSingleResult(vars, defaultValues, matchNumber, currentRefName, extractedValues);
+         }
+         if (matchNumber != 0) {
+             vars.put(currentRefName + REF_MATCH_NR, Integer.toString(extractedValues.size()));
+@@ -142,10 +142,11 @@ public class JSONPostProcessor
+         }
+     }
+ 
+-    private void handleSingleResult(JMeterVariables vars, final int matchNumber, String currentRefName,
+-            List<Object> extractedValues) {
++    private void handleSingleResult(JMeterVariables vars, String[] defaultValues, final int matchNumber,
++            String currentRefName, List<Object> extractedValues) {
+         String suffix = (matchNumber < 0) ? "_1" : "";
+-        placeObjectIntoVars(vars, currentRefName + suffix, extractedValues, 0);
++        String defaultValue = defaultValues.length > 0 ? defaultValues[0] : "";
++        placeObjectIntoVars(vars, currentRefName + suffix, extractedValues, 0, defaultValue);
+         if (matchNumber < 0 && getComputeConcatenation()) {
+             vars.put(currentRefName + ALL_SUFFIX, vars.get(currentRefName + suffix));
+         }
+@@ -161,7 +162,8 @@ public class JSONPostProcessor
+                             ? extractedValues.size() * 20
+                             : 1);
+             for (Object extractedObject : extractedValues) {
+-                String extractedString = stringify(extractedObject);
++                String defaultValue = defaultValues.length > i ? defaultValues[i] : "";
++                String extractedString = StringUtils.defaultString(stringify(extractedObject), defaultValue);
+                 vars.put(currentRefName + "_" + index,
+                         extractedString); //$NON-NLS-1$
+                 if (getComputeConcatenation()) {
+@@ -180,8 +182,9 @@ public class JSONPostProcessor
+             // Random extraction
+             int matchSize = extractedValues.size();
+             int matchNr = JMeterUtils.getRandomInt(matchSize);
++            String defaultValue = defaultValues.length > 0 ? defaultValues[0] : "";
+             placeObjectIntoVars(vars, currentRefName,
+-                    extractedValues, matchNr);
++                    extractedValues, matchNr, defaultValue);
+             return;
+         }
+         // extract at position
+@@ -193,7 +196,8 @@ public class JSONPostProcessor
+             }
+             vars.put(currentRefName, defaultValues[i]);
+         } else {
+-            placeObjectIntoVars(vars, currentRefName, extractedValues, matchNumber - 1);
++            String defaultValue = defaultValues.length > 0 ? defaultValues[0] : "";
++            placeObjectIntoVars(vars, currentRefName, extractedValues, matchNumber - 1, defaultValue);
+         }
+     }
+ 
+@@ -245,13 +249,13 @@ public class JSONPostProcessor
+     }
+ 
+     private void placeObjectIntoVars(JMeterVariables vars, String currentRefName,
+-            List<Object> extractedValues, int matchNr) {
++            List<Object> extractedValues, int matchNr, String defaultValue) {
+         vars.put(currentRefName,
+-                stringify(extractedValues.get(matchNr)));
++                StringUtils.defaultString(stringify(extractedValues.get(matchNr)), defaultValue));
+     }
+ 
+     private String stringify(Object obj) {
+-        return obj == null ? "" : obj.toString(); //$NON-NLS-1$
++        return obj == null ? null : obj.toString();
+     }
+ 
+     public String getJsonPathExpressions() {
+-- 
+2.25.1
+

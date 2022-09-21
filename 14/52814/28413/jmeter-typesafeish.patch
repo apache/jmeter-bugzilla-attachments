@@ -1,0 +1,502 @@
+### Eclipse Workspace Patch 1.0
+#P JMeter
+Index: src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java	(revision 1296318)
++++ src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java	(working copy)
+@@ -65,7 +65,7 @@
+ 
+     private JCheckBox errorsOnly = null;
+ 
+-    private JComboBox docTypeBox = null;
++    private JComboBox<String> docTypeBox = null;
+ 
+     private JRadioButton htmlRadioButton = null;
+ 
+@@ -210,7 +210,7 @@
+ 
+         // doctype
+         HorizontalPanel docTypePanel = new HorizontalPanel();
+-        docTypeBox = new JComboBox(new Object[] { "omit", "auto", "strict", "loose" });
++        docTypeBox = new JComboBox<String>(new String[] { "omit", "auto", "strict", "loose" });
+         // docTypePanel.add(new
+         // JLabel(JMeterUtils.getResString("duration_assertion_label"))); //$NON-NLS-1$
+         docTypePanel.add(new JLabel("Doctype:"));
+Index: src/components/org/apache/jmeter/sampler/gui/TestActionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/sampler/gui/TestActionGui.java	(revision 1296318)
++++ src/components/org/apache/jmeter/sampler/gui/TestActionGui.java	(working copy)
+@@ -43,7 +43,7 @@
+     private static final long serialVersionUID = 240L;
+ 
+     // Gui components
+-    private JComboBox targetBox;
++    private JComboBox<String> targetBox;
+ 
+     // private ButtonGroup actionButtons;
+     private JRadioButton pauseButton;
+@@ -167,10 +167,10 @@
+         // Target
+         HorizontalPanel targetPanel = new HorizontalPanel();
+         targetPanel.add(new JLabel(targetLabel));
+-        DefaultComboBoxModel targetModel = new DefaultComboBoxModel();
++        DefaultComboBoxModel<String> targetModel = new DefaultComboBoxModel<String>();
+         targetModel.addElement(threadTarget);
+         targetModel.addElement(testTarget);
+-        targetBox = new JComboBox(targetModel);
++        targetBox = new JComboBox<String>(targetModel);
+         targetBox.addActionListener(new ActionListener() {
+             public void actionPerformed(ActionEvent e) {
+                 if (((String) targetBox.getSelectedItem()).equals(threadTarget)) {
+Index: src/jorphan/org/apache/jorphan/gui/JLabeledChoice.java
+===================================================================
+--- src/jorphan/org/apache/jorphan/gui/JLabeledChoice.java	(revision 1296318)
++++ src/jorphan/org/apache/jorphan/gui/JLabeledChoice.java	(working copy)
+@@ -41,7 +41,7 @@
+ 
+     private final JLabel mLabel = new JLabel();
+ 
+-    private final JComboBox choiceList;
++    private final JComboBox<String> choiceList;
+ 
+     // Maybe move to vector if MT problems occur
+     private final ArrayList<ChangeListener> mChangeListeners = new ArrayList<ChangeListener>(3);
+@@ -53,13 +53,13 @@
+      */
+     public JLabeledChoice() {
+         super();
+-        choiceList = new JComboBox();
++        choiceList = new JComboBox<String>();
+         init();
+     }
+ 
+     public JLabeledChoice(String pLabel, boolean editable) {
+         super();
+-        choiceList = new JComboBox();
++        choiceList = new JComboBox<String>();
+         mLabel.setText(pLabel);
+         choiceList.setEditable(editable);
+         init();
+@@ -86,7 +86,7 @@
+     public JLabeledChoice(String pLabel, String[] items, boolean editable) {
+         super();
+         mLabel.setText(pLabel);
+-        choiceList = new JComboBox(items);
++        choiceList = new JComboBox<String>(items);
+         choiceList.setEditable(editable);
+         init();
+     }
+@@ -281,7 +281,7 @@
+     private class AddListener implements ActionListener {
+ 
+         public void actionPerformed(ActionEvent e) {
+-            Object item = choiceList.getSelectedItem();
++            String item = (String)choiceList.getSelectedItem();
+             int index = choiceList.getSelectedIndex();
+             if (!item.equals(choiceList.getItemAt(index))) {
+                 choiceList.addItem(item);
+Index: src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java	(revision 1296318)
++++ src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java	(working copy)
+@@ -54,9 +54,9 @@
+ 
+     private JMeterTreeNode selected = null;
+ 
+-    private final JComboBox nodes;
++    private final JComboBox<TreeNodeWrapper> nodes;
+ 
+-    private final DefaultComboBoxModel nodesModel;
++    private final DefaultComboBoxModel<TreeNodeWrapper> nodesModel;
+ 
+     private final JLabel warningLabel;
+ 
+@@ -64,8 +64,8 @@
+      * Initializes the gui panel for the ModuleController instance.
+      */
+     public ModuleControllerGui() {
+-        nodesModel = new DefaultComboBoxModel();
+-        nodes = new JComboBox(nodesModel);
++        nodesModel = new DefaultComboBoxModel<TreeNodeWrapper>();
++        nodes = new JComboBox<TreeNodeWrapper>(nodesModel);
+         warningLabel = new JLabel(""); // $NON-NLS-1$
+         init();
+     }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java	(revision 1296318)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java	(working copy)
+@@ -86,13 +86,14 @@
+     /**
+      * Clears all fields.
+      */
+-    @Override
++    @SuppressWarnings("unchecked")
++	@Override
+     public void clearGui() {// renamed from clear
+         super.clearGui();
+         queueConnectionFactory.setText(""); // $NON-NLS-1$
+         sendQueue.setText(""); // $NON-NLS-1$
+         receiveQueue.setText(""); // $NON-NLS-1$
+-        ((JComboBox) oneWay.getComponentList().get(1)).setSelectedItem(JMeterUtils.getResString("jms_request")); //$NON-NLS-1$
++        ((JComboBox<String>) oneWay.getComponentList().get(1)).setSelectedItem(JMeterUtils.getResString("jms_request")); //$NON-NLS-1$
+         timeout.setText("");  // $NON-NLS-1$
+         jmsSelector.setText(""); // $NON-NLS-1$
+         soapXml.setText(""); // $NON-NLS-1$
+@@ -154,7 +155,8 @@
+         sendQueue.setText(sampler.getSendQueue());
+         receiveQueue.setText(sampler.getReceiveQueue());
+ 
+-        JComboBox box = (JComboBox) oneWay.getComponentList().get(1);
++        @SuppressWarnings("unchecked")
++		JComboBox<String> box = (JComboBox<String>) oneWay.getComponentList().get(1);
+         String selected = null;
+         if (sampler.isOneway()) {
+             selected = JMeterUtils.getResString("jms_request"); //$NON-NLS-1$
+Index: src/components/org/apache/jmeter/control/gui/ThroughputControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/ThroughputControllerGui.java	(revision 1296318)
++++ src/components/org/apache/jmeter/control/gui/ThroughputControllerGui.java	(working copy)
+@@ -38,7 +38,7 @@
+ public class ThroughputControllerGui extends AbstractControllerGui {
+     private static final long serialVersionUID = 240L;
+ 
+-    private JComboBox styleBox;
++    private JComboBox<String> styleBox;
+ 
+     private int style;
+ 
+@@ -125,10 +125,10 @@
+         setBorder(makeBorder());
+         add(makeTitlePanel());
+ 
+-        DefaultComboBoxModel styleModel = new DefaultComboBoxModel();
++        DefaultComboBoxModel<String> styleModel = new DefaultComboBoxModel<String>();
+         styleModel.addElement(BYNUMBER_LABEL);
+         styleModel.addElement(BYPERCENT_LABEL);
+-        styleBox = new JComboBox(styleModel);
++        styleBox = new JComboBox<String>(styleModel);
+         styleBox.addActionListener(new ActionListener() {
+             public void actionPerformed(ActionEvent e) {
+                 if (((String) styleBox.getSelectedItem()).equals(BYNUMBER_LABEL)) {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 1296318)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -88,7 +88,7 @@
+      * Whether to group requests together based on inactivity separation periods --
+      * and how to handle such grouping afterwards.
+      */
+-    private JComboBox groupingMode;
++    private JComboBox<String> groupingMode;
+ 
+     /**
+      * Add an Assertion to the first sample of each set
+@@ -108,7 +108,7 @@
+     /**
+      * The list of sampler type names to choose from
+      */
+-    private JComboBox samplerTypeName;
++    private JComboBox<String> samplerTypeName;
+ 
+     /**
+      * Set/clear the Redirect automatically box on the samplers (default is false)
+@@ -149,9 +149,9 @@
+     /**
+      * List of available target controllers
+      */
+-    private JComboBox targetNodes;
++    private JComboBox<TreeNodeWrapper> targetNodes;
+ 
+-    private DefaultComboBoxModel targetNodesModel;
++    private DefaultComboBoxModel<TreeNodeWrapper> targetNodesModel;
+ 
+     private ProxyControl model;
+ 
+@@ -565,11 +565,11 @@
+     }
+ 
+     private JPanel createHTTPSamplerPanel() {
+-        DefaultComboBoxModel m = new DefaultComboBoxModel();
++        DefaultComboBoxModel<String> m = new DefaultComboBoxModel<String>();
+         for (String s : HTTPSamplerFactory.getImplementations()){
+             m.addElement(s);
+         }
+-        samplerTypeName = new JComboBox(m);
++        samplerTypeName = new JComboBox<String>(m);
+         samplerTypeName.setSelectedIndex(0);
+         samplerTypeName.addItemListener(this);
+         JLabel label2 = new JLabel(JMeterUtils.getResString("proxy_sampler_type")); // $NON-NLS-1$
+@@ -609,8 +609,8 @@
+     }
+ 
+     private JPanel createTargetPanel() {
+-        targetNodesModel = new DefaultComboBoxModel();
+-        targetNodes = new JComboBox(targetNodesModel);
++        targetNodesModel = new DefaultComboBoxModel<TreeNodeWrapper>();
++        targetNodes = new JComboBox<TreeNodeWrapper>(targetNodesModel);
+         targetNodes.setActionCommand(CHANGE_TARGET);
+         // Action listener will be added later
+ 
+@@ -625,7 +625,7 @@
+     }
+ 
+     private JPanel createGroupingPanel() {
+-        DefaultComboBoxModel m = new DefaultComboBoxModel();
++        DefaultComboBoxModel<String> m = new DefaultComboBoxModel<String>();
+         // Note: position of these elements in the menu *must* match the
+         // corresponding ProxyControl.GROUPING_* values.
+         m.addElement(JMeterUtils.getResString("grouping_no_groups")); // $NON-NLS-1$
+@@ -633,7 +633,7 @@
+         m.addElement(JMeterUtils.getResString("grouping_in_controllers")); // $NON-NLS-1$
+         m.addElement(JMeterUtils.getResString("grouping_store_first_only")); // $NON-NLS-1$
+         m.addElement(JMeterUtils.getResString("grouping_in_transaction_controllers")); // $NON-NLS-1$
+-        groupingMode = new JComboBox(m);
++        groupingMode = new JComboBox<String>(m);
+         groupingMode.setSelectedIndex(0);
+         groupingMode.addItemListener(this);
+ 
+Index: src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 1296318)
++++ src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -89,7 +89,7 @@
+ 
+     private JTabbedPane rightSide;
+ 
+-    private JComboBox selectRenderPanel;
++    private JComboBox<ResultRenderer> selectRenderPanel;
+ 
+     private int selectedTab;
+ 
+@@ -285,9 +285,9 @@
+      * @return List of all render (implement ResultsRender)
+      */
+     private Component createComboRender() {
+-        ComboBoxModel nodesModel = new DefaultComboBoxModel();
++        ComboBoxModel<ResultRenderer> nodesModel = new DefaultComboBoxModel<ResultRenderer>();
+         // drop-down list for renderer
+-        selectRenderPanel = new JComboBox(nodesModel);
++        selectRenderPanel = new JComboBox<ResultRenderer>(nodesModel);
+         selectRenderPanel.setActionCommand(COMBO_CHANGE_COMMAND);
+         selectRenderPanel.addActionListener(this);
+ 
+@@ -318,13 +318,13 @@
+     }
+ 
+     /** {@inheritDoc} */
+-    public void actionPerformed(ActionEvent event) {
++	public void actionPerformed(ActionEvent event) {
+         String command = event.getActionCommand();
+         if (COMBO_CHANGE_COMMAND.equals(command)) {
+-            JComboBox jcb = (JComboBox) event.getSource();
++            JComboBox<?> jcb = (JComboBox<?>)event.getSource();
+ 
+             if (jcb != null) {
+-                resultsRender = (ResultRenderer) jcb.getSelectedItem();
++                resultsRender = (ResultRenderer)jcb.getSelectedItem();
+                 if (rightSide != null) {
+                     // to restore last selected tab (better user-friendly)
+                     selectedTab = rightSide.getSelectedIndex();
+Index: src/components/org/apache/jmeter/visualizers/MailerVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/MailerVisualizer.java	(revision 1296318)
++++ src/components/org/apache/jmeter/visualizers/MailerVisualizer.java	(working copy)
+@@ -91,7 +91,7 @@
+ 
+     private JTextField smtpPasswordField;
+ 
+-    private JComboBox authTypeCombo;
++    private JComboBox<String> authTypeCombo;
+ 
+ 
+     // private JPanel mainPanel;
+@@ -226,7 +226,7 @@
+         c.gridwidth = 1;
+         mailerPanel.add(new JLabel("AUTH TYPE"));
+         
+-        authTypeCombo = new JComboBox(new Object[] { 
++        authTypeCombo = new JComboBox<String>(new String[] { 
+                 MailerModel.MailAuthType.NONE.toString(), 
+                 MailerModel.MailAuthType.SSL.toString(),
+                 MailerModel.MailAuthType.TLS.toString()});
+Index: src/core/org/apache/jmeter/util/JMeterUtils.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterUtils.java	(revision 1296318)
++++ src/core/org/apache/jmeter/util/JMeterUtils.java	(working copy)
+@@ -881,7 +881,7 @@
+      * namVec.
+      * NOTUSED?
+      */
+-    public static void selJComboBoxItem(Properties properties, JComboBox combo, Vector<?> namVec, String name) {
++    public static void selJComboBoxItem(Properties properties, JComboBox<?> combo, Vector<?> namVec, String name) {
+         int idx = namVec.indexOf(name);
+         combo.setSelectedIndex(idx);
+         // Redisplay.
+Index: src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(revision 1296318)
++++ src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(working copy)
+@@ -134,8 +134,8 @@
+     private JCheckBox createInstancePerSample = new JCheckBox(JMeterUtils.getResString("junit_create_instance_per_sample")); //$NON-NLS-1$
+ 
+     /** A combo box allowing the user to choose a test class. */
+-    private JComboBox classnameCombo;
+-    private JComboBox methodName;
++    private JComboBox<String> classnameCombo;
++    private JComboBox<String> methodName;
+ 
+     private final transient ClassLoader contextClassLoader =
+         Thread.currentThread().getContextClassLoader(); // Potentially expensive; do it once
+@@ -185,7 +185,7 @@
+             ClassFilter filter = new ClassFilter();
+             filter.setPackges(JOrphanUtils.split(filterpkg.getText(),",")); //$NON-NLS-1$
+             // change the classname drop down
+-            Object[] clist = filter.filterArray(classList);
++            String[] clist = filter.filterArray(classList);
+             for (int idx=0; idx < clist.length; idx++) {
+                 classnameCombo.addItem(clist[idx]);
+             }
+@@ -201,12 +201,12 @@
+         JLabel label =
+             new JLabel(JMeterUtils.getResString("protocol_java_classname")); //$NON-NLS-1$
+ 
+-        classnameCombo = new JComboBox();
++        classnameCombo = new JComboBox<String>();
+         classnameCombo.addActionListener(this);
+         classnameCombo.setEditable(false);
+         label.setLabelFor(classnameCombo);
+ 
+-        methodName = new JComboBox();
++        methodName = new JComboBox<String>();
+         methodName.addActionListener(this);
+         methodLabel.setLabelFor(methodName);
+ 
+Index: src/junit/org/apache/jmeter/protocol/java/control/gui/ClassFilter.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/control/gui/ClassFilter.java	(revision 1296318)
++++ src/junit/org/apache/jmeter/protocol/java/control/gui/ClassFilter.java	(working copy)
+@@ -44,18 +44,14 @@
+         return inc;
+     }
+ 
+-    Object[] filterArray(List<String> items) {
+-        ArrayList<Object> newlist = new ArrayList<Object>();
++    String[] filterArray(List<String> items) {
++        List<String> newlist = new ArrayList<String>();
+         for (String item : items) {
+             if (include(item)) {
+                 newlist.add(item);
+             }
+         }
+-        if (newlist.size() > 0) {
+-            return newlist.toArray();
+-        } else {
+-            return new Object[0];
+-        }
++        return newlist.toArray(new String[0]);
+     }
+ 
+     int size(){
+Index: src/reports/org/apache/jmeter/report/gui/action/ReportDragNDrop.java
+===================================================================
+--- src/reports/org/apache/jmeter/report/gui/action/ReportDragNDrop.java	(revision 1296318)
++++ src/reports/org/apache/jmeter/report/gui/action/ReportDragNDrop.java	(working copy)
+@@ -72,14 +72,12 @@
+         } else if (INSERT_BEFORE.equals(action) && canAddTo(parentNode)) {
+             removeNodesFromParents(draggedNodes);
+             for (int i = 0; i < draggedNodes.length; i++) {
+-                @SuppressWarnings("null")
+                 int index = parentNode.getIndex(currentNode); // can't be null - this is checked by canAddTo
+                 ReportGuiPackage.getInstance().getTreeModel().insertNodeInto(draggedNodes[i], parentNode, index);
+             }
+         } else if (INSERT_AFTER.equals(action) && canAddTo(parentNode)) {
+             removeNodesFromParents(draggedNodes);
+             for (int i = 0; i < draggedNodes.length; i++) {
+-                @SuppressWarnings("null")
+                 int index = parentNode.getIndex(currentNode) + 1; // can't be null - this is checked by canAddTo
+                 ReportGuiPackage.getInstance().getTreeModel().insertNodeInto(draggedNodes[i], parentNode, index);
+             }
+Index: src/protocol/java/org/apache/jmeter/protocol/java/config/gui/JavaConfigGui.java
+===================================================================
+--- src/protocol/java/org/apache/jmeter/protocol/java/config/gui/JavaConfigGui.java	(revision 1296318)
++++ src/protocol/java/org/apache/jmeter/protocol/java/config/gui/JavaConfigGui.java	(working copy)
+@@ -56,7 +56,7 @@
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     /** A combo box allowing the user to choose a test class. */
+-    private JComboBox classnameCombo;
++    private JComboBox<String> classnameCombo;
+ 
+     /**
+      * Indicates whether or not the name of this component should be displayed
+@@ -137,7 +137,7 @@
+ 
+         JLabel label = new JLabel(JMeterUtils.getResString("protocol_java_classname")); // $NON-NLS-1$
+ 
+-        classnameCombo = new JComboBox(possibleClasses.toArray());
++        classnameCombo = new JComboBox<String>(possibleClasses.toArray(new String[0]));
+         classnameCombo.addActionListener(this);
+         classnameCombo.setEditable(false);
+         label.setLabelFor(classnameCombo);
+Index: src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(revision 1296318)
++++ src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(working copy)
+@@ -187,7 +187,7 @@
+ 
+     private JLabel currentColor = new JLabel(JMeterUtils.getResString("aggregate_graph_current_colors"));   //$NON-NLS-1$
+ 
+-    private JComboBox columnsList = new JComboBox(GRAPH_COLUMNS);
++    private JComboBox<String> columnsList = new JComboBox<String>(GRAPH_COLUMNS);
+ 
+     private JCheckBox columnSelection = new JCheckBox(JMeterUtils.getResString("aggregate_graph_column_selection"), false); //$NON-NLS-1$
+ 
+@@ -199,19 +199,19 @@
+ 
+     private JCheckBox regexpChkBox = new JCheckBox(JMeterUtils.getResString("search_text_chkbox_regexp"), true); // $NON-NLS-1$
+ 
+-    private JComboBox titleFontNameList = new JComboBox(StatGraphProperties.getFontNameMap().keySet().toArray());
++    private JComboBox<String> titleFontNameList = new JComboBox<String>(StatGraphProperties.getFontNameMap().keySet().toArray(new String[0]));
+ 
+-    private JComboBox titleFontSizeList = new JComboBox(StatGraphProperties.fontSize);
++    private JComboBox<String> titleFontSizeList = new JComboBox<String>(StatGraphProperties.fontSize);
+ 
+-    private JComboBox titleFontStyleList = new JComboBox(StatGraphProperties.getFontStyleMap().keySet().toArray());
++    private JComboBox<String> titleFontStyleList = new JComboBox<String>(StatGraphProperties.getFontStyleMap().keySet().toArray(new String[0]));
+ 
+-    private JComboBox fontNameList = new JComboBox(StatGraphProperties.getFontNameMap().keySet().toArray());
++    private JComboBox<String> fontNameList = new JComboBox<String>(StatGraphProperties.getFontNameMap().keySet().toArray(new String[0]));
+ 
+-    private JComboBox fontSizeList = new JComboBox(StatGraphProperties.fontSize);
++    private JComboBox<String> fontSizeList = new JComboBox<String>(StatGraphProperties.fontSize);
+ 
+-    private JComboBox fontStyleList = new JComboBox(StatGraphProperties.getFontStyleMap().keySet().toArray());
++    private JComboBox<String> fontStyleList = new JComboBox<String>(StatGraphProperties.getFontStyleMap().keySet().toArray(new String[0]));
+ 
+-    private JComboBox legendPlacementList = new JComboBox(StatGraphProperties.getPlacementNameMap().keySet().toArray());
++    private JComboBox<String> legendPlacementList = new JComboBox<String>(StatGraphProperties.getPlacementNameMap().keySet().toArray(new String[0]));
+ 
+     private JCheckBox drawOutlinesBar = new JCheckBox(JMeterUtils.getResString("aggregate_graph_draw_outlines"), true); // Default checked // $NON-NLS-1$
+ 
+@@ -718,7 +718,7 @@
+         return legendPanel;
+     }
+ 
+-    private JComponent createLabelCombo(String label, JComboBox comboBox) {
++    private JComponent createLabelCombo(String label, JComboBox<String> comboBox) {
+         JPanel labelCombo = new JPanel();
+         labelCombo.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
+         JLabel caption = new JLabel(label);//$NON-NLS-1$
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	(revision 1296318)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	(working copy)
+@@ -518,7 +518,6 @@
+ 
+             res.setResponseData(responseData);
+ 
+-            @SuppressWarnings("null") // Cannot be null here
+             int errorLevel = conn.getResponseCode();
+             String respMsg = conn.getResponseMessage();
+             String hdr=conn.getHeaderField(0);

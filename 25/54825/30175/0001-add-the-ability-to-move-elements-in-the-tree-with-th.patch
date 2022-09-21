@@ -1,0 +1,228 @@
+From e39cd14f506a3383fa113bec1ea0a35002e4c0e0 Mon Sep 17 00:00:00 2001
+From: benoit <b.wiart@ubik-ingenierie.com>
+Date: Wed, 10 Apr 2013 13:55:07 +0200
+Subject: [PATCH] add the ability to move elements in the tree with the
+ keyboard
+
+---
+ .../org/apache/jmeter/gui/action/ActionNames.java  |   5 +
+ .../org/apache/jmeter/gui/action/KeyStrokes.java   |   4 +
+ src/core/org/apache/jmeter/gui/action/Move.java    | 143 +++++++++++++++++++++
+ .../apache/jmeter/gui/tree/JMeterTreeListener.java |  20 +++
+ 4 files changed, 172 insertions(+)
+ create mode 100644 src/core/org/apache/jmeter/gui/action/Move.java
+
+diff --git a/src/core/org/apache/jmeter/gui/action/ActionNames.java b/src/core/org/apache/jmeter/gui/action/ActionNames.java
+index ceb2858..2cbeab7 100644
+--- a/src/core/org/apache/jmeter/gui/action/ActionNames.java
++++ b/src/core/org/apache/jmeter/gui/action/ActionNames.java
+@@ -92,6 +92,11 @@ public final class ActionNames {
+     public static final String WHAT_CLASS       = "what_class"; // $NON-NLS-1$
+     public static final String SEARCH_TREE      = "search_tree"; // $NON-NLS-1$
+     public static final String SEARCH_RESET      = "search_reset"; // $NON-NLS-1$
++    
++    public static final String MOVE_UP        = "move_up"; // $NON-NLS-1$
++    public static final String MOVE_DOWN      = "move_down"; // $NON-NLS-1$
++    public static final String MOVE_LEFT      = "move_left"; // $NON-NLS-1$
++    public static final String MOVE_RIGHT     = "move_right"; // $NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames(){
+diff --git a/src/core/org/apache/jmeter/gui/action/KeyStrokes.java b/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+index 019cfaf..084d2cc 100644
+--- a/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
++++ b/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+@@ -70,6 +70,10 @@ public final class KeyStrokes {
+     public static final KeyStroke COLLAPSE_ALL      = KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, CONTROL_MASK);
+     // VK_PLUS + CTRL_DOWN_MASK did not work...
+     public static final KeyStroke EXPAND_ALL        = KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, CONTROL_MASK | InputEvent.SHIFT_DOWN_MASK);
++    public static final KeyStroke ALT_UP_ARROW      = KeyStroke.getKeyStroke(KeyEvent.VK_UP, InputEvent.ALT_DOWN_MASK);
++    public static final KeyStroke ALT_DOWN_ARROW    = KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, InputEvent.ALT_DOWN_MASK);
++    public static final KeyStroke ALT_LEFT_ARROW    = KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK);
++    public static final KeyStroke ALT_RIGHT_ARROW   = KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK);
+ 
+     /**
+      * Check if an event matches the KeyStroke definition.
+diff --git a/src/core/org/apache/jmeter/gui/action/Move.java b/src/core/org/apache/jmeter/gui/action/Move.java
+new file mode 100644
+index 0000000..66cdfd0
+--- /dev/null
++++ b/src/core/org/apache/jmeter/gui/action/Move.java
+@@ -0,0 +1,143 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.Toolkit;
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++
++import javax.swing.JTree;
++import javax.swing.tree.TreeNode;
++import javax.swing.tree.TreePath;
++
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.tree.JMeterTreeListener;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.gui.util.MenuFactory;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.TestPlan;
++import org.apache.jmeter.testelement.WorkBench;
++
++public class Move extends AbstractAction {
++    private static final Set<String> commands = new HashSet<String>();
++
++    static {
++        commands.add(ActionNames.MOVE_DOWN);
++        commands.add(ActionNames.MOVE_UP);
++        commands.add(ActionNames.MOVE_LEFT);
++        commands.add(ActionNames.MOVE_RIGHT);
++    }
++
++    /**
++     * @see Command#doAction(ActionEvent)
++     */
++    @Override
++    public void doAction(ActionEvent e) {
++        JMeterTreeListener treeListener = GuiPackage.getInstance().getTreeListener();
++        
++        if(treeListener.getSelectedNodes().length != 1) {
++            // we can only move a single node
++            return;
++        }
++        
++        JMeterTreeNode currentNode = treeListener.getCurrentNode();
++        JMeterTreeNode parentNode = getParentNode(currentNode);
++        
++        if(parentNode != null) {
++            String action = e.getActionCommand();
++            int index = parentNode.getIndex(currentNode);
++            
++            if (ActionNames.MOVE_UP.equals(action)) {
++                if(index > 0) {
++                    // we stay within the same parent node
++                    int newIndx = index-1;
++                    moveAndSelectNode(currentNode, parentNode, newIndx);
++                }
++            }
++            else if (ActionNames.MOVE_DOWN.equals(action)) {
++                if(index < parentNode.getChildCount()-1) {
++                    // we stay within the same parent node
++                    int newIndx = index+1;
++                    moveAndSelectNode(currentNode, parentNode, newIndx);
++                }
++            }
++            else if (ActionNames.MOVE_LEFT.equals(action)) {
++                JMeterTreeNode parentParentNode = getParentNode(parentNode);
++                // move to the parent
++                if(parentParentNode != null && canAddTo(parentParentNode, currentNode)) {
++                    moveAndSelectNode(currentNode, parentParentNode, parentParentNode.getIndex(parentNode));
++                }
++            }
++            else if (ActionNames.MOVE_RIGHT.equals(action)) {
++                JMeterTreeNode after = (JMeterTreeNode) parentNode.getChildAfter(currentNode);
++                if(after != null && canAddTo(after, currentNode)) {
++                    // move as a child of the next sibling
++                    moveAndSelectNode(currentNode, after, 0);
++                }
++                else {
++                    // move as a sibling of the parent
++                    JMeterTreeNode parentParentNode = getParentNode(parentNode);
++                    after = (JMeterTreeNode) parentParentNode.getChildAfter(parentNode);
++                    if(after != null && canAddTo(parentParentNode, currentNode)) {
++                        moveAndSelectNode(currentNode, parentParentNode, parentParentNode.getIndex(after));
++                    }
++                }
++            }
++        }
++       
++        GuiPackage.getInstance().getMainFrame().repaint();
++    }
++
++    private JMeterTreeNode getParentNode(JMeterTreeNode currentNode) {
++        JMeterTreeNode parentNode = (JMeterTreeNode) currentNode.getParent();
++        TestElement te = currentNode.getTestElement();
++        if (te instanceof TestPlan || te instanceof WorkBench) {
++            parentNode = null; // So elements can only be added as children
++        }
++        return parentNode;
++    }
++    
++    private static boolean canAddTo(JMeterTreeNode parentNode, JMeterTreeNode node) {
++        boolean ok = MenuFactory.canAddTo(parentNode, new JMeterTreeNode[] {node});
++        if (!ok){
++            Toolkit.getDefaultToolkit().beep();
++        }
++        return ok;
++    }
++
++    private static void moveAndSelectNode(JMeterTreeNode currentNode, JMeterTreeNode parentNode, int newIndx) {
++        GuiPackage guiInstance = GuiPackage.getInstance();
++        guiInstance.getTreeModel().removeNodeFromParent(currentNode);
++        guiInstance.getTreeModel().insertNodeInto(currentNode, parentNode, newIndx);
++        
++        // select the node
++        TreeNode[] nodes = guiInstance.getTreeModel().getPathToRoot(currentNode);
++        JTree jTree = guiInstance.getMainFrame().getTree();
++        jTree.setSelectionPath(new TreePath(nodes));
++    }
++
++    /**
++     * @see Command#getActionNames()
++     */
++    @Override
++    public Set<String> getActionNames() {
++        return commands;
++    }
++}
+diff --git a/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java b/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+index 0270c0a..940194b 100644
+--- a/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
++++ b/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+@@ -307,6 +307,26 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+             actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.DUPLICATE));
+             e.consume();
+         }
++        else if (KeyStrokes.matches(e,KeyStrokes.ALT_UP_ARROW)) {
++            ActionRouter actionRouter = ActionRouter.getInstance();
++            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_UP));
++            e.consume();
++        }
++        else if (KeyStrokes.matches(e,KeyStrokes.ALT_DOWN_ARROW)) {
++            ActionRouter actionRouter = ActionRouter.getInstance();
++            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_DOWN));
++            e.consume();
++        }
++        else if (KeyStrokes.matches(e,KeyStrokes.ALT_LEFT_ARROW)) {
++            ActionRouter actionRouter = ActionRouter.getInstance();
++            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_LEFT));
++            e.consume();
++        }
++        else if (KeyStrokes.matches(e,KeyStrokes.ALT_RIGHT_ARROW)) {
++            ActionRouter actionRouter = ActionRouter.getInstance();
++            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_RIGHT));
++            e.consume();
++        }
+     }
+ 
+     @Override
+-- 
+1.7.12
+

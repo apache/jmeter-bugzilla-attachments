@@ -1,0 +1,267 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1815097)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -250,7 +250,10 @@
+ database_url=JDBC URL\:
+ database_url_jdbc_props=Database URL and JDBC Driver
+ date_end=End date
++date_format_old=Current date format
++date_format_new=New date format
+ date_start=Start date (optional) (default: now)
++date_string=Date string
+ date_to_shift=Date to shift (optional) (default \: now )
+ ddn=DN
+ de=German
+Index: src/functions/org/apache/jmeter/functions/DateConvert.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/DateConvert.java	(revision 0)
++++ src/functions/org/apache/jmeter/functions/DateConvert.java	(working copy)
+@@ -0,0 +1,97 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import java.text.DateFormat;
++import java.text.SimpleDateFormat;
++import java.util.Collection;
++import java.util.Date;
++import java.util.LinkedList;
++import java.util.List;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.util.JMeterUtils;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++/**
++ * DateConvert function to change date format Can optionally store it in a
++ * variable.
++ * 
++ * @author orim
++ *
++ */
++public class DateConvert extends AbstractFunction {
++	private static final Logger log = LoggerFactory.getLogger(DateConvert.class);
++	/**
++	 * The algorithm names in this section can be specified when generating an
++	 * instance of MessageDigest: MD5 SHA-1 SHA-256 SHA-384 SHA-512
++	 */
++	private static final List<String> desc = new LinkedList<>();
++	private static final String KEY = "__dateConvert";
++
++	// Number of parameters expected - used to reject invalid calls
++	private static final int MIN_PARAMETER_COUNT = 3;
++	private static final int MAX_PARAMETER_COUNT = 4;
++
++	static {
++		desc.add(JMeterUtils.getResString("date_string"));
++		desc.add(JMeterUtils.getResString("date_format_old"));
++		desc.add(JMeterUtils.getResString("date_format_new"));
++		desc.add(JMeterUtils.getResString("function_name_paropt"));
++	}
++	private CompoundVariable[] values;
++
++	@Override
++	public List<String> getArgumentDesc() {
++		return desc;
++	}
++
++	@Override
++	public String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++		String dateString = values[0].execute();
++		String oldDateFormat = values[1].execute();
++		String newDateFormat = values[2].execute();
++		DateFormat srcDf = new SimpleDateFormat(oldDateFormat);
++		Date date;
++		try {
++			date = srcDf.parse(dateString);
++			DateFormat destDf = new SimpleDateFormat(newDateFormat);
++			String newDate = destDf.format(date);
++			addVariableValue(newDate, values, 3);
++			return newDate;
++		} catch (Exception e) {
++			log.error("Error calling {} function with value {}, old format {}, new format {}, ", KEY, dateString, oldDateFormat, newDateFormat, e);
++		}
++		return null;
++	}
++
++	@Override
++	public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++		checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
++		values = parameters.toArray(new CompoundVariable[parameters.size()]);
++	}
++
++	@Override
++	public String getReferenceKey() {
++		return KEY;
++	}
++}
+Index: test/src/org/apache/jmeter/functions/TestDateConvert.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestDateConvert.java	(revision 0)
++++ test/src/org/apache/jmeter/functions/TestDateConvert.java	(working copy)
+@@ -0,0 +1,107 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import static org.junit.Assert.assertEquals;
++
++import java.util.Collection;
++import java.util.LinkedList;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.Before;
++import org.junit.Test;
++
++/**
++ * Test Date Convert Function
++ * 
++ * @author orim
++ *
++ */
++public class TestDateConvert extends JMeterTestCase {
++
++	protected AbstractFunction dateConvert;
++
++	private SampleResult result;
++
++	private Collection<CompoundVariable> params;
++
++	private JMeterVariables vars;
++
++	private JMeterContext jmctx;
++
++	@Before
++	public void setUp() {
++		dateConvert = new DateConvert();
++		result = new SampleResult();
++		jmctx = JMeterContextService.getContext();
++		String data = "dummy data";
++		result.setResponseData(data, null);
++		vars = new JMeterVariables();
++		jmctx.setVariables(vars);
++		jmctx.setPreviousResult(result);
++		params = new LinkedList<>();
++	}
++
++	@Test
++	public void testParameterCount512() throws Exception {
++		checkInvalidParameterCounts(dateConvert, 3, 4);
++	}
++
++	@Test
++	public void testDateConvert() throws Exception {
++		params.add(new CompoundVariable("2017-01-02"));
++		params.add(new CompoundVariable("yyyy-mm-dd"));
++		params.add(new CompoundVariable("dd-mm-yyyy"));
++		dateConvert.setParameters(params);
++		String returnValue = dateConvert.execute(result, null);
++		assertEquals("02-01-2017", returnValue);
++	}
++
++	@Test
++	public void testDateConvertWithVariable() throws Exception {
++		params.add(new CompoundVariable("2017-01-02"));
++		params.add(new CompoundVariable("yyyy-mm-dd"));
++		params.add(new CompoundVariable("dd-mm-yyyy"));
++		params.add(new CompoundVariable("varName"));
++		dateConvert.setParameters(params);
++		dateConvert.execute(result, null);
++		assertEquals("02-01-2017", vars.get("varName"));
++	}
++
++	@Test(expected = InvalidVariableException.class)
++	public void testDateConvertError() throws Exception {
++		params.add(new CompoundVariable("2017-01-02"));
++		params.add(new CompoundVariable("yyyy-mm-dd"));
++		dateConvert.setParameters(params);
++		dateConvert.execute(result, null);
++	}
++
++	public void testDateConvertErrorFormat() throws Exception {
++		params.add(new CompoundVariable("2017-01-02"));
++		params.add(new CompoundVariable("yyyy-mm-dd"));
++		params.add(new CompoundVariable("abcd"));
++		dateConvert.setParameters(params);
++		assertEquals(dateConvert.execute(result, null), null);
++	}
++}
+Index: xdocs/changes.xml
+===================================================================
+--- xdocs/changes.xml	(revision 1815097)
++++ xdocs/changes.xml	(working copy)
+@@ -124,6 +124,7 @@
+     <li><bug>61738</bug>Function Helper Dialog : Add Copy in Generate and clarify labels</li>
+     <li><bug>61593</bug>Remove Detail, Add, Add from Clipboard, Delete buttons in Function Helper GUI</li>
+     <li><bug>61724</bug>Add <code>__digest</code> function to provide computing of Hashes (SHA-XXX, MDX). Based on a contribution by orimarko at gmail.com</li>
++    <li><bug>61735</bug>Add <code>__dateConvert</code> function to provide date formats conversions. Based on a contribution by orimarko at gmail.com</li>
+ </ul>
+ 
+ <h3>I18N</h3>
+Index: xdocs/usermanual/functions.xml
+===================================================================
+--- xdocs/usermanual/functions.xml	(revision 1815097)
++++ xdocs/usermanual/functions.xml	(working copy)
+@@ -1599,6 +1599,21 @@
+             the variable to set.</property>
+     </properties>
+ </component>
++<component index="&sect-num;.5.35" name="__dateConvert">
++    <description>
++        <p>The dateConvert function returns a date in a new format
++            with the optional variable name.</p>
++    </description>
++    <properties>
++        <property name="Date String" required="Yes">
++            The original date string to be used to convert
++        </property>
++        <property name="Old Date Format" required="Yes"> The original date format</property>
++        <property name="New Date Format" required="Yes"> The new date format</property>
++        <property name="Name of variable" required="No">The name of
++            the variable to set.</property>
++    </properties>
++</component>
+ </subsection>
+ 
+ <subsection name="&sect-num;.6 Pre-defined Variables" anchor="predefinedvars">

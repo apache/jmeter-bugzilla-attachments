@@ -1,0 +1,68 @@
+Index: src/components/org/apache/jmeter/modifiers/gui/UserParametersGui.java
+===================================================================
+--- src/components/org/apache/jmeter/modifiers/gui/UserParametersGui.java	(revision 1245904)
++++ src/components/org/apache/jmeter/modifiers/gui/UserParametersGui.java	(working copy)
+@@ -67,6 +67,8 @@
+     private JButton addParameterButton, addUserButton, deleteRowButton, deleteColumnButton;
+ 
+     private JCheckBox perIterationCheck;
++    
++    private JPanel paramPanel;
+ 
+     public UserParametersGui() {
+         super();
+@@ -192,12 +194,11 @@
+         // paramTable.setRowSelectionAllowed(true);
+         // paramTable.setColumnSelectionAllowed(true);
+         paramTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+-        paramTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+         // paramTable.setCellSelectionEnabled(true);
+         // paramTable.setPreferredScrollableViewportSize(new Dimension(100,
+         // 70));
+ 
+-        JPanel paramPanel = new JPanel(new BorderLayout());
++        paramPanel = new JPanel(new BorderLayout());
+         paramPanel.add(tableLabel, BorderLayout.NORTH);
+         JScrollPane scroll = new JScrollPane(paramTable);
+         scroll.setPreferredSize(scroll.getMinimumSize());
+@@ -229,6 +230,23 @@
+         return buttonPanel;
+     }
+ 
++    /**
++     * Set Column size
++     */
++    private void setColumnWidths() {
++        int colSize = 200;
++        int paneWidth = paramPanel.getWidth();
++        if (paneWidth != 0) {
++            paramTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
++            if (paneWidth >= (tableModel.getColumnCount() * colSize)) {
++                colSize = paneWidth / tableModel.getColumnCount();
++            }
++            for (int i = 0; i < tableModel.getColumnCount(); i++) {
++                paramTable.getColumnModel().getColumn(i).setPreferredWidth(colSize);
++            }
++        }
++    }
++    
+     private class AddParamAction implements ActionListener {
+         public void actionPerformed(ActionEvent e) {
+             if (paramTable.isEditing()) {
+@@ -271,15 +289,6 @@
+         }
+     }
+ 
+-    /**
+-     * Set Column size
+-     */
+-    private void setColumnWidths() {
+-        for (int i = 0; i < tableModel.getColumnCount(); i++) {
+-            paramTable.getColumnModel().getColumn(i).setPreferredWidth(200);
+-        }
+-    }
+-    
+     private class DeleteRowAction implements ActionListener {
+         public void actionPerformed(ActionEvent e) {
+             if (paramTable.isEditing()) {
+

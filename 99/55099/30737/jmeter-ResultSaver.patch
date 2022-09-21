@@ -1,0 +1,85 @@
+Index: src/core/org/apache/jmeter/reporters/ResultSaver.java
+===================================================================
+--- src/core/org/apache/jmeter/reporters/ResultSaver.java	(revision 1514662)
++++ src/core/org/apache/jmeter/reporters/ResultSaver.java	(working copy)
+@@ -185,6 +185,11 @@
+         File out = new File(fileName);
+         FileOutputStream pw = null;
+         try {
++            File parent = out.getParentFile();
++            if (parent != null && !parent.exists()) {
++                log.debug("create parent directories");
++                parent.mkdirs(); 
++            }
+             pw = new FileOutputStream(out);
+             JOrphanUtils.write(s.getResponseData(), pw); // chunk the output if necessary
+         } catch (FileNotFoundException e1) {
+Index: test/src/org/apache/jmeter/reporters/ResultSaverTest.java
+===================================================================
+--- test/src/org/apache/jmeter/reporters/ResultSaverTest.java	(revision 0)
++++ test/src/org/apache/jmeter/reporters/ResultSaverTest.java	(revision 0)
+@@ -0,0 +1,64 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.reporters;
++
++import java.io.File;
++
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.samplers.SampleEvent;
++import org.apache.jmeter.samplers.SampleResult;
++import org.junit.Test;
++
++public class ResultSaverTest extends JMeterTestCase {
++
++    @Test
++    public void testSampleOccurred() {
++        SampleResult sampleResult = new SampleResult();
++        sampleResult.setResultFileName("testcase");
++        sampleResult.setContentType("text/html");
++        SampleEvent event = new SampleEvent(sampleResult, "");
++        
++        ResultSaver resultSaver = new ResultSaver("test case");
++        resultSaver.clear();
++
++        // save a new file with default parameters
++        resultSaver.sampleOccurred(event);
++        
++        // save a new file in a new directory - no suffix, no auto_number
++        resultSaver.setProperty(ResultSaver.FILENAME, "resultsavertestdirectory/mytestfile.txt");
++        resultSaver.setProperty(ResultSaver.SKIP_AUTO_NUMBER, true);
++        resultSaver.setProperty(ResultSaver.SKIP_SUFFIX, true);
++        resultSaver.setProperty(ResultSaver.ADD_TIMESTAMP, false);
++        
++        resultSaver.sampleOccurred(event);
++        assertTrue(new File("resultsavertestdirectory/mytestfile.txt").exists());
++        
++        // save a new file in an existing directory
++        resultSaver.setProperty(ResultSaver.FILENAME, "resultsavertestdirectory/mytestfile2.txt");
++        resultSaver.sampleOccurred(event);
++        assertTrue(new File("resultsavertestdirectory/mytestfile2.txt").exists());
++
++        // save a new file 
++        resultSaver.setProperty(ResultSaver.FILENAME, "resultsavertestdirectory/anotherlevel/mytestfile3.txt");
++        resultSaver.sampleOccurred(event);
++        assertTrue(new File("resultsavertestdirectory/anotherlevel/mytestfile3.txt").exists());
++        
++    }
++
++}

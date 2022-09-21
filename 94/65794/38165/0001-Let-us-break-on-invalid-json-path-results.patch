@@ -1,0 +1,44 @@
+From c4c31ed024a478245b6e3b07d57324e32f0894fc Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 15 Jan 2022 18:11:36 +0100
+Subject: [PATCH] Let us break on invalid json path results
+
+---
+ .../apache/jmeter/assertions/JSONPathAssertion.java    | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/components/src/main/java/org/apache/jmeter/assertions/JSONPathAssertion.java b/src/components/src/main/java/org/apache/jmeter/assertions/JSONPathAssertion.java
+index 2e135b46b2..c2986df1cd 100644
+--- a/src/components/src/main/java/org/apache/jmeter/assertions/JSONPathAssertion.java
++++ b/src/components/src/main/java/org/apache/jmeter/assertions/JSONPathAssertion.java
+@@ -30,12 +30,12 @@ import org.apache.oro.text.regex.Pattern;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
++import com.jayway.jsonpath.JsonPath;
++
+ import net.minidev.json.JSONArray;
+ import net.minidev.json.JSONObject;
+ import net.minidev.json.JSONValue;
+ 
+-import com.jayway.jsonpath.JsonPath;
+-
+ /**
+  * This is main class for JSONPath Assertion which verifies assertion on
+  * previous sample result using JSON path expression
+@@ -112,6 +112,12 @@ public class JSONPathAssertion extends AbstractTestElement implements Serializab
+         Object value = JsonPath.read(jsonString, getJsonPath());
+ 
+         if (!isJsonValidationBool()) {
++            if (value instanceof JSONArray) {
++                JSONArray arrayValue = (JSONArray) value;
++                if (arrayValue.isEmpty() && !JsonPath.isPathDefinite(getJsonPath())) {
++                    throw new IllegalStateException("JSONPath is indefinite and the extracted Value is an empty Array. Please use an assertion value, to be sure to get a correct result. " + getExpectedValue());
++                }
++            }
+             return;
+         }
+ 
+-- 
+2.25.1
+

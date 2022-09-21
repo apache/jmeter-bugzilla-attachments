@@ -1,0 +1,109 @@
+Index: src/core/org/apache/jmeter/gui/action/RemoteStart.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/RemoteStart.java,v
+retrieving revision 1.7
+diff -r1.7 RemoteStart.java
+61a62,63
+> import java.util.Iterator;
+> import java.util.StringTokenizer;
+77a80
+>  *@author	 Drew Gulino
+79c82
+<  *@version   1.0
+---
+>  *@version   1.1
+92a96,97
+> 		commands.add("remote_start_all");
+> 		commands.add("remote_stop_all");
+111,113c116
+< 			GuiPackage.getInstance().getMainFrame().showStoppingMessage(name);
+< 			JMeterEngine engine = (JMeterEngine)remoteEngines.get(name);
+< 			engine.stopTest();
+---
+> 			ActionRemoteStop(name);
+116a120,155
+> 			ActionRemoteStart(name);
+> 		}
+> 		else if(action.equals("remote_start_all"))
+> 		{
+> 			String remote_hosts_string = JMeterUtils.getPropDefault("remote_hosts",
+> 								  "127.0.0.1");
+> 			java.util.StringTokenizer st = new java.util.StringTokenizer(remote_hosts_string, ",");
+> 			while(st.hasMoreElements())
+> 			{
+> 				String el = (String)st.nextElement();
+> 				ActionRemoteStart(el);
+> 			}
+> 		}
+> 		else if(action.equals("remote_stop_all"))
+> 		{
+> 			String remote_hosts_string = JMeterUtils.getPropDefault("remote_hosts",
+> 								  "127.0.0.1");
+> 			java.util.StringTokenizer st = new java.util.StringTokenizer(remote_hosts_string, ",");
+> 			while(st.hasMoreElements())
+> 			{
+> 				String el = (String)st.nextElement();
+> 				ActionRemoteStop(el);
+> 			}
+> 		}
+> 	}
+> 	
+> 	
+> 	/* 
+> 	 * Stops a remote testing engine
+> 	 * 
+> 	 * @param name The DNS name or IP address of the remote testing engine
+> 	 * 
+> 	 */
+> 	private void ActionRemoteStop(String name)
+> 	{
+> 		GuiPackage.getInstance().getMainFrame().showStoppingMessage(name);
+117a157,168
+> 			engine.stopTest();
+> 	}
+> 
+> 	/* 
+> 	 * Starts a remote testing engine
+> 	 * 
+> 	 * @param name The DNS name or IP address of the remote testing engine
+> 	 * 
+> 	 */	
+> 	private void ActionRemoteStart (String name)
+> 	{
+> 		JMeterEngine engine = (JMeterEngine)remoteEngines.get(name);
+137d187
+< 		}
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java,v
+retrieving revision 1.9
+diff -r1.9 JMeterMenuBar.java
+103a104
+> 	JMenuItem remote_start_all;
+106a108
+> 	JMenuItem remote_stop_all;
+382a385,390
+> 		remote_start_all = new JMenuItem(JMeterUtils.getResString("remote_start_all"), 'Z');
+> 		remote_start_all.setAccelerator(
+> 			KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_MASK));
+> 		remote_start_all.addActionListener(ActionRouter.getInstance());
+> 		remote_start_all.setActionCommand("remote_start_all");
+> 		runMenu.add(remote_start_all);
+387a396,401
+> 		remote_stop_all = new JMenuItem(JMeterUtils.getResString("remote_stop_all"), 'X');
+> 		remote_stop_all.setAccelerator(
+> 			KeyStroke.getKeyStroke(KeyEvent.VK_X, KeyEvent.CTRL_MASK));
+> 		remote_stop_all.addActionListener(ActionRouter.getInstance());
+> 		remote_stop_all.setActionCommand("remote_stop_all");
+> 		runMenu.add(remote_stop_all);
+483a498
+> 			
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.26
+diff -r1.26 messages.properties
+38a39,40
+> remote_start_all=Remote Start All
+> remote_stop_all=Remote Stop All
+

@@ -1,0 +1,21 @@
+Index: src/jorphan/org/apache/jorphan/collections/HashTree.java
+===================================================================
+--- src/jorphan/org/apache/jorphan/collections/HashTree.java	(revision 1178103)
++++ src/jorphan/org/apache/jorphan/collections/HashTree.java	(working copy)
+@@ -979,10 +979,12 @@
+         if (list().size() == 0) {
+             visitor.processPath();
+         } else {
+-            Iterator<?> iter = list().iterator();
+-            while (iter.hasNext()) {
+-                Object item = iter.next();
+-                final HashTree treeItem = getTree(item);
++            Set<Map.Entry<Object, HashTree>> entrySet = data.entrySet();
++            for (Iterator<Map.Entry<Object, HashTree>> iterator = entrySet.iterator(); iterator.hasNext();) {
++                Entry<Object, HashTree> entry =  iterator
++                        .next();
++                Object item = entry.getKey();
++                final HashTree treeItem = entry.getValue();
+                 visitor.addNode(item, treeItem);
+                 treeItem.traverseInto(visitor);
+             }

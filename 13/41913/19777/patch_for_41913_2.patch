@@ -1,0 +1,296 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java	(revision 521599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java	(working copy)
+@@ -19,10 +19,18 @@
+ package org.apache.jmeter.control.gui;
+ 
+ import java.awt.BorderLayout;
++import java.awt.FlowLayout;
+ 
++import javax.swing.BorderFactory;
++import javax.swing.ButtonGroup;
++import javax.swing.JPanel;
++import javax.swing.JRadioButton;
++
+ import org.apache.jmeter.control.TransactionController;
+ import org.apache.jmeter.control.gui.AbstractControllerGui;
++import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  * A Transaction controller component.
+@@ -30,6 +38,13 @@
+  * @version $Revision$ on $Date$
+  */
+ public class TransactionControllerGui extends AbstractControllerGui {
++    /** Radio button indicating that no samples of the trasanction should be added */
++    private JRadioButton reportSamplesNone;
++    /** Radio button indicating that failing samples of the trasanction should be added */
++    private JRadioButton reportSamplesFailing;
++    /** Radio button indicating that all samples of the trasanction should be added */
++    private JRadioButton reportSamplesAll;
++
+ 	/**
+ 	 * Create a new TransactionControllerGui instance.
+ 	 */
+@@ -47,8 +62,24 @@
+ 	/* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+ 	public void modifyTestElement(TestElement el) {
+ 		configureTestElement(el);
++        
++        if (el instanceof TransactionController) {
++            TransactionController transactionController = (TransactionController) el;
++            transactionController.setReportSamplesNone(reportSamplesNone.isSelected());
++            transactionController.setReportSamplesFailing(reportSamplesFailing.isSelected());
++            transactionController.setReportSamplesAll(reportSamplesAll.isSelected());
++        }
+ 	}
+ 
++    public void configure(TestElement el) {
++        super.configure(el);
++        
++        TransactionController transactionController = (TransactionController) el;
++        reportSamplesNone.setSelected(transactionController.getReportSamplesNone());
++        reportSamplesFailing.setSelected(transactionController.getReportSamplesFailing());
++        reportSamplesAll.setSelected(transactionController.getReportSamplesAll());
++    }
++
+ 	public String getLabelResource() {
+ 		return "transaction_controller_title";
+ 	}
+@@ -60,5 +91,28 @@
+ 		setLayout(new BorderLayout());
+ 		setBorder(makeBorder());
+ 		add(makeTitlePanel(), BorderLayout.NORTH);
++
++        VerticalPanel mainPanel = new VerticalPanel();
++        
++        // Crate radiobuttons to control how samples are handled
++        JPanel reportSamplesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
++        reportSamplesPanel.setBorder(
++            BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++            JMeterUtils.getResString("transaction_controller_report_samples")));
++        
++        ButtonGroup group = new ButtonGroup();
++        reportSamplesNone = new JRadioButton(JMeterUtils.getResString("transaction_controller_report_samples_none"));
++        reportSamplesFailing = new JRadioButton(JMeterUtils.getResString("transaction_controller_report_samples_failing"));
++        reportSamplesAll = new JRadioButton(JMeterUtils.getResString("transaction_controller_report_samples_all"));
++        group.add(reportSamplesNone);
++        group.add(reportSamplesFailing);
++        group.add(reportSamplesAll);
++        reportSamplesPanel.add(reportSamplesNone);
++        reportSamplesPanel.add(reportSamplesFailing);
++        reportSamplesPanel.add(reportSamplesAll);
++        
++        mainPanel.add(reportSamplesPanel);
++        
++        add(mainPanel, BorderLayout.CENTER);
+ 	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/control/TransactionController.java	(revision 521599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -21,8 +21,10 @@
+ import java.io.Serializable;
+ 
+ import org.apache.jmeter.samplers.SampleEvent;
++import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterThread;
+ import org.apache.jmeter.threads.JMeterVariables;
+@@ -35,15 +37,25 @@
+  * Transaction Controller to measure transaction times
+  * 
+  */
+-public class TransactionController extends GenericController implements Controller, Serializable {
++public class TransactionController extends GenericController implements SampleListener, Controller, Serializable {
+ 	protected static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private final static String REPORT_SAMPLES_NONE = "TransactionController.report_samples_none"; // $NON-NLS-1$
++
++    private final static String REPORT_SAMPLES_FAILING = "TransactionController.report_samples_failing"; // $NON-NLS-1$
++
++    private final static String REPORT_SAMPLES_ALL = "TransactionController.report_samples_all"; // $NON-NLS-1$
++
+ 	transient private String threadName;
+ 
+ 	transient private ListenerNotifier lnf;
+ 
+ 	transient private SampleResult res;
++    
++    transient private int calls;
+ 
++    transient private int noFailingSamples;
++
+ 	/**
+ 	 * Creates a Transaction Controller
+ 	 */
+@@ -62,26 +74,49 @@
+ 		String n = this.getName();
+ 		log.debug(threadName + " " + n + " " + s);
+ 	}
++    
++    public void setReportSamplesNone(boolean value) {
++        setProperty(new BooleanProperty(REPORT_SAMPLES_NONE, value));
++    }
+ 
+-	private int calls;
++    public boolean getReportSamplesNone() {
++        return getPropertyAsBoolean(REPORT_SAMPLES_NONE, true);
++    }
+ 
++    public void setReportSamplesFailing(boolean value) {
++        setProperty(new BooleanProperty(REPORT_SAMPLES_FAILING, value));
++    }
++
++    public boolean getReportSamplesFailing() {
++        return getPropertyAsBoolean(REPORT_SAMPLES_FAILING, false);
++    }
++
++    public void setReportSamplesAll(boolean value) {
++        setProperty(new BooleanProperty(REPORT_SAMPLES_ALL, value));
++    }
++
++    public boolean getReportSamplesAll() {
++        return getPropertyAsBoolean(REPORT_SAMPLES_ALL, false);
++    }
++
+ 	/**
+ 	 * @see org.apache.jmeter.control.Controller#next()
+ 	 */
+ 	public Sampler next() {
+-		Sampler returnValue = null;
+ 		if (isFirst()) // must be the start of the subtree
+ 		{
+ 			log_debug("+++++++++++++++++++++++++++++");
+ 			calls = 0;
++            noFailingSamples = 0;
+ 			res = new SampleResult();
++            res.setSampleLabel(getName());
++            // Assume success
++            res.setSuccessful(true);
+ 			res.sampleStart();
+ 		}
+ 
+-		calls++;
+-
+-		returnValue = super.next();
+-
++        Sampler returnValue = super.next();
++        
+ 		if (returnValue == null) // Must be the end of the controller
+ 		{
+ 			log_debug("-----------------------------" + calls);
+@@ -89,11 +124,10 @@
+ 				log_debug("already called");
+ 			} else {
+ 				res.sampleEnd();
+-				res.setSuccessful(true);
+-				res.setSampleLabel(getName());
+-				res.setResponseCodeOK();
+-				res.setResponseMessage("Called: " + calls);
+-				res.setThreadName(threadName);
++                res.setResponseMessage("Number of samples in transaction : " + calls + ", number of failing samples : " + noFailingSamples);
++                if(res.isSuccessful()) {
++                    res.setResponseCodeOK();
++                }
+ 
+ 				// TODO could these be done earlier (or just once?)
+                 JMeterContext threadContext = getThreadContext();
+@@ -103,12 +137,42 @@
+ 				if (pack == null) {
+ 					log.warn("Could not fetch SamplePackage");
+ 				} else {
+-					lnf.notifyListeners(new SampleEvent(res, getName()), pack.getSampleListeners());
++                    SampleEvent event = new SampleEvent(res, getName());
++                    // We must set res to null now, before sending the event for the transaction,
++                    // so that we can ignore that event in our sampleOccured method 
++                    res = null;
++					lnf.notifyListeners(event, pack.getSampleListeners());
+ 				}
+-				res = null;
+ 			}
+ 		}
++        else {
++            // We have sampled one of our children
++            calls++;            
++        }
+ 
+ 		return returnValue;
+ 	}
++    
++    public void sampleOccurred(SampleEvent se) {
++        // Check if we have are still sampling our children
++        if(res != null) {
++            SampleResult sampleResult = se.getResult(); 
++            res.setThreadName(sampleResult.getThreadName());
++            res.setBytes(res.getBytes() + sampleResult.getBytes());
++            if(!sampleResult.isSuccessful()) {
++                res.setSuccessful(false);
++                noFailingSamples++;
++            }
++            // Check if we should include the sample in the transaction sample
++            if(getReportSamplesAll() || (getReportSamplesFailing() && !sampleResult.isSuccessful())) {
++                res.addSubResult(sampleResult);
++            }
++        }
++    }
++
++    public void sampleStarted(SampleEvent e) {
++    }
++
++    public void sampleStopped(SampleEvent e) {
++    }
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties	(revision 521599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -732,6 +732,10 @@
+ time_format=Format string for SimpleDateFormat (optional)
+ timelim=Time limit
+ transaction_controller_title=Transaction Controller
++transaction_controller_report_samples=Samples of the transaction to include in the transaction sample
++transaction_controller_report_samples_none=None
++transaction_controller_report_samples_failing=Failing
++transaction_controller_report_samples_all=All
+ unbind=Thread Unbind
+ uniform_timer_delay=Constant Delay Offset (in milliseconds)\:
+ uniform_timer_memo=Adds a random delay with a uniform distribution
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 520379)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -200,7 +200,7 @@
+ 		addSubResults(currNode, res);
+ 		// Add any assertion that failed as children of the sample node
+ 		AssertionResult assertionResults[] = res.getAssertionResults();
+-		int assertionIndex = 0;
++		int assertionIndex = currNode.getChildCount();
+ 		for (int j = 0; j < assertionResults.length; j++) {
+ 			AssertionResult item = assertionResults[j];
+ 			
+@@ -231,6 +231,17 @@
+ 
+ 			treeModel.insertNodeInto(leafNode, currNode, leafIndex++);
+ 			addSubResults(leafNode, child);
++            // Add any assertion that failed as children of the sample node
++            AssertionResult assertionResults[] = child.getAssertionResults();
++            int assertionIndex = leafNode.getChildCount();
++            for (int j = 0; j < assertionResults.length; j++) {
++                AssertionResult item = assertionResults[j];
++                
++                if (item.isFailure() || item.isError()) {
++                    DefaultMutableTreeNode assertionNode = new DefaultMutableTreeNode(item);
++                    treeModel.insertNodeInto(assertionNode, leafNode, assertionIndex++);
++                }
++            }
+ 		}
+ 	}
+ 

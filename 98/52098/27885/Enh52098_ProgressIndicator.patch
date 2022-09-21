@@ -1,0 +1,69 @@
+Index: src/core/org/apache/jmeter/gui/MainFrame.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/MainFrame.java	(revision 1196020)
++++ src/core/org/apache/jmeter/gui/MainFrame.java	(working copy)
+@@ -43,6 +43,7 @@
+ import javax.swing.JMenu;
+ import javax.swing.JPanel;
+ import javax.swing.JPopupMenu;
++import javax.swing.JProgressBar;
+ import javax.swing.JScrollPane;
+ import javax.swing.JSplitPane;
+ import javax.swing.JTree;
+@@ -101,14 +102,8 @@
+     /** The test tree. */
+     private JTree tree;
+ 
+-    /** An image which is displayed when a test is running. */
+-    private ImageIcon runningIcon = JMeterUtils.getImage("thread.enabled.gif");// $NON-NLS-1$
+-
+-    /** An image which is displayed when a test is not currently running. */
+-    private ImageIcon stoppedIcon = JMeterUtils.getImage("thread.disabled.gif");// $NON-NLS-1$
+-
+     /** The button used to display the running/stopped image. */
+-    private JButton runningIndicator;
++    private JProgressBar runningIndicator;
+ 
+     /** The x coordinate of the last location where a component was dragged. */
+     private int previousDragXLocation = 0;
+@@ -142,9 +137,11 @@
+         // this.actionHandler = actionHandler;
+ 
+         // TODO: Make the running indicator its own class instead of a JButton
+-        runningIndicator = new JButton(stoppedIcon);
+-        runningIndicator.setMargin(new Insets(0, 0, 0, 0));
+-        runningIndicator.setBorder(BorderFactory.createEmptyBorder());
++        runningIndicator = new JProgressBar();
++        Dimension dim = new Dimension(25, runningIndicator.getPreferredSize().height);
++        runningIndicator.setMinimumSize(dim);
++        runningIndicator.setMaximumSize(dim);
++        runningIndicator.setPreferredSize(dim);
+ 
+         totalThreads = new JLabel("0"); // $NON-NLS-1$
+         activeThreads = new JLabel("0"); // $NON-NLS-1$
+@@ -345,7 +342,7 @@
+      */
+     public void testStarted(String host) {
+         hosts.add(host);
+-        runningIndicator.setIcon(runningIcon);
++        runningIndicator.setIndeterminate(true);
+         activeThreads.setText("0"); // $NON-NLS-1$
+         totalThreads.setText("0"); // $NON-NLS-1$
+         menuBar.setRunning(true, host);
+@@ -372,7 +369,7 @@
+     public void testEnded(String host) {
+         hosts.remove(host);
+         if (hosts.size() == 0) {
+-            runningIndicator.setIcon(stoppedIcon);
++            runningIndicator.setIndeterminate(false);
+             JMeterContextService.endTest();
+         }
+         menuBar.setRunning(false, host);
+@@ -450,6 +447,7 @@
+         toolPanel.add(totalThreads);
+         toolPanel.add(Box.createRigidArea(new Dimension(10, 15)));
+         toolPanel.add(runningIndicator);
++        toolPanel.add(Box.createRigidArea(new Dimension(5, 15)));
+         return toolPanel;
+     }
+ 

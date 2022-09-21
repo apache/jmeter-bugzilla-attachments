@@ -1,0 +1,61 @@
+Index: docs/images/screenshots/csvdatasetconfig.png
+===================================================================
+Kann nicht anzeigen: Dateityp ist als binär angegeben.
+svn:mime-type = application/octet-stream
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java	(Revision 1804189)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java	(Arbeitskopie)
+@@ -217,8 +217,14 @@
+                 List<InetAddress> addresses = new ArrayList<>();
+                 for (String address : Arrays.asList(entry.getAddress().split("\\s*,\\s*"))) {
+                     try {
+-                        addresses.addAll(Arrays.asList(requestLookup(address)));
++                        final InetAddress[] requestLookup = requestLookup(address);
++                        if (requestLookup == null) {
++                            addAsLiteralAddress(addresses, address);
++                        } else {
++                            addresses.addAll(Arrays.asList(requestLookup));
++                        }
+                     } catch (UnknownHostException e) {
++                        addAsLiteralAddress(addresses, address);
+                         log.warn("Couldn't resolve static address {} for host {}", address, host, e);
+                     }
+                 }
+@@ -228,6 +234,15 @@
+         return new InetAddress[0];
+     }
+ 
++    private void addAsLiteralAddress(List<InetAddress> addresses,
++            String address) {
++        try {
++            addresses.add(InetAddress.getByName(address));
++        } catch (UnknownHostException e) {
++            log.info("Couldn't convert {} as literal address to InetAddress", address, e);
++        }
++    }
++
+     /**
+      * Sends DNS request via system or custom DNS resolver
+      * @param host Host
+Index: test/src/org/apache/jmeter/protocol/http/control/TestDNSCacheManager.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/control/TestDNSCacheManager.java	(Revision 1804189)
++++ test/src/org/apache/jmeter/protocol/http/control/TestDNSCacheManager.java	(Arbeitskopie)
+@@ -47,6 +47,16 @@
+     }
+ 
+     @Test
++    public void testWithOneAsStaticHostAndInvalidCustomResolver() throws Exception {
++        DNSCacheManager manager = new DNSCacheManager();
++        manager.setCustomResolver(true);
++        manager.addServer(INVALID_DNS_SERVER);
++        manager.addHost("localhost", "127.0.0.1");
++        assertThat(manager.resolve("localhost"),
++                CoreMatchers.is(CoreMatchers.equalTo(new InetAddress[] { InetAddress.getByName("127.0.0.1") })));
++    }
++
++    @Test
+     public void testWithMultipleStaticHost() throws Exception {
+         DNSCacheManager manager = new DNSCacheManager();
+         manager.setCustomResolver(true);

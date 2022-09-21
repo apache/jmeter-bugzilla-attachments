@@ -1,0 +1,17 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1300133)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -1020,6 +1020,12 @@
+         if(!hasArguments() && getSendFileAsPostBody()) {
+             hasPutBody = true;
+ 
++            // If a content encoding is specified, we set it as http parameter, so that
++            // the post body will be encoded in the specified content encoding
++            if(haveContentEncoding) {
++                putParams.setParameter(CoreProtocolPNames.HTTP_CONTENT_CHARSET,contentEncoding);
++            }
++
+             // If getSendFileAsPostBody returned true, it's sure that file is not null
+             FileEntity fileRequestEntity = new FileEntity(new File(files[0].getPath()), (String) null); // TODO is null correct?
+             put.setEntity(fileRequestEntity);

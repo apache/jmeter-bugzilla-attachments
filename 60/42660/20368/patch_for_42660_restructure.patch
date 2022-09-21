@@ -1,0 +1,1245 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java	(working copy)
+@@ -18,21 +18,14 @@
+ 
+ package org.apache.jmeter.protocol.java.sampler;
+ 
+-import java.io.IOException;
+-
+-import org.apache.jmeter.engine.event.LoopIterationEvent;
+-import org.apache.jmeter.samplers.AbstractSampler;
+ import org.apache.jmeter.samplers.Entry;
+ import org.apache.jmeter.samplers.SampleResult;
+-import org.apache.jmeter.testelement.TestListener;
+-import org.apache.jmeter.testelement.ThreadListener;
++import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+-import org.apache.jmeter.util.BeanShellInterpreter;
+-import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.BeanShellTestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+-import org.apache.jorphan.util.JMeterException;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+@@ -40,11 +33,12 @@
+  * A sampler which understands BeanShell
+  * 
+  */
+-public class BeanShellSampler extends AbstractSampler
+-    implements ThreadListener, TestListener
++public class BeanShellSampler extends BeanShellTestElement implements Sampler
+ {
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private static final long serialVersionUID = 3;
++
+ 	public static final String FILENAME = "BeanShellSampler.filename"; //$NON-NLS-1$
+ 
+ 	public static final String SCRIPT = "BeanShellSampler.query"; //$NON-NLS-1$
+@@ -52,17 +46,11 @@
+ 	public static final String PARAMETERS = "BeanShellSampler.parameters"; //$NON-NLS-1$
+ 
+ 	public static final String INIT_FILE = "beanshell.sampler.init"; //$NON-NLS-1$
++    
++    protected String getInitFileProperty() {
++        return INIT_FILE;
++    }
+ 
+-	transient private BeanShellInterpreter bshInterpreter;
+-
+-	public BeanShellSampler() {
+-		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE), log);
+-		} catch (ClassNotFoundException e) {
+-			log.error("Cannot find BeanShell: "+e.toString());
+-		}
+-	}
+-
+ 	/**
+ 	 * Returns a formatted string label describing this sampler
+ 	 * 
+@@ -92,7 +80,7 @@
+ 		boolean isSuccessful = false;
+ 		res.setSampleLabel(getLabel());
+ 		res.sampleStart();
+-		if (bshInterpreter == null) {
++		if (getBeanShellInterpreter() == null) {
+ 			res.sampleEnd();
+ 			res.setResponseCode("503");//$NON-NLS-1$
+ 			res.setResponseMessage("BeanShell Interpreter not found");
+@@ -108,32 +96,32 @@
+ 				res.setSamplerData(fileName);
+ 			}
+ 
+-			bshInterpreter.set("Label", getLabel()); //$NON-NLS-1$
+-			bshInterpreter.set("FileName", getFilename()); //$NON-NLS-1$
+-			bshInterpreter.set("SampleResult", res); //$NON-NLS-1$
+-			bshInterpreter.set("Parameters", getParameters());// as a single
++            getBeanShellInterpreter().set("Label", getLabel()); //$NON-NLS-1$
++            getBeanShellInterpreter().set("FileName", getFilename()); //$NON-NLS-1$
++            getBeanShellInterpreter().set("SampleResult", res); //$NON-NLS-1$
++            getBeanShellInterpreter().set("Parameters", getParameters());// as a single
+ 																// line//$NON-NLS-1$
+-			bshInterpreter.set("bsh.args", JOrphanUtils.split(getParameters(), " "));
++            getBeanShellInterpreter().set("bsh.args", JOrphanUtils.split(getParameters(), " "));
+ 
+ 			// Set default values
+-			bshInterpreter.set("ResponseCode", "200"); //$NON-NLS-1$
+-			bshInterpreter.set("ResponseMessage", "OK");//$NON-NLS-1$
+-			bshInterpreter.set("IsSuccess", true);//$NON-NLS-1$
++            getBeanShellInterpreter().set("ResponseCode", "200"); //$NON-NLS-1$
++            getBeanShellInterpreter().set("ResponseMessage", "OK");//$NON-NLS-1$
++            getBeanShellInterpreter().set("IsSuccess", true);//$NON-NLS-1$
+ 
+ 			// Add variables for access to context and variables
+ 			JMeterContext jmctx = JMeterContextService.getContext();
+ 			JMeterVariables vars = jmctx.getVariables();
+-			bshInterpreter.set("ctx", jmctx);//$NON-NLS-1$
+-			bshInterpreter.set("vars", vars);//$NON-NLS-1$
++            getBeanShellInterpreter().set("ctx", jmctx);//$NON-NLS-1$
++            getBeanShellInterpreter().set("vars", vars);//$NON-NLS-1$
+ 
+             res.setDataType(SampleResult.TEXT); // assume text output - script can override if necessary
+ 
+             Object bshOut;
+ 
+ 			if (fileName.length() == 0) {
+-				bshOut = bshInterpreter.eval(request);
++				bshOut = getBeanShellInterpreter().eval(request);
+ 			} else {
+-				bshOut = bshInterpreter.source(fileName);
++				bshOut = getBeanShellInterpreter().source(fileName);
+ 			}
+ 
+ 			if (bshOut != null) {// Set response data
+@@ -142,9 +130,9 @@
+ 			}
+             // script can also use setResponseData() so long as it returns null
+             
+-			res.setResponseCode(bshInterpreter.get("ResponseCode").toString());//$NON-NLS-1$
+-			res.setResponseMessage(bshInterpreter.get("ResponseMessage").toString());//$NON-NLS-1$
+-			isSuccessful = Boolean.valueOf(bshInterpreter.get("IsSuccess") //$NON-NLS-1$
++			res.setResponseCode(getBeanShellInterpreter().get("ResponseCode").toString());//$NON-NLS-1$
++			res.setResponseMessage(getBeanShellInterpreter().get("ResponseMessage").toString());//$NON-NLS-1$
++			isSuccessful = Boolean.valueOf(getBeanShellInterpreter().get("IsSuccess") //$NON-NLS-1$
+ 					.toString()).booleanValue();
+ 		}
+ 		/*
+@@ -173,68 +161,4 @@
+ 
+ 		return res;
+ 	}
+-
+-	public void threadStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}
+-	}
+-
+-	public void threadFinished() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog((new StringBuffer("testEnded(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testIterationStart(LoopIterationEvent event) {
+-		// Not implemented
+-	}
+-
+-	public void testStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog((new StringBuffer("testStarted(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-}
+\ No newline at end of file
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/BeanShellListener.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/BeanShellListener.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/BeanShellListener.java	(working copy)
+@@ -18,86 +18,54 @@
+ 
+ package org.apache.jmeter.visualizers;
+ 
+-import java.io.Serializable;
+-
+-import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.gui.UnsharedComponent;
+ import org.apache.jmeter.samplers.SampleEvent;
+ import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testbeans.TestBean;
+-import org.apache.jmeter.testelement.AbstractTestElement;
+-import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+-import org.apache.jmeter.util.BeanShellInterpreter;
+-import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.BeanShellTestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JMeterException;
+ import org.apache.log.Logger;
+ 
+-public class BeanShellListener extends AbstractTestElement 
+-    implements SampleListener, Visualizer, Serializable, TestBean, TestListener, UnsharedComponent  {
++public class BeanShellListener extends BeanShellTestElement 
++    implements Cloneable, SampleListener, Visualizer, TestBean, UnsharedComponent  {
+ 	
+     private static final Logger log = LoggingManager.getLoggerForClass();
+     
+     private static final long serialVersionUID = 2;
+ 
+-    transient private BeanShellInterpreter bshInterpreter = null;
+-
+     // can be specified in jmeter.properties
+     private static final String INIT_FILE = "beanshell.listener.init"; //$NON-NLS-1$
+ 
+-
+-    private String script = "";
+-    
+-    public BeanShellListener() {
+-    	init();
++    protected String getInitFileProperty() {
++        return INIT_FILE;
+     }
+ 
+-
+-	private void init() {
+-		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE),log);
+-		} catch (ClassNotFoundException e) {
+-			log.error("Cannot find BeanShell: "+e.toString());
+-		}
+-	}
+-
+-    private Object readResolve() {
+-    	init();
+-    	return this;
+-    }
+-    
+-	public String getScript() {
+-		return script;
+-	}
+-
+-
+-	public void setScript(String script) {
+-		this.script = script;
+-	}
+-
+-
+ 	public void sampleOccurred(SampleEvent se) {
++        if (getBeanShellInterpreter() == null) {
++            log.error("BeanShell not found");
++            return;
++        }
++        
+         JMeterContext jmctx = JMeterContextService.getContext();
+         JMeterVariables vars = jmctx.getVariables();
+         SampleResult samp=se.getResult();
+         try {
+             // Add variables for access to context and variables
+-            bshInterpreter.set("ctx", jmctx);//$NON-NLS-1$
+-            bshInterpreter.set("vars", vars);//$NON-NLS-1$
+-            bshInterpreter.set("sampleEvent", se);//$NON-NLS-1$
+-            bshInterpreter.set("sampleResult", samp);//$NON-NLS-1$
+-            bshInterpreter.eval(script);
++            getBeanShellInterpreter().set("ctx", jmctx);//$NON-NLS-1$
++            getBeanShellInterpreter().set("vars", vars);//$NON-NLS-1$
++            getBeanShellInterpreter().set("sampleEvent", se);//$NON-NLS-1$
++            getBeanShellInterpreter().set("sampleResult", samp);//$NON-NLS-1$
++            getBeanShellInterpreter().eval(getScript());
+         } catch (JMeterException e) {
+             log.warn("Problem in BeanShell script "+e);
+-        }
+-		
++        }		
+ 	}
+ 
+-
+ 	public void sampleStarted(SampleEvent e) {
+ 	}
+ 
+@@ -110,39 +78,9 @@
+ 	public boolean isStats() {// Required by Visualiser
+ 		return false;
+ 	}
+-
+-
+-	public void testEnded() {
+-		testEnded("");
+-	}
+-
+-
+-	public void testEnded(String host) {
+-		// TODO Auto-generated method stub
+-		
+-	}
+-
+-
+-	public void testIterationStart(LoopIterationEvent event) {
+-		// TODO Auto-generated method stub
+-		
+-	}
+-
+-
+-	public void testStarted() {
+-		testStarted("");
+-	}
+-
+-
+-	public void testStarted(String host) {
+-		// TODO Auto-generated method stub
+-		
+-	}
+-
+-//	public Object clone() {
+-//        BeanShellListener o = (BeanShellListener) super.clone();
+-//        o.script = script;
+-//		return o;
+-//	}
+     
++    public Object clone() {
++        BeanShellListener o = (BeanShellListener) super.clone();
++        return o;
++    }
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/modifiers/BeanShellPreProcessor.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/modifiers/BeanShellPreProcessor.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/modifiers/BeanShellPreProcessor.java	(working copy)
+@@ -18,59 +18,34 @@
+ 
+ package org.apache.jmeter.modifiers;
+ 
+-import java.io.Serializable;
+-
+-import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.processor.PreProcessor;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testbeans.TestBean;
+-import org.apache.jmeter.testelement.AbstractTestElement;
+-import org.apache.jmeter.testelement.TestListener;
+-import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+-import org.apache.jmeter.util.BeanShellInterpreter;
+-import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.BeanShellTestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JMeterException;
+ import org.apache.log.Logger;
+ 
+-public class BeanShellPreProcessor extends AbstractTestElement
+-    implements PreProcessor, Serializable, TestBean, ThreadListener, TestListener
++public class BeanShellPreProcessor extends BeanShellTestElement
++    implements Cloneable, PreProcessor, TestBean
+ {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+-    
+-    private static final long serialVersionUID = 3;
+ 
+-    private String script;
++    private static final long serialVersionUID = 3;
+     
+-    transient private BeanShellInterpreter bshInterpreter = null;
+-
+     // can be specified in jmeter.properties
+     private static final String INIT_FILE = "beanshell.preprocessor.init"; //$NON-NLS-1$
+ 
+-    public BeanShellPreProcessor() {
+-        super();
+-        init();
++    protected String getInitFileProperty() {
++        return INIT_FILE;
+     }
+ 
+-	private void init() {
+-		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE),log);
+-		} catch (ClassNotFoundException e) {
+-			log.error("Cannot find BeanShell: "+e.toString());
+-		}
+-	}
+-
+-    private Object readResolve() {
+-    	init();
+-    	return this;
+-    }
+-
+     public void process(){
+-        if (bshInterpreter == null) {
++        if (getBeanShellInterpreter() == null) {
+             return;
+         }
+         JMeterContext jmctx = JMeterContextService.getContext();
+@@ -79,12 +54,12 @@
+ 		SampleResult prev = jmctx.getPreviousResult();
+         try {
+             // Add variables for access to context and variables
+-            bshInterpreter.set("ctx", jmctx);//$NON-NLS-1$
+-            bshInterpreter.set("vars", vars);//$NON-NLS-1$
+-            bshInterpreter.set("sampler", sam);//$NON-NLS-1$
+-            bshInterpreter.set("prev", prev);//$NON-NLS-1$
++            getBeanShellInterpreter().set("ctx", jmctx);//$NON-NLS-1$
++            getBeanShellInterpreter().set("vars", vars);//$NON-NLS-1$
++            getBeanShellInterpreter().set("sampler", sam);//$NON-NLS-1$
++            getBeanShellInterpreter().set("prev", prev);//$NON-NLS-1$
+             
+-            bshInterpreter.eval(script);
++            getBeanShellInterpreter().eval(getScript());
+         } catch (JMeterException e) {
+             log.warn("Problem in BeanShell script "+e);
+         }
+@@ -92,79 +67,6 @@
+ 
+ 	public Object clone() {
+         BeanShellPreProcessor o = (BeanShellPreProcessor) super.clone();
+-        o.script = script;
+ 		return o;
+ 	}
+-    
+-    public String getScript(){
+-        return script;
+-    }
+-
+-    public void setScript(String s){
+-        script=s;
+-    }
+-
+-	public void threadStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}
+-	}
+-
+-	public void threadFinished() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testIterationStart(LoopIterationEvent event) {
+-		// Not implemented
+-	}
+-
+-	public void testStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/timers/BeanShellTimer.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/timers/BeanShellTimer.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/timers/BeanShellTimer.java	(working copy)
+@@ -18,51 +18,26 @@
+ 
+ package org.apache.jmeter.timers;
+ 
+-import java.io.Serializable;
+-
+-import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.testbeans.TestBean;
+-import org.apache.jmeter.testelement.AbstractTestElement;
+-import org.apache.jmeter.testelement.TestListener;
+-import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+-import org.apache.jmeter.util.BeanShellInterpreter;
+-import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.BeanShellTestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JMeterException;
+ import org.apache.log.Logger;
+ 
+-public class BeanShellTimer extends AbstractTestElement implements Timer, Serializable, TestBean, ThreadListener, TestListener {
++public class BeanShellTimer extends BeanShellTestElement implements Cloneable, Timer, TestBean {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+     
+     private static final long serialVersionUID = 2;
+ 
+-    private String script;
+-    
+-    transient private BeanShellInterpreter bshInterpreter = null;
+-
+     // can be specified in jmeter.properties
+     private static final String INIT_FILE = "beanshell.timer.init"; //$NON-NLS-1$
+ 
+-    public BeanShellTimer() {
+-        super();
+-        init();
++    protected String getInitFileProperty() {
++        return INIT_FILE;
+     }
+-
+-	private void init() {
+-		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE),log);
+-		} catch (ClassNotFoundException e) {
+-			log.error("Cannot find BeanShell: "+e.toString());
+-		}
+-	}
+-
+-    private Object readResolve() {
+-    	init();
+-    	return this;
+-    }
+     
+     /*
+ 	 * (non-Javadoc)
+@@ -71,7 +46,7 @@
+ 	 */
+ 	public long delay() {
+         String ret="0";
+-        if (bshInterpreter == null) {
++        if (getBeanShellInterpreter() == null) {
+         	log.error("BeanShell not found");
+         	return 0;
+         }
+@@ -79,9 +54,9 @@
+         JMeterVariables vars = jmctx.getVariables();
+         try {
+             // Add variables for access to context and variables
+-            bshInterpreter.set("ctx", jmctx);//$NON-NLS-1$
+-            bshInterpreter.set("vars", vars);//$NON-NLS-1$
+-            Object o = bshInterpreter.eval(script);
++            getBeanShellInterpreter().set("ctx", jmctx);//$NON-NLS-1$
++            getBeanShellInterpreter().set("vars", vars);//$NON-NLS-1$
++            Object o = getBeanShellInterpreter().eval(getScript());
+             if (o != null) ret=o.toString();
+         } catch (JMeterException e) {
+             log.warn("Problem in BeanShell script "+e);
+@@ -96,79 +71,6 @@
+ 
+ 	public Object clone() {
+         BeanShellTimer o = (BeanShellTimer) super.clone();
+-        o.script = script;
+ 		return o;
+ 	}
+-    
+-    public String getScript(){
+-        return script;
+-    }
+-
+-    public void setScript(String s){
+-        script=s;
+-    }
+-
+-	public void threadStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}
+-	}
+-
+-	public void threadFinished() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testIterationStart(LoopIterationEvent event) {
+-		// Not implemented
+-	}
+-
+-	public void testStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	(working copy)
+@@ -18,21 +18,12 @@
+ 
+ package org.apache.jmeter.assertions;
+ 
+-import java.io.IOException;
+-import java.io.Serializable;
+-
+-import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.samplers.SampleResult;
+-import org.apache.jmeter.testelement.AbstractTestElement;
+-import org.apache.jmeter.testelement.TestListener;
+-import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+-import org.apache.jmeter.util.BeanShellInterpreter;
+-import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.BeanShellTestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+-import org.apache.jorphan.util.JMeterException;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+@@ -40,38 +31,24 @@
+  * A sampler which understands BeanShell
+  * 
+  */
+-public class BeanShellAssertion extends AbstractTestElement implements Serializable, Assertion, ThreadListener, TestListener {
++public class BeanShellAssertion extends BeanShellTestElement implements Assertion {
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private static final long serialVersionUID = 3;
++
+ 	public static final String FILENAME = "BeanShellAssertion.filename"; //$NON-NLS-1$
+ 
+ 	public static final String SCRIPT = "BeanShellAssertion.query"; //$NON-NLS-1$
+ 
+ 	public static final String PARAMETERS = "BeanShellAssertion.parameters"; //$NON-NLS-1$
+ 
+-	// Not serialised - recreated as needed
+-	transient private BeanShellInterpreter bshInterpreter = null;
+-
+ 	// can be specified in jmeter.properties
+ 	public static final String INIT_FILE = "beanshell.assertion.init"; //$NON-NLS-1$
+ 
+-	public BeanShellAssertion() {
+-		init();
+-	}
++    protected String getInitFileProperty() {
++        return INIT_FILE;
++    }
+ 
+-	// Ensure deserialisation works in server
+-	private Object readResolve(){
+-		init();
+-		return this;
+-	}
+-
+-	private void init(){
+-		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE), log);
+-		} catch (ClassNotFoundException e) {
+-			log.error("Cannot find BeanShell: "+e.toString());
+-		}		
+-	}
+ 	public String getScript() {
+ 		return getPropertyAsString(SCRIPT);
+ 	}
+@@ -92,7 +69,7 @@
+ 	public AssertionResult getResult(SampleResult response) {
+ 		AssertionResult result = new AssertionResult(getName());
+ 
+-		if (bshInterpreter == null) {
++		if (getBeanShellInterpreter() == null) {
+ 			result.setFailure(true);
+ 			result.setError(true);
+ 			result.setFailureMessage("BeanShell Interpreter not found");
+@@ -102,47 +79,47 @@
+ 			String request = getScript();
+ 			String fileName = getFilename();
+ 
+-			bshInterpreter.set("FileName", getFilename());//$NON-NLS-1$
++            getBeanShellInterpreter().set("FileName", getFilename());//$NON-NLS-1$
+ 			// Set params as a single line
+-			bshInterpreter.set("Parameters", getParameters()); // $NON-NLS-1$
+-			bshInterpreter.set("bsh.args",//$NON-NLS-1$
++            getBeanShellInterpreter().set("Parameters", getParameters()); // $NON-NLS-1$
++            getBeanShellInterpreter().set("bsh.args",//$NON-NLS-1$
+ 					JOrphanUtils.split(getParameters(), " "));//$NON-NLS-1$
+ 
+ 			// Add SamplerData for consistency with BeanShell Sampler
+-			bshInterpreter.set("SampleResult", response); //$NON-NLS-1$
+-			bshInterpreter.set("Response", response); //$NON-NLS-1$
+-			bshInterpreter.set("ResponseData", response.getResponseData());//$NON-NLS-1$
+-			bshInterpreter.set("ResponseCode", response.getResponseCode());//$NON-NLS-1$
+-			bshInterpreter.set("ResponseMessage", response.getResponseMessage());//$NON-NLS-1$
+-			bshInterpreter.set("ResponseHeaders", response.getResponseHeaders());//$NON-NLS-1$
+-			bshInterpreter.set("RequestHeaders", response.getRequestHeaders());//$NON-NLS-1$
+-			bshInterpreter.set("SampleLabel", response.getSampleLabel());//$NON-NLS-1$
+-			bshInterpreter.set("SamplerData", response.getSamplerData());//$NON-NLS-1$
+-			bshInterpreter.set("Successful", response.isSuccessful());//$NON-NLS-1$
++            getBeanShellInterpreter().set("SampleResult", response); //$NON-NLS-1$
++            getBeanShellInterpreter().set("Response", response); //$NON-NLS-1$
++            getBeanShellInterpreter().set("ResponseData", response.getResponseData());//$NON-NLS-1$
++            getBeanShellInterpreter().set("ResponseCode", response.getResponseCode());//$NON-NLS-1$
++            getBeanShellInterpreter().set("ResponseMessage", response.getResponseMessage());//$NON-NLS-1$
++            getBeanShellInterpreter().set("ResponseHeaders", response.getResponseHeaders());//$NON-NLS-1$
++            getBeanShellInterpreter().set("RequestHeaders", response.getRequestHeaders());//$NON-NLS-1$
++            getBeanShellInterpreter().set("SampleLabel", response.getSampleLabel());//$NON-NLS-1$
++            getBeanShellInterpreter().set("SamplerData", response.getSamplerData());//$NON-NLS-1$
++            getBeanShellInterpreter().set("Successful", response.isSuccessful());//$NON-NLS-1$
+ 
+ 			// The following are used to set the Result details on return from
+ 			// the script:
+-			bshInterpreter.set("FailureMessage", "");//$NON-NLS-1$ //$NON-NLS-2$
+-			bshInterpreter.set("Failure", false);//$NON-NLS-1$
++            getBeanShellInterpreter().set("FailureMessage", "");//$NON-NLS-1$ //$NON-NLS-2$
++            getBeanShellInterpreter().set("Failure", false);//$NON-NLS-1$
+ 
+ 			// Add variables for access to context and variables
+ 			JMeterContext jmctx = JMeterContextService.getContext();
+ 			JMeterVariables vars = jmctx.getVariables();
+-			bshInterpreter.set("ctx", jmctx);//$NON-NLS-1$
+-			bshInterpreter.set("vars", vars);//$NON-NLS-1$
++            getBeanShellInterpreter().set("ctx", jmctx);//$NON-NLS-1$
++            getBeanShellInterpreter().set("vars", vars);//$NON-NLS-1$
+ 
+ 			// Object bshOut;
+ 
+ 			if (fileName.length() == 0) {
+ 				// bshOut =
+-				bshInterpreter.eval(request);
++                getBeanShellInterpreter().eval(request);
+ 			} else {
+ 				// bshOut =
+-				bshInterpreter.source(fileName);
++                getBeanShellInterpreter().source(fileName);
+ 			}
+ 
+-			result.setFailureMessage(bshInterpreter.get("FailureMessage").toString());//$NON-NLS-1$
+-			result.setFailure(Boolean.valueOf(bshInterpreter.get("Failure") //$NON-NLS-1$
++			result.setFailureMessage(getBeanShellInterpreter().get("FailureMessage").toString());//$NON-NLS-1$
++			result.setFailure(Boolean.valueOf(getBeanShellInterpreter().get("Failure") //$NON-NLS-1$
+ 					.toString()).booleanValue());
+ 			result.setError(false);
+ 		}
+@@ -167,68 +144,4 @@
+ 
+ 		return result;
+ 	}
+-
+-	public void threadStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}
+-	}
+-
+-	public void threadFinished() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testIterationStart(LoopIterationEvent event) {
+-		// Not implemented
+-	}
+-
+-	public void testStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-}
+\ No newline at end of file
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/extractor/BeanShellPostProcessor.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/extractor/BeanShellPostProcessor.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/extractor/BeanShellPostProcessor.java	(working copy)
+@@ -18,72 +18,47 @@
+ 
+ package org.apache.jmeter.extractor;
+ 
+-import java.io.Serializable;
+-
+-import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testbeans.TestBean;
+-import org.apache.jmeter.testelement.AbstractTestElement;
+-import org.apache.jmeter.testelement.TestListener;
+-import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
+-import org.apache.jmeter.util.BeanShellInterpreter;
+-import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.BeanShellTestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JMeterException;
+ import org.apache.log.Logger;
+ 
+-public class BeanShellPostProcessor extends AbstractTestElement 
+-    implements PostProcessor, Serializable, TestBean, ThreadListener, TestListener
++public class BeanShellPostProcessor extends BeanShellTestElement 
++    implements Cloneable, PostProcessor, TestBean
+ {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+-    
+-    private static final long serialVersionUID = 3;
+ 
+-    private String script;
++    private static final long serialVersionUID = 3;
+     
+-    transient private BeanShellInterpreter bshInterpreter = null;
+-
+     // can be specified in jmeter.properties
+     private static final String INIT_FILE = "beanshell.postprocessor.init"; //$NON-NLS-1$
+ 
+-    public BeanShellPostProcessor() {
+-        super();
+-        init();
++    protected String getInitFileProperty() {
++        return INIT_FILE;
+     }
+-
+-	private void init() {
+-		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE),log);
+-		} catch (ClassNotFoundException e) {
+-			log.error("Cannot find BeanShell: "+e.toString());
+-		}
+-	}
+-
+-    private Object readResolve() {
+-    	init();
+-    	return this;
+-    }
+     
+      public void process() {
+         JMeterContext jmctx = JMeterContextService.getContext();
+ 
+         SampleResult prev = jmctx.getPreviousResult();
+-		if (prev == null || bshInterpreter == null) {
++		if (prev == null || getBeanShellInterpreter() == null) {
+ 			return;
+ 		}
+ 
+         JMeterVariables vars = jmctx.getVariables();
+         try {
+             // Add variables for access to context and variables
+-            bshInterpreter.set("ctx", jmctx);//$NON-NLS-1$
+-            bshInterpreter.set("vars", vars);//$NON-NLS-1$
+-            bshInterpreter.set("prev", prev);//$NON-NLS-1$
+-            bshInterpreter.set("data", prev.getResponseData());//$NON-NLS-1$
+-            bshInterpreter.eval(script);
++            getBeanShellInterpreter().set("ctx", jmctx);//$NON-NLS-1$
++            getBeanShellInterpreter().set("vars", vars);//$NON-NLS-1$
++            getBeanShellInterpreter().set("prev", prev);//$NON-NLS-1$
++            getBeanShellInterpreter().set("data", prev.getResponseData());//$NON-NLS-1$
++            getBeanShellInterpreter().eval(getScript());
+         } catch (JMeterException e) {
+             log.warn("Problem in BeanShell script "+e);
+         }
+@@ -91,78 +66,7 @@
+ 
+ 	public Object clone() {
+         BeanShellPostProcessor o = (BeanShellPostProcessor) super.clone();
+-        o.script = script;
++        o.setScript(getScript());
+ 		return o;
+ 	}
+-    
+-    public String getScript(){
+-        return script;
+-    }
+-
+-    public void setScript(String s){
+-        script=s;
+-    }
+-	public void threadStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}
+-	}
+-
+-	public void threadFinished() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testIterationStart(LoopIterationEvent event) {
+-		// Not implemented
+-	}
+-
+-	public void testStarted() {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+-
+-	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
+-		try {
+-			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
+-					.append(host)
+-					.append(")") // $NON-NLS-1$
+-					.toString()); // $NON-NLS-1$
+-		} catch (JMeterException ignored) {
+-			log.debug(ignored.getLocalizedMessage());
+-		}		
+-	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/util/BeanShellTestElement.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/util/BeanShellTestElement.java	(revision 0)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/util/BeanShellTestElement.java	(revision 0)
+@@ -0,0 +1,150 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ * http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
++ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
++ * License for the specific language governing permissions and limitations
++ * under the License.
++ *  
++ */
++
++package org.apache.jmeter.util;
++
++import java.io.Serializable;
++
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.TestListener;
++import org.apache.jmeter.testelement.ThreadListener;
++import org.apache.jmeter.util.BeanShellInterpreter;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JMeterException;
++import org.apache.log.Logger;
++
++public abstract class BeanShellTestElement extends AbstractTestElement
++    implements Serializable, Cloneable, ThreadListener, TestListener
++{
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    
++    private static final long serialVersionUID = 3;
++
++    private String script;
++    
++    transient private BeanShellInterpreter bshInterpreter = null;
++
++    transient private boolean hasInitFile = false;
++
++    public BeanShellTestElement() {
++        super();
++        init();
++    }
++
++    protected abstract String getInitFileProperty();
++
++    protected BeanShellInterpreter getBeanShellInterpreter() {
++        return bshInterpreter;
++    }
++
++	private void init() {
++		try {
++            String initFileName = JMeterUtils.getProperty(getInitFileProperty());
++            hasInitFile = initFileName != null;
++            bshInterpreter = new BeanShellInterpreter(initFileName, log);
++		} catch (ClassNotFoundException e) {
++			log.error("Cannot find BeanShell: "+e.toString());
++		}
++	}
++
++    private Object readResolve() {
++    	init();
++    	return this;
++    }
++
++    public Object clone() {
++        BeanShellTestElement o = (BeanShellTestElement) super.clone();
++        o.init();
++        o.setScript(getScript());
++        return o;
++    }
++
++    public String getScript(){
++        return script;
++    }
++
++    public void setScript(String s){
++        script=s;
++    }
++
++	public void threadStarted() {
++        if (bshInterpreter == null || !hasInitFile) return;
++		try {
++			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
++		} catch (JMeterException ignored) {
++            log.debug(getClass().getSimpleName() + " : " + ignored.getLocalizedMessage()); // $NON-NLS-1$
++		}
++	}
++
++	public void threadFinished() {
++        if (bshInterpreter == null || !hasInitFile) return;
++		try {
++			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
++		} catch (JMeterException ignored) {
++            log.debug(getClass().getSimpleName() + " : " + ignored.getLocalizedMessage()); // $NON-NLS-1$
++		}		
++	}
++
++	public void testEnded() {
++        if (bshInterpreter == null || !hasInitFile) return;
++		try {
++			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
++		} catch (JMeterException ignored) {
++            log.debug(getClass().getSimpleName() + " : " + ignored.getLocalizedMessage()); // $NON-NLS-1$
++		}		
++	}
++
++	public void testEnded(String host) {
++        if (bshInterpreter == null || !hasInitFile) return;
++		try {
++			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
++					.append(host)
++					.append(")") // $NON-NLS-1$
++					.toString()); // $NON-NLS-1$
++		} catch (JMeterException ignored) {
++            log.debug(getClass().getSimpleName() + " : " + ignored.getLocalizedMessage()); // $NON-NLS-1$
++		}		
++	}
++
++	public void testIterationStart(LoopIterationEvent event) {
++		// Not implemented
++	}
++
++	public void testStarted() {
++        if (bshInterpreter == null || !hasInitFile) return;
++		try {
++			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
++		} catch (JMeterException ignored) {
++			log.debug(getClass().getSimpleName() + " : " + ignored.getLocalizedMessage()); // $NON-NLS-1$
++		}		
++	}
++
++	public void testStarted(String host) {
++        if (bshInterpreter == null || !hasInitFile) return;
++		try {
++			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
++					.append(host)
++					.append(")") // $NON-NLS-1$
++					.toString()); // $NON-NLS-1$
++		} catch (JMeterException ignored) {
++            log.debug(getClass().getSimpleName() + " : " + ignored.getLocalizedMessage()); // $NON-NLS-1$
++		}		
++	}
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/bin/jmeter.properties
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/bin/jmeter.properties	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/bin/jmeter.properties	(working copy)
+@@ -428,8 +428,8 @@
+ # Define the intialisation files for BeanShell Sampler, Function and other BeanShell elements
+ #beanshell.sampler.init=BeanShellSampler.bshrc
+ #beanshell.function.init=BeanShellFunction.bshrc
+-#beanshell.assertion.init=etc
+-#beanshell.listener.init=etc
++#beanshell.assertion.init=BeanShellAssertion.bshrc
++#beanshell.listener.init=BeanShellListeners.bshrc
+ #beanshell.postprocessor.init=etc
+ #beanshell.preprocessor.init=etc
+ #beanshell.timer.init=etc

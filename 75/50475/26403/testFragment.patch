@@ -1,0 +1,157 @@
+Index: src/components/org/apache/jmeter/control/IncludeController.java
+===================================================================
+--- src/components/org/apache/jmeter/control/IncludeController.java	(revision 1048910)
++++ src/components/org/apache/jmeter/control/IncludeController.java	(working copy)
+@@ -26,6 +26,9 @@
+ import java.util.Iterator;
+ import java.util.LinkedList;
+ 
++import org.apache.jmeter.testelement.TestPlan;
++import org.apache.jmeter.control.TestFragmentController;
++
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
+ import org.apache.jmeter.save.SaveService;
+ import org.apache.jmeter.services.FileServer;
+@@ -105,6 +108,10 @@
+         return SUBTREE;
+     }
+ 
++    public TestElement getReplacementElement() {
++        return SUB;
++    }
++
+     public void resolveReplacementSubTree(JMeterTreeNode context) {
+         this.SUBTREE = this.loadIncludedElements();
+     }
+@@ -135,6 +142,8 @@
+                 
+                 reader = new FileInputStream(file);
+                 tree = SaveService.loadTree(reader);
++                // filter the tree for a TestFragment.
++                tree = getProperBranch(tree);
+                 removeDisabledItems(tree);
+                 return tree;
+             } catch (NoClassDefFoundError ex) // Allow for missing optional jars
+@@ -164,6 +173,28 @@
+         return tree;
+     }
+ 
++    private HashTree getProperBranch(HashTree tree) {
++        Iterator<Object> iter = new LinkedList<Object>(tree.list()).iterator();
++        while (iter.hasNext()) {
++            TestElement item = (TestElement) iter.next();
++
++            //if we found a TestPlan, then we are on our way to the TestFragment
++            if (item instanceof TestPlan)
++            {
++                return getProperBranch(tree.getTree(item));
++            }
++
++            if (item instanceof TestFragmentController)
++            {
++                return tree.getTree(item);
++            }
++        }
++        //return the tree since we didn't find a TestFragment.  This will mimic the 
++        //old behavior to import an exact node.
++        return tree;
++    }
++
++
+     private void removeDisabledItems(HashTree tree) {
+         Iterator<Object> iter = new LinkedList<Object>(tree.list()).iterator();
+         while (iter.hasNext()) {
+Index: src/core/org/apache/jmeter/control/gui/TestPlanGui.java
+===================================================================
+--- src/core/org/apache/jmeter/control/gui/TestPlanGui.java	(revision 1048910)
++++ src/core/org/apache/jmeter/control/gui/TestPlanGui.java	(working copy)
+@@ -87,6 +87,7 @@
+         JPopupMenu pop = new JPopupMenu();
+         JMenu addMenu = new JMenu(JMeterUtils.getResString("add")); // $NON-NLS-1$
+         addMenu.add(MenuFactory.makeMenu(MenuFactory.THREADS, ActionNames.ADD));
++        addMenu.add(MenuFactory.makeMenu(MenuFactory.FRAGMENTS, ActionNames.ADD));
+         addMenu.add(MenuFactory.makeMenu(MenuFactory.CONFIG_ELEMENTS, ActionNames.ADD));
+         addMenu.add(MenuFactory.makeMenu(MenuFactory.TIMERS, ActionNames.ADD));
+         addMenu.add(MenuFactory.makeMenu(MenuFactory.PRE_PROCESSORS, ActionNames.ADD));
+Index: src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 1048910)
++++ src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -67,6 +67,8 @@
+      *  and also for resource lookup in messages.properties
+     */
+     public static final String THREADS = "menu_threads"; //$NON-NLS-1$
++    
++    public static final String FRAGMENTS = "menu_fragments"; //$NON-NLS-1$
+ 
+     public static final String TIMERS = "menu_timer"; //$NON-NLS-1$
+ 
+@@ -119,12 +121,13 @@
+     private static final String[] MENU_PARENT_SAMPLER = new String[] {
+         MenuFactory.CONTROLLERS };
+ 
+-    private static final List<MenuInfo> timers, controllers, samplers, threads,
+-        configElements, assertions, listeners, nonTestElements,
++    private static final List<MenuInfo> timers, controllers, samplers, threads, 
++        fragments,configElements, assertions, listeners, nonTestElements,
+         postProcessors, preProcessors;
+ 
+     static {
+         threads = new LinkedList<MenuInfo>();
++        fragments = new LinkedList<MenuInfo>();
+         timers = new LinkedList<MenuInfo>();
+         controllers = new LinkedList<MenuInfo>();
+         samplers = new LinkedList<MenuInfo>();
+@@ -135,6 +138,7 @@
+         preProcessors = new LinkedList<MenuInfo>();
+         nonTestElements = new LinkedList<MenuInfo>();
+         menuMap.put(THREADS, threads);
++        menuMap.put(FRAGMENTS, fragments);
+         menuMap.put(TIMERS, timers);
+         menuMap.put(ASSERTIONS, assertions);
+         menuMap.put(CONFIG_ELEMENTS, configElements);
+@@ -465,6 +469,9 @@
+                 if (categories.contains(THREADS)) {
+                     threads.add(new MenuInfo(item, name));
+                 }
++                if (categories.contains(FRAGMENTS)) {
++                    fragments.add(new MenuInfo(item, name));
++                }
+                 if (categories.contains(TIMERS)) {
+                     timers.add(new MenuInfo(item, name));
+                 }
+@@ -549,6 +556,14 @@
+             return false;
+         }
+         TestElement parent = parentNode.getTestElement();
++
++        // Force TestFragment to only be pastable under a Test Plan
++        if (foundClass(nodes, new Class[]{org.apache.jmeter.control.TestFragmentController.class})){
++            if (parent instanceof TestPlan)
++                return true;
++            return false;
++        }
++
+         if (parent instanceof WorkBench) {// allow everything else
+             return true;
+         }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1048910)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -488,6 +488,7 @@
+ menu_expand_all=Expand All
+ menu_generative_controller=Sampler
+ menu_threads=Threads (Users)
++menu_fragments=Test Fragment
+ menu_listener=Listener
+ menu_logic_controller=Logic Controller
+ menu_merge=Merge
+@@ -906,6 +907,7 @@
+ textbox_tooltip_cell=Double click to view/edit
+ thread_delay_properties=Thread Delay Properties
+ thread_group_title=Thread Group
++test_fragment_title=Test Fragment
+ thread_properties=Thread Properties
+ threadgroup=Thread Group
+ throughput_control_bynumber_label=Total Executions

@@ -1,0 +1,80 @@
+From 73aedf5f2824768e4912f52acb34c201fcdf0eac Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 28 Sep 2014 19:05:38 +0200
+Subject: [PATCH] If regex starts with '(' and ends with ')' the user wants to
+ include the boundary chars in the matched string.
+
+---
+ .../engine/util/ReplaceFunctionsWithStrings.java   | 10 +++++++++-
+ .../jmeter/engine/util/TestValueReplacer.java      | 22 +++++++++++++++++++++-
+ 2 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java b/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java
+index 5a47bfd..e2abffb 100644
+--- a/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java
++++ b/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java
+@@ -79,7 +79,7 @@ public class ReplaceFunctionsWithStrings extends AbstractTransformer {
+             String value = entry.getValue();
+             if (regexMatch) {
+                 try {
+-                    pattern = compiler.compile("\\b("+value+")\\b");
++                    pattern = compiler.compile(constructPattern(value));
+                     input = Util.substitute(pm, pattern,
+                             new StringSubstitution(FUNCTION_REF_PREFIX + key + FUNCTION_REF_SUFFIX),
+                             input, Util.SUBSTITUTE_ALL);
+@@ -92,4 +92,12 @@ public class ReplaceFunctionsWithStrings extends AbstractTransformer {
+         }
+         return new StringProperty(prop.getName(), input);
+     }
++
++    private String constructPattern(String value) {
++        if (value.startsWith("(") && value.endsWith(")")) {
++            return value;
++        }
++	return "\\b(" + value + ")\\b";
++    }
++
+ }
+diff --git a/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java b/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java
+index 8e47786..d092c7c 100644
+--- a/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java
++++ b/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java
+@@ -47,7 +47,8 @@ public class TestValueReplacer extends JMeterTestCase {
+             // The following used to be jacks_password, but the Arguments class uses
+             // HashMap for which the order is not defined.
+             variables.addParameter("password", "his_password");
+-            variables.addParameter("regex", ".*");
++            variables.addParameter("normal_regex", "Hello .*");
++            variables.addParameter("bounded_regex", "(<.*>)");
+             JMeterVariables vars = new JMeterVariables();
+             vars.put("server", "jakarta.apache.org");
+             JMeterContextService.getContext().setVariables(vars);
+@@ -72,6 +73,25 @@ public class TestValueReplacer extends JMeterTestCase {
+             assertEquals("${password}", args.get(1).getStringValue());
+         }
+ 
++        public void testReverseReplacementXml() throws Exception {
++            ValueReplacer replacer = new ValueReplacer(variables);
++            assertTrue(variables.getUserDefinedVariables().containsKey("bounded_regex"));
++            assertTrue(variables.getUserDefinedVariables().containsKey("normal_regex"));
++            assertTrue(replacer.containsKey("bounded_regex"));
++            assertTrue(replacer.containsKey("normal_regex"));
++            TestElement element = new TestPlan();
++            element.setProperty(new StringProperty("domain", "<this><is>xml</this></is>"));
++            List<Object> argsin = new ArrayList<Object>();
++            argsin.add("<this><is>xml</this></is>");
++            argsin.add("And I say: Hello World.");
++            element.setProperty(new CollectionProperty("args", argsin));
++            replacer.reverseReplace(element, true);
++            @SuppressWarnings("unchecked")
++            List<JMeterProperty> args = (List<JMeterProperty>) element.getProperty("args").getObjectValue();
++            assertEquals("${bounded_regex}", element.getPropertyAsString("domain"));
++            assertEquals("${bounded_regex}", args.get(0).getStringValue());
++        }
++
+         public void testReplace() throws Exception {
+             ValueReplacer replacer = new ValueReplacer();
+             replacer.setUserDefinedVariables(variables.getUserDefinedVariables());
+-- 
+1.9.1
+

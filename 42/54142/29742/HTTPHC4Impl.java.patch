@@ -1,0 +1,39 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1418369)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -231,7 +231,21 @@
+         
+         HttpRequestBase httpRequest = null;
+         try {
+-            URI uri = url.toURI();
++            String urlContentEncoding = getContentEncodingOrNull();
++            if(urlContentEncoding == null || urlContentEncoding.length() == 0) {
++                // Use the default encoding for urls
++                urlContentEncoding = EncoderCache.URL_ARGUMENT_ENCODING;
++            }
++
++            URI uri = new URI(url.getProtocol(), 
++                              null /*userInfo*/,
++                              url.getHost(), 
++                              url.getPort(), 
++                              // path and query might be already encoded so to prevent double encoding first it is decoded
++                              URLDecoder.decode(url.getPath(), urlContentEncoding), 
++                              URLDecoder.decode(url.getQuery(), urlContentEncoding), 
++                              null /*fragment*/);
++
+             if (method.equals(HTTPConstants.POST)) {
+                 httpRequest = new HttpPost(uri);
+             } else if (method.equals(HTTPConstants.PUT)) {
+@@ -249,7 +263,10 @@
+             } else if (method.equals(HTTPConstants.PATCH)) {
+                 httpRequest = new HttpPatch(uri);
+             } else {
+-                throw new IllegalArgumentException("Unexpected method: "+method);
++                throw new IllegalArgumentException(String.format("Unexpected method: \"%s\" for url: \"%s\" frameDepth=%d", 
++                                                                 method,
++                                                                 url.toString(),
++                                                                 frameDepth));
+             }
+             setupRequest(url, httpRequest, res); // can throw IOException
+         } catch (Exception e) {

@@ -1,0 +1,575 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 812523)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -406,6 +406,7 @@
+ junit_failure_msg=Failure Message
+ junit_pkg_filter=Package Filter
+ junit_request=JUnit Request
++junit_4_request=JUnit Annotated Request
+ junit_request_defaults=JUnit Request Defaults
+ junit_success_code=Success Code
+ junit_success_default_code=1000
+Index: src/jorphan/org/apache/jorphan/reflect/ClassFinder.java
+===================================================================
+--- src/jorphan/org/apache/jorphan/reflect/ClassFinder.java	(revision 812523)
++++ src/jorphan/org/apache/jorphan/reflect/ClassFinder.java	(working copy)
+@@ -21,6 +21,8 @@
+ import java.io.File;
+ import java.io.FilenameFilter;
+ import java.io.IOException;
++import java.lang.annotation.Annotation;
++import java.lang.reflect.Method;
+ import java.lang.reflect.Modifier;
+ import java.util.ArrayList;
+ import java.util.Enumeration;
+@@ -108,7 +110,51 @@
+             return false;
+         }
+     }
++    
++    private static class AnnoFilterTreeSet extends TreeSet{
++        private final boolean inner; // are inner classes OK?
+ 
++        // hack to reduce the need to load every class in non-GUI mode, which only needs functions
++        // TODO perhaps use BCEL to scan class files instead?
++        private final String contains; // class name should contain this string
++        private final String notContains; // class name should not contain this string
++        private final Class<? extends Annotation>[] annotations; // parent classes to check
++        private final transient ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader(); // Potentially expensive; do it once
++        AnnoFilterTreeSet(Class<? extends Annotation> []annotations, boolean inner, String contains, String notContains){
++            super();
++            this.annotations = annotations;
++            this.inner=inner;
++            this.contains=contains;
++            this.notContains=notContains;
++        }
++        /**
++         * Override the superclass so we only add classnames that
++         * meet the criteria.
++         *
++         * @param s - classname (must be a String)
++         * @return true if it is a new entry
++         *
++         * @see java.util.TreeSet#add(java.lang.Object)
++         */
++        public boolean add(String s){
++            if (contains(s)) {
++                return false;// No need to check it again
++            }
++            if (contains!=null && s.indexOf(contains) == -1){
++                return false; // It does not contain a required string
++            }
++            if (notContains!=null && s.indexOf(notContains) != -1){
++                return false; // It contains a banned string
++            }
++            if ((s.indexOf("$") == -1) || inner) { // $NON-NLS-1$
++                if (hasAnnotationOnMethod(annotations,s, contextClassLoader)) {
++                    return super.add(s);
++                }
++            }
++            return false;
++        }
++    }
++
+     /**
+      * Convenience method for
+      * <code>findClassesThatExtend(Class[], boolean)</code>
+@@ -221,7 +267,60 @@
+ 
+         return new ArrayList<String>(listClasses);//subClassList);
+     }
++    
++    public static List<String> findClassesWithMethodAnnotation(String[] strPathsOrJars,
++        final Class<? extends Annotation>[] annotations, final boolean innerClasses,
++        String contains, String notContains)
++        throws IOException  {
+ 
++    if (log.isDebugEnabled()) {
++        for (int i = 0; i < annotations.length ; i++){
++            log.debug("superclass: "+annotations[i].getName());
++        }
++    }
++
++    // Find all jars in the search path
++    strPathsOrJars = addJarsInPath(strPathsOrJars);
++    for (int k = 0; k < strPathsOrJars.length; k++) {
++        strPathsOrJars[k] = fixPathEntry(strPathsOrJars[k]);
++        if (log.isDebugEnabled()) {
++            log.debug("strPathsOrJars : " + strPathsOrJars[k]);
++        }
++    }
++
++    // Now eliminate any classpath entries that do not "match" the search
++    List<String> listPaths = getClasspathMatches(strPathsOrJars);
++    if (log.isDebugEnabled()) {
++        Iterator<String> tIter = listPaths.iterator();
++        while (tIter.hasNext()) {
++            log.debug("listPaths : " + tIter.next());
++        }
++    }
++
++    Set<String> listClasses = new AnnoFilterTreeSet(annotations, innerClasses, contains, notContains);
++    // first get all the classes
++    findClassesInPaths(listPaths, listClasses);
++    if (log.isDebugEnabled()) {
++        log.debug("listClasses.size()="+listClasses.size());
++        Iterator<String> tIter = listClasses.iterator();
++        while (tIter.hasNext()) {
++            log.debug("listClasses : " + tIter.next());
++        }
++    }
++
++//    // Now keep only the required classes
++//    Set subClassList = findAllSubclasses(superClasses, listClasses, innerClasses);
++//    if (log.isDebugEnabled()) {
++//        log.debug("subClassList.size()="+subClassList.size());
++//        Iterator tIter = subClassList.iterator();
++//        while (tIter.hasNext()) {
++//            log.debug("subClassList : " + tIter.next());
++//        }
++//    }
++
++    return new ArrayList<String>(listClasses);//subClassList);
++}
++
+     /*
+      * Returns the classpath entries that match the search list of jars and paths
+      */
+@@ -389,6 +488,29 @@
+             }
+         return false;
+     }
++    
++    private static boolean hasAnnotationOnMethod(Class<? extends Annotation>[] annotations, String classInQuestion,
++        ClassLoader contextClassLoader ){
++        try{
++            log.info("testing "+classInQuestion+" for annotations:");
++            for(Class c : annotations) {
++                log.info(""+c);
++            }
++            Class<?> c = Class.forName(classInQuestion, false, contextClassLoader);
++            for(Method method : c.getMethods()) {
++                for(int i = 0;i<annotations.length;i++) {
++                    Class<? extends Annotation> annotation = annotations[i];
++                    if(method.isAnnotationPresent(annotation)) {
++                        log.debug("found annotation on "+classInQuestion);
++                        return true;
++                    }
++                }
++            }
++        } catch (Throwable ignored) {
++            log.debug(ignored.getLocalizedMessage());
++        }
++        return false;
++    }
+ 
+ 
+     /*
+Index: src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitAnnotatedTestSamplerGui.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitAnnotatedTestSamplerGui.java	(revision 0)
++++ src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitAnnotatedTestSamplerGui.java	(revision 0)
+@@ -0,0 +1,59 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++*/
++
++package org.apache.jmeter.protocol.java.control.gui;
++
++import java.awt.event.ActionListener;
++import java.io.IOException;
++import java.util.List;
++
++import javax.swing.event.ChangeListener;
++
++import org.apache.jmeter.protocol.java.sampler.JUnitAnnotatedSampler;
++import org.apache.jmeter.protocol.java.sampler.JUnitSampler;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jorphan.reflect.ClassFinder;
++import org.junit.Test;
++
++/**
++ * The <code>JUnitAnnotatedTestSamplerGui</code> class provides the user interface
++ * for the {@link JUnitAnnotatedSampler}.
++ *
++ * @author Brian.Sweeney (at) sas (dot) com
++ */
++public class JUnitAnnotatedTestSamplerGui extends JUnitTestSamplerGui
++implements ChangeListener, ActionListener
++{
++    public String getLabelResource()
++    {
++        return "junit_4_request"; //$NON-NLS-1$
++    }   
++    
++    public TestElement createTestElement()
++    {
++        JUnitSampler sampler = new JUnitAnnotatedSampler();
++        modifyTestElement(sampler);
++        return sampler;
++    }
++    
++    List<String> findTestableClasses() throws IOException {
++        return ClassFinder.findClassesWithMethodAnnotation(SPATHS,
++            new Class[]{Test.class}, false, null, null);
++    }
++}
++
+Index: src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(revision 812523)
++++ src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(working copy)
+@@ -68,7 +68,7 @@
+     private static final String ONETIMETEARDOWN = "oneTimeTearDown"; //$NON-NLS-1$
+     private static final String SUITE = "suite"; //$NON-NLS-1$
+ 
+-    private static final String[] SPATHS;
++    static final String[] SPATHS;
+ 
+     static {
+         String paths[];
+@@ -131,7 +131,7 @@
+     /** A combo box allowing the user to choose a test class. */
+     private JComboBox classnameCombo;
+     private JComboBox methodName;
+-    private transient TestCase TESTCLASS = null;
++    private transient Object TESTCLASS = null;
+     private List<String> METHODLIST = null;
+ 
+     private transient ClassFilter FILTER = new ClassFilter();
+@@ -172,10 +172,8 @@
+         try
+         {
+             // Find all the classes which extend junit.framework.TestCase
+-            CLASSLIST =
+-                ClassFinder.findClassesThatExtend(
+-                    SPATHS,
+-                    new Class[] { TestCase.class });
++            CLASSLIST = findTestableClasses();
++                
+         }
+         catch (IOException e)
+         {
+@@ -328,7 +326,7 @@
+         String className =
+             ((String) classnameCombo.getSelectedItem());
+         if (className != null) {
+-            TESTCLASS = (TestCase)JUnitSampler.getClassInstance(className,
++            TESTCLASS = JUnitSampler.getClassInstance(className,
+                     constructorLabel.getText());
+             if (TESTCLASS == null) {
+                 clearMethodCombo();
+@@ -426,5 +424,11 @@
+             }
+         }
+     }
++    
++    List<String> findTestableClasses() throws IOException {
++        return ClassFinder.findClassesThatExtend(
++            SPATHS,
++            new Class[] { TestCase.class });
++    }
+ }
+ 
+Index: src/junit/org/apache/jmeter/protocol/java/sampler/JUnitAnnotatedSampler.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/sampler/JUnitAnnotatedSampler.java	(revision 0)
++++ src/junit/org/apache/jmeter/protocol/java/sampler/JUnitAnnotatedSampler.java	(revision 0)
+@@ -0,0 +1,265 @@
++package org.apache.jmeter.protocol.java.sampler;
++
++import java.lang.annotation.Annotation;
++import java.lang.reflect.InvocationTargetException;
++import java.lang.reflect.Method;
++import java.util.Enumeration;
++
++import junit.framework.AssertionFailedError;
++import junit.framework.ComparisonFailure;
++import junit.framework.TestCase;
++import junit.framework.TestFailure;
++import junit.framework.TestResult;
++
++import org.apache.jmeter.samplers.Entry;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++import org.junit.After;
++import org.junit.Before;
++import org.junit.Test;
++import org.junit.Test.None;
++
++/**
++ * Sampler class for annotated junit test cases.  This 
++ * leverages the {@link JUnitSampler} code pretty heavily.
++ * The difference is that this class will look for the <code>@Test</code>
++ * annotation instead of extensions of <code>TestCase</code>.
++ * 
++ * @author Brian.Sweeney (at) sas (dot) com
++ *
++ */
++
++public class JUnitAnnotatedSampler extends JUnitSampler
++{
++    private transient Object TEST_INSTANCE = null;
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    private static final long serialVersionUID = 1L; // Remember to change this when the class changes ...
++    
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.samplers.Sampler#sample(org.apache.jmeter.samplers.Entry)
++     */
++    public SampleResult sample(Entry entry) {
++        SampleResult sresult = new SampleResult();
++        String rlabel = getConstructorString();
++        if (rlabel.length()== 0) {
++            rlabel = JUnitSampler.class.getName();
++        }
++        sresult.setSampleLabel(getName());// Bug 41522 - don't use rlabel here
++        final String methodName = getMethod();
++        final String className = getClassname();
++        sresult.setSamplerData(className + "." + methodName);
++        // check to see if the test class is null. if it is, we create
++        // a new instance. this should only happen at the start of a
++        // test run
++        if (this.TEST_INSTANCE == null) {
++            this.TEST_INSTANCE = getClassInstance(className,rlabel);
++        }
++        if (this.TEST_INSTANCE != null){
++            initMethodObjects(this.TEST_INSTANCE);
++            // create a new TestResult
++            TestResult tr = new TestResult();
++//            this.TEST_INSTANCE.setName(methodName);
++            TestCase tc = null;
++            try {
++                tc = new AnnotatedTestCase();
++            } catch (SecurityException e) {
++                log.error(e.getLocalizedMessage());
++                return sresult;
++            } catch( NoSuchMethodException e) {
++                log.error(e.getLocalizedMessage());
++                return sresult;
++            }
++            tc.setName(methodName);
++            try {
++
++                if (!getDoNotSetUpTearDown() && SETUP_METHOD != null){
++                    try {
++                        SETUP_METHOD.invoke(this.TEST_INSTANCE,new Object[0]);
++                    } catch (InvocationTargetException e) {
++                        tr.addFailure(tc,
++                                new AssertionFailedError(e.getMessage()));
++                    } catch (IllegalAccessException e) {
++                        tr.addFailure(tc,
++                                new AssertionFailedError(e.getMessage()));
++                    } catch (IllegalArgumentException e) {
++                        tr.addFailure(tc,
++                                new AssertionFailedError(e.getMessage()));
++                    }
++                }
++                final Method m = getMethod(this.TEST_INSTANCE,methodName);
++                long timeout = 0L;
++                Class<? extends Throwable> expectedException = null;
++                Test annotation = m.getAnnotation(Test.class);
++                if(null != annotation) {
++                    expectedException = annotation.expected();
++                    timeout = annotation.timeout();
++                }
++                
++                tr.startTest(tc);
++                sresult.sampleStart();
++                // Do not use TestCase.run(TestResult) method, since it will
++                // call setUp and tearDown. Doing that will result in calling
++                // the setUp and tearDown method twice and the elapsed time
++                // will include setup and teardown.
++                Throwable thrown = null;
++                try {
++                    tc.runBare();
++                } catch(Throwable t) {
++                    thrown = t;
++                }
++                tr.endTest(tc);
++                sresult.sampleEnd();
++                
++                if(null == thrown) {
++                    if (expectedException != None.class) {
++                        tr.addFailure(
++                            tc,
++                            new AssertionFailedError(
++                                "No error was generated for a test case which specifies an error."));
++                        throw new Exception(
++                            "Unexpected lack of exception from the test case: "
++                                + getMethod());
++                    }
++                    else {
++                        //this is a pass condition
++                    }
++                }
++                else {
++                    //unravel 1x.  InvocationTargetException wraps the real exception.
++                    thrown = thrown.getCause();
++                    if (expectedException.isAssignableFrom(thrown.getClass()))
++//                            && thrown.getClass().isAssignableFrom(expectedException))
++                    {
++                        //The test actually passed
++                        log.debug("Test passed for " + getMethod());
++                    } else {
++                        tr.addFailure(tc, new AssertionFailedError("The wrong exception was thrown from the test case"));
++                        throw new Exception("The wrong exception was thrown from the test case");
++                    }
++                }
++
++                if( timeout > 0L && timeout < sresult.getTime()) {
++                    throw new Exception("Test took longer than speficied timeout.");
++                }
++                
++                if (!getDoNotSetUpTearDown() && TDOWN_METHOD != null){
++                    TDOWN_METHOD.invoke(TEST_INSTANCE,new Object[0]);
++                }
++
++                if (!getDoNotSetUpTearDown() && TDOWN_METHOD != null){
++                    TDOWN_METHOD.invoke(TEST_INSTANCE,new Object[0]);
++                }
++            } catch (InvocationTargetException e) {
++                sresult.setResponseCode(getErrorCode());
++                sresult.setResponseMessage(getError());
++                sresult.setResponseData(e.getMessage().getBytes());
++                sresult.setSuccessful(false);
++            } catch (IllegalAccessException e) {
++                sresult.setResponseCode(getErrorCode());
++                sresult.setResponseMessage(getError());
++                sresult.setResponseData(e.getMessage().getBytes());
++                sresult.setSuccessful(false);
++            } catch (ComparisonFailure e) {
++                sresult.setResponseCode(getErrorCode());
++                sresult.setResponseMessage(getError());
++                sresult.setResponseData(e.getMessage().getBytes());
++                sresult.setSuccessful(false);
++            } catch (IllegalArgumentException e) {
++                e.printStackTrace();
++                sresult.setResponseCode(getErrorCode());
++                sresult.setResponseMessage(getError());
++                sresult.setResponseData(e.getMessage().getBytes());
++                sresult.setSuccessful(false);
++            } catch (Exception e) {
++                e.printStackTrace();
++                sresult.setResponseCode(getErrorCode());
++                sresult.setResponseMessage(getError());
++                sresult.setResponseData(e.getMessage().getBytes());
++                sresult.setSuccessful(false);
++            } catch (Throwable e) {
++                sresult.setResponseCode(getErrorCode());
++                sresult.setResponseMessage(getError());
++                sresult.setResponseData(e.getMessage().getBytes());
++                sresult.setSuccessful(false);
++            }
++            if ( !tr.wasSuccessful() ){
++                sresult.setSuccessful(false);
++                StringBuffer buf = new StringBuffer();
++                buf.append( getFailure() );
++                Enumeration<?> en = tr.errors();
++                while (en.hasMoreElements()){
++                    Object item = en.nextElement();
++                    if (getAppendError() && item instanceof TestFailure) {
++                        buf.append( "Trace -- ");
++                        buf.append( ((TestFailure)item).trace() );
++                        buf.append( "Failure -- ");
++                        buf.append( ((TestFailure)item).toString() );
++                    } else if (getAppendException() && item instanceof Throwable) {
++                        buf.append( ((Throwable)item).getMessage() );
++                    }
++                }
++                sresult.setResponseMessage(buf.toString());
++                sresult.setRequestHeaders(buf.toString());
++                sresult.setResponseCode(getFailureCode());
++            } else {
++                // this means there's no failures
++                sresult.setSuccessful(true);
++                sresult.setResponseMessage(getSuccess());
++                sresult.setResponseCode(getSuccessCode());
++                sresult.setResponseData("Not Applicable".getBytes());
++            }
++        } else {
++            // we should log a warning, but allow the test to keep running
++            sresult.setSuccessful(false);
++            // this should be externalized to the properties
++            sresult.setResponseMessage("failed to create an instance of the class");
++        }
++        sresult.setBytes(0);
++        sresult.setContentType("text");
++        sresult.setDataType("Not Applicable");
++        sresult.setRequestHeaders("Not Applicable");
++        return sresult;
++    }
++    
++    /**
++     * Method tries to get the setUp and tearDown method for the class
++     * @param tc
++     */
++    private void initMethodObjects(Object testCase){
++        if (!super.checkStartUpTearDown && !getDoNotSetUpTearDown()) {
++            if (super.SETUP_METHOD == null) {
++                super.SETUP_METHOD = getMethodWithAnnotation(testCase, Before.class);
++            }
++            if (super.TDOWN_METHOD == null) {
++                super.TDOWN_METHOD = getMethodWithAnnotation(testCase, After.class);
++            }
++            super.checkStartUpTearDown = true;
++        }
++    }
++    
++    public Method getMethodWithAnnotation(Object clazz, Class<? extends Annotation> annotation) {
++        if(null != clazz && null != annotation) {
++            for(Method m : clazz.getClass().getMethods()) {
++                if(m.isAnnotationPresent(annotation)) {
++                    return m;
++                }
++            }
++        }
++        return null;
++    }
++    
++    class AnnotatedTestCase extends TestCase {
++        Method m = null;
++        public AnnotatedTestCase() throws SecurityException, NoSuchMethodException {
++            m = TEST_INSTANCE.getClass().getMethod(getMethod(), (Class[])null);
++        }
++        
++        protected void runTest() throws Throwable {
++//            for(Method m :TEST_INSTANCE.getClass().getMethods()) {
++//                log.debug("available method: "+m);
++//            }
++            m.invoke(TEST_INSTANCE, (Object[])null);
++        }
++    }
++}
+Index: src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java	(revision 812523)
++++ src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java	(working copy)
+@@ -72,9 +72,9 @@
+     public static final String RUNTEST = "run";
+ 
+     /// the Method objects for setUp and tearDown methods
+-    private transient Method SETUP_METHOD = null;
+-    private transient Method TDOWN_METHOD = null;
+-    private boolean checkStartUpTearDown = false;
++    protected transient Method SETUP_METHOD = null;
++    protected transient Method TDOWN_METHOD = null;
++    protected boolean checkStartUpTearDown = false;
+ 
+     private transient TestCase TEST_INSTANCE = null;
+ 

@@ -1,0 +1,24 @@
+Index: src/core/org/apache/jmeter/gui/MainFrame.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/MainFrame.java	(Revision 1780696)
++++ src/core/org/apache/jmeter/gui/MainFrame.java	(Arbeitskopie)
+@@ -241,6 +241,19 @@
+         init();
+         initTopLevelDndHandler();
+         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
++        
++        addMouseWheelListener(e -> {
++            if (e.isControlDown()) {
++                final float scale = 1.1f;
++                int rotation = e.getWheelRotation();
++                if (rotation > 0) { // DOWN
++                    JMeterUtils.applyScaleOnFonts(1.0f/scale);
++                } else if (rotation < 0) { // UP
++                    JMeterUtils.applyScaleOnFonts(scale);
++                }
++                e.consume();
++            }
++        });
+     }
+ 
+     protected void computeTestDuration() {

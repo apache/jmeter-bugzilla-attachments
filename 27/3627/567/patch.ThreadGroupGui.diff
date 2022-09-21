@@ -1,0 +1,58 @@
+--- \jakarta-jmeter-cvs\jakarta-jmeter\src\org\apache\jmeter\threads\gui\ThreadGroupGui.java	Fri Aug 31 00:46:46 2001
++++ \jakarta-jmeter-nightly\2001.09.15\jakarta-jmeter\src\org\apache\jmeter\threads\gui\ThreadGroupGui.java	Tue Sep 18 13:44:26 2001
+@@ -142,7 +142,32 @@
+ 		}
+ 		else if (field.equals(THREAD_NAME))
+ 		{
+-			model.setNumThreads(Integer.parseInt(threadInput.getText()));
++			try
++			{
++				model.setNumThreads(Integer.parseInt(threadInput.getText()));
++			}
++			catch (NumberFormatException nfe)
++			{
++				if (threadInput.getText().length() > 0)
++				{
++					JOptionPane.showMessageDialog(this, "You must enter a valid number",
++							"Invalid data", JOptionPane.WARNING_MESSAGE);
++					model.setNumThreads(model.getDefaultNumThreads());
++
++					// Right now, the cleanest thing to do is simply clear the 
++					// entire text field. We do not want to set the text to
++					// the default because that would be confusing to the user.
++					// For example, the user typed "5t" instead of "56". After
++					// the user closes the error dialog, the text would change
++					// from "5t" to "1".  A litle confusing. If anything, it
++					// should display just "5". Future enhancement...
++					threadInput.setText("");
++				}
++				else
++				{
++					model.setNumThreads(model.getDefaultNumThreads());
++				}
++			}
+ 		}
+ 		else if (field.equals(RAMP_NAME))
+ 		{
+@@ -152,10 +177,19 @@
+ 			}
+ 			catch (NumberFormatException nfe)
+ 			{
+-				// Ignore - only set value if valid
++				if (rampInput.getText().length() > 0)
++				{
++					JOptionPane.showMessageDialog(this, "You must enter a valid number",
++							"Invalid data", JOptionPane.WARNING_MESSAGE);
++					model.setRampUp(model.getDefaultRampUp());
++					rampInput.setText("");
++				}
++				else
++				{
++					model.setRampUp(model.getDefaultRampUp());
++				}
+ 			}
+ 		}
+-
+ 	}
+ 
+ 	/************************************************************

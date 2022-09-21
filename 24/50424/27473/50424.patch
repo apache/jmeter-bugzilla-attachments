@@ -1,0 +1,54 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(revision 1166194)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(working copy)
+@@ -176,7 +176,7 @@
+     @Override
+     public void clearGui() {
+         super.clearGui();
+-
++        wsdlMethods.setValues(new String[0]);
+         domain.setText(""); //$NON-NLS-1$
+         protocol.setText(""); //$NON-NLS-1$
+         port.setText(""); //$NON-NLS-1$
+@@ -262,6 +262,11 @@
+         super.configure(el);
+         WebServiceSampler sampler = (WebServiceSampler) el;
+         wsdlField.setText(sampler.getWsdlURL());
++        final String wsdlText = wsdlField.getText();
++        if (wsdlText != null && wsdlText.length() > 0) 
++        {
++            fillWsdlMethods(wsdlField.getText());
++        }
+         protocol.setText(sampler.getProtocol());
+         domain.setText(sampler.getDomain());
+         port.setText(sampler.getPropertyAsString(HTTPSamplerBase.PORT));
+@@ -361,11 +366,7 @@
+         } else if (eventSource == wsdlButton){
+             final String wsdlText = wsdlField.getText();
+             if (wsdlText != null && wsdlText.length() > 0) {
+-                String[] wsdlData = browseWSDL(wsdlText);
+-                if (wsdlData != null) {
+-                    wsdlMethods.setValues(wsdlData);
+-                    wsdlMethods.repaint();
+-                }
++                fillWsdlMethods(wsdlText);
+             } else {
+                 JOptionPane.showConfirmDialog(this,
+                         JMeterUtils.getResString("wsdl_url_error"), // $NON-NLS-1$
+@@ -375,4 +376,15 @@
+         }
+     }
+ 
++    /**
++     * @param wsdlText
++     */
++    private void fillWsdlMethods(final String wsdlText) {
++        String[] wsdlData = browseWSDL(wsdlText);
++        if (wsdlData != null) {
++            wsdlMethods.setValues(wsdlData);
++            wsdlMethods.repaint();
++        }
++    }
++
+ }

@@ -1,0 +1,305 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1814557)
++++ bin/jmeter.properties	(working copy)
+@@ -208,6 +208,13 @@
+ 
+ 
+ #---------------------------------------------------------------------------
++# JMX Save automatically before run
++#---------------------------------------------------------------------------
++#Enable auto saving of the .jmx file before start run a test plan
++#When enabled, before the run the .jmx will be saved and also backed up to the directory pointed
++save_automatically_before_run=false
++
++#---------------------------------------------------------------------------
+ # JMX Backup configuration
+ #---------------------------------------------------------------------------
+ #Enable auto backups of the .jmx file when a test plan is saved.
+Index: src/core/org/apache/jmeter/gui/action/AbstractAction.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/AbstractAction.java	(revision 1814557)
++++ src/core/org/apache/jmeter/gui/action/AbstractAction.java	(working copy)
+@@ -22,8 +22,6 @@
+ import java.io.File;
+ import java.text.MessageFormat;
+ import java.util.Iterator;
+-import java.util.Set;
+-
+ import javax.swing.JOptionPane;
+ 
+ import org.apache.jmeter.exceptions.IllegalUserActionException;
+@@ -50,6 +48,8 @@
+                             "resultcollector.action_if_file_exists", 
+                             ActionOnFile.ASK.name()));
+     
++    private static final String SAVE_BEFORE_RUN = "save_automatically_before_run"; // $NON-NLS-1$
++    
+     /**
+      * @see Command#doAction(ActionEvent)
+      */
+@@ -58,20 +58,21 @@
+     }
+ 
+     /**
++     * check if should save before run
+      * @param e the event that led to the call of this method
+      */
+-    protected void popupShouldSave(ActionEvent e) {
+-        log.debug("popupShouldSave");
+-        if (GuiPackage.getInstance().getTestPlanFile() == null) {
+-            if (JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(),
+-                    JMeterUtils.getResString("should_save"),  //$NON-NLS-1$
+-                    JMeterUtils.getResString("warning"),  //$NON-NLS-1$
+-                    JOptionPane.YES_NO_OPTION,
+-                    JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION) {
+-                ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(),ActionNames.SAVE));
+-            }
+-        }
+-    }
++	protected void popupShouldSave(ActionEvent e) {
++		log.debug("popupShouldSave");
++		if (GuiPackage.getInstance().getTestPlanFile() == null) {
++			if (JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(), JMeterUtils.getResString("should_save"), //$NON-NLS-1$
++					JMeterUtils.getResString("warning"), //$NON-NLS-1$
++					JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION) {
++				ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.SAVE));
++			}
++		} else if (JMeterUtils.getPropDefault(SAVE_BEFORE_RUN, false)) {
++			ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.SAVE));
++		}
++	}
+     
+     /**
+      * @param tree where check if listener has existing file
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1814557)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -108,6 +108,7 @@
+     public static final String VALIDATE_TG      = "validate_tg"; //$NON-NLS-1$
+     public static final String ZOOM_IN          = "zoom_in"; //$NON-NLS-1$
+     public static final String ZOOM_OUT         = "zoom_out"; //$NON-NLS-1$
++    public static final String SAVE_BEFORE_RUN         = "save_before_run"; //$NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames() {}
+Index: src/core/org/apache/jmeter/gui/action/SaveBeforeRun.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/SaveBeforeRun.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/SaveBeforeRun.java	(working copy)
+@@ -0,0 +1,55 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++import org.apache.jmeter.util.JMeterUtils;
++/**
++ * 
++ * Save Before Run Action
++ * 
++ * To save test plan before GUI execution
++ * 
++ * @author orim
++ *
++ */
++public class SaveBeforeRun extends AbstractAction {
++	private static final Set<String> commands = new HashSet<>();
++	private static final String SAVE_BEFORE_RUN = "save_automatically_before_run"; // $NON-NLS-1$
++
++	static {
++		commands.add(ActionNames.SAVE_BEFORE_RUN);
++	}
++
++	@Override
++	public Set<String> getActionNames() {
++		return commands;
++	}
++
++	@Override
++	public void doAction(ActionEvent e) {
++		if (ActionNames.SAVE_BEFORE_RUN.equals(e.getActionCommand())) {
++			boolean saveBeforeRunPropertyBefore = JMeterUtils.getPropDefault(SAVE_BEFORE_RUN, false);
++			// toggle boolean property value
++			JMeterUtils.setProperty(SAVE_BEFORE_RUN, saveBeforeRunPropertyBefore ? " false" : "true");
++		}
++	}
++}
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(revision 1814557)
++++ src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(working copy)
+@@ -369,7 +369,12 @@
+         JMenuItem zoomIn = makeMenuItemRes("menu_zoom_in", ActionNames.ZOOM_IN); //$NON-NLS-1$
+         optionsMenu.add(zoomIn);
+         JMenuItem zoomOut = makeMenuItemRes("menu_zoom_out", ActionNames.ZOOM_OUT); //$NON-NLS-1$
+-        optionsMenu.add(zoomOut);
++        optionsMenu.add(zoomOut);        
++        JCheckBoxMenuItem saveBeforeRun = makeCheckBoxMenuItemRes("menu_save_before_run", ActionNames.SAVE_BEFORE_RUN); //$NON-NLS-1$        
++        if (guiInstance != null) {
++            guiInstance.setMenuItemLoggerPanel(saveBeforeRun);
++        }
++        optionsMenu.add(saveBeforeRun);
+ 
+         addPluginsMenuItems(optionsMenu, menuCreators, MENU_LOCATION.OPTIONS);
+     }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1814557)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -689,6 +689,7 @@
+ menu_pre_processors=Pre Processors
+ menu_recent=Open Recent
+ menu_response_based_modifiers=Response Based Modifiers
++menu_save_before_run=Save Automatically Before Run
+ menu_search=Search
+ menu_search_reset=Reset Search
+ menu_tables=Table
+Index: test/src/org/apache/jmeter/functions/TestDigestFunction.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestDigestFunction.java	(revision 0)
++++ test/src/org/apache/jmeter/functions/TestDigestFunction.java	(working copy)
+@@ -0,0 +1,124 @@
++package org.apache.jmeter.functions;
++
++import static org.junit.Assert.assertEquals;
++
++import java.util.Collection;
++import java.util.LinkedList;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.Before;
++import org.junit.Test;
++/**
++ * Test Digest function
++ * 
++ * Add Tests with Sha1 and Sha512
++ * 
++ * @author orim
++ *
++ */
++public class TestDigestFunction extends JMeterTestCase {
++	protected AbstractFunction digest;	
++
++    private SampleResult result;
++
++    private Collection<CompoundVariable> params;
++
++    private JMeterVariables vars;
++
++    private JMeterContext jmctx;
++
++    @Before
++    public void setUp() {
++    	digest = new DigestEncode();
++        result = new SampleResult();
++        jmctx = JMeterContextService.getContext();
++        String data = "dummy data";
++        result.setResponseData(data, null);
++        vars = new JMeterVariables();
++        jmctx.setVariables(vars);
++        jmctx.setPreviousResult(result);
++        params = new LinkedList<>();
++    }
++    
++    
++    @Test
++    public void testParameterCount512() throws Exception {
++    	checkInvalidParameterCounts(digest, 2, 5);
++    }   
++    
++    @Test
++    public void testSha512() throws Exception {
++    	params.add(new CompoundVariable("SHA-512"));
++    	params.add(new CompoundVariable("nofile"));
++    	params.add(new CompoundVariable("nofile"));
++    	digest.setParameters(params);
++    	String returnValue = digest.execute(result, null);
++    	assertEquals("0a76f7cd4f3cd9bec27146c32a8cad3de865a48d07ff6a2a40f18f2b3307fef4d0de695d14c90234bd453b375aa2974ba17743564bc782ad1d6cf8b3f4db72a4", returnValue);
++    }      
++    
++    @Test
++    public void testSha1() throws Exception {
++    	params.add(new CompoundVariable("SHA-1"));    	
++    	params.add(new CompoundVariable("nofile"));    	
++    	digest.setParameters(params);
++    	String returnValue = digest.execute(result, null);
++    	assertEquals("4ea2ced10057872be25371cfe638d3b096c58f2f", returnValue);
++    }
++    
++    @Test
++    public void testSha1Variable() throws Exception {
++    	params.add(new CompoundVariable("SHA-1"));    	
++    	params.add(new CompoundVariable("nofile"));  
++    	params.add(new CompoundVariable(""));  
++    	params.add(new CompoundVariable("true"));
++    	params.add(new CompoundVariable("newVar"));  	
++    	digest.setParameters(params);
++    	String returnValue = digest.execute(result, null);
++    	assertEquals("4EA2CED10057872BE25371CFE638D3B096C58F2F", returnValue);
++    }
++
++    @Test
++    public void testSha512Variable() throws Exception {    	
++    	params.add(new CompoundVariable("SHA-512"));
++    	params.add(new CompoundVariable("nofile"));  
++    	params.add(new CompoundVariable(""));  
++    	params.add(new CompoundVariable("true"));
++    	params.add(new CompoundVariable("newVar"));
++        digest.setParameters(params);
++        String returnValue = digest.execute(result, null);
++        assertEquals("58DA94D45A97B35B31D7F76D2EBAC184BC4BDA512B966CDBE43FDE1CAE1CFAF89617082CA89928FB5DC1C75D60B93ADB5631F518F970CA6DCC196E1AFC678B8C", returnValue);
++    }
++    
++    @Test
++    public void testSha512Error() throws Exception {
++    	params.add(new CompoundVariable("nofile"));		
++    	boolean isFailed = false;
++    	try {
++    		digest.setParameters(params);
++    		digest.execute(result, null);
++    	} catch (InvalidVariableException e) {
++    		// expect failure
++    		isFailed = true;
++    	}
++    	assertEquals(isFailed, true);
++    }
++    
++    @Test
++	public void testSha1Error() throws Exception {
++		boolean isFailed = false;
++		try {
++	    	params.add(new CompoundVariable("SHA-1"));    	
++			digest.setParameters(params);
++			digest.execute(result, null);
++		} catch (InvalidVariableException e) {
++			// expect failure
++			isFailed = true;
++		}
++		assertEquals(isFailed, true);
++	}
++}

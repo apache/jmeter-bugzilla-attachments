@@ -1,0 +1,2235 @@
+From e0a3b96ba2bb3028981cd071a2d9d273119756f3 Mon Sep 17 00:00:00 2001
+From: ham1 <graham@ham1.co.uk>
+Date: Fri, 17 Oct 2014 22:36:00 +0100
+Subject: [PATCH] Fixed spelling+grammar, formatting, removed commented out
+ code etc.
+
+---
+ .../jmeter/visualizers/PropertyControlGui.java     |  58 ++------
+ .../apache/jmeter/visualizers/StatVisualizer.java  | 104 +-------------
+ .../apache/jmeter/config/gui/RowDetailDialog.java  |  20 +--
+ .../org/apache/jmeter/control/gui/TestPlanGui.java |  18 ++-
+ .../jmeter/functions/gui/FunctionHelper.java       |  19 +--
+ src/core/org/apache/jmeter/gui/MainFrame.java      |  59 ++++----
+ .../org/apache/jmeter/gui/action/AboutCommand.java |   9 +-
+ .../org/apache/jmeter/gui/action/ActionNames.java  |   5 +-
+ .../org/apache/jmeter/gui/action/AddToTree.java    |   5 +-
+ src/core/org/apache/jmeter/gui/action/Load.java    |  44 +++---
+ .../apache/jmeter/gui/action/SearchTreeDialog.java |  19 +--
+ .../apache/jmeter/gui/tree/JMeterTreeModel.java    |   8 +-
+ .../org/apache/jmeter/gui/tree/JMeterTreeNode.java |   6 +-
+ .../protocol/http/sampler/AccessLogSampler.java    |  95 ++++++------
+ .../jmeter/protocol/http/sampler/HTTPHC3Impl.java  | 159 +++++++++------------
+ .../jmeter/protocol/http/sampler/HTTPJavaImpl.java |   9 +-
+ .../protocol/http/util/accesslog/LogFilter.java    |  37 ++---
+ .../http/util/accesslog/SessionFilter.java         |  24 ++--
+ .../http/util/accesslog/SharedTCLogParser.java     |   8 +-
+ .../protocol/jms/sampler/FixedQueueExecutor.java   |  12 +-
+ .../org/apache/jmeter/gui/ReportGuiPackage.java    |   6 +-
+ .../report/gui/action/ReportActionRouter.java      |   9 +-
+ .../jmeter/report/gui/action/ReportDragNDrop.java  |  19 ++-
+ .../jmeter/report/gui/tree/ReportTreeNode.java     |   4 +-
+ .../apache/jmeter/visualizers/GenerateTreeGui.java |  29 ++--
+ xdocs/changes.xml                                  |  10 +-
+ 26 files changed, 288 insertions(+), 507 deletions(-)
+
+diff --git a/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java b/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java
+index 9fcfea2..59346a6 100644
+--- a/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java
++++ b/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java
+@@ -54,7 +54,7 @@ import org.apache.jorphan.gui.ObjectTableModel;
+ import org.apache.jorphan.reflect.Functor;
+ 
+ public class PropertyControlGui extends AbstractConfigGui
+-    implements ActionListener, UnsharedComponent {
++                                implements ActionListener, UnsharedComponent {
+ 
+     private static final long serialVersionUID = 1L;
+ 
+@@ -72,7 +72,7 @@ public class PropertyControlGui extends AbstractConfigGui
+     private static final String JMETER = "jmeter"; // $NON-NLS-1$
+ 
+     private final JCheckBox systemButton = new JCheckBox("System");
+-    
++
+     private final JCheckBox jmeterButton = new JCheckBox("JMeter");
+ 
+     private final JLabel tableLabel = new JLabel("Properties");
+@@ -83,12 +83,6 @@ public class PropertyControlGui extends AbstractConfigGui
+     /** The model for the arguments table. */
+     protected transient ObjectTableModel tableModel;
+ 
+-//    /** A button for adding new arguments to the table. */
+-//    private JButton add;
+-//
+-//    /** A button for removing arguments from the table. */
+-//    private JButton delete;
+-
+     public PropertyControlGui() {
+         super();
+         init();
+@@ -121,7 +115,6 @@ public class PropertyControlGui extends AbstractConfigGui
+             setUpData();
+             return;
+         }
+-
+     }
+ 
+     @Override
+@@ -138,7 +131,7 @@ public class PropertyControlGui extends AbstractConfigGui
+ 
+     private void setUpData(){
+         tableModel.clearData();
+-        Properties p=null;
++        Properties p = null;
+         if (systemButton.isSelected()){
+             p = System.getProperties();
+         }
+@@ -154,22 +147,22 @@ public class PropertyControlGui extends AbstractConfigGui
+             @Override
+             public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
+                 String m1,m2;
+-                m1=(String)o1.getKey();
+-                m2=(String)o2.getKey();
++                m1 = (String)o1.getKey();
++                m2 = (String)o2.getKey();
+                 return m1.compareTo(m2);
+             }
+         });
+         Iterator<Map.Entry<Object, Object>> i = al.iterator();
+-        while(i.hasNext()){
++        while (i.hasNext()) {
+             tableModel.addRow(i.next());
+         }
+-
+     }
+ 
+     @Override
+     public void modifyTestElement(TestElement element) {
+         configureTestElement(element);
+     }
++
+     private Component makeMainPanel() {
+         initializeTableModel();
+         table = new JTable(tableModel);
+@@ -200,38 +193,16 @@ public class PropertyControlGui extends AbstractConfigGui
+         return labelPanel;
+     }
+ 
+-//    /**
+-//     * Create a panel containing the add and delete buttons.
+-//     *
+-//     * @return a GUI panel containing the buttons
+-//     */
+-//    private JPanel makeButtonPanel() {// Not currently used
+-//        add = new JButton(JMeterUtils.getResString("add")); // $NON-NLS-1$
+-//        add.setActionCommand(ADD);
+-//        add.setEnabled(true);
+-//
+-//        delete = new JButton(JMeterUtils.getResString("delete")); // $NON-NLS-1$
+-//        delete.setActionCommand(DELETE);
+-//
+-//        JPanel buttonPanel = new JPanel();
+-//        buttonPanel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+-//         add.addActionListener(this);
+-//        delete.addActionListener(this);
+-//        buttonPanel.add(add);
+-//        buttonPanel.add(delete);
+-//        return buttonPanel;
+-//    }
+-
+     /**
+      * Initialize the components and layout of this component.
+      */
+     private void init() {
+         JPanel p = this;
+ 
+-            setLayout(new BorderLayout(0, 5));
+-            setBorder(makeBorder());
+-            add(makeTitlePanel(), BorderLayout.NORTH);
+-            p = new JPanel();
++        setLayout(new BorderLayout(0, 5));
++        setBorder(makeBorder());
++        add(makeTitlePanel(), BorderLayout.NORTH);
++        p = new JPanel();
+ 
+         p.setLayout(new BorderLayout());
+ 
+@@ -239,7 +210,6 @@ public class PropertyControlGui extends AbstractConfigGui
+         p.add(makeMainPanel(), BorderLayout.CENTER);
+         // Force a minimum table height of 70 pixels
+         p.add(Box.createVerticalStrut(70), BorderLayout.WEST);
+-        //p.add(makeButtonPanel(), BorderLayout.SOUTH);
+ 
+         add(p, BorderLayout.CENTER);
+         table.revalidate();
+@@ -250,9 +220,9 @@ public class PropertyControlGui extends AbstractConfigGui
+                 new Functor(Map.Entry.class, "getKey"), // $NON-NLS-1$
+                 new Functor(Map.Entry.class, "getValue") },  // $NON-NLS-1$
+                 new Functor[] {
+-                null, //new Functor("setName"), // $NON-NLS-1$
++                null,
+                 new Functor(Map.Entry.class,"setValue", new Class[] { Object.class }) // $NON-NLS-1$
+-            },
+-                new Class[] { String.class, String.class });
++        },
++        new Class[] { String.class, String.class });
+     }
+ }
+diff --git a/src/components/org/apache/jmeter/visualizers/StatVisualizer.java b/src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+index 64482fa..9b2bd08 100644
+--- a/src/components/org/apache/jmeter/visualizers/StatVisualizer.java
++++ b/src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+@@ -89,13 +89,13 @@ public class StatVisualizer extends AbstractVisualizer implements Clearable, Act
+     private JScrollPane myScrollPane;
+ 
+     private final JButton saveTable =
+-        new JButton(JMeterUtils.getResString("aggregate_graph_save_table"));            //$NON-NLS-1$
++        new JButton(JMeterUtils.getResString("aggregate_graph_save_table")); //$NON-NLS-1$
+ 
+     private final JCheckBox saveHeaders = // should header be saved with the data?
+-        new JCheckBox(JMeterUtils.getResString("aggregate_graph_save_table_header"),true);    //$NON-NLS-1$
++        new JCheckBox(JMeterUtils.getResString("aggregate_graph_save_table_header"), true); //$NON-NLS-1$
+ 
+     private final JCheckBox useGroupName =
+-        new JCheckBox(JMeterUtils.getResString("aggregate_graph_use_group_name"));            //$NON-NLS-1$
++        new JCheckBox(JMeterUtils.getResString("aggregate_graph_use_group_name")); //$NON-NLS-1$
+ 
+     private transient ObjectTableModel model;
+ 
+@@ -173,9 +173,7 @@ public class StatVisualizer extends AbstractVisualizer implements Clearable, Act
+                         model.insertRow(row, model.getRowCount() - 1);
+                     }
+                 }
+-                /*
+-                 * Synch is needed because multiple threads can update the counts.
+-                 */
++                // Synch is needed because multiple threads can update the counts.
+                 synchronized(row) {
+                     row.addSample(res);
+                 }
+@@ -183,7 +181,7 @@ public class StatVisualizer extends AbstractVisualizer implements Clearable, Act
+                 synchronized(tot) {
+                     tot.addSample(res);
+                 }
+-                model.fireTableDataChanged();                
++                model.fireTableDataChanged();
+             }
+         });
+     }
+@@ -216,8 +214,6 @@ public class StatVisualizer extends AbstractVisualizer implements Clearable, Act
+ 
+         mainPanel.add(makeTitlePanel());
+ 
+-        // SortFilterModel mySortedModel =
+-        // new SortFilterModel(myStatTableModel);
+         myJTable = new JTable(model);
+         myJTable.getTableHeader().setDefaultRenderer(new HeaderAsPropertyRenderer());
+         myJTable.setPreferredScrollableViewportSize(new Dimension(500, 70));
+@@ -269,93 +265,3 @@ public class StatVisualizer extends AbstractVisualizer implements Clearable, Act
+     }
+ }
+ 
+-/**
+- * Pulled this mainly out of a Core Java book to implement a sorted table -
+- * haven't implemented this yet, it needs some non-trivial work done to it to
+- * support our dynamically-sizing TableModel for this visualizer.
+- *
+- */
+-
+-//class SortFilterModel extends AbstractTableModel {
+-//  private TableModel model;
+-//
+-//  private int sortColumn;
+-//
+-//  private Row[] rows;
+-//
+-//  public SortFilterModel(TableModel m) {
+-//      model = m;
+-//      rows = new Row[model.getRowCount()];
+-//      for (int i = 0; i < rows.length; i++) {
+-//          rows[i] = new Row();
+-//          rows[i].index = i;
+-//      }
+-//  }
+-//
+-//  public SortFilterModel() {
+-//  }
+-//
+-//  public void setValueAt(Object aValue, int r, int c) {
+-//        model.setValueAt(aValue, rows[r].index, c);
+-//    }
+-//
+-//    public Object getValueAt(int r, int c) {
+-//        return model.getValueAt(rows[r].index, c);
+-//    }
+-//
+-//    public boolean isCellEditable(int r, int c) {
+-//        return model.isCellEditable(rows[r].index, c);
+-//    }
+-//
+-//    public int getRowCount() {
+-//        return model.getRowCount();
+-//    }
+-//
+-//    public int getColumnCount() {
+-//        return model.getColumnCount();
+-//    }
+-//
+-//    public String getColumnName(int c) {
+-//        return model.getColumnName(c);
+-//    }
+-//
+-//    public Class getColumnClass(int c) {
+-//        return model.getColumnClass(c);
+-//    }
+-//
+-//    public void sort(int c) {
+-//        sortColumn = c;
+-//        Arrays.sort(rows);
+-//        fireTableDataChanged();
+-//    }
+-//
+-//    public void addMouseListener(final JTable table) {
+-//        table.getTableHeader().addMouseListener(new MouseAdapter() {
+-//            public void mouseClicked(MouseEvent event) {
+-//                if (event.getClickCount() < 2) {
+-//                    return;
+-//                }
+-//                int tableColumn = table.columnAtPoint(event.getPoint());
+-//                int modelColumn = table.convertColumnIndexToModel(tableColumn);
+-//
+-//                sort(modelColumn);
+-//            }
+-//        });
+-//    }
+-//
+-//    private class Row implements Comparable {
+-//        public int index;
+-//
+-//        public int compareTo(Object other) {
+-//            Row otherRow = (Row) other;
+-//            Object a = model.getValueAt(index, sortColumn);
+-//            Object b = model.getValueAt(otherRow.index, sortColumn);
+-//
+-//            if (a instanceof Comparable) {
+-//                return ((Comparable) a).compareTo(b);
+-//            } else {
+-//                return index - otherRow.index;
+-//            }
+-//        }
+-//    }
+-//} // class SortFilterModel
+diff --git a/src/core/org/apache/jmeter/config/gui/RowDetailDialog.java b/src/core/org/apache/jmeter/config/gui/RowDetailDialog.java
+index fb18ee6..b0a799a 100644
+--- a/src/core/org/apache/jmeter/config/gui/RowDetailDialog.java
++++ b/src/core/org/apache/jmeter/config/gui/RowDetailDialog.java
+@@ -76,13 +76,13 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+     private JButton nextButton;
+ 
+     private JButton previousButton;
+-    
++
+     private JButton closeButton;
+ 
+     private ObjectTableModel tableModel;
+ 
+     private int selectedRow;
+-    
++
+     private boolean textChanged = true; // change to false after the first insert
+ 
+ 
+@@ -102,9 +102,6 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+         JRootPane rootPane = new JRootPane();
+         // Hide Window on ESC
+         Action escapeAction = new AbstractAction("ESCAPE") {
+-            /**
+-             *
+-             */
+             private static final long serialVersionUID = -8699034338969407625L;
+ 
+             @Override
+@@ -114,9 +111,6 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+         };
+         // Do update on Enter
+         Action enterAction = new AbstractAction("ENTER") {
+-            /**
+-             *
+-             */
+             private static final long serialVersionUID = -1529005452976176873L;
+ 
+             @Override
+@@ -198,22 +192,22 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+     @Override
+     public void actionPerformed(ActionEvent e) {
+         String action = e.getActionCommand();
+-        if(action.equals(CLOSE)) {
++        if (action.equals(CLOSE)) {
+             this.setVisible(false);
+         }
+-        else if(action.equals(NEXT)) {
++        else if (action.equals(NEXT)) {
+             selectedRow++;
+             previousButton.setEnabled(true);
+             nextButton.setEnabled(selectedRow < tableModel.getRowCount()-1);
+             setValues(selectedRow);
+         }
+-        else if(action.equals(PREVIOUS)) {
++        else if (action.equals(PREVIOUS)) {
+             selectedRow--;
+             nextButton.setEnabled(true);
+             previousButton.setEnabled(selectedRow > 0);
+             setValues(selectedRow);
+         }
+-        else if(action.equals(UPDATE)) {
++        else if (action.equals(UPDATE)) {
+             doUpdate(e);
+         }
+     }
+@@ -265,5 +259,5 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+     public void changedUpdate(DocumentEvent e) {
+         changeLabelButton();
+     }
+-    
++
+ }
+diff --git a/src/core/org/apache/jmeter/control/gui/TestPlanGui.java b/src/core/org/apache/jmeter/control/gui/TestPlanGui.java
+index 4e5a4a6..6fea391 100644
+--- a/src/core/org/apache/jmeter/control/gui/TestPlanGui.java
++++ b/src/core/org/apache/jmeter/control/gui/TestPlanGui.java
+@@ -104,7 +104,6 @@ public class TestPlanGui extends AbstractJMeterGuiComponent {
+         return pop;
+     }
+ 
+-    /* Implements JMeterGUIComponent.createTestElement() */
+     @Override
+     public TestElement createTestElement() {
+         TestPlan tp = new TestPlan();
+@@ -112,7 +111,6 @@ public class TestPlanGui extends AbstractJMeterGuiComponent {
+         return tp;
+     }
+ 
+-    /* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+     @Override
+     public void modifyTestElement(TestElement plan) {
+         super.configureTestElement(plan);
+@@ -158,14 +156,14 @@ public class TestPlanGui extends AbstractJMeterGuiComponent {
+         super.configure(el);
+         if (el instanceof TestPlan) {
+             TestPlan tp = (TestPlan) el;
+-        functionalMode.setSelected(tp.isFunctionalMode());
+-        serializedMode.setSelected(tp.isSerialized());
+-        tearDownOnShutdown.setSelected(tp.isTearDownOnShutdown());
+-        final JMeterProperty udv = tp.getUserDefinedVariablesAsProperty();
+-        if (udv != null) {
+-            argsPanel.configure((Arguments) udv.getObjectValue());
+-        }
+-        browseJar.setFiles(tp.getTestPlanClasspathArray());
++            functionalMode.setSelected(tp.isFunctionalMode());
++            serializedMode.setSelected(tp.isSerialized());
++            tearDownOnShutdown.setSelected(tp.isTearDownOnShutdown());
++            JMeterProperty udv = tp.getUserDefinedVariablesAsProperty();
++            if (udv != null) {
++                argsPanel.configure((Arguments) udv.getObjectValue());
++            }
++            browseJar.setFiles(tp.getTestPlanClasspathArray());
+         }
+     }
+ 
+diff --git a/src/core/org/apache/jmeter/functions/gui/FunctionHelper.java b/src/core/org/apache/jmeter/functions/gui/FunctionHelper.java
+index d0b6f7f..611bc16 100644
+--- a/src/core/org/apache/jmeter/functions/gui/FunctionHelper.java
++++ b/src/core/org/apache/jmeter/functions/gui/FunctionHelper.java
+@@ -35,7 +35,6 @@ import javax.swing.JDialog;
+ import javax.swing.JFrame;
+ import javax.swing.JPanel;
+ import javax.swing.JRootPane;
+-import javax.swing.KeyStroke;
+ import javax.swing.event.ChangeEvent;
+ import javax.swing.event.ChangeListener;
+ 
+@@ -69,31 +68,27 @@ public class FunctionHelper extends JDialog implements ActionListener, ChangeLis
+         init();
+         JMeterUtils.addLocaleChangeListener(this);
+     }
+-    
++
+     /**
+      * Allow Dialog to be closed by ESC key
+      */
+     @Override
+     protected JRootPane createRootPane() {
+         JRootPane rootPane = new JRootPane();
+-        KeyStroke stroke = KeyStrokes.ESC;
+-        javax.swing.Action escapeAction = new AbstractAction("ESCAPE") { 
+-            /**
+-             * 
+-             */
++        Action escapeAction = new AbstractAction("ESCAPE") {
+             private static final long serialVersionUID = -4036804004190858925L;
+ 
+             @Override
+-            public void actionPerformed(ActionEvent actionEvent) { 
++            public void actionPerformed(ActionEvent actionEvent) {
+                 setVisible(false);
+-            } 
++            }
+         };
+         rootPane.getActionMap().put(escapeAction.getValue(Action.NAME), escapeAction);
+         InputMap inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+-        inputMap.put(stroke, escapeAction.getValue(Action.NAME));
++        inputMap.put(KeyStrokes.ESC, escapeAction.getValue(Action.NAME));
+         return rootPane;
+     }
+-    
++
+     private void init() {
+         parameterPanel = new ArgumentsPanel(JMeterUtils.getResString("function_params"), false); //$NON-NLS-1$
+         initializeFunctionList();
+@@ -112,7 +107,7 @@ public class FunctionHelper extends JDialog implements ActionListener, ChangeLis
+         generateButton.addActionListener(this);
+         resultsPanel.add(generateButton);
+         this.getContentPane().add(resultsPanel, BorderLayout.SOUTH);
+-        
++
+         this.pack();
+         ComponentUtil.centerComponentInWindow(this);
+     }
+diff --git a/src/core/org/apache/jmeter/gui/MainFrame.java b/src/core/org/apache/jmeter/gui/MainFrame.java
+index d56ceaa..6cadfc6 100644
+--- a/src/core/org/apache/jmeter/gui/MainFrame.java
++++ b/src/core/org/apache/jmeter/gui/MainFrame.java
+@@ -103,26 +103,25 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+ 
+     private static final long serialVersionUID = 240L;
+ 
+-    // This is used to keep track of local (non-remote) tests
+-    // The name is chosen to be an unlikely host-name
++    /** Keeps track of local (non-remote) tests - set to an unlikely hostname. */
+     public static final String LOCAL = "*local*"; // $NON-NLS-1$
+ 
+-    // The application name
++    /** The application name. */
+     private static final String DEFAULT_APP_NAME = "Apache JMeter"; // $NON-NLS-1$
+ 
+-    // The default title for the Menu bar
++    /** The default title for the Menu bar. */
+     private static final String DEFAULT_TITLE = DEFAULT_APP_NAME +
+             " (" + JMeterUtils.getJMeterVersion() + ")"; // $NON-NLS-1$ $NON-NLS-2$
+ 
+-    // Allow display/hide toolbar
++    /** Allow display/hide toolbar. */
+     private static final boolean DISPLAY_TOOLBAR =
+             JMeterUtils.getPropDefault("jmeter.toolbar.display", true); // $NON-NLS-1$
+ 
+-    // Allow display/hide LoggerPanel
++    /** Allow display/hide LoggerPanel. */
+     private static final boolean DISPLAY_LOGGER_PANEL =
+             JMeterUtils.getPropDefault("jmeter.loggerpanel.display", false); // $NON-NLS-1$
+ 
+-    // Allow display/hide Log Error/Fatal counter
++    /** Allow display/hide Log Error/Fatal counter. */
+     private static final boolean DISPLAY_ERROR_FATAL_COUNTER =
+             JMeterUtils.getPropDefault("jmeter.errorscounter.display", true); // $NON-NLS-1$
+ 
+@@ -206,7 +205,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         warnIndicator.setContentAreaFilled(false);
+         warnIndicator.setBorderPainted(false);
+         warnIndicator.setCursor(new Cursor(Cursor.HAND_CURSOR));
+-        
++
+         warnIndicator.setToolTipText(JMeterUtils.getResString("error_indicator_tooltip")); // $NON-NLS-1$
+         warnIndicator.addActionListener(this);
+         errorsOrFatalsLabel = new JLabel("0"); // $NON-NLS-1$
+@@ -318,10 +317,10 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+      */
+     public void closeMenu() {
+         if (menuBar.isSelected()) {
+-            MenuElement[] menuElement = menuBar.getSubElements();
+-            if (menuElement != null) {
+-                for (int i = 0; i < menuElement.length; i++) {
+-                    JMenu menu = (JMenu) menuElement[i];
++            MenuElement[] menuElements = menuBar.getSubElements();
++            if (menuElements != null) {
++                for (MenuElement menuElement : menuElements) {
++                    JMenu menu = (JMenu) menuElement;
+                     if (menu.isSelected()) {
+                         menu.setPopupMenuVisible(false);
+                         menu.setSelected(false);
+@@ -345,10 +344,10 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         }
+         stoppingMessage = new EscapeDialog(this, JMeterUtils.getResString("stopping_test_title"), true); //$NON-NLS-1$
+         String label = JMeterUtils.getResString("stopping_test"); //$NON-NLS-1
+-        if(!StringUtils.isEmpty(host)) {
++        if (!StringUtils.isEmpty(host)) {
+             label = label + JMeterUtils.getResString("stopping_test_host")+ ": " + host;
+         }
+-        JLabel stopLabel = new JLabel(label); //$NON-NLS-1$$NON-NLS-2$
++        JLabel stopLabel = new JLabel(label);
+         stopLabel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+         stoppingMessage.getContentPane().add(stopLabel);
+         stoppingMessage.pack();
+@@ -356,7 +355,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         SwingUtilities.invokeLater(new Runnable() {
+             @Override
+             public void run() {
+-                if (stoppingMessage != null) {// TODO - how can this be null?
++                if (stoppingMessage != null) { // TODO - how can this be null?
+                     stoppingMessage.setVisible(true);
+                 }
+             }
+@@ -409,7 +408,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         activeThreads.setText("0"); // $NON-NLS-1$
+         totalThreads.setText("0"); // $NON-NLS-1$
+         menuBar.setRunning(true, host);
+-        if(LOCAL.equals(host)) {
++        if (LOCAL.equals(host)) {
+             toolbar.setLocalTestStarted(true);
+         } else {
+             toolbar.setRemoteTestStarted(true);
+@@ -442,7 +441,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+             JMeterContextService.endTest();
+         }
+         menuBar.setRunning(false, host);
+-        if(LOCAL.equals(host)) {
++        if (LOCAL.equals(host)) {
+             toolbar.setLocalTestStarted(false);
+         } else {
+             toolbar.setRemoteTestStarted(false);
+@@ -486,9 +485,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+                 errorsAndFatalsCounterLogTarget
+                  });
+         } else {
+-            LoggingManager.addLogTargetToRootLogger(new LogTarget[]{
+-                    logPanel
+-                     });
++            LoggingManager.addLogTargetToRootLogger(new LogTarget[]{ logPanel });
+         }
+ 
+         topAndDown.setTopComponent(mainPanel);
+@@ -640,7 +637,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         treevar.addTreeSelectionListener(treeListener);
+         treevar.addMouseListener(treeListener);
+         treevar.addKeyListener(treeListener);
+-        
++
+         // enable drag&drop, install a custom transfer handler
+         treevar.setDragEnabled(true);
+         treevar.setDropMode(DropMode.ON_OR_INSERT);
+@@ -701,9 +698,9 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         try {
+             Transferable tr = dtde.getTransferable();
+             DataFlavor[] flavors = tr.getTransferDataFlavors();
+-            for (int i = 0; i < flavors.length; i++) {
++            for (DataFlavor flavor: flavors) {
+                 // Check for file lists specifically
+-                if (flavors[i].isFlavorJavaFileListType()) {
++                if (flavor.isFlavorJavaFileListType()) {
+                     dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);
+                     try {
+                         openJmxFilesFromDragAndDrop(tr);
+@@ -718,25 +715,24 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         } catch (IOException e) {
+             log.warn("Dnd failed" , e);
+         }
+-
+     }
+ 
+     public boolean openJmxFilesFromDragAndDrop(Transferable tr) throws UnsupportedFlavorException, IOException {
+         @SuppressWarnings("unchecked")
+         List<File> files = (List<File>)
+                 tr.getTransferData(DataFlavor.javaFileListFlavor);
+-        if(files.isEmpty()) {
++        if (files.isEmpty()) {
+             return false;
+         }
+         File file = files.get(0);
+-        if(!file.getName().endsWith(".jmx")) {
++        if (!file.getName().endsWith(".jmx")) {
+             log.warn("Importing file:" + file.getName()+ "from DnD failed because file extension does not end with .jmx");
+             return false;
+         }
+ 
+         ActionEvent fakeEvent = new ActionEvent(this, ActionEvent.ACTION_PERFORMED, ActionNames.OPEN);
+         LoadDraggedFile.loadProject(fakeEvent, file);
+-        
++
+         return true;
+     }
+ 
+@@ -745,15 +741,12 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         // NOOP
+     }
+ 
+-    /**
+-     *
+-     */
+     public final class ErrorsAndFatalsCounterLogTarget implements LogTarget, Clearable {
+         public AtomicInteger errorOrFatal = new AtomicInteger(0);
+ 
+         @Override
+         public void processEvent(LogEvent event) {
+-            if(event.getPriority().equals(Priority.ERROR) ||
++            if (event.getPriority().equals(Priority.ERROR) ||
+                     event.getPriority().equals(Priority.FATAL_ERROR)) {
+                 final int newValue = errorOrFatal.incrementAndGet();
+                 SwingUtilities.invokeLater(new Runnable() {
+@@ -781,7 +774,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+     @Override
+     public void clearData() {
+         logPanel.clear();
+-        if(DISPLAY_ERROR_FATAL_COUNTER) {
++        if (DISPLAY_ERROR_FATAL_COUNTER) {
+             errorsAndFatalsCounterLogTarget.clearData();
+         }
+     }
+@@ -791,7 +784,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+      */
+     @Override
+     public void actionPerformed(ActionEvent event) {
+-        if(event.getSource()==warnIndicator) {
++        if (event.getSource() == warnIndicator) {
+             ActionRouter.getInstance().doActionNow(new ActionEvent(event.getSource(), event.getID(), ActionNames.LOGGER_PANEL_ENABLE_DISABLE));
+         }
+     }
+diff --git a/src/core/org/apache/jmeter/gui/action/AboutCommand.java b/src/core/org/apache/jmeter/gui/action/AboutCommand.java
+index fedc577..75e77b5 100644
+--- a/src/core/org/apache/jmeter/gui/action/AboutCommand.java
++++ b/src/core/org/apache/jmeter/gui/action/AboutCommand.java
+@@ -80,7 +80,7 @@ public class AboutCommand implements Command {
+ 
+     /**
+      * Called by about button. Raises about dialog. Currently the about box has
+-     * the product image and the copyright notice. The dialog box is centered
++     * the product image and the copyright notice. The dialog box is centred
+      * over the MainFrame.
+      */
+     void about() {
+@@ -112,10 +112,9 @@ public class AboutCommand implements Command {
+             panel.add(infos, BorderLayout.SOUTH);
+         }
+ 
+-        // NOTE: these lines center the about dialog in the
+-        // current window. Some older Swing versions have
+-        // a bug in getLocationOnScreen() and they may not
+-        // make this behave properly.
++        // NOTE: these lines centre the about dialog in the current window.
++        // Some older Swing versions have a bug in getLocationOnScreen() and
++        // they may not make this behave properly.
+         Point p = mainFrame.getLocationOnScreen();
+         Dimension d1 = mainFrame.getSize();
+         Dimension d2 = about.getSize();
+diff --git a/src/core/org/apache/jmeter/gui/action/ActionNames.java b/src/core/org/apache/jmeter/gui/action/ActionNames.java
+index e77c4c7..ecfa20a 100644
+--- a/src/core/org/apache/jmeter/gui/action/ActionNames.java
++++ b/src/core/org/apache/jmeter/gui/action/ActionNames.java
+@@ -18,10 +18,9 @@
+ 
+ package org.apache.jmeter.gui.action;
+ 
+-/*
++/**
+  * Collect all the action names together in one place.
+- * This helps to ensure that there are no duplicates
+- *
++ * This helps to ensure that there are no duplicates.
+  *
+  */
+ public final class ActionNames {
+diff --git a/src/core/org/apache/jmeter/gui/action/AddToTree.java b/src/core/org/apache/jmeter/gui/action/AddToTree.java
+index 977013e..822d228 100644
+--- a/src/core/org/apache/jmeter/gui/action/AddToTree.java
++++ b/src/core/org/apache/jmeter/gui/action/AddToTree.java
+@@ -45,7 +45,6 @@ public class AddToTree implements Command {
+         commandSet = Collections.unmodifiableSet(commands);
+     }
+ 
+-
+     public AddToTree() {
+     }
+ 
+@@ -76,7 +75,7 @@ public class AddToTree implements Command {
+             log.error("", err); // $NON-NLS-1$
+             String msg = err.getMessage();
+             if (msg == null) {
+-                msg=err.toString();
++                msg = err.toString();
+             }
+             JMeterUtils.reportErrorToUser(msg);
+         }
+@@ -84,7 +83,7 @@ public class AddToTree implements Command {
+             log.error("", err); // $NON-NLS-1$
+             String msg = err.getMessage();
+             if (msg == null) {
+-                msg=err.toString();
++                msg = err.toString();
+             }
+             JMeterUtils.reportErrorToUser(msg);
+         }
+diff --git a/src/core/org/apache/jmeter/gui/action/Load.java b/src/core/org/apache/jmeter/gui/action/Load.java
+index 5ac128d..394cbe3 100644
+--- a/src/core/org/apache/jmeter/gui/action/Load.java
++++ b/src/core/org/apache/jmeter/gui/action/Load.java
+@@ -81,10 +81,10 @@ public class Load implements Command {
+             return;
+         }
+         final File selectedFile = chooser.getSelectedFile();
+-        if(selectedFile != null) {
++        if (selectedFile != null) {
+             final boolean merging = e.getActionCommand().equals(ActionNames.MERGE);
+             // We must ask the user if it is ok to close current project
+-            if(!merging) { // i.e. it is OPEN
++            if (!merging) { // i.e. it is OPEN
+                 if (!Close.performAction(e)) {
+                     return;
+                 }
+@@ -121,25 +121,25 @@ public class Load implements Command {
+         if (f != null) {
+             InputStream reader = null;
+             try {
+-                    if (merging) {
+-                        log.info("Merging file: " + f);
+-                    } else {
+-                        log.info("Loading file: " + f);
+-                        // TODO should this be done even if not a full test plan?
+-                        // and what if load fails?
+-                        if(setDetails) {
+-                            FileServer.getFileServer().setBaseForScript(f);
+-                        }
+-                    }
+-                    reader = new FileInputStream(f);
+-                    final HashTree tree = SaveService.loadTree(reader);
+-                    final boolean isTestPlan = insertLoadedTree(e.getID(), tree, merging);
+-    
+-                    // don't change name if merging
+-                    if (!merging && isTestPlan && setDetails) {
+-                        // TODO should setBaseForScript be called here rather than above?
+-                        guiPackage.setTestPlanFile(f.getAbsolutePath());
++                if (merging) {
++                    log.info("Merging file: " + f);
++                } else {
++                    log.info("Loading file: " + f);
++                    // TODO should this be done even if not a full test plan?
++                    // and what if load fails?
++                    if(setDetails) {
++                        FileServer.getFileServer().setBaseForScript(f);
+                     }
++                }
++                reader = new FileInputStream(f);
++                final HashTree tree = SaveService.loadTree(reader);
++                final boolean isTestPlan = insertLoadedTree(e.getID(), tree, merging);
++
++                // don't change name if merging
++                if (!merging && isTestPlan && setDetails) {
++                    // TODO should setBaseForScript be called here rather than above?
++                    guiPackage.setTestPlanFile(f.getAbsolutePath());
++                }
+             } catch (NoClassDefFoundError ex) {// Allow for missing optional jars
+                 reportError("Missing jar file", ex, true);
+             } catch (ConversionException ex) {
+@@ -203,8 +203,8 @@ public class Load implements Command {
+         // Send different event wether we are merging a test plan into another test plan,
+         // or loading a testplan from scratch
+         ActionEvent actionEvent =
+-            new ActionEvent(subTree.get(subTree.getArray()[subTree.size() - 1]), id, 
+-                    merging ? ActionNames.SUB_TREE_MERGED : ActionNames.SUB_TREE_LOADED);
++                new ActionEvent(subTree.get(subTree.getArray()[subTree.size() - 1]), id,
++                        merging ? ActionNames.SUB_TREE_MERGED : ActionNames.SUB_TREE_LOADED);
+ 
+         ActionRouter.getInstance().actionPerformed(actionEvent);
+         final JTree jTree = guiInstance.getMainFrame().getTree();
+diff --git a/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java b/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java
+index e44b30c..032220d 100644
+--- a/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java
++++ b/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java
+@@ -59,9 +59,6 @@ import org.apache.log.Logger;
+  * FIXME Why is searchTF not getting focus correctly after having been setVisible(false) once
+  */
+ public class SearchTreeDialog extends JDialog implements ActionListener {
+-    /**
+-     *
+-     */
+     private static final long serialVersionUID = -4436834972710248247L;
+ 
+     private static final Logger logger = LoggingManager.getLoggerForClass();
+@@ -93,9 +90,6 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+         JRootPane rootPane = new JRootPane();
+         // Hide Window on ESC
+         Action escapeAction = new AbstractAction("ESCAPE") {
+-            /**
+-             *
+-             */
+             private static final long serialVersionUID = -6543764044868772971L;
+ 
+             @Override
+@@ -105,9 +99,6 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+         };
+         // Do search on Enter
+         Action enterAction = new AbstractAction("ENTER") {
+-            /**
+-             *
+-             */
+             private static final long serialVersionUID = -3661361497864527363L;
+ 
+             @Override
+@@ -129,7 +120,7 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+         this.getContentPane().setLayout(new BorderLayout(10,10));
+ 
+         searchTF = new JLabeledTextField(JMeterUtils.getResString("search_text_field"), 20); //$NON-NLS-1$
+-        if(!StringUtils.isEmpty(lastSearch)) {
++        if (!StringUtils.isEmpty(lastSearch)) {
+             searchTF.setText(lastSearch);
+         }
+         isRegexpCB = new JCheckBox(JMeterUtils.getResString("search_text_chkbox_regexp"), false); //$NON-NLS-1$
+@@ -172,7 +163,7 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+      */
+     @Override
+     public void actionPerformed(ActionEvent e) {
+-        if(e.getSource()==cancelButton) {
++        if (e.getSource() == cancelButton) {
+             searchTF.requestFocusInWindow();
+             this.setVisible(false);
+             return;
+@@ -186,7 +177,7 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+     private void doSearch(ActionEvent e) {
+         boolean expand = e.getSource()==searchAndExpandButton;
+         String wordToSearch = searchTF.getText();
+-        if(StringUtils.isEmpty(wordToSearch)) {
++        if (StringUtils.isEmpty(wordToSearch)) {
+             return;
+         } else {
+             this.lastSearch = wordToSearch;
+@@ -196,7 +187,7 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+         ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.SEARCH_RESET));
+         // do search
+         Searcher searcher = null;
+-        if(isRegexpCB.isSelected()) {
++        if (isRegexpCB.isSelected()) {
+             searcher = new RegexpSearcher(isCaseSensitiveCB.isSelected(), searchTF.getText());
+         } else {
+             searcher = new RawTextSearcher(isCaseSensitiveCB.isSelected(), searchTF.getText());
+@@ -211,7 +202,7 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+                     List<JMeterTreeNode> matchingNodes = jMeterTreeNode.getPathToThreadGroup();
+                     List<String> searchableTokens = searchable.getSearchableTokens();
+                     boolean result = searcher.search(searchableTokens);
+-                    if(result) {
++                    if (result) {
+                         nodes.addAll(matchingNodes);
+                     }
+                 }
+diff --git a/src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java b/src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java
+index a28e6b8..b4e171a 100644
+--- a/src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java
++++ b/src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java
+@@ -48,9 +48,6 @@ public class JMeterTreeModel extends DefaultTreeModel {
+ 
+     public JMeterTreeModel() {
+         this(new TestPlanGui().createTestElement(),new WorkBenchGui().createTestElement());
+-//        super(new JMeterTreeNode(new WorkBenchGui().createTestElement(), null));
+-//        TestElement tp = new TestPlanGui().createTestElement();
+-//        initTree(tp);
+     }
+ 
+     /**
+@@ -62,9 +59,6 @@ public class JMeterTreeModel extends DefaultTreeModel {
+     @Deprecated
+     public JMeterTreeModel(Object o) {
+         this(new TestPlan(),new WorkBench());
+-//      super(new JMeterTreeNode(new WorkBench(), null));
+-//      TestElement tp = new TestPlan();
+-//      initTree(tp, new WorkBench());
+     }
+ 
+     /**
+@@ -135,7 +129,7 @@ public class JMeterTreeModel extends DefaultTreeModel {
+         // disable the loaded node
+         try {
+             newNode.setEnabled(component.isEnabled());
+-        } catch (Exception e) { // TODO - can this eever happen?
++        } catch (Exception e) { // TODO - can this ever happen?
+             newNode.setEnabled(true);
+         }
+ 
+diff --git a/src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java b/src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java
+index 02fda11..685980d 100644
+--- a/src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java
++++ b/src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java
+@@ -70,7 +70,7 @@ public class JMeterTreeNode extends DefaultMutableTreeNode implements NamedTreeN
+         getTestElement().setEnabled(enabled);
+         treeModel.nodeChanged(this);
+     }
+-    
++
+     /**
+      * Return nodes to level 2
+      * @return {@link List}<JMeterTreeNode>
+@@ -91,7 +91,7 @@ public class JMeterTreeNode extends DefaultMutableTreeNode implements NamedTreeN
+         }
+         return nodes;
+     }
+-    
++
+     /**
+      * Tag Node as result of a search
+      */
+@@ -99,7 +99,7 @@ public class JMeterTreeNode extends DefaultMutableTreeNode implements NamedTreeN
+         this.markedBySearch = tagged;
+         treeModel.nodeChanged(this);
+     }
+-    
++
+     /**
+      * Node is markedBySearch by a search
+      * @return true if marked by search
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSampler.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSampler.java
+index a69307e..3eca33a 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSampler.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSampler.java
+@@ -35,7 +35,6 @@ import org.apache.log.Logger;
+  * Description: <br>
+  * <br>
+  * AccessLogSampler is responsible for a couple of things:
+- * <p>
+  * <ul>
+  * <li>creating instances of Generator
+  * <li>creating instances of Parser
+@@ -49,11 +48,11 @@ import org.apache.log.Logger;
+  * the logs. It also doesn't care how Generator is implemented, as long as it
+  * implements the interface. This means a person could simply implement a dummy
+  * parser to generate random parameters and the generator consumes the results.
+- * This wasn't the original intent of the sampler. I originaly wanted to write
++ * This wasn't the original intent of the sampler. I originally wanted to write
+  * this sampler, so that I can take production logs to simulate production
+  * traffic in a test environment. Doing so is desirable to study odd or unusual
+  * behavior. It's also good to compare a new system against an existing system
+- * to get near apples- to-apples comparison. I've been asked if benchmarks are
++ * to get near apples-to-apples comparison. I've been asked if benchmarks are
+  * really fair comparisons just about every single time, so this helps me
+  * accomplish that task.
+  * <p>
+@@ -71,10 +70,9 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+ 
+     public static final String DEFAULT_CLASS = "org.apache.jmeter.protocol.http.util.accesslog.TCLogParser"; // $NON-NLS-1$
+ 
+-    /** private members used by class * */
+-    private transient LogParser PARSER = null;
++    /** private members used by class */
++    private transient LogParser parser = null;
+ 
+-    // NOTUSED private Class PARSERCLASS = null;
+     private String logFile, parserClassName, filterClassName;
+ 
+     private transient Filter filter;
+@@ -83,9 +81,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+ 
+     private boolean started = false;
+ 
+-    /**
+-     * Set the path where XML messages are stored for random selection.
+-     */
++    /** Set the path where XML messages are stored for random selection. */
+     public void setLogFile(String path) {
+         logFile = path;
+     }
+@@ -99,8 +95,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+     }
+ 
+     /**
+-     * it's kinda obvious, but we state it anyways. Set the xml file with a
+-     * string path.
++     * Set the xml file with a String classpath.
+      *
+      * @param classname -
+      *            parser class name
+@@ -119,8 +114,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+     }
+ 
+     /**
+-     * sample gets a new HTTPSampler from the generator and calls it's sample()
+-     * method.
++     * This gets a new HTTPSampler from the generator and calls .sample()
+      */
+     public SampleResult sampleWithParser() {
+         initFilter();
+@@ -128,22 +122,16 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+         SampleResult res = null;
+         try {
+ 
+-            if (PARSER == null) {
++            if (parser == null) {
+                 throw new JMeterException("No Parser available");
+             }
+-            /*
+-             * samp.setDomain(this.getDomain()); samp.setPort(this.getPort());
+-             */
+-            // we call parse with 1 to get only one.
+-            // this also means if we change the implementation
+-            // to use 2, it would use every other entry and
+-            // so on. Not that it is really useful, but a
+-            // person could use it that way if they have a
+-            // huge gigabyte log file and they only want to
+-            // use a quarter of the entries.
+-            int thisCount = PARSER.parseAndConfigure(1, this);
+-            if (thisCount < 0) // Was there an error?
+-            {
++           /* we call parse with 1 to get only one. If we  change the
++            * implementation to use 2, it would use every other entry and so on.
++            * It could use it that way if they have a huge (gigabyte)
++            * log file and they only want to use a proportion of the entries.
++            */
++            final int thisCount = parser.parseAndConfigure(1, this);
++            if (thisCount < 0) {
+                 return errorResult(new Error("Problem parsing the log file"), new HTTPSampleResult());
+             }
+             if (thisCount == 0) {
+@@ -154,7 +142,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+                 if (filter != null) {
+                     filter.reset();
+                 }
+-                CookieManager cm = getCookieManager();
++                final CookieManager cm = getCookieManager();
+                 if (cm != null) {
+                     cm.clear();
+                 }
+@@ -164,7 +152,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+             count = thisCount;
+             res = sample();
+             res.setSampleLabel(toString());
+-        } catch (Exception e) {
++        } catch (final Exception e) {
+             log.warn("Sampling failure", e);
+             return errorResult(e, new HTTPSampleResult());
+         }
+@@ -184,27 +172,26 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+     }
+ 
+     /**
+-     * Method will instantiate the log parser based on the class in the text
+-     * field. This was done to make it easier for people to plugin their own log
+-     * parser and use different log parser.
++     * Instantiates the log parser based on the class in the text field.
++     * This was done to make it easier for people to use their own parser.
+      */
+     public void instantiateParser() {
+-        if (PARSER == null) {
++        if (parser == null) {
+             try {
+                 if (this.getParserClassName() != null && this.getParserClassName().length() > 0) {
+                     if (this.getLogFile() != null && this.getLogFile().length() > 0) {
+-                        PARSER = (LogParser) Class.forName(getParserClassName()).newInstance();
+-                        PARSER.setSourceFile(this.getLogFile());
+-                        PARSER.setFilter(filter);
++                        parser = (LogParser) Class.forName(getParserClassName()).newInstance();
++                        parser.setSourceFile(this.getLogFile());
++                        parser.setFilter(filter);
+                     } else {
+                         log.error("No log file specified");
+                     }
+                 }
+-            } catch (InstantiationException e) {
++            } catch (final InstantiationException e) {
+                 log.error("", e);
+-            } catch (IllegalAccessException e) {
++            } catch (final IllegalAccessException e) {
+                 log.error("", e);
+-            } catch (ClassNotFoundException e) {
++            } catch (final ClassNotFoundException e) {
+                 log.error("", e);
+             }
+         }
+@@ -229,7 +216,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+      * @return Returns the domain.
+      */
+     @Override
+-    public String getDomain() { // N.B. Must be in this class for the TestBean code to work
++    public String getDomain() { // N.B. Required for the TestBean code
+         return super.getDomain();
+     }
+ 
+@@ -238,7 +225,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+      *            The domain to set.
+      */
+     @Override
+-    public void setDomain(String domain) { // N.B. Must be in this class for the TestBean code to work
++    public void setDomain(String domain) { // N.B. Required for the TestBean code
+         super.setDomain(domain);
+     }
+ 
+@@ -273,7 +260,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+     }
+ 
+     /**
+-     *
++     * Default constructor.
+      */
+     public AccessLogSampler() {
+         super();
+@@ -283,7 +270,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+         if (filter == null && filterClassName != null && filterClassName.length() > 0) {
+             try {
+                 filter = (Filter) Class.forName(filterClassName).newInstance();
+-            } catch (Exception e) {
++            } catch (final Exception e) {
+                 log.warn("Couldn't instantiate filter '" + filterClassName + "'", e);
+             }
+         }
+@@ -294,7 +281,7 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+      */
+     @Override
+     public Object clone() {
+-        AccessLogSampler s = (AccessLogSampler) super.clone();
++        final AccessLogSampler s = (AccessLogSampler) super.clone();
+         if (started) {
+             if (filterClassName != null && filterClassName.length() > 0) {
+ 
+@@ -303,16 +290,16 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+                         initFilter();
+                         s.filter = (Filter) ((TestCloneable) filter).clone();
+                     }
+-                    if(TestCloneable.class.isAssignableFrom(Class.forName(parserClassName)))
++                    if (TestCloneable.class.isAssignableFrom(Class.forName(parserClassName)))
+                     {
+                         instantiateParser();
+-                        s.PARSER = (LogParser)((TestCloneable)PARSER).clone();
+-                        if(filter != null)
++                        s.parser = (LogParser)((TestCloneable)parser).clone();
++                        if (filter != null)
+                         {
+-                            s.PARSER.setFilter(s.filter);
++                            s.parser.setFilter(s.filter);
+                         }
+                     }
+-                } catch (Exception e) {
++                } catch (final Exception e) {
+                     log.warn("Could not clone cloneable filter", e);
+                 }
+             }
+@@ -325,8 +312,8 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+      */
+     @Override
+     public void testEnded() {
+-        if (PARSER != null) {
+-            PARSER.close();
++        if (parser != null) {
++            parser.close();
+         }
+         filter = null;
+         started = false;
+@@ -347,10 +334,10 @@ public class AccessLogSampler extends HTTPSampler implements TestBean,ThreadList
+      */
+     @Override
+     public void threadFinished() {
+-        if(PARSER instanceof ThreadListener) {
+-            ((ThreadListener)PARSER).threadFinished();
++        if (parser instanceof ThreadListener) {
++            ((ThreadListener)parser).threadFinished();
+         }
+-        if(filter instanceof ThreadListener) {
++        if (filter instanceof ThreadListener) {
+             ((ThreadListener)filter).threadFinished();
+         }
+     }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+index f72d932..4ef72a8 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+@@ -98,7 +98,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+ 
+     private static final boolean canSetPreEmptive; // OK to set pre-emptive auth?
+ 
+-    private static final ThreadLocal<Map<HostConfiguration, HttpClient>> httpClients = 
++    private static final ThreadLocal<Map<HostConfiguration, HttpClient>> httpClients =
+         new ThreadLocal<Map<HostConfiguration, HttpClient>>(){
+         @Override
+         protected Map<HostConfiguration, HttpClient> initialValue() {
+@@ -112,41 +112,31 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+     private volatile boolean resetSSLContext;
+ 
+     static {
+-        log.info("HTTP request retry count = "+RETRY_COUNT);
++        log.info("HTTP request retry count = " + RETRY_COUNT);
+         if (CPS_HTTP > 0) {
+-            log.info("Setting up HTTP SlowProtocol, cps="+CPS_HTTP);
+-            Protocol.registerProtocol(HTTPConstants.PROTOCOL_HTTP,
+-                    new Protocol(HTTPConstants.PROTOCOL_HTTP,new SlowHttpClientSocketFactory(CPS_HTTP),HTTPConstants.DEFAULT_HTTP_PORT));
++            log.info("Setting up HTTP SlowProtocol, cps=" + CPS_HTTP);
++            Protocol protocol = new Protocol(HTTPConstants.PROTOCOL_HTTP, new SlowHttpClientSocketFactory(CPS_HTTP), HTTPConstants.DEFAULT_HTTP_PORT);
++            Protocol.registerProtocol(HTTPConstants.PROTOCOL_HTTP, protocol);
+         }
+ 
+-        // Now done in JsseSSLManager (which needs to register the protocol)
+-//        cps =
+-//            JMeterUtils.getPropDefault("httpclient.socket.https.cps", 0); // $NON-NLS-1$
+-//
+-//        if (cps > 0) {
+-//            log.info("Setting up HTTPS SlowProtocol, cps="+cps);
+-//            Protocol.registerProtocol(PROTOCOL_HTTPS,
+-//                    new Protocol(PROTOCOL_HTTPS,new SlowHttpClientSocketFactory(cps),DEFAULT_HTTPS_PORT));
+-//        }
+-
+         // Set default parameters as needed
+         HttpParams params = DefaultHttpParams.getDefaultParams();
+ 
+         // Process Commons HttpClient parameters file
+-        String file=JMeterUtils.getProperty("httpclient.parameters.file"); // $NON-NLS-1$
++        String file = JMeterUtils.getProperty("httpclient.parameters.file"); // $NON-NLS-1$
+         if (file != null) {
+             HttpClientDefaultParameters.load(file, params);
+         }
+ 
+         // If the pre-emptive parameter is undefined, then we can set it as needed
+         // otherwise we should do what the user requested.
+-        canSetPreEmptive =  params.getParameter(HTTP_AUTHENTICATION_PREEMPTIVE) == null;
++        canSetPreEmptive = params.getParameter(HTTP_AUTHENTICATION_PREEMPTIVE) == null;
+ 
+         // Handle old-style JMeter properties
+         try {
+-            params.setParameter(HttpMethodParams.PROTOCOL_VERSION, HttpVersion.parse("HTTP/"+HTTP_VERSION));
++            params.setParameter(HttpMethodParams.PROTOCOL_VERSION, HttpVersion.parse("HTTP/" + HTTP_VERSION));
+         } catch (ProtocolException e) {
+-            log.warn("Problem setting protocol version "+e.getLocalizedMessage());
++            log.warn("Problem setting protocol version " + e.getLocalizedMessage());
+         }
+ 
+         if (SO_TIMEOUT >= 0){
+@@ -193,7 +183,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+ 
+         if (log.isDebugEnabled()) {
+             log.debug("Start : sample " + urlStr);
+-            log.debug("method " + method+ " followingRedirect " + areFollowingRedirect + " depth " + frameDepth);            
++            log.debug("method " + method + " followingRedirect " + areFollowingRedirect + " depth " + frameDepth);
+         }
+ 
+         HttpMethodBase httpMethod = null;
+@@ -235,7 +225,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                     }
+                 };
+             } else {
+-                throw new IllegalArgumentException("Unexpected method: '"+method+"'");
++                throw new IllegalArgumentException("Unexpected method: '" + method + "'");
+             }
+ 
+             final CacheManager cacheManager = getCacheManager();
+@@ -256,7 +246,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+             if (method.equals(HTTPConstants.POST)) {
+                 String postBody = sendPostData((PostMethod)httpMethod);
+                 res.setQueryString(postBody);
+-            } else if (method.equals(HTTPConstants.PUT) || method.equals(HTTPConstants.PATCH) 
++            } else if (method.equals(HTTPConstants.PUT) || method.equals(HTTPConstants.PATCH)
+                     || method.equals(HTTPConstants.DELETE)) {
+                 String putBody = sendEntityData((EntityEnclosingMethod) httpMethod);
+                 res.setQueryString(putBody);
+@@ -281,7 +271,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                     Header responseHeader = httpMethod.getResponseHeader(HTTPConstants.HEADER_CONTENT_ENCODING);
+                     if (responseHeader!= null && HTTPConstants.ENCODING_GZIP.equals(responseHeader.getValue())) {
+                         InputStream tmpInput = new GZIPInputStream(instream); // tmp inputstream needs to have a good counting
+-                        res.setResponseData(readResponse(res, tmpInput, (int) httpMethod.getResponseContentLength()));                        
++                        res.setResponseData(readResponse(res, tmpInput, (int) httpMethod.getResponseContentLength()));
+                     } else {
+                         res.setResponseData(readResponse(res, instream, (int) httpMethod.getResponseContentLength()));
+                     }
+@@ -308,7 +298,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+             if (h != null)// Can be missing, e.g. on redirect
+             {
+                 ct = h.getValue();
+-                res.setContentType(ct);// e.g. text/html; charset=ISO-8859-1
++                res.setContentType(ct); // e.g. text/html; charset=ISO-8859-1
+                 res.setEncodingAndType(ct);
+             }
+ 
+@@ -331,7 +321,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                 log.debug("Response headersSize=" + res.getHeadersSize() + " bodySize=" + res.getBodySize()
+                         + " Total=" + (res.getHeadersSize() + res.getBodySize()));
+             }
+-            
++
+             // If we redirected automatically, the URL may have changed
+             if (getAutoRedirects()){
+                 res.setURL(new URL(httpMethod.getURI().toString()));
+@@ -350,11 +340,11 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+ 
+             log.debug("End : sample");
+             return res;
+-        } catch (IllegalArgumentException e) { // e.g. some kinds of invalid URL
++        } catch (IllegalArgumentException e) { // e.g. some kind of invalid URL
+             res.sampleEnd();
+             // pick up headers if failed to execute the request
+             // httpMethod can be null if method is unexpected
+-            if(httpMethod != null) {
++            if (httpMethod != null) {
+                 res.setRequestHeaders(getConnectionHeaders(httpMethod));
+             }
+             errorResult(e, res);
+@@ -372,14 +362,14 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+             }
+         }
+     }
+-    
++
+     /**
+      * Calculate response headers size
+-     * 
++     *
+      * @return the size response headers (in bytes)
+      */
+     private static int calculateHeadersSize(HttpMethodBase httpMethod) {
+-        int headerSize = httpMethod.getStatusLine().toString().length()+2; // add a \r\n
++        int headerSize = httpMethod.getStatusLine().toString().length() + 2; // add a \r\n
+         Header[] rh = httpMethod.getResponseHeaders();
+         for (int i = 0; i < rh.length; i++) {
+             headerSize += rh[i].toString().length(); // already include the \r\n
+@@ -428,12 +418,11 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         int port = uri.getPort();
+ 
+         /*
+-         *  We use the HostConfiguration as the key to retrieve the HttpClient,
+-         *  so need to ensure that any items used in its equals/hashcode methods are
+-         *  not changed after use, i.e.:
+-         *  host, port, protocol, localAddress, proxy
+-         *
+-        */
++         * We use the HostConfiguration as the key to retrieve the HttpClient,
++         * so need to ensure that any items used in its equals/hashcode methods are
++         * not changed after use, i.e.:
++         * host, port, protocol, localAddress, proxy
++         */
+         HostConfiguration hc = new HostConfiguration();
+         hc.setHost(host, port, protocol); // All needed to ensure re-usablility
+ 
+@@ -476,7 +465,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         if ( httpClient == null )
+         {
+             httpClient = new HttpClient(new SimpleHttpConnectionManager());
+-            httpClient.getParams().setParameter(HttpMethodParams.RETRY_HANDLER, 
++            httpClient.getParams().setParameter(HttpMethodParams.RETRY_HANDLER,
+                     new DefaultHttpMethodRetryHandler(RETRY_COUNT, false));
+             if (log.isDebugEnabled()) {
+                 log.debug("Created new HttpClient: @"+System.identityHashCode(httpClient));
+@@ -656,9 +645,9 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         // Get all the request headers
+         StringBuilder hdrs = new StringBuilder(100);
+         Header[] requestHeaders = method.getRequestHeaders();
+-        for(int i = 0; i < requestHeaders.length; i++) {
++        for (int i = 0; i < requestHeaders.length; i++) {
+             // Exclude the COOKIE header, since cookie is reported separately in the sample
+-            if(!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(requestHeaders[i].getName())) {
++            if (!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(requestHeaders[i].getName())) {
+                 hdrs.append(requestHeaders[i].getName());
+                 hdrs.append(": "); // $NON-NLS-1$
+                 hdrs.append(requestHeaders[i].getValue());
+@@ -737,11 +726,11 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         HTTPFileArg files[] = getHTTPFiles();
+         // Check if we should do a multipart/form-data or an
+         // application/x-www-form-urlencoded post request
+-        if(getUseMultipartForPost()) {
++        if (getUseMultipartForPost()) {
+             // If a content encoding is specified, we use that as the
+             // encoding of any parameter values
+             String contentEncoding = getContentEncoding();
+-            if(isNullOrEmptyTrimmed(contentEncoding)) {
++            if (isNullOrEmptyTrimmed(contentEncoding)) {
+                 contentEncoding = null;
+             }
+ 
+@@ -787,11 +776,11 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+ 
+             // If the Multipart is repeatable, we can send it first to
+             // our own stream, without the actual file content, so we can return it
+-            if(multiPart.isRepeatable()) {
++            if (multiPart.isRepeatable()) {
+                 // For all the file multiparts, we must tell it to not include
+                 // the actual file content
+-                for(int i = 0; i < partNo; i++) {
+-                    if(parts[i] instanceof ViewableFilePart) {
++                for (int i = 0; i < partNo; i++) {
++                    if (parts[i] instanceof ViewableFilePart) {
+                         ((ViewableFilePart) parts[i]).setHideFileData(true); // .sendMultipartWithoutFileContent(bos);
+                     }
+                 }
+@@ -807,8 +796,8 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+ 
+                 // For all the file multiparts, we must revert the hiding of
+                 // the actual file content
+-                for(int i = 0; i < partNo; i++) {
+-                    if(parts[i] instanceof ViewableFilePart) {
++                for (int i = 0; i < partNo; i++) {
++                    if (parts[i] instanceof ViewableFilePart) {
+                         ((ViewableFilePart) parts[i]).setHideFileData(false);
+                     }
+                 }
+@@ -823,13 +812,13 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+             Header contentTypeHeader = post.getRequestHeader(HTTPConstants.HEADER_CONTENT_TYPE);
+             boolean hasContentTypeHeader = contentTypeHeader != null && contentTypeHeader.getValue() != null && contentTypeHeader.getValue().length() > 0;
+             // If there are no arguments, we can send a file as the body of the request
+-            // TODO: needs a multiple file upload scenerio
+-            if(!hasArguments() && getSendFileAsPostBody()) {
++            // TODO: needs a multiple file upload scenario
++            if (!hasArguments() && getSendFileAsPostBody()) {
+                 // If getSendFileAsPostBody returned true, it's sure that file is not null
+                 HTTPFileArg file = files[0];
+-                if(!hasContentTypeHeader) {
++                if (!hasContentTypeHeader) {
+                     // Allow the mimetype of the file to control the content type
+-                    if(file.getMimeType() != null && file.getMimeType().length() > 0) {
++                    if (file.getMimeType() != null && file.getMimeType().length() > 0) {
+                         post.setRequestHeader(HTTPConstants.HEADER_CONTENT_TYPE, file.getMimeType());
+                     }
+                     else {
+@@ -851,23 +840,23 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                 // the post body will be encoded in the specified content encoding
+                 String contentEncoding = getContentEncoding();
+                 boolean haveContentEncoding = false;
+-                if(isNullOrEmptyTrimmed(contentEncoding)) {
+-                    contentEncoding=null;                    
++                if (isNullOrEmptyTrimmed(contentEncoding)) {
++                    contentEncoding = null;
+                 } else {
+                     post.getParams().setContentCharset(contentEncoding);
+-                    haveContentEncoding = true;                    
++                    haveContentEncoding = true;
+                 }
+ 
+                 // If none of the arguments have a name specified, we
+                 // just send all the values as the post body
+-                if(getSendParameterValuesAsPostBody()) {
++                if (getSendParameterValuesAsPostBody()) {
+                     // Allow the mimetype of the file to control the content type
+                     // This is not obvious in GUI if you are not uploading any files,
+                     // but just sending the content of nameless parameters
+-                    // TODO: needs a multiple file upload scenerio
+-                    if(!hasContentTypeHeader) {
++                    // TODO: needs a multiple file upload scenario
++                    if (!hasContentTypeHeader) {
+                         HTTPFileArg file = files.length > 0? files[0] : null;
+-                        if(file != null && file.getMimeType() != null && file.getMimeType().length() > 0) {
++                        if (file != null && file.getMimeType() != null && file.getMimeType().length() > 0) {
+                             post.setRequestHeader(HTTPConstants.HEADER_CONTENT_TYPE, file.getMimeType());
+                         }
+                         else {
+@@ -896,7 +885,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                     // It is a normal post request, with parameter names and values
+ 
+                     // Set the content type
+-                    if(!hasContentTypeHeader) {
++                    if (!hasContentTypeHeader) {
+                         post.setRequestHeader(HTTPConstants.HEADER_CONTENT_TYPE, HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED);
+                     }
+                     // Add the parameters
+@@ -911,13 +900,13 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                             continue;
+                         }
+                         String parameterValue = arg.getValue();
+-                        if(!arg.isAlwaysEncoded()) {
++                        if (!arg.isAlwaysEncoded()) {
+                             // The value is already encoded by the user
+                             // Must decode the value now, so that when the
+                             // httpclient encodes it, we end up with the same value
+                             // as the user had entered.
+                             String urlContentEncoding = contentEncoding;
+-                            if(urlContentEncoding == null || urlContentEncoding.length() == 0) {
++                            if (urlContentEncoding == null || urlContentEncoding.length() == 0) {
+                                 // Use the default encoding for urls
+                                 urlContentEncoding = EncoderCache.URL_ARGUMENT_ENCODING;
+                             }
+@@ -927,25 +916,11 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                         // Add the parameter, httpclient will urlencode it
+                         post.addParameter(parameterName, parameterValue);
+                     }
+-
+-/*
+-//                    // Alternative implementation, to make sure that HTTPSampler and HTTPSampler2
+-//                    // sends the same post body.
+-//
+-//                    // Only include the content char set in the content-type header if it is not
+-//                    // an APPLICATION_X_WWW_FORM_URLENCODED content type
+-//                    String contentCharSet = null;
+-//                    if(!post.getRequestHeader(HEADER_CONTENT_TYPE).getValue().equals(APPLICATION_X_WWW_FORM_URLENCODED)) {
+-//                        contentCharSet = post.getRequestCharSet();
+-//                    }
+-//                    StringRequestEntity requestEntity = new StringRequestEntity(getQueryString(contentEncoding), post.getRequestHeader(HEADER_CONTENT_TYPE).getValue(), contentCharSet);
+-//                    post.setRequestEntity(requestEntity);
+-*/
+                 }
+ 
+                 // If the request entity is repeatable, we can send it first to
+                 // our own stream, so we can return it
+-                if(post.getRequestEntity().isRepeatable()) {
++                if (post.getRequestEntity().isRepeatable()) {
+                     ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                     post.getRequestEntity().writeRequest(bos);
+                     bos.flush();
+@@ -980,7 +955,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+ 
+         // If there are no arguments, we can send a file as the body of the request
+ 
+-        if(!hasArguments() && getSendFileAsPostBody()) {
++        if (!hasArguments() && getSendFileAsPostBody()) {
+             hasPutBody = true;
+ 
+             // If getSendFileAsPostBody returned true, it's sure that file is not null
+@@ -989,14 +964,14 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         }
+         // If none of the arguments have a name specified, we
+         // just send all the values as the put body
+-        else if(getSendParameterValuesAsPostBody()) {
++        else if (getSendParameterValuesAsPostBody()) {
+             hasPutBody = true;
+ 
+             // If a content encoding is specified, we set it as http parameter, so that
+             // the post body will be encoded in the specified content encoding
+             String contentEncoding = getContentEncoding();
+             boolean haveContentEncoding = false;
+-            if(isNullOrEmptyTrimmed(contentEncoding)) {
++            if (isNullOrEmptyTrimmed(contentEncoding)) {
+                 contentEncoding = null;
+             } else {
+                 put.getParams().setContentCharset(contentEncoding);
+@@ -1017,17 +992,17 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                 putBodyContent.append(value);
+             }
+             String contentTypeValue = null;
+-            if(hasContentTypeHeader) {
++            if (hasContentTypeHeader) {
+                 contentTypeValue = put.getRequestHeader(HTTPConstants.HEADER_CONTENT_TYPE).getValue();
+             }
+             StringRequestEntity requestEntity = new StringRequestEntity(putBodyContent.toString(), contentTypeValue, put.getRequestCharSet());
+             put.setRequestEntity(requestEntity);
+         }
+         // Check if we have any content to send for body
+-        if(hasPutBody) {
++        if (hasPutBody) {
+             // If the request entity is repeatable, we can send it first to
+             // our own stream, so we can return it
+-            if(put.getRequestEntity().isRepeatable()) {
++            if (put.getRequestEntity().isRepeatable()) {
+                 ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                 put.getRequestEntity().writeRequest(bos);
+                 bos.flush();
+@@ -1038,13 +1013,13 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+             else {
+                 putBody.append("<RequestEntity was not repeatable, cannot view what was sent>");
+             }
+-            if(!hasContentTypeHeader) {
++            if (!hasContentTypeHeader) {
+                 // Allow the mimetype of the file to control the content type
+                 // This is not obvious in GUI if you are not uploading any files,
+                 // but just sending the content of nameless parameters
+-                // TODO: needs a multiple file upload scenerio
++                // TODO: needs a multiple file upload scenario
+                 HTTPFileArg file = files.length > 0? files[0] : null;
+-                if(file != null && file.getMimeType() != null && file.getMimeType().length() > 0) {
++                if (file != null && file.getMimeType() != null && file.getMimeType().length() > 0) {
+                     put.setRequestHeader(HTTPConstants.HEADER_CONTENT_TYPE, file.getMimeType());
+                 }
+             }
+@@ -1074,8 +1049,9 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         protected void sendData(OutputStream out) throws IOException {
+             // Check if we should send only placeholder text for the
+             // file content, or the real file content
+-            if(hideFileData) {
+-                out.write("<actual file content, not shown here>".getBytes());// encoding does not really matter here
++            if (hideFileData) {
++                // encoding does not really matter here
++                out.write("<actual file content, not shown here>".getBytes());
+             }
+             else {
+                 super.sendData(out);
+@@ -1118,19 +1094,18 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+     }
+ 
+     /**
+-     * 
++     *
+      */
+     private void closeThreadLocalConnections() {
+         // Does not need to be synchronised, as all access is from same thread
+         Map<HostConfiguration, HttpClient> map = httpClients.get();
+ 
+-        if ( map != null ) {
++        if (map != null) {
+             for (HttpClient cl : map.values())
+             {
+-                // Can cause NPE in HttpClient 3.1
+-                //((SimpleHttpConnectionManager)cl.getHttpConnectionManager()).shutdown();// Closes the connection
+-                // Revert to original method:
+-                cl.getHttpConnectionManager().closeIdleConnections(-1000);// Closes the connection
++                // Closes the connection. shutdown() can cause NPE
++                // in HttpClient 3.1, therefore using original method:
++                cl.getHttpConnectionManager().closeIdleConnections(-1000);
+             }
+             map.clear();
+         }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java
+index 347359a..c6c0699 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java
+@@ -448,7 +448,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
+         String urlStr = url.toString();
+         if (log.isDebugEnabled()) {
+             log.debug("Start : sample " + urlStr);
+-            log.debug("method " + method+ " followingRedirect " + areFollowingRedirect + " depth " + frameDepth);            
++            log.debug("method " + method+ " followingRedirect " + areFollowingRedirect + " depth " + frameDepth);
+         }
+ 
+         HTTPSampleResult res = new HTTPSampleResult();
+@@ -520,7 +520,6 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
+ 
+             res.setResponseData(responseData);
+ 
+-            @SuppressWarnings("null") // Cannot be null here
+             int errorLevel = conn.getResponseCode();
+             String respMsg = conn.getResponseMessage();
+             String hdr=conn.getHeaderField(0);
+@@ -563,15 +562,15 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
+             if (res.isRedirect()) {
+                 res.setRedirectLocation(conn.getHeaderField(HTTPConstants.HEADER_LOCATION));
+             }
+-            
++
+             // record headers size to allow HTTPSampleResult.getBytes() with different options
+             res.setHeadersSize(responseHeaders.replaceAll("\n", "\r\n") // $NON-NLS-1$ $NON-NLS-2$
+-                    .length() + 2); // add 2 for a '\r\n' at end of headers (before data) 
++                    .length() + 2); // add 2 for a '\r\n' at end of headers (before data)
+             if (log.isDebugEnabled()) {
+                 log.debug("Response headersSize=" + res.getHeadersSize() + " bodySize=" + res.getBodySize()
+                         + " Total=" + (res.getHeadersSize() + res.getBodySize()));
+             }
+-            
++
+             // If we redirected automatically, the URL may have changed
+             if (getAutoRedirects()){
+                 res.setURL(conn.getURL());
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java
+index 1bbac90..8b20a8e 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java
+@@ -211,7 +211,7 @@ public class LogFilter implements Filter, Serializable {
+      * should be used. Therefore, the method will only return true if the entry
+      * should be used. Since the interface defines both inclusion and exclusion,
+      * that means by default inclusion filtering assumes all entries are
+-     * excluded unless it matches. In the case of exlusion filtering, it assumes
++     * excluded unless it matches. In the case of exclusion filtering, it assumes
+      * all entries are included unless it matches, which means it should be
+      * excluded.
+      *
+@@ -221,17 +221,10 @@ public class LogFilter implements Filter, Serializable {
+      */
+     @Override
+     public boolean isFiltered(String path,TestElement el) {
+-        // we do a quick check to see if any
+-        // filters are set. If not we just
+-        // return false to be efficient.
+-        if (this.FILEFILTER || this.PTRNFILTER || this.CHANGEEXT) {
+-            if (this.FILEFILTER) {
+-                return filterFile(path);
+-            } else if (this.PTRNFILTER) {
+-                return filterPattern(path);
+-            } else {
+-                return false;
+-            }
++        if (this.FILEFILTER) {
++            return filterFile(path);
++        } else if (this.PTRNFILTER) {
++            return filterPattern(path);
+         } else {
+             return false;
+         }
+@@ -270,10 +263,8 @@ public class LogFilter implements Filter, Serializable {
+      * @return boolean include
+      */
+     public boolean incFile(String text) {
+-        // inclusion filter assumes most of
+-        // the files are not wanted, therefore
+-        // usefile is set to false unless it
+-        // matches.
++        // inclusion filter assumes most of the files are not wanted, therefore
++        // usefile is set to false unless it matches.
+         this.USEFILE = false;
+         for (int idx = 0; idx < this.INCFILE.length; idx++) {
+             if (text.indexOf(this.INCFILE[idx]) > -1) {
+@@ -293,10 +284,8 @@ public class LogFilter implements Filter, Serializable {
+      * @return boolean exclude
+      */
+     public boolean excFile(String text) {
+-        // exclusion filter assumes most of
+-        // the files are used, therefore
+-        // usefile is set to true, unless
+-        // it matches.
++        // exclusion filter assumes most of the files are used, therefore
++        // usefile is set to true, unless it matches.
+         this.USEFILE = true;
+         boolean exc = false;
+         for (int idx = 0; idx < this.EXCFILE.length; idx++) {
+@@ -310,7 +299,7 @@ public class LogFilter implements Filter, Serializable {
+     }
+ 
+     /**
+-     * The current implemenation assumes the user has checked the regular
++     * The current implementation assumes the user has checked the regular
+      * expressions so that they don't cancel each other. The basic assumption is
+      * the method will return true if the text should be filtered. If not, it
+      * will return false, which means it should not be filtered.
+@@ -377,9 +366,9 @@ public class LogFilter implements Filter, Serializable {
+      * @return boolean
+      */
+     public boolean replaceExtension(String text) {
+-        int pt = text.indexOf(this.OLDEXT);
++        final int pt = text.indexOf(this.OLDEXT);
+         if (pt > -1) {
+-            int extsize = this.OLDEXT.length();
++            final int extsize = this.OLDEXT.length();
+             this.NEWFILE = text.substring(0, pt) + this.NEWEXT + text.substring(pt + extsize);
+             return true;
+         } else {
+@@ -418,7 +407,7 @@ public class LogFilter implements Filter, Serializable {
+         try {
+             return JMeterUtils.getPatternCache().getPattern(pattern,
+                     Perl5Compiler.READ_ONLY_MASK | Perl5Compiler.SINGLELINE_MASK);
+-        } catch (MalformedCachePatternException exception) {
++        } catch (final MalformedCachePatternException exception) {
+             log.error("Problem with pattern: "+pattern,exception);
+             return null;
+         }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SessionFilter.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SessionFilter.java
+index 0e325b8..378377f 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SessionFilter.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SessionFilter.java
+@@ -67,9 +67,9 @@ public class SessionFilter implements Filter, Serializable, TestCloneable,Thread
+     }
+ 
+     protected String getIpAddress(String logLine) {
+-        Pattern incIp = JMeterUtils.getPatternCache().getPattern("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}",
++        final Pattern incIp = JMeterUtils.getPatternCache().getPattern("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}",
+                 Perl5Compiler.READ_ONLY_MASK | Perl5Compiler.SINGLELINE_MASK);
+-        Perl5Matcher matcher = JMeterUtils.getMatcher();
++        final Perl5Matcher matcher = JMeterUtils.getMatcher();
+         matcher.contains(logLine, incIp);
+         return matcher.getMatch().group(0);
+     }
+@@ -87,15 +87,15 @@ public class SessionFilter implements Filter, Serializable, TestCloneable,Thread
+      */
+     @Override
+     public Object clone() {
+-        if(cookieManagers == null)
++        if (cookieManagers == null)
+         {
+             cookieManagers = new ConcurrentHashMap<String, CookieManager>();
+         }
+-        if(managersInUse == null)
++        if (managersInUse == null)
+         {
+             managersInUse = Collections.synchronizedSet(new HashSet<CookieManager>());
+         }
+-        SessionFilter f = new SessionFilter();
++        final SessionFilter f = new SessionFilter();
+         f.cookieManagers = cookieManagers;
+         f.managersInUse = managersInUse;
+         return f;
+@@ -148,8 +148,8 @@ public class SessionFilter implements Filter, Serializable, TestCloneable,Thread
+      */
+     @Override
+     public boolean isFiltered(String path,TestElement sampler) {
+-        String ipAddr = getIpAddress(path);
+-        CookieManager cm = getCookieManager(ipAddr);
++        final String ipAddr = getIpAddress(path);
++        final CookieManager cm = getCookieManager(ipAddr);
+         ((HTTPSampler)sampler).setCookieManager(cm);
+         return false;
+     }
+@@ -161,14 +161,14 @@ public class SessionFilter implements Filter, Serializable, TestCloneable,Thread
+         // threads stuck in wait can move on
+         synchronized(managersInUse)
+         {
+-            if(lastUsed != null)
++            if (lastUsed != null)
+             {
+                 managersInUse.remove(lastUsed);
+                 managersInUse.notify();
+             }
+         }
+         // let notified threads move on and get lock on managersInUse
+-        if(lastUsed != null)
++        if (lastUsed != null)
+         {
+             Thread.yield();
+         }
+@@ -178,17 +178,17 @@ public class SessionFilter implements Filter, Serializable, TestCloneable,Thread
+         synchronized(managersInUse)
+         {
+             cm = cookieManagers.get(ipAddr);
+-            if(cm == null)
++            if (cm == null)
+             {
+                 cm = new CookieManager();
+                 cm.testStarted();
+                 cookieManagers.put(ipAddr,cm);
+             }
+-            while(managersInUse.contains(cm))
++            while (managersInUse.contains(cm))
+             {
+                 try {
+                     managersInUse.wait();
+-                } catch (InterruptedException e) {
++                } catch (final InterruptedException e) {
+                     log.info("SessionFilter wait interrupted");
+                 }
+             }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java
+index 2a87395..989c586 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java
+@@ -57,7 +57,7 @@ public class SharedTCLogParser extends TCLogParser implements TestCloneable {
+         } catch (Exception exception) {
+             log.error("Problem creating samples", exception);
+         }
+-        return -1;// indicate that an error occured
++        return -1;// indicate that an error occurred
+     }
+ 
+     /**
+@@ -70,8 +70,7 @@ public class SharedTCLogParser extends TCLogParser implements TestCloneable {
+         int actualCount = 0;
+         String line = null;
+         try {
+-            // read one line at a time using
+-            // BufferedReader
++            // read one line at a time using BufferedReader
+             line = breader.readLine(FILENAME);
+             while (line != null) {
+                 if (line.length() > 0) {
+@@ -89,9 +88,6 @@ public class SharedTCLogParser extends TCLogParser implements TestCloneable {
+             }
+             if (line == null) {
+                 breader.closeFile(FILENAME);
+-                // this.READER = new BufferedReader(new
+-                // FileReader(this.SOURCE));
+-                // parse(this.READER,el);
+             }
+         } catch (IOException ioe) {
+             log.error("Error reading log file", ioe);
+diff --git a/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/FixedQueueExecutor.java b/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/FixedQueueExecutor.java
+index 97e2aae..1fdedc0 100644
+--- a/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/FixedQueueExecutor.java
++++ b/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/FixedQueueExecutor.java
+@@ -66,9 +66,9 @@ public class FixedQueueExecutor implements QueueExecutor {
+      * {@inheritDoc}
+      */
+     @Override
+-    public Message sendAndReceive(Message request, 
+-            int deliveryMode, 
+-            int priority, 
++    public Message sendAndReceive(Message request,
++            int deliveryMode,
++            int priority,
+             long expiration) throws JMSException {
+         String id = request.getJMSCorrelationID();
+         if(id == null && !useReqMsgIdAsCorrelId){
+@@ -80,11 +80,11 @@ public class FixedQueueExecutor implements QueueExecutor {
+             // Note: there is only one admin object which is shared between all threads
+             synchronized (admin) {// interlock with Receiver
+                 producer.send(request, deliveryMode, priority, expiration);
+-                id=request.getJMSMessageID();
++                id = request.getJMSMessageID();
+                 admin.putRequest(id, request, countDownLatch);
+             }
+         } else {
+-            admin.putRequest(id, request, countDownLatch);            
++            admin.putRequest(id, request, countDownLatch);
+             producer.send(request, deliveryMode, priority, expiration);
+         }
+ 
+@@ -95,7 +95,7 @@ public class FixedQueueExecutor implements QueueExecutor {
+             // This used to be request.wait(timeout_ms), where 0 means forever
+             // However 0 means return immediately for the latch
+             if (timeout == 0){
+-                countDownLatch.await(); //
++                countDownLatch.await();
+             } else {
+                 countDownLatch.await(timeout, TimeUnit.MILLISECONDS);
+             }
+diff --git a/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java b/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java
+index ffeff1c..e2c4d26 100644
+--- a/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java
++++ b/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java
+@@ -570,14 +570,12 @@ public final class ReportGuiPackage implements LocaleChangeListener {
+         // will flush it away):
+         updateCurrentNode();
+ 
+-        // Forget about all GUIs we've created so far: we'll need to re-created
+-        // them all!
++        // Forget about all GUIs created so far: we'll need to re-created them!
+         guis = new HashMap<Class<?>, JMeterGUIComponent>();
+         nodesToGui = new HashMap<TestElement, JMeterGUIComponent>();
+         testBeanGUIs = new HashMap<Class<?>, JMeterGUIComponent>();
+ 
+-        // BeanInfo objects also contain locale-sensitive data -- flush them
+-        // away:
++        // BeanInfo objects also contain locale-sensitive data - flush them away
+         Introspector.flushCaches();
+ 
+         // Now put the current GUI in place. [This code was copied from the
+diff --git a/src/reports/org/apache/jmeter/report/gui/action/ReportActionRouter.java b/src/reports/org/apache/jmeter/report/gui/action/ReportActionRouter.java
+index 9266661..0cfc201 100644
+--- a/src/reports/org/apache/jmeter/report/gui/action/ReportActionRouter.java
++++ b/src/reports/org/apache/jmeter/report/gui/action/ReportActionRouter.java
+@@ -49,10 +49,10 @@ public final class ReportActionRouter implements ActionListener {
+     private static final Object LOCK = new Object();
+ 
+     private Map<String, HashSet<ActionListener>> preActionListeners =
+-        new HashMap<String, HashSet<ActionListener>>();
++            new HashMap<String, HashSet<ActionListener>>();
+ 
+     private Map<String, HashSet<ActionListener>> postActionListeners =
+-        new HashMap<String, HashSet<ActionListener>>();
++            new HashMap<String, HashSet<ActionListener>>();
+ 
+     private ReportActionRouter() {
+     }
+@@ -263,7 +263,7 @@ public final class ReportActionRouter implements ActionListener {
+         Class<?> commandClass;
+         try {
+             listClasses = ClassFinder.findClassesThatExtend(JMeterUtils.getSearchPaths(), new Class[] { Class
+-                    .forName("org.apache.jmeter.gui.action.Command") });
++                .forName("org.apache.jmeter.gui.action.Command") });
+             commands = new HashMap<String, Set<Command>>(listClasses.size());
+             if (listClasses.size() == 0) {
+                 log.warn("!!!!!Uh-oh, didn't find any action handlers!!!!!");
+@@ -272,7 +272,6 @@ public final class ReportActionRouter implements ActionListener {
+             while (iterClasses.hasNext()) {
+                 String strClassName = iterClasses.next();
+                 if (strClassName.startsWith("org.apache.jmeter.report.gui.action")) {
+-                    // log.info("classname:: " + strClassName);
+                     commandClass = Class.forName(strClassName);
+                     if (!Modifier.isAbstract(commandClass.getModifiers())) {
+                         command = (Command) commandClass.newInstance();
+@@ -304,7 +303,7 @@ public final class ReportActionRouter implements ActionListener {
+     public static ReportActionRouter getInstance() {
+         if (router == null) {
+             synchronized (LOCK) {
+-                if(router == null) {
++                if (router == null) {
+                     router = new ReportActionRouter();
+                     router.populateCommandMap();
+                 }
+diff --git a/src/reports/org/apache/jmeter/report/gui/action/ReportDragNDrop.java b/src/reports/org/apache/jmeter/report/gui/action/ReportDragNDrop.java
+index a3b01cf..f999376 100644
+--- a/src/reports/org/apache/jmeter/report/gui/action/ReportDragNDrop.java
++++ b/src/reports/org/apache/jmeter/report/gui/action/ReportDragNDrop.java
+@@ -24,13 +24,14 @@ import java.util.Set;
+ 
+ import org.apache.jmeter.control.Controller;
+ import org.apache.jmeter.gui.ReportGuiPackage;
+-import org.apache.jmeter.report.gui.action.AbstractAction;
+ import org.apache.jmeter.report.gui.tree.ReportTreeListener;
+ import org.apache.jmeter.report.gui.tree.ReportTreeNode;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
+ import org.apache.jmeter.testelement.WorkBench;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ public class ReportDragNDrop extends AbstractAction {
+     public static final String ADD = "drag_n_drop.add";//$NON-NLS-1$
+@@ -39,6 +40,8 @@ public class ReportDragNDrop extends AbstractAction {
+ 
+     public static final String INSERT_AFTER = "drag_n_drop.insert_after";//$NON-NLS-1$
+ 
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
+     private static final Set<String> commands = new HashSet<String>();
+     static {
+         commands.add(ADD);
+@@ -61,7 +64,9 @@ public class ReportDragNDrop extends AbstractAction {
+         if (te instanceof TestPlan || te instanceof WorkBench) {
+             parentNode = null; // So elements can only be added as children
+         }
+-        // System.out.println(action+" "+te.getClass().getName());
++        if (log.isDebugEnabled()) {
++            log.debug(action + " " + te.getClass().getName());
++        }
+ 
+         if (ADD.equals(action) && canAddTo(currentNode)) {
+             removeNodesFromParents(draggedNodes);
+@@ -72,14 +77,12 @@ public class ReportDragNDrop extends AbstractAction {
+         } else if (INSERT_BEFORE.equals(action) && canAddTo(parentNode)) {
+             removeNodesFromParents(draggedNodes);
+             for (int i = 0; i < draggedNodes.length; i++) {
+-                @SuppressWarnings("null")
+                 int index = parentNode.getIndex(currentNode); // can't be null - this is checked by canAddTo
+                 ReportGuiPackage.getInstance().getTreeModel().insertNodeInto(draggedNodes[i], parentNode, index);
+             }
+         } else if (INSERT_AFTER.equals(action) && canAddTo(parentNode)) {
+             removeNodesFromParents(draggedNodes);
+             for (int i = 0; i < draggedNodes.length; i++) {
+-                @SuppressWarnings("null")
+                 int index = parentNode.getIndex(currentNode) + 1; // can't be null - this is checked by canAddTo
+                 ReportGuiPackage.getInstance().getTreeModel().insertNodeInto(draggedNodes[i], parentNode, index);
+             }
+@@ -99,7 +102,9 @@ public class ReportDragNDrop extends AbstractAction {
+             return false;
+         }
+         TestElement te = parentNode.getTestElement();
+-        // System.out.println("Add to: "+te.getClass().getName());
++        if (log.isDebugEnabled()){
++            log.debug("Add to: " + te.getClass().getName());
++        }
+         if (te instanceof Controller) {
+             return true;
+         }
+@@ -116,8 +121,8 @@ public class ReportDragNDrop extends AbstractAction {
+     }
+ 
+     protected void removeNodesFromParents(ReportTreeNode[] nodes) {
+-        for (int i = 0; i < nodes.length; i++) {
+-            ReportGuiPackage.getInstance().getTreeModel().removeNodeFromParent(nodes[i]);
++        for (ReportTreeNode node : nodes) {
++            ReportGuiPackage.getInstance().getTreeModel().removeNodeFromParent(node);
+         }
+     }
+ 
+diff --git a/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeNode.java b/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeNode.java
+index 3a7df64..72d736e 100644
+--- a/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeNode.java
++++ b/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeNode.java
+@@ -44,8 +44,6 @@ public class ReportTreeNode extends DefaultMutableTreeNode implements
+ 
+     private final ReportTreeModel treeModel;
+ 
+-    // boolean enabled = true;
+-
+     public ReportTreeNode() {// Allow serializable test to work
+         // TODO: is the serializable test necessary now that JMeterTreeNode is
+         // no longer a GUI component?
+@@ -78,7 +76,7 @@ public class ReportTreeNode extends DefaultMutableTreeNode implements
+                             getTestElement().getClass()).getIcon(
+                             BeanInfo.ICON_COLOR_16x16);
+                     // If icon has not been defined, then use GUI_CLASS property
+-                    if (img == null) {//
++                    if (img == null) {
+                         Object clazz = Introspector.getBeanInfo(
+                                 getTestElement().getClass())
+                                 .getBeanDescriptor().getValue(
+diff --git a/test/src/org/apache/jmeter/visualizers/GenerateTreeGui.java b/test/src/org/apache/jmeter/visualizers/GenerateTreeGui.java
+index adbce84..f3ae240 100644
+--- a/test/src/org/apache/jmeter/visualizers/GenerateTreeGui.java
++++ b/test/src/org/apache/jmeter/visualizers/GenerateTreeGui.java
+@@ -52,15 +52,15 @@ import org.apache.jmeter.util.JMeterUtils;
+ /**
+  * Workbench test element to create a test plan containing samples of each test element
+  * (apart from Threads and Test Fragment).
+- * 
++ *
+  * The user creates a Thread Group, and the elements are created as child elements of
+  * Simple Controllers.
+- * 
++ *
+  * Note: the code currently runs on all versions of JMeter back to 2.2.
+  * Beware of making changes that rely on more recent APIs.
+  */
+ public class GenerateTreeGui extends AbstractConfigGui
+-    implements ActionListener, UnsharedComponent {
++                            implements ActionListener, UnsharedComponent {
+ 
+     private static final long serialVersionUID = 1L;
+ 
+@@ -119,7 +119,7 @@ public class GenerateTreeGui extends AbstractConfigGui
+             JMeterTreeNode myTarget) {
+         myTarget = addSimpleController(treeModel, myTarget, title);
+         JPopupMenu jp = MenuFactory.makeMenu(menuKey, "").getPopupMenu();
+-        for(Component comp : jp.getComponents()) {
++        for (Component comp : jp.getComponents()) {
+             JMenuItem jmi = (JMenuItem) comp;
+             try {
+                 TestElement testElement = guiPackage.createTestElement(jmi.getName());
+@@ -156,25 +156,22 @@ public class GenerateTreeGui extends AbstractConfigGui
+         return labelPanel;
+     }
+ 
+-
+     /**
+      * Initialize the components and layout of this component.
+      */
+     private void init() {
+         JPanel p = this;
+ 
+-            setLayout(new BorderLayout(0, 5));
+-            setBorder(makeBorder());
+-            add(makeTitlePanel(), BorderLayout.NORTH);
+-            p = new JPanel();
++        setLayout(new BorderLayout(0, 5));
++        setBorder(makeBorder());
++        add(makeTitlePanel(), BorderLayout.NORTH);
++        p = new JPanel();
+ 
+         p.setLayout(new BorderLayout());
+ 
+         p.add(makeLabelPanel(), BorderLayout.NORTH);
+-//        p.add(makeMainPanel(), BorderLayout.CENTER);
+         // Force a minimum table height of 70 pixels
+         p.add(Box.createVerticalStrut(70), BorderLayout.WEST);
+-        //p.add(makeButtonPanel(), BorderLayout.SOUTH);
+ 
+         add(p, BorderLayout.CENTER);
+     }
+@@ -187,7 +184,7 @@ public class GenerateTreeGui extends AbstractConfigGui
+      *            Node in the tree where we will add the Controller
+      * @param name
+      *            A name for the Controller
+-     * @return the new node 
++     * @return the new node
+      */
+     private JMeterTreeNode addSimpleController(JMeterTreeModel model, JMeterTreeNode node, String name) {
+         final TestElement sc = new GenericController();
+@@ -208,14 +205,14 @@ public class GenerateTreeGui extends AbstractConfigGui
+         }
+ 
+         volatile JMeterTreeNode newNode;
+-        
++
+         @Override
+         public void run() {
+             try {
+                 newNode = model.addComponent(testElement, node);
+             } catch (IllegalUserActionException e) {
+-                 throw new Error(e);
+-            }               
++                throw new Error(e);
++            }
+         }
+     }
+ 
+@@ -243,7 +240,7 @@ public class GenerateTreeGui extends AbstractConfigGui
+      *
+      * @param type
+      *            class of the node to be found
+-     * @param treeModel 
++     * @param treeModel
+      *
+      * @return the first node of the given type in the test component tree, or
+      *         <code>null</code> if none was found.
+diff --git a/xdocs/changes.xml b/xdocs/changes.xml
+index c151643..b7f1ef8 100644
+--- a/xdocs/changes.xml
++++ b/xdocs/changes.xml
+@@ -331,11 +331,11 @@ for details on configuring this component.</li>
+ <li><bugzilla>56921</bugzilla> - Templates : Improve Recording template to ignore embedded resources case and URL parameters. Contributed by Ubik Load Pack (support at ubikloadpack.com)</li>
+ <li><bugzilla>42248</bugzilla> - Undo-redo support on Test Plan tree modification. Developed by Andrey Pohilko (apc4 at ya.ru) and contributed by BlazeMeter Ltd. Additional contribution by Ubik Load Pack (support at ubikloadpack.com)</li>
+ <li><bugzilla>56920</bugzilla> - LogViewer : Make it receive all log events even when it is closed. Contributed by Ubik Load Pack (support at ubikloadpack.com)</li>
+-<li><bugzilla>57083</bugzilla> - simplified the CachedResourceMode enum. Contributed by Graham Russel (graham at ham1.co.uk)</li>
+-<li><bugzilla>57082</bugzilla> - ComboStringEditor : Added hashCode to an inner class which overwrote equals. Contributed by Graham Russel (graham at ham1.co.uk)</li>
+-<li><bugzilla>57081</bugzilla> - Updating checkstyle to only check for tabs in java files (and not images!). Contributed by Graham Russel (graham at ham1.co.uk)</li>
+-<li><bugzilla>56178</bugzilla> - Really replace backslashes in user name before generating proxy certificate. Contributed by Graham Russel (graham at ham1.co.uk)</li>
+-<li><bugzilla>57084</bugzilla> - Close socket after usage in BeahShellClient. Contributed by Graham Russel (graham at ham1.co.uk)</li>
++<li><bugzilla>57083</bugzilla> - simplified the CachedResourceMode enum. Contributed by Graham Russell (graham at ham1.co.uk)</li>
++<li><bugzilla>57082</bugzilla> - ComboStringEditor : Added hashCode to an inner class which overwrote equals. Contributed by Graham Russell (graham at ham1.co.uk)</li>
++<li><bugzilla>57081</bugzilla> - Updating checkstyle to only check for tabs in java files (and not images!). Contributed by Graham Russell (graham at ham1.co.uk)</li>
++<li><bugzilla>56178</bugzilla> - Really replace backslashes in user name before generating proxy certificate. Contributed by Graham Russell (graham at ham1.co.uk)</li>
++<li><bugzilla>57084</bugzilla> - Close socket after usage in BeahShellClient. Contributed by Graham Russell (graham at ham1.co.uk)</li>
+ </ul>
+ <ch_section>Non-functional changes</ch_section>
+ <ul>
+-- 
+1.9.1
+

@@ -1,0 +1,34 @@
+*** /home/jmheight/jakarta-jmeter/src/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	Wed Oct 24 19:34:32 2001
+--- HTTPSampler.java	Tue Oct 30 10:47:22 2001
+***************
+*** 168,177 ****
+  	{
+  		((HttpURLConnection) connection).setRequestMethod("POST");
+! 		String postData = url.getQueryString();
+  		connection.setRequestProperty("Content-length", "" + postData.length());
+! 		connection.setRequestProperty("Content-type", "application/x-www-form-urlencoded");
+  		connection.setDoOutput(true);
+  
+  		PrintWriter out = new PrintWriter(connection.getOutputStream());
+  		out.print(postData);
+  		out.close();
+--- 168,186 ----
+  	{
+  		((HttpURLConnection) connection).setRequestMethod("POST");
+! 		String contentType = (String)url.getProperty(UrlConfig.CONTENT_TYPE);
+!  
+!                 String postData = "";
+! 		if ("application/x-www-form-urlencoded".equalsIgnoreCase(contentType)) {
+! 		  postData = url.getQueryString();
+! 		} else {
+! 		  postData = (String)url.getProperty(UrlConfig.BODY);
+! 		}
+!   		
+  		connection.setRequestProperty("Content-length", "" + postData.length());
+! 		connection.setRequestProperty("Content-type", contentType);
+  		connection.setDoOutput(true);
+  
+  		PrintWriter out = new PrintWriter(connection.getOutputStream());
++ 
+  		out.print(postData);
+  		out.close();

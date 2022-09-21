@@ -1,0 +1,327 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1827348)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -812,6 +812,7 @@
+ proxy_general_settings=Global Settings
+ proxy_headers=Capture HTTP Headers
+ proxy_pause_http_sampler=Create new transaction after request (ms)\:
++proxy_recorder_dialog=Recorder\: Transactions Control
+ proxy_regex=Regex matching
+ proxy_sampler_settings=HTTP Sampler settings
+ proxy_sampler_type=Type\:
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1827348)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -801,6 +801,7 @@
+ proxy_general_settings=Param\u00E8tres g\u00E9n\u00E9raux
+ proxy_headers=Capturer les ent\u00EAtes HTTP
+ proxy_pause_http_sampler=Cr\u00E9er une nouvelle transaction apr\u00E8s la requ\u00EAte (ms) \:
++proxy_recorder_dialog=Enregistreur\: Contr\u00f4le des transactions
+ proxy_regex=Correspondance des variables par regex ?
+ proxy_sampler_settings=Param\u00E8tres Echantillon HTTP
+ proxy_sampler_type=Type \:
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 1826463)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -214,6 +214,8 @@
+     private JButton start;
+     private JButton restart;
+ 
++    private RecorderDialog recorderDialog;
++
+     //+ action names
+     private static final String ACTION_STOP = "stop"; // $NON-NLS-1$
+ 
+@@ -222,7 +224,7 @@
+     private static final String ACTION_RESTART = "restart"; // $NON-NLS-1$
+ 
+     // This is applied to fields that should cause a restart when changed
+-    private static final String ENABLE_RESTART = "enable_restart"; // $NON-NLS-1$
++    static final String ENABLE_RESTART = "enable_restart"; // $NON-NLS-1$
+ 
+     private static final String ADD_INCLUDE = "add_include"; // $NON-NLS-1$
+ 
+@@ -238,11 +240,11 @@
+ 
+     private static final String ADD_SUGGESTED_EXCLUDES = "exclude_suggested";
+     
+-    private static final String HTTP_SAMPLER_NAMING_MODE = "proxy_http_sampler_naming_mode"; // $NON-NLS-1$
++    static final String HTTP_SAMPLER_NAMING_MODE = "proxy_http_sampler_naming_mode"; // $NON-NLS-1$
+ 
+-    private static final String PREFIX_HTTP_SAMPLER_NAME = "proxy_prefix_http_sampler_name"; // $NON-NLS-1$
++    static final String PREFIX_HTTP_SAMPLER_NAME = "proxy_prefix_http_sampler_name"; // $NON-NLS-1$
+ 
+-    private static final String PROXY_PAUSE_HTTP_SAMPLER = "proxy_pause_http_sampler"; // $NON-NLS-1$
++    static final String PROXY_PAUSE_HTTP_SAMPLER = "proxy_pause_http_sampler"; // $NON-NLS-1$
+     //- action names
+ 
+     // Resource names for column headers
+@@ -257,6 +259,7 @@
+         super();
+         log.debug("Creating ProxyControlGui");
+         init();
++        this.recorderDialog = new RecorderDialog(this);
+     }
+ 
+     /** {@inheritDoc} */
+@@ -420,11 +423,14 @@
+             stop.setEnabled(false);
+             start.setEnabled(true);
+             restart.setEnabled(false);
++            recorderDialog.setVisible(false);
+         } else if (command.equals(ACTION_START)) {
+             startProxy();
++            recorderDialog.setVisible(true);
+         } else if (command.equals(ACTION_RESTART)) {
+             model.stopProxy();
+             startProxy();
++            recorderDialog.setVisible(true);
+         } else if (command.equals(ENABLE_RESTART)){
+             enableRestart();
+         } else if (command.equals(ADD_EXCLUDE)) {
+@@ -616,7 +622,7 @@
+         }
+     }
+ 
+-    private void enableRestart() {
++    void enableRestart() {
+         if (stop.isEnabled()) {
+             restart.setEnabled(true);
+         }
+@@ -1165,4 +1171,8 @@
+         MenuFactory.addFileMenu(pop);
+         return pop;
+     }
++    
++    ProxyControl getRecorderModel() {
++        return model;
++    }
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/RecorderDialog.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/RecorderDialog.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/RecorderDialog.java	(revision 0)
+@@ -0,0 +1,220 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.proxy.gui;
++
++import java.awt.BorderLayout;
++import java.awt.GridBagConstraints;
++import java.awt.GridBagLayout;
++import java.awt.event.ActionEvent;
++import java.awt.event.ItemEvent;
++import java.awt.event.ItemListener;
++import java.awt.event.KeyEvent;
++import java.awt.event.KeyListener;
++
++import javax.swing.AbstractAction;
++import javax.swing.Action;
++import javax.swing.ActionMap;
++import javax.swing.BorderFactory;
++import javax.swing.DefaultComboBoxModel;
++import javax.swing.InputMap;
++import javax.swing.JComboBox;
++import javax.swing.JComponent;
++import javax.swing.JDialog;
++import javax.swing.JFrame;
++import javax.swing.JLabel;
++import javax.swing.JOptionPane;
++import javax.swing.JPanel;
++import javax.swing.JRootPane;
++import javax.swing.JTextField;
++
++import org.apache.jmeter.gui.action.KeyStrokes;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Dialog for Recorder
++ */
++public class RecorderDialog extends JDialog implements ItemListener, KeyListener { // NOSONAR
++
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = 931790497924069705L;
++
++    /**
++     * Add a prefix/transaction name to HTTP sample name recorded
++     */
++    private JTextField prefixHTTPSampleName;
++
++    private JTextField proxyPauseHTTPSample;
++
++    /**
++     * To choose between a prefix or a transaction name
++     */
++    private JComboBox<String> httpSampleNamingMode;
++
++    private ProxyControlGui recorderGui;
++
++    public RecorderDialog(ProxyControlGui controlGui) {
++        super((JFrame) null, JMeterUtils.getResString("proxy_recorder_dialog"), false); //$NON-NLS-1$
++        this.recorderGui = controlGui;
++        this.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
++        this.setResizable(false);
++        init();
++    }
++
++    @Override
++    protected JRootPane createRootPane() {
++        JRootPane rootPane = new JRootPane();
++        // Hide Window on ESC
++        Action escapeAction = new AbstractAction("ESCAPE") {
++
++            private static final long serialVersionUID = -6543764044868772971L;
++
++            @Override
++            public void actionPerformed(ActionEvent actionEvent) {
++                setVisible(false);
++            }
++        };
++        
++        ActionMap actionMap = rootPane.getActionMap();
++        actionMap.put(escapeAction.getValue(Action.NAME), escapeAction);
++        InputMap inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
++        inputMap.put(KeyStrokes.ESC, escapeAction.getValue(Action.NAME));
++
++        return rootPane;
++    }
++
++    private void init() { // WARNING: called from ctor so must not be overridden (i.e. must be private or final)
++        this.getContentPane().setLayout(new BorderLayout(10,10));
++
++        DefaultComboBoxModel<String> choice = new DefaultComboBoxModel<>();
++        choice.addElement(JMeterUtils.getResString("sample_name_prefix")); // $NON-NLS-1$
++        choice.addElement(JMeterUtils.getResString("sample_name_transaction")); // $NON-NLS-1$
++        httpSampleNamingMode = new JComboBox<>(choice);
++        httpSampleNamingMode.setName(ProxyControlGui.HTTP_SAMPLER_NAMING_MODE);
++        httpSampleNamingMode.addItemListener(this);
++        
++        prefixHTTPSampleName = new JTextField(20);
++        prefixHTTPSampleName.addKeyListener(this);
++        prefixHTTPSampleName.setName(ProxyControlGui.PREFIX_HTTP_SAMPLER_NAME);
++
++        proxyPauseHTTPSample = new JTextField(10);
++        proxyPauseHTTPSample.addKeyListener(this);
++        proxyPauseHTTPSample.setName(ProxyControlGui.PROXY_PAUSE_HTTP_SAMPLER);
++
++        proxyPauseHTTPSample.setActionCommand(ProxyControlGui.ENABLE_RESTART);
++        JLabel labelProxyPause = new JLabel(JMeterUtils.getResString("proxy_pause_http_sampler")); // $NON-NLS-1$
++        labelProxyPause.setLabelFor(proxyPauseHTTPSample);
++              
++        GridBagLayout gridBagLayout = new GridBagLayout();
++        GridBagConstraints gbc = new GridBagConstraints();
++        gbc.anchor = GridBagConstraints.FIRST_LINE_START;
++        gbc.fill = GridBagConstraints.NONE;
++        gbc.gridheight = 1;
++        gbc.gridwidth = 1;
++        gbc.gridx = 0;
++        gbc.gridy = 0;
++        gbc.weightx = 1;
++        gbc.weighty = 1;
++        JPanel panel = new JPanel(gridBagLayout);
++        panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("proxy_sampler_settings"))); // $NON-NLS-1$
++        panel.add(httpSampleNamingMode, gbc.clone());
++        gbc.gridx++;
++        gbc.weightx = 3;
++        gbc.fill=GridBagConstraints.HORIZONTAL;
++        panel.add(prefixHTTPSampleName, gbc.clone());
++        gbc.gridx = 0;
++        gbc.gridy++;
++        panel.add(labelProxyPause, gbc.clone());
++        gbc.gridx++;
++        gbc.weightx = 3;
++        gbc.fill = GridBagConstraints.HORIZONTAL;
++        panel.add(proxyPauseHTTPSample, gbc.clone());
++
++        this.getContentPane().add(panel, BorderLayout.NORTH);
++        this.pack();
++        this.setLocation(5, 10);
++        prefixHTTPSampleName.requestFocusInWindow();
++    }
++
++    
++
++    /* (non-Javadoc)
++     * @see java.awt.Dialog#setVisible(boolean)
++     */
++    @Override
++    public void setVisible(boolean b) {
++        super.setVisible(b);
++        prefixHTTPSampleName.requestFocusInWindow();
++        httpSampleNamingMode.setSelectedIndex(recorderGui.getRecorderModel().getHTTPSampleNamingMode());
++        proxyPauseHTTPSample.setText(recorderGui.getRecorderModel().getProxyPauseHTTPSample());
++        setAlwaysOnTop(b);
++    }
++
++    @Override
++    public void itemStateChanged(ItemEvent e) {
++        if (e.getSource() instanceof JComboBox) {
++            JComboBox combo = (JComboBox) e.getSource();
++            if(ProxyControlGui.HTTP_SAMPLER_NAMING_MODE.equals(combo.getName())){
++                recorderGui.getRecorderModel().setHTTPSampleNamingMode(httpSampleNamingMode.getSelectedIndex());
++            }
++        }
++        else {
++            recorderGui.enableRestart();
++        }
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void keyPressed(KeyEvent e) {
++        // NOOP
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void keyTyped(KeyEvent e) {
++        // NOOP
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void keyReleased(KeyEvent e) {
++        String fieldName = e.getComponent().getName();
++        if(fieldName.equals(ProxyControlGui.PREFIX_HTTP_SAMPLER_NAME)) {
++            recorderGui.getRecorderModel().setPrefixHTTPSampleName(prefixHTTPSampleName.getText());
++        } else if(fieldName.equals(ProxyControlGui.PROXY_PAUSE_HTTP_SAMPLER)) {
++            try {
++                Long.parseLong(proxyPauseHTTPSample.getText());
++            } catch (NumberFormatException nfe) {
++                int length = proxyPauseHTTPSample.getText().length();
++                if (length > 0) {
++                    JOptionPane.showMessageDialog(this, JMeterUtils.getResString("proxy_settings_pause_error_digits"), // $NON-NLS-1$
++                            JMeterUtils.getResString("proxy_settings_pause_error_invalid_data"), // $NON-NLS-1$
++                            JOptionPane.WARNING_MESSAGE);
++                    // Drop the last character:
++                    proxyPauseHTTPSample.setText(proxyPauseHTTPSample.getText().substring(0, length - 1));
++                }
++            }
++            recorderGui.getRecorderModel().setProxyPauseHTTPSample(proxyPauseHTTPSample.getText());
++            recorderGui.enableRestart();
++        }
++    }
++}

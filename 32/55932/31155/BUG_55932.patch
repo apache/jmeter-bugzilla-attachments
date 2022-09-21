@@ -1,0 +1,1074 @@
+Index: build.properties
+===================================================================
+--- build.properties	(revision 1553423)
++++ build.properties	(working copy)
+@@ -109,7 +109,6 @@
+ commons-lang3.loc           = ${maven2.repo}/org/apache/commons/commons-lang3/${commons-lang3.version}
+ commons-lang3.md5           = 71b48e6b3e1b1dc73fe705604b9c7584
+ 
+-
+ commons-logging.version     = 1.1.3
+ commons-logging.jar         = commons-logging-${commons-logging.version}.jar
+ commons-logging.loc         = ${maven2.repo}/commons-logging/commons-logging/${commons-logging.version}
+@@ -117,11 +116,21 @@
+ #commons-logging.md5         = E2C390FE739B2550A218262B28F290CE
+ commons-logging.md5         = 92eb5aabc1b47287de53d45c086a435c
+ 
++commons-math3.version         = 3.2
++commons-math3.jar             = commons-math3-${commons-math3.version}.jar
++commons-math3.loc             = ${maven2.repo}/org/apache/commons/commons-math3/${commons-math3.version}
++commons-math3.md5             = aaa32530c0f744813570ff73db018698
++
+ commons-net.version         = 3.3
+ commons-net.jar             = commons-net-${commons-net.version}.jar
+ commons-net.loc             = ${maven2.repo}/commons-net/commons-net/${commons-net.version}
+ commons-net.md5             = c077ca61598e9c21f43f8b6488fbbee9
+ 
++commons-pool2.version         = 2.0
++commons-pool2.jar             = commons-pool2-${commons-pool2.version}.jar
++commons-pool2.loc             = ${maven2.repo}/org/apache/commons/commons-pool2/${commons-pool2.version}
++commons-pool2.md5             = 8ff37c3bb0ff638ceeef4888d3ccd6f2
++
+ excalibur-datasource.version = 1.1.1
+ excalibur-datasource.jar    = excalibur-datasource-${excalibur-datasource.version}.jar
+ excalibur-datasource.loc    = ${maven2.repo}/excalibur-datasource/excalibur-datasource/${excalibur-datasource.version}
+Index: src/components/org/apache/jmeter/reporters/graphite/GraphiteListener.java
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/GraphiteListener.java	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/GraphiteListener.java	(revision 0)
+@@ -0,0 +1,287 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.reporters.graphite;
++
++import java.io.Serializable;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.Executors;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.TimeUnit;
++
++import org.apache.jmeter.engine.util.NoThreadClone;
++import org.apache.jmeter.reporters.AbstractListenerElement;
++import org.apache.jmeter.samplers.Clearable;
++import org.apache.jmeter.samplers.Remoteable;
++import org.apache.jmeter.samplers.SampleEvent;
++import org.apache.jmeter.samplers.SampleListener;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testbeans.TestBean;
++import org.apache.jmeter.testelement.TestStateListener;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterContextService.ThreadCounts;
++import org.apache.jmeter.visualizers.Visualizer;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Graphite based Listener using Pickle Protocol
++ * @see http://graphite.readthedocs.org/en/latest/overview.html
++ * @since 2.10.1
++ */
++public class GraphiteListener extends AbstractListenerElement implements SampleListener, Clearable, Serializable,
++    TestStateListener, Remoteable, NoThreadClone, TestBean, Visualizer, Runnable {
++    
++    private static final String CUMULATED_CONTEXT_NAME = "cumulated";
++    /**
++     * 
++     */
++    private static final long serialVersionUID = -4862041959317479172L;
++    private static final Logger LOGGER = LoggingManager.getLoggerForClass();
++    private static final String METRICS_PREFIX = "jmeter."; //$NON-NLS-1$
++    private static final String CUMULATED_METRICS = "__cumulated__"; //$NON-NLS-1$
++    private static final String METRIC_ACTIVE_THREADS = "activeThreads"; //$NON-NLS-1$
++    private static final String METRIC_STARTED_THREADS = "startedThreads"; //$NON-NLS-1$
++    private static final String METRIC_STOPPED_THREADS = "stoppedThreads"; //$NON-NLS-1$
++    private static final String METRIC_FAILED_REQUESTS = "failure"; //$NON-NLS-1$
++    private static final String METRIC_SUCCESSFUL_REQUESTS = "success"; //$NON-NLS-1$
++    private static final String METRIC_TOTAL_REQUESTS = "total"; //$NON-NLS-1$
++    private static final String METRIC_MIN_RESPONSE_TIME = "min"; //$NON-NLS-1$
++    private static final String METRIC_MAX_RESPONSE_TIME = "max"; //$NON-NLS-1$
++    private static final String METRIC_PERCENTILE90_RESPONSE_TIME = "percentile90"; //$NON-NLS-1$
++    private static final String METRIC_PERCENTILE95_RESPONSE_TIME = "percentile95"; //$NON-NLS-1$
++    private static final long ONE_SECOND = 1L;
++    private static final int MAX_POOL_SIZE = 1;
++
++    private String graphiteHost;
++    private int graphitePort;
++    private String summaryOnly;
++    private String samplersList = ""; //$NON-NLS-1$
++    private transient Set<String> samplersToFilter;
++    
++    private ConcurrentHashMap<String, SamplerMetric> metricsPerSampler = new ConcurrentHashMap<String, SamplerMetric>();
++
++    private PickleMetricsManager pickleMetricsManager;
++
++    private ScheduledExecutorService scheduler;
++    
++    public GraphiteListener() {
++        super();
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void clear() {
++        super.clear();
++        metricsPerSampler.clear();
++    }
++    
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.reporters.ResultCollector#testStarted(java.lang.String)
++     */
++    @Override
++    public void testStarted(String host) {
++        String[] samplers = samplersList.split(",");
++        samplersToFilter = new HashSet<String>();
++        for (String samplerName : samplers) {
++            samplersToFilter.add(samplerName);
++        }
++        this.pickleMetricsManager = new PickleMetricsManager(graphiteHost, graphitePort, METRICS_PREFIX);
++        scheduler = Executors.newScheduledThreadPool(MAX_POOL_SIZE);
++        // Don't change this as metrics are per second
++        scheduler.scheduleAtFixedRate(this, ONE_SECOND, ONE_SECOND, TimeUnit.SECONDS);
++    }
++    
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.reporters.ResultCollector#testStarted()
++     */
++    @Override
++    public void testStarted() {
++        testStarted("");
++    }
++    
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.reporters.ResultCollector#testEnded(java.lang.String)
++     */
++    @Override
++    public void testEnded(String host) {
++        scheduler.shutdown();
++        try {
++            scheduler.awaitTermination(30, TimeUnit.SECONDS);
++        } catch (InterruptedException e) {
++            LOGGER.error("Error waiting for end of scheduler");
++        }
++        samplersToFilter.clear();
++        pickleMetricsManager.destroy();
++        metricsPerSampler.clear();
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.reporters.ResultCollector#testEnded()
++     */
++    @Override
++    public void testEnded() {
++        testEnded("");
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void sampleOccurred(SampleEvent e) {
++        SampleResult sampleResult = e.getResult();
++        if(!"true".equals(summaryOnly) && samplersToFilter.contains(sampleResult.getSampleLabel())) {
++            SamplerMetric samplerMetric = getSamplerMetric(sampleResult.getSampleLabel());
++            samplerMetric.add(sampleResult);
++        }
++        SamplerMetric cumulatedMetrics = getSamplerMetric(CUMULATED_METRICS);
++        cumulatedMetrics.add(sampleResult);
++    }
++
++    private SamplerMetric getSamplerMetric(String sampleLabel) {
++        SamplerMetric samplerMetric = metricsPerSampler.get(sampleLabel);
++        if(samplerMetric == null) {
++            samplerMetric = new SamplerMetric();
++            SamplerMetric oldValue = metricsPerSampler.putIfAbsent(sampleLabel, samplerMetric);
++            if(oldValue != null ){
++                samplerMetric = oldValue;
++            }
++        }
++        return samplerMetric;
++    }
++
++    @Override
++    public void clearData() {
++        // NOOP
++    }
++
++    @Override
++    public void sampleStarted(SampleEvent e) {
++        // NOOP   
++    }
++
++    @Override
++    public void sampleStopped(SampleEvent e) {
++        // NOOP
++    }
++
++    @Override
++    public void run() {
++        // Need to convert millis to seconds for Graphite
++        long timestamp = TimeUnit.SECONDS.convert(System.currentTimeMillis(), TimeUnit.MILLISECONDS);
++        for (Map.Entry<String, SamplerMetric> entry : metricsPerSampler.entrySet()) {
++            SamplerMetric metric = entry.getValue();
++            if(entry.getKey().equals(CUMULATED_METRICS)) {
++                addMetrics(timestamp, CUMULATED_CONTEXT_NAME, metric);
++            } else {
++                addMetrics(timestamp, PickleMetricsManager.sanitizeString(entry.getKey()), metric);                
++            }
++            // We are computing on interval basis so cleanup
++            metric.resetForTimeInterval();
++        }
++        
++        ThreadCounts tc = JMeterContextService.getThreadCounts();
++        pickleMetricsManager.addMetric(timestamp, CUMULATED_CONTEXT_NAME, METRIC_ACTIVE_THREADS, Integer.toString(tc.activeThreads));
++        pickleMetricsManager.addMetric(timestamp, CUMULATED_CONTEXT_NAME, METRIC_STARTED_THREADS, Integer.toString(tc.startedThreads));
++        pickleMetricsManager.addMetric(timestamp, CUMULATED_CONTEXT_NAME, METRIC_STOPPED_THREADS, Integer.toString(tc.finishedThreads));
++
++        pickleMetricsManager.writeAndSendMetrics();
++    }
++
++    /**
++     * @param timestamp
++     * @param contextName
++     * @param metric
++     */
++    private void addMetrics(long timestamp, String contextName, SamplerMetric metric) {
++        pickleMetricsManager.addMetric(timestamp, contextName, METRIC_FAILED_REQUESTS, Integer.toString(metric.getFailure()));
++        pickleMetricsManager.addMetric(timestamp, contextName, METRIC_SUCCESSFUL_REQUESTS, Integer.toString(metric.getSuccess()));
++        pickleMetricsManager.addMetric(timestamp, contextName, METRIC_TOTAL_REQUESTS, Integer.toString(metric.getTotal()));
++        pickleMetricsManager.addMetric(timestamp, contextName, METRIC_MIN_RESPONSE_TIME, Long.toString(metric.getMinTime()));
++        pickleMetricsManager.addMetric(timestamp, contextName, METRIC_MAX_RESPONSE_TIME, Long.toString(metric.getMaxTime()));
++        pickleMetricsManager.addMetric(timestamp, contextName, METRIC_PERCENTILE90_RESPONSE_TIME, Double.toString(metric.getPercentile(90)));
++        pickleMetricsManager.addMetric(timestamp, contextName, METRIC_PERCENTILE95_RESPONSE_TIME, Double.toString(metric.getPercentile(95)));
++    }
++
++    /**
++     * @return the summaryOnly
++     */
++    public String getSummaryOnly() {
++        return summaryOnly;
++    }
++
++    /**
++     * @param summaryOnly the summaryOnly to set
++     */
++    public void setSummaryOnly(String summaryOnly) {
++        this.summaryOnly = summaryOnly;
++    }
++
++    @Override
++    public void add(SampleResult sample) {
++        // NOOP
++    }
++
++    @Override
++    public boolean isStats() {
++        return false;
++    }
++
++    /**
++     * @return the graphiteHost
++     */
++    public String getGraphiteHost() {
++        return graphiteHost;
++    }
++
++    /**
++     * @param graphiteHost the graphiteHost to set
++     */
++    public void setGraphiteHost(String graphiteHost) {
++        this.graphiteHost = graphiteHost;
++    }
++
++    /**
++     * @return the graphitePort
++     */
++    public int getGraphitePort() {
++        return graphitePort;
++    }
++
++    /**
++     * @param graphitePort the graphitePort to set
++     */
++    public void setGraphitePort(int graphitePort) {
++        this.graphitePort = graphitePort;
++    }
++
++    /**
++     * @return the samplersList
++     */
++    public String getSamplersList() {
++        return samplersList;
++    }
++
++    /**
++     * @param samplersList the samplersList to set
++     */
++    public void setSamplersList(String samplersList) {
++        this.samplersList = samplersList;
++    }
++}
+Index: src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerBeanInfo.java
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerBeanInfo.java	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerBeanInfo.java	(revision 0)
+@@ -0,0 +1,72 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.reporters.graphite;
++
++import java.beans.PropertyDescriptor;
++
++import org.apache.jmeter.testbeans.BeanInfoSupport;
++
++/**
++ * BeanInfoSupport for {@link GraphiteListener}
++ * @since 2.10.1
++ */
++public class GraphiteListenerBeanInfo extends BeanInfoSupport {
++    
++    private static final String CONNECTIONS_INFOS_GROUP = "connection_infos";
++    private static final String HOST = "graphiteHost";
++    private static final String PORT = "graphitePort";
++    
++    private static final String DATAS_INFOS = "data_infos";
++    private static final String SAMPLERS_LIST = "samplersList";
++    private static final String SUMMARY_ONLY = "summaryOnly";
++    private static final int DEFAULT_PICKLE_PORT = 2004;
++
++    /**
++     * Constructor
++     */
++    public GraphiteListenerBeanInfo() {
++        super(GraphiteListener.class);
++
++        createPropertyGroup(CONNECTIONS_INFOS_GROUP, new String[] { 
++                HOST, PORT });
++        createPropertyGroup(DATAS_INFOS, new String[] { 
++                SAMPLERS_LIST, SUMMARY_ONLY });
++
++        PropertyDescriptor p = property(HOST);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, ""); // $NON-NLS-1$
++
++        p = property(PORT);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        // Default port for Pickle format
++        p.setValue(DEFAULT, DEFAULT_PICKLE_PORT); // $NON-NLS-1$
++        
++
++        p = property(SAMPLERS_LIST);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, ""); // $NON-NLS-1$
++
++        p = property(SUMMARY_ONLY);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "true"); // $NON-NLS-1$
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setValue(NOT_OTHER, Boolean.TRUE);
++        p.setValue(TAGS, new String[]{"True", "False"}); // $NON-NLS-1$ $NON-NLS-2$
++    }
++}
+Index: src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerResources.properties
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerResources.properties	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerResources.properties	(revision 0)
+@@ -0,0 +1,30 @@
++#   Licensed to the Apache Software Foundation (ASF) under one or more
++#   contributor license agreements.  See the NOTICE file distributed with
++#   this work for additional information regarding copyright ownership.
++#   The ASF licenses this file to You under the Apache License, Version 2.0
++#   (the "License"); you may not use this file except in compliance with
++#   the License.  You may obtain a copy of the License at
++# 
++#       http://www.apache.org/licenses/LICENSE-2.0
++# 
++#   Unless required by applicable law or agreed to in writing, software
++#   distributed under the License is distributed on an "AS IS" BASIS,
++#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++#   See the License for the specific language governing permissions and
++#   limitations under the License.
++
++displayName=Graphite Listener
++# Groups
++connection_infos.displayName=Graphite Connection Informations
++data_infos.displayName=Graphite Datas Informations
++
++# fields
++host.displayName=Host
++host.shortDescription=Host
++port.displayName=Port
++port.shortDescription=Port
++
++samplersList.displayName=Comma separated list of Samplers to send
++samplersList.shortDescription=Comma separated list of Samplers to send
++summary_only.displayName=Send only cumulated datas
++summary_only.shortDescription=Send only cumulated datas
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerResources_fr.properties
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerResources_fr.properties	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/GraphiteListenerResources_fr.properties	(revision 0)
+@@ -0,0 +1,30 @@
++#   Licensed to the Apache Software Foundation (ASF) under one or more
++#   contributor license agreements.  See the NOTICE file distributed with
++#   this work for additional information regarding copyright ownership.
++#   The ASF licenses this file to You under the Apache License, Version 2.0
++#   (the "License"); you may not use this file except in compliance with
++#   the License.  You may obtain a copy of the License at
++# 
++#       http://www.apache.org/licenses/LICENSE-2.0
++# 
++#   Unless required by applicable law or agreed to in writing, software
++#   distributed under the License is distributed on an "AS IS" BASIS,
++#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++#   See the License for the specific language governing permissions and
++#   limitations under the License.
++
++displayName=Graphite Listener
++# Groups
++connection_infos.displayName=Informations de connexion \u00E0 Graphite
++data_infos.displayName=Donn\u00E9es envoy\u00E9es \u00E0 Graphite 
++
++# fields
++host.displayName=Hôte
++host.shortDescription=Hôte
++port.displayName=Port
++port.shortDescription=Port
++
++samplersList.displayName=Liste d'\u00E9chantillons \u00E0 envoyer, s\u00E9par\u00E9s par une virgule
++samplersList.shortDescription=Liste d'\u00E9chantillons \u00E0 envoyer, s\u00E9par\u00E9s par une virgule
++summary_only.displayName=N'envoyer que le total
++summary_only.shortDescription=N'envoyer que le total
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/reporters/graphite/PickleMetricsManager.java
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/PickleMetricsManager.java	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/PickleMetricsManager.java	(revision 0)
+@@ -0,0 +1,211 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.reporters.graphite;
++
++import java.io.OutputStreamWriter;
++import java.io.Writer;
++import java.nio.ByteBuffer;
++import java.util.LinkedList;
++import java.util.List;
++import java.util.concurrent.TimeUnit;
++
++import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
++import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Partly based on https://github.com/BrightcoveOS/metrics-graphite-pickle/blob/master/src/main/java/com/brightcove/metrics/reporting/GraphitePickleReporter.java 
++ * as per license https://github.com/BrightcoveOS/metrics-graphite-pickle/blob/master/LICENSE.txt
++ * @since 2.10.1
++ */
++class PickleMetricsManager {
++    private static final Logger LOG = LoggingManager.getLoggerForClass();    
++
++    private static final int SOCKET_CONNECT_TIMEOUT_MS = 1000;
++
++    private static final String CHARSET_NAME = "ISO-8859-1"; //$NON-NLS-1$
++    /**
++     * Pickle opcodes needed for implementation
++     */
++    private static final char APPEND = 'a';
++    private static final char LIST = 'l';
++    private static final char LONG = 'L';
++    private static final char MARK = '(';
++    private static final char STOP = '.';
++    private static final char STRING = 'S';
++    private static final char TUPLE = 't';
++    
++    
++    private static final class MetricTuple {
++        String name;
++        long timestamp;
++        String value;
++        MetricTuple(String name, long timestamp, String value) {
++            this.name = name;
++            this.timestamp = timestamp;
++            this.value = value;
++        }
++    }
++        
++    private String prefix;
++
++    // graphite expects a python-pickled list of nested tuples.
++    private List<MetricTuple> metrics = new LinkedList<MetricTuple>();
++
++    private GenericKeyedObjectPool<SocketConnectionInfos, SocketOutputStream> socketOutputStreamPool;
++
++    private SocketConnectionInfos socketConnectionInfos;
++
++    /**
++     * @param graphiteHost Graphite Host
++     * @param graphitePort Graphite Port
++     * @param prefix Common Metrics prefix
++     */
++    PickleMetricsManager(String graphiteHost, int graphitePort, String prefix) {
++        this.prefix = prefix;
++        this.socketConnectionInfos = new SocketConnectionInfos(graphiteHost, graphitePort);
++        
++        GenericKeyedObjectPoolConfig config = new GenericKeyedObjectPoolConfig();
++        config.setTestOnBorrow(true);
++        config.setTestWhileIdle(true);
++        config.setMaxTotalPerKey(-1);
++        config.setMaxTotal(-1);
++        config.setMaxIdlePerKey(-1);
++        config.setMinEvictableIdleTimeMillis(TimeUnit.MINUTES.toMillis(3));
++        config.setTimeBetweenEvictionRunsMillis(TimeUnit.MINUTES.toMillis(3));
++
++        socketOutputStreamPool = new GenericKeyedObjectPool<SocketConnectionInfos, SocketOutputStream>(
++                new SocketOutputStreamPoolFactory(SOCKET_CONNECT_TIMEOUT_MS), config);
++
++        if(LOG.isDebugEnabled()) {
++            LOG.debug("Created metric pickler with prefix "+prefix);
++        }
++    }
++    
++    static final String sanitizeString(String s) {
++        return s.replace(' ', '-');
++    }
++    
++    /**
++     * Convert the metric to a python tuple of the form:
++     *      (timestamp, (prefix.contextName.metricName, metricValue))
++     * And add it to the list of metrics. 
++     * @param timestamp in Seconds from 1970
++     * @param contextName
++     * @param metricName
++     * @param metricValue
++     */
++    public void addMetric(long timestamp, String contextName, String metricName, String metricValue) {
++        StringBuilder sb = new StringBuilder(50);
++        sb
++            .append(prefix)
++            .append(contextName)
++            .append(".")
++            .append(metricName);
++        metrics.add(new MetricTuple(sb.toString(), timestamp, metricValue));
++    }
++
++    /**
++     * Write metrics to Pickle Format and send to Graphite
++     */
++    public void writeAndSendMetrics() {        
++        if (metrics.size()>0) {
++            SocketOutputStream out = null;
++            try {
++                String payload = convertMetricsToPickleFormat(metrics);
++
++                int length = payload.length();
++                byte[] header = ByteBuffer.allocate(4).putInt(length).array();
++
++                out = socketOutputStreamPool.borrowObject(socketConnectionInfos);
++                out.write(header);
++                Writer pickleWriter = new OutputStreamWriter(out, CHARSET_NAME);
++                pickleWriter.write(payload);
++                pickleWriter.flush();
++                socketOutputStreamPool.returnObject(socketConnectionInfos, out);
++            } catch (Exception e) {
++                if(out != null) {
++                    try {
++                        socketOutputStreamPool.invalidateObject(socketConnectionInfos, out);
++                    } catch (Exception e1) {
++                        LOG.warn("Exception invalidating socketOutputStream connected to graphite server '"+socketConnectionInfos.getHost()+"':"+socketConnectionInfos.getPort(), e1);
++                    }
++                }
++                if (LOG.isDebugEnabled()) {
++                    LOG.debug("Error writing to Graphite", e);
++                } else {
++                    LOG.warn("Error writing to Graphite:"+e.getMessage());
++                }
++            }
++            
++            // if there was an error, we might miss some data. for now, drop those on the floor and
++            // try to keep going.
++            if(LOG.isDebugEnabled()) {
++                LOG.debug("Wrote "+ metrics.size() +" metrics");
++            }
++            metrics.clear();
++        }
++    }
++
++    /**
++     * 
++     */
++    public void destroy() {
++        socketOutputStreamPool.close();
++    }
++
++    /**
++     * See: http://readthedocs.org/docs/graphite/en/1.0/feeding-carbon.html
++     */
++    private static final String convertMetricsToPickleFormat(List<MetricTuple> metrics) {
++        StringBuilder pickled = new StringBuilder(metrics.size()*25);
++        pickled.append(MARK).append(LIST);
++
++        for (MetricTuple tuple : metrics) {
++            // begin outer tuple
++            pickled.append(MARK);
++
++            // the metric name is a string.
++            pickled.append(STRING)
++            // the single quotes are to match python's repr("abcd")
++                .append('\'').append(tuple.name).append('\'').append('\n');
++
++            // begin the inner tuple
++            pickled.append(MARK);
++
++            // timestamp is a long
++            pickled.append(LONG).append(tuple.timestamp)
++            // the trailing L is to match python's repr(long(1234))             
++                .append('L').append('\n');
++
++            // and the value is a string.
++            pickled.append(STRING).append('\'').append(tuple.value).append('\'').append('\n');
++
++            pickled.append(TUPLE) // end inner tuple
++                .append(TUPLE); // end outer tuple
++
++            pickled.append(APPEND);
++        }
++
++        // every pickle ends with STOP
++        pickled.append(STOP);
++        return pickled.toString();
++    }
++}
+Index: src/components/org/apache/jmeter/reporters/graphite/SamplerMetric.java
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/SamplerMetric.java	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/SamplerMetric.java	(revision 0)
+@@ -0,0 +1,114 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.reporters.graphite;
++
++import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
++import org.apache.jmeter.samplers.SampleResult;
++
++/**
++ * Sampler metric
++ * @since 2.10.1
++ */
++public class SamplerMetric {
++    private DescriptiveStatistics stats = new DescriptiveStatistics();
++    private static final int MAX_RECENT_VALUES = 100;
++    private int success;
++    private int failure;
++    private long maxTime=0L;
++    private long minTime=Long.MAX_VALUE;
++
++    /**
++     * 
++     */
++    public SamplerMetric() {
++        // see http://commons.apache.org/proper/commons-math/userguide/stat.html
++        stats.setWindowSize(MAX_RECENT_VALUES);
++    }
++
++    /**
++     * 
++     * @param result SampleResult
++     */
++    public synchronized void add(SampleResult result) {
++        if(result.isSuccessful()) {
++            success++;
++        } else {
++            failure++;
++        }
++        maxTime = Math.max(result.getTime(), maxTime);
++        minTime = Math.min(result.getTime(), minTime); 
++        stats.addValue(result.getTime());
++    }
++    
++    /**
++     * Reset metric except for percentile related datas
++     */
++    public synchronized void resetForTimeInterval() {
++        // We don't clear stats as it will slide as per my understanding of 
++        // http://commons.apache.org/proper/commons-math/userguide/stat.html
++        success = 0;
++        failure = 0;
++        maxTime=0L;
++        minTime=Long.MAX_VALUE;
++    }
++
++    /**
++     * @param percentile
++     * @return
++     */
++    public double getPercentile(double percentile) {
++        return stats.getPercentile(percentile);
++    }
++
++    /**
++     * 
++     * @return total request
++     */
++    public int getTotal() {
++        return success+failure;
++    }
++    
++    /**
++     * @return the success
++     */
++    public int getSuccess() {
++        return success;
++    }
++
++    /**
++     * @return the failure
++     */
++    public int getFailure() {
++        return failure;
++    }
++
++    /**
++     * @return the maxTime
++     */
++    public long getMaxTime() {
++        return maxTime;
++    }
++
++    /**
++     * @return the minTime
++     */
++    public long getMinTime() {
++        return minTime;
++    }
++}
+Index: src/components/org/apache/jmeter/reporters/graphite/SocketConnectionInfos.java
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/SocketConnectionInfos.java	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/SocketConnectionInfos.java	(revision 0)
+@@ -0,0 +1,62 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.reporters.graphite;
++
++/**
++ * @since 2.10.1
++ */
++public class SocketConnectionInfos {
++    private String host;
++    private int port;
++    
++    /**
++     * @param host
++     * @param port
++     */
++    public SocketConnectionInfos(String host, int port) {
++        super();
++        this.host = host;
++        this.port = port;
++    }
++    
++    /**
++     * @return the host
++     */
++    public String getHost() {
++        return host;
++    }
++    /**
++     * @param host the host to set
++     */
++    public void setHost(String host) {
++        this.host = host;
++    }
++    /**
++     * @return the port
++     */
++    public int getPort() {
++        return port;
++    }
++    /**
++     * @param port the port to set
++     */
++    public void setPort(int port) {
++        this.port = port;
++    }
++}
+Index: src/components/org/apache/jmeter/reporters/graphite/SocketOutputStream.java
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/SocketOutputStream.java	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/SocketOutputStream.java	(revision 0)
+@@ -0,0 +1,57 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.reporters.graphite;
++
++import java.io.FilterOutputStream;
++import java.io.IOException;
++import java.net.InetSocketAddress;
++import java.net.Socket;
++
++/**
++ * Convenience class for writing bytes to a {@linkplain java.net.Socket}.
++ * @since 2.10.1
++ */
++public class SocketOutputStream extends FilterOutputStream {
++
++    private final Socket socket;
++
++    public SocketOutputStream(InetSocketAddress inetSocketAddress) throws IOException {
++        this(new Socket(inetSocketAddress.getAddress(), inetSocketAddress.getPort()));
++    }
++
++    public SocketOutputStream(Socket socket) throws IOException {
++        super(socket.getOutputStream());
++        this.socket = socket;
++    }
++
++    /**
++     * Return the underlying Socket
++     */
++    public Socket getSocket() {
++        return socket;
++    }
++
++    @Override
++    public String toString() {
++        return "SocketOutputStream{" +
++                "socket=" + socket +
++                '}';
++    }
++
++}
+Index: src/components/org/apache/jmeter/reporters/graphite/SocketOutputStreamPoolFactory.java
+===================================================================
+--- src/components/org/apache/jmeter/reporters/graphite/SocketOutputStreamPoolFactory.java	(revision 0)
++++ src/components/org/apache/jmeter/reporters/graphite/SocketOutputStreamPoolFactory.java	(revision 0)
+@@ -0,0 +1,82 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.reporters.graphite;
++
++import java.net.InetSocketAddress;
++import java.net.Socket;
++
++import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
++import org.apache.commons.pool2.KeyedPooledObjectFactory;
++import org.apache.commons.pool2.PooledObject;
++import org.apache.commons.pool2.impl.DefaultPooledObject;
++
++/**
++ * Pool Factory of {@link SocketOutputStream}
++ * @since 2.10.1
++ */
++public class SocketOutputStreamPoolFactory 
++    extends BaseKeyedPooledObjectFactory<SocketConnectionInfos, SocketOutputStream> 
++    implements KeyedPooledObjectFactory<SocketConnectionInfos, SocketOutputStream> {
++
++    private final int socketConnectTimeoutInMillis;
++
++    public SocketOutputStreamPoolFactory(int socketConnectTimeoutInMillis) {
++        this.socketConnectTimeoutInMillis = socketConnectTimeoutInMillis;
++    }
++
++    @Override
++    public PooledObject<SocketOutputStream> makeObject(SocketConnectionInfos connectionInfos) throws Exception {
++        return wrap(create(connectionInfos));
++    }
++
++    @Override
++    public void destroyObject(SocketConnectionInfos socketConnectionInfos, PooledObject<SocketOutputStream> socketOutputStream) throws Exception {
++        super.destroyObject(socketConnectionInfos, socketOutputStream);
++        SocketOutputStream outputStream = socketOutputStream.getObject();
++        outputStream.close();
++        outputStream.getSocket().close();
++    }
++
++    /**
++     */
++    @Override
++    public boolean validateObject(SocketConnectionInfos HostAndPort, PooledObject<SocketOutputStream> socketOutputStream) {
++        Socket socket = socketOutputStream.getObject().getSocket();
++        return socket.isConnected()
++                && socket.isBound()
++                && !socket.isClosed()
++                && !socket.isInputShutdown()
++                && !socket.isOutputShutdown();
++    }
++
++    @Override
++    public SocketOutputStream create(SocketConnectionInfos connectionInfos)
++            throws Exception {
++        Socket socket = new Socket();
++        socket.setKeepAlive(true);
++        socket.connect(new InetSocketAddress(connectionInfos.getHost(), connectionInfos.getPort()), socketConnectTimeoutInMillis);
++
++        return new SocketOutputStream(socket);
++    }
++
++    @Override
++    public PooledObject<SocketOutputStream> wrap(SocketOutputStream outputStream) {
++        return new DefaultPooledObject<SocketOutputStream>(outputStream);
++    }
++}
+Index: eclipse.classpath
+===================================================================
+--- eclipse.classpath	(revision 1553423)
++++ eclipse.classpath	(working copy)
+@@ -55,7 +55,9 @@
+ 	<classpathentry kind="lib" path="lib/commons-jexl-2.1.1.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-lang3-3.1.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-logging-1.1.3.jar"/>
++	<classpathentry kind="lib" path="lib/commons-math3-3.2.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-net-3.3.jar"/>
++	<classpathentry kind="lib" path="lib/commons-pool2-2.0.jar"/>
+ 	<classpathentry kind="lib" path="lib/excalibur-datasource-1.1.1.jar"/>
+ 	<classpathentry kind="lib" path="lib/excalibur-instrument-1.0.jar"/>
+ 	<classpathentry kind="lib" path="lib/excalibur-logger-1.1.jar"/>
+Index: build.xml
+===================================================================
+--- build.xml	(revision 1553423)
++++ build.xml	(working copy)
+@@ -365,7 +365,9 @@
+     <include name="${lib.dir}/${commons-jexl2.jar}"/>
+     <include name="${lib.dir}/${commons-lang3.jar}"/>
+     <include name="${lib.dir}/${commons-logging.jar}"/>
++    <include name="${lib.dir}/${commons-math3.jar}"/>
+     <include name="${lib.dir}/${commons-net.jar}"/>
++    <include name="${lib.dir}/${commons-pool2.jar}"/>
+     <include name="${lib.dir}/${excalibur-datasource.jar}"/>
+     <include name="${lib.dir}/${excalibur-instrument.jar}"/>
+     <include name="${lib.dir}/${excalibur-logger.jar}"/>
+@@ -434,7 +436,9 @@
+     <pathelement location="${lib.dir}/${commons-jexl2.jar}"/>
+     <pathelement location="${lib.dir}/${commons-lang3.jar}"/>
+     <pathelement location="${lib.dir}/${commons-logging.jar}"/>
++  	<pathelement location="${lib.dir}/${commons-math3.jar}"/>
+     <pathelement location="${lib.dir}/${commons-net.jar}"/>
++  	<pathelement location="${lib.dir}/${commons-pool2.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-datasource.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-instrument.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-logger.jar}"/>
+@@ -2888,7 +2892,9 @@
+         <process_jarfile jarname="commons-jexl2"/>
+         <process_jarfile jarname="commons-lang3"/>
+         <process_jarfile jarname="commons-logging"/>
++        <process_jarfile jarname="commons-math3"/>
+         <process_jarfile jarname="commons-net"/>
++    	<process_jarfile jarname="commons-pool2"/>
+         <process_jarfile jarname="excalibur-datasource"/>
+         <process_jarfile jarname="excalibur-instrument"/>
+         <process_jarfile jarname="excalibur-logger"/>

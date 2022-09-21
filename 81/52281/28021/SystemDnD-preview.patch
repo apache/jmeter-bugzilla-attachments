@@ -1,0 +1,122 @@
+Index: src/core/org/apache/jmeter/gui/MainFrame.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/MainFrame.java	(revision 1209449)
++++ src/core/org/apache/jmeter/gui/MainFrame.java	(working copy)
+@@ -153,7 +153,7 @@
+ 
+         GuiPackage.getInstance().setMainFrame(this);
+         init();
+-
++        initTransferHandler();
+         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+     }
+ 
+@@ -406,6 +406,10 @@
+         setIconImage(JMeterUtils.getImage("jmeter.jpg").getImage());// $NON-NLS-1$
+     }
+ 
++	public void initTransferHandler() {
++    	this.setTransferHandler(new TopLevelTransferHandler());
++    }
++    
+     public void setExtendedFrameTitle(String fname) {
+         // file New operation may set to null, so just return app name
+         if (fname == null) {
+Index: src/core/org/apache/jmeter/gui/TopLevelTransferHandler.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/TopLevelTransferHandler.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/TopLevelTransferHandler.java	(working copy)
+@@ -0,0 +1,52 @@
++package org.apache.jmeter.gui;
++
++import java.awt.datatransfer.DataFlavor;
++import java.awt.datatransfer.UnsupportedFlavorException;
++import java.awt.event.ActionEvent;
++import java.io.File;
++import java.io.IOException;
++import java.util.List;
++
++import javax.swing.TransferHandler;
++
++import org.apache.jmeter.gui.action.ActionNames;
++import org.apache.jmeter.gui.action.LoadDraggedFile;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++@SuppressWarnings("serial")
++final class TopLevelTransferHandler extends TransferHandler {
++	private static final Logger log = LoggingManager.getLoggerForClass();
++	
++	@Override
++	public boolean canImport(TransferHandler.TransferSupport support) {
++		if(!support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
++			return false;
++		}
++		return true;
++	}
++
++	@SuppressWarnings("unchecked")
++	@Override
++	public boolean importData(TransferSupport support) {
++		if(!canImport(support)) {
++			return false;
++		}
++		try {
++			List<File> files = (List<File>) support.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
++			if(files.isEmpty()) {
++				return false;
++			}
++
++			ActionEvent fakeEvent = new ActionEvent(this, ActionEvent.ACTION_PERFORMED, ActionNames.OPEN);
++			LoadDraggedFile.loadProject(fakeEvent, files.get(0));
++		} catch (IOException e) {
++			log.error("Importing data from DnD caused ", e);
++			return false;
++		} catch (UnsupportedFlavorException e) {
++			log.error("Importing data from DnD caused ", e);
++			return false;
++		}
++		return super.importData(support);
++	}
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/action/LoadDraggedFile.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/LoadDraggedFile.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/LoadDraggedFile.java	(working copy)
+@@ -0,0 +1,35 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.io.File;
++
++/**
++ * Handles the loading of a file from a Drag and Drop action.
++ */
++public class LoadDraggedFile {
++
++    public static void loadProject(ActionEvent e, File f) {
++    	if(!Close.performAction(e)) {
++    		return;
++    	}
++    	Load.loadProjectFile(e, f, false);
++    }
++}

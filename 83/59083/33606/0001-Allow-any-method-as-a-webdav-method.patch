@@ -1,0 +1,282 @@
+From 40d58b3f1f0e7ed7bf46a433b7ea101b4dbfa4e3 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Thu, 18 Feb 2016 20:46:02 +0100
+Subject: [PATCH] Allow any method as a webdav method
+
+---
+ bin/jmeter.properties                              |  3 ++
+ .../protocol/http/config/gui/UrlConfigGui.java     |  2 +-
+ .../jmeter/protocol/http/sampler/HTTPHC4Impl.java  |  9 ++--
+ .../protocol/http/sampler/HTTPSamplerBase.java     | 53 ++++++++++--------
+ .../jmeter/protocol/http/sampler/HttpWebdav.java   | 36 +++++--------
+ .../protocol/http/sampler/TestHttpWebdav.java      | 63 ++++++++++++++++++++++
+ xdocs/usermanual/component_reference.xml           |  5 +-
+ 7 files changed, 119 insertions(+), 52 deletions(-)
+ create mode 100644 test/src/org/apache/jmeter/protocol/http/sampler/TestHttpWebdav.java
+
+diff --git a/bin/jmeter.properties b/bin/jmeter.properties
+index 7f9da5b..f04c0aa 100644
+--- a/bin/jmeter.properties
++++ b/bin/jmeter.properties
+@@ -999,6 +999,9 @@ beanshell.server.file=../extras/startup.bsh
+ # default to false
+ #httpsampler.embedded_resources_use_md5=false
+ 
++# List of extra HTTP methods that should be available
++#httpsampler.user_defined_methods=VERSION-CONTROL,REPORT,CHECKOUT,CHECKIN,UNCHECKOUT,MKWORKSPACE,UPDATE,LABEL,MERGE,BASELINE-CONTROL,MKACTIVITY
++
+ # The encoding to be used if none is provided (default ISO-8859-1)
+ #sampleresult.default.encoding=ISO-8859-1
+ 
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java b/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+index d7f3fb6..62a2163 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+@@ -627,7 +627,7 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+ 
+         if (notConfigOnly){
+             method = new JLabeledChoice(JMeterUtils.getResString("method"), // $NON-NLS-1$
+-                    HTTPSamplerBase.getValidMethodsAsArray());
++                    HTTPSamplerBase.getValidMethodsAsArray(), true);
+             method.addChangeListener(this);
+         }
+ 
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+index fff883e..da2511c 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+@@ -490,10 +490,11 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+         if (method.equals(HTTPConstants.POST)) {
+             String postBody = sendPostData((HttpPost)httpRequest);
+             result.setQueryString(postBody);
+-        } else if (method.equals(HTTPConstants.PUT) || method.equals(HTTPConstants.PATCH)
+-                || HttpWebdav.isWebdavMethod(method)
+-                || method.equals(HTTPConstants.DELETE)) {
+-            String entityBody = sendEntityData(( HttpEntityEnclosingRequestBase)httpRequest);
++        } else if (method.equals(HTTPConstants.PUT)
++                || method.equals(HTTPConstants.PATCH)
++                || method.equals(HTTPConstants.DELETE)
++                || HttpWebdav.isWebdavMethod(method)) {
++            String entityBody = sendEntityData((HttpEntityEnclosingRequestBase) httpRequest);
+             result.setQueryString(entityBody);
+         }
+     }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+index e88c344..a1fac63 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+@@ -226,29 +226,36 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+     }
+ 
+     public static final String DEFAULT_METHOD = HTTPConstants.GET; // $NON-NLS-1$
+-    // Supported methods:
+-    private static final String [] METHODS = {
+-        DEFAULT_METHOD, // i.e. GET
+-        HTTPConstants.POST,
+-        HTTPConstants.HEAD,
+-        HTTPConstants.PUT,
+-        HTTPConstants.OPTIONS,
+-        HTTPConstants.TRACE,
+-        HTTPConstants.DELETE,
+-        HTTPConstants.PATCH,
+-        HTTPConstants.PROPFIND,
+-        HTTPConstants.PROPPATCH,
+-        HTTPConstants.MKCOL,
+-        HTTPConstants.COPY,
+-        HTTPConstants.MOVE,
+-        HTTPConstants.LOCK,
+-        HTTPConstants.UNLOCK,
+-        HTTPConstants.REPORT,
+-        HTTPConstants.MKCALENDAR,
+-        HTTPConstants.SEARCH
+-        };
+-
+-    private static final List<String> METHODLIST = Collections.unmodifiableList(Arrays.asList(METHODS));
++
++    private static final List<String> METHODLIST;
++    static {
++        List<String> defaultMethods = new ArrayList<>(Arrays.asList(
++            DEFAULT_METHOD, // i.e. GET
++            HTTPConstants.POST,
++            HTTPConstants.HEAD,
++            HTTPConstants.PUT,
++            HTTPConstants.OPTIONS,
++            HTTPConstants.TRACE,
++            HTTPConstants.DELETE,
++            HTTPConstants.PATCH,
++            HTTPConstants.PROPFIND,
++            HTTPConstants.PROPPATCH,
++            HTTPConstants.MKCOL,
++            HTTPConstants.COPY,
++            HTTPConstants.MOVE,
++            HTTPConstants.LOCK,
++            HTTPConstants.UNLOCK,
++            HTTPConstants.REPORT,
++            HTTPConstants.MKCALENDAR,
++            HTTPConstants.SEARCH
++        ));
++        String userDefinedMethods = JMeterUtils.getPropDefault(
++                "httpsampler.user_defined_methods", "");
++        if (StringUtils.isNotBlank(userDefinedMethods)) {
++            defaultMethods.addAll(Arrays.asList(userDefinedMethods.split("\\s*,\\s*")));
++        }
++        METHODLIST = Collections.unmodifiableList(defaultMethods);
++    }
+ 
+     // @see mergeFileProperties
+     // Must be private, as the file list needs special handling
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HttpWebdav.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HttpWebdav.java
+index 57b62a7..b1b460d 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HttpWebdav.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HttpWebdav.java
+@@ -19,38 +19,25 @@
+ package org.apache.jmeter.protocol.http.sampler;
+ 
+ import java.net.URI;
+-import java.util.Arrays;
+-import java.util.HashSet;
+-import java.util.Set;
+ 
+ import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
+-import org.apache.jmeter.protocol.http.util.HTTPConstants;
+ 
+ /**
+  * WebDav request
++ *
+  * @since 2.12
+  */
+ public final class HttpWebdav extends HttpEntityEnclosingRequestBase {
+-    private static final Set<String> WEBDAV_METHODS =
+-            new HashSet<>(Arrays.asList(
+-                    HTTPConstants.PROPFIND,
+-                    HTTPConstants.PROPPATCH,
+-                    HTTPConstants.MKCOL,
+-                    HTTPConstants.COPY,
+-                    HTTPConstants.MOVE,
+-                    HTTPConstants.LOCK,
+-                    HTTPConstants.UNLOCK,
+-                    HTTPConstants.REPORT,
+-                    HTTPConstants.MKCALENDAR,
+-                    HTTPConstants.SEARCH
+-            ));
+-    
+-    private String davMethod;
++
++    private final String davMethod;
+ 
+     /**
+      * 
+-     * @param davMethod method to use (has to be a Webdav method as identified by {@link #isWebdavMethod(String)})
+-     * @param uri {@link URI} to use
++     * @param davMethod
++     *            method to use (has to be a Webdav method as identified by
++     *            {@link #isWebdavMethod(String)})
++     * @param uri
++     *            {@link URI} to use
+      */
+     public HttpWebdav(final String davMethod, final URI uri) {
+         super();
+@@ -64,10 +51,13 @@ public final class HttpWebdav extends HttpEntityEnclosingRequestBase {
+     }
+ 
+     /**
+-     * @param method Http Method
++     * @param method
++     *            Http Method
+      * @return <code>true</code> if method is a Webdav one
+      */
+     public static boolean isWebdavMethod(String method) {
+-        return WEBDAV_METHODS.contains(method);
++        // A HTTP method can be a token as specified in
++        // https://tools.ietf.org/html/rfc7230#section-3.2.6
++        return method != null && method.matches("^(?i)[\\da-z!#$%&'*+\\-.^_`|~]+$");
+     }
+ }
+diff --git a/test/src/org/apache/jmeter/protocol/http/sampler/TestHttpWebdav.java b/test/src/org/apache/jmeter/protocol/http/sampler/TestHttpWebdav.java
+new file mode 100644
+index 0000000..ae4e78a
+--- /dev/null
++++ b/test/src/org/apache/jmeter/protocol/http/sampler/TestHttpWebdav.java
+@@ -0,0 +1,63 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.sampler;
++
++import static org.junit.Assert.assertEquals;
++import static org.junit.Assert.assertFalse;
++import static org.junit.Assert.assertTrue;
++
++import java.net.URI;
++import java.net.URISyntaxException;
++import java.util.Arrays;
++import java.util.List;
++
++import org.apache.http.client.methods.HttpRequestBase;
++import org.apache.jmeter.protocol.http.util.HTTPConstants;
++import org.junit.Test;
++
++public class TestHttpWebdav {
++
++    private static final List<String> VALID_METHODS = Arrays.asList("foo",
++            "BAR", "123", "VERSION-CONTROL", HTTPConstants.PROPFIND);
++
++    private static final List<String> INVALID_METHODS = Arrays.asList("", null,
++            "bär", "with blank", "\"", "Foo(bar)", ":thing", "<xml>");
++
++    @Test
++    public void testisWebdavMethod() {
++        for (String method : VALID_METHODS) {
++            assertTrue(method + " is a HttpWebdav method",
++                    HttpWebdav.isWebdavMethod(method));
++        }
++        for (String method : INVALID_METHODS) {
++            assertFalse(method + " is not a HttpWebdav method",
++                    HttpWebdav.isWebdavMethod(method));
++        }
++    }
++
++    @Test
++    public void testGetMethod() throws URISyntaxException {
++        for (String method : VALID_METHODS) {
++            HttpRequestBase request = new HttpWebdav(method, new URI(
++                    "http://example.com"));
++            assertEquals(method, request.getMethod());
++        }
++    }
++
++}
+diff --git a/xdocs/usermanual/component_reference.xml b/xdocs/usermanual/component_reference.xml
+index d2dd27a..b7d0511 100644
+--- a/xdocs/usermanual/component_reference.xml
++++ b/xdocs/usermanual/component_reference.xml
+@@ -234,7 +234,10 @@ https.default.protocol=SSLv3
+           <code>JAVA</code> implementation). With <code>HttpClient4</code>, the following methods related to WebDav are
+           also allowed: <code>COPY</code>, <code>LOCK</code>, <code>MKCOL</code>, <code>MOVE</code>,
+           <code>PROPFIND</code>, <code>PROPPATCH</code>, <code>UNLOCK</code>, <code>REPORT</code>, <code>MKCALENDAR</code>,
+-          <code>SEARCH</code>.</property>
++          <code>SEARCH</code>.
++          <p>More methods can be pre-defined for the HttpClient4 by using the JMeter property
++            <code>httpsampler.user_defined_methods</code>.</p>
++        </property>
+         <property name="Content Encoding" required="No">
+         Content encoding to be used (for <code>POST</code>, <code>PUT</code>, <code>PATCH</code> and <code>FILE</code>).
+         This is the character encoding to be used, and is not related to the Content-Encoding HTTP header.
+-- 
+1.9.1
+

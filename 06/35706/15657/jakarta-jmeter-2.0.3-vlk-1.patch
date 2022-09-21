@@ -1,0 +1,263 @@
+diff -Nur jakarta-jmeter-2.0.3/bin/jmeter.properties jakarta-jmeter-2.0.3.new/bin/jmeter.properties
+--- jakarta-jmeter-2.0.3/bin/jmeter.properties	2005-03-14 00:54:44.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/bin/jmeter.properties	2005-07-12 15:41:47.963965000 +0200
+@@ -203,6 +203,7 @@
+ #jmeter.save.saveservice.response_message=true
+ #jmeter.save.saveservice.successful=true
+ #jmeter.save.saveservice.thread_name=true
++#jmeter.save.saveservice.thread_count=true
+ #jmeter.save.saveservice.time=true
+ 
+ # legitimate values: none, ms, or a format suitable for SimpleDateFormat
+@@ -326,4 +327,4 @@
+ # the controllers are initialised. This is so controllers can access variables earlier. 
+ # In case this causes problems, the previous behaviour can be restored by uncommenting
+ # the following line.
+-#jmeterthread.startearlier=false
+\ No newline at end of file
++#jmeterthread.startearlier=false
+diff -Nur jakarta-jmeter-2.0.3/bin/jmetertest.properties jakarta-jmeter-2.0.3.new/bin/jmetertest.properties
+--- jakarta-jmeter-2.0.3/bin/jmetertest.properties	2005-03-14 00:52:46.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/bin/jmetertest.properties	2005-07-12 15:41:52.104563500 +0200
+@@ -148,6 +148,7 @@
+ #jmeter.save.saveservice.response_message=true
+ #jmeter.save.saveservice.successful=true
+ #jmeter.save.saveservice.thread_name=true
++#jmeter.save.saveservice.thread_count=true
+ jmeter.save.saveservice.time=false
+ 
+ # legitimate values: none, ms, or a format suitable for SimpleDateFormat
+diff -Nur jakarta-jmeter-2.0.3/src/components/org/apache/jmeter/control/TransactionController.java jakarta-jmeter-2.0.3.new/src/components/org/apache/jmeter/control/TransactionController.java
+--- jakarta-jmeter-2.0.3/src/components/org/apache/jmeter/control/TransactionController.java	2004-03-30 19:08:10.000000000 +0200
++++ jakarta-jmeter-2.0.3.new/src/components/org/apache/jmeter/control/TransactionController.java	2005-07-08 15:36:11.837447800 +0200
+@@ -94,6 +94,7 @@
+ 				res.setResponseCode("200");
+ 				res.setResponseMessage("Called: "+calls);
+ 				res.setThreadName(threadName);
++				res.setThreadCount(-1); // count of thread isn't important here
+         	
+ 				//TODO could these be done earlier (or just once?)
+ 				threadContext = getThreadContext();
+diff -Nur jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+--- jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	2004-12-15 23:34:42.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	2005-07-08 15:06:59.307087800 +0200
+@@ -63,6 +64,8 @@
+     private transient SearchByClass testListeners;
+     private String host = null;
+     private transient ListenerNotifier notifier;
++    private transient int executingThreads = 0;
++
+     
+     // Allow engine and threads to be stopped from outside a thread
+     // e.g. from beanshell server
+@@ -263,6 +266,7 @@
+ 
+     public synchronized void threadFinished(JMeterThread thread)
+     {
++    	 executingThreads--;
+         allThreads.remove(thread);
+         if (!serialized && allThreads.size() == 0 && !schcdule_run )
+         {
+@@ -565,4 +569,16 @@
+ 		log.info("Starting Closedown");
+ 		t.start();
+     }
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.threads.JMeterThreadMonitor#threadRunning(org.apache.jmeter.threads.JMeterThread)
++     */
++    public synchronized void threadStartExecuting(JMeterThread thread) {
++        executingThreads++;
++    }
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.threads.JMeterThreadMonitor#getExecutingThreadCount()
++     */
++    public int getExecutingThreadCount() {
++      return executingThreads;
++    }
+ }
+diff -Nur jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/samplers/SampleResult.java jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/samplers/SampleResult.java
+--- jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/samplers/SampleResult.java	2005-03-12 11:38:40.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/samplers/SampleResult.java	2005-07-08 15:01:06.234980300 +0200
+@@ -97,6 +97,7 @@
+     private boolean stopThread = false; //Should thread terminate?
+ 	private boolean stopTest = false;   //Should test terminate?
+ 	private boolean isMonitor = false;
++	private int threadCount = 0;
+ 	//TODO do contentType and/or dataEncoding belong in HTTPSampleResult instead?
+ 
+     private final static String TOTAL_TIME = "totalTime";
+@@ -138,6 +139,7 @@
+ 		setResponseMessage(res.getResponseMessage());
+ 		setDataType(res.getDataType());
+ 		setResponseHeaders(res.getResponseHeaders());
++		setThreadCount(res.getThreadCount());
+ 
+ 		addSubResult(res); // this will add res.getTime() to getTime().
+ 	}
+@@ -725,4 +727,16 @@
+ 	public URL getURL() {
+ 	    return location;
+ 	}
++	/**
++	 * @return Returns the threadCount.
++	 */
++	public int getThreadCount() {
++		return threadCount;
++	}
++	/**
++	 * @param threadCount The threadCount to set.
++	 */
++	public void setThreadCount(int threadCount) {
++		this.threadCount = threadCount;
++	}
+ }
+diff -Nur jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/save/SaveService.java jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/save/SaveService.java
+--- jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/save/SaveService.java	2004-06-12 19:32:04.000000000 +0200
++++ jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/save/SaveService.java	2005-07-12 16:15:45.087436300 +0200
+@@ -122,6 +122,11 @@
+     /** A flag to indicate whether the thread name should be saved to the test
+         results. */
+     protected static boolean saveThreadName = true;
++    
++    /** A flag to indicate whether the thread count should be saved to the test
++    results. */
++    protected static boolean saveThreadCount = true;
++
+ 
+     /** A flag to indicate whether the time should be saved to the test
+         results. */
+@@ -209,6 +214,10 @@
+             TRUE.equalsIgnoreCase(
+                 props.getProperty(SAVE_THREAD_NAME_PROP, TRUE));
+ 
++        saveThreadCount =
++            TRUE.equalsIgnoreCase(
++                props.getProperty(SAVE_THREAD_COUNT_PROP, TRUE));
++        
+         saveTime =
+             TRUE.equalsIgnoreCase(props.getProperty(SAVE_TIME_PROP, TRUE));
+ 
+@@ -341,6 +350,12 @@
+                text = splitter.nextToken();
+                result.setThreadName(text);
+            }
++           
++           if (saveThreadCount)
++           {
++           		text = splitter.nextToken();
++           		result.setThreadCount(Integer.valueOf(text).intValue());
++           }
+         
+            if (saveDataType)
+            {
+@@ -404,6 +420,12 @@
+             text.append(SaveServiceConstants.THREAD_NAME);
+             text.append(defaultDelimiter);
+         }
++        
++        if (saveThreadCount)
++        {
++            text.append(SaveServiceConstants.THREAD_COUNT);
++            text.append(defaultDelimiter);
++        }
+ 
+         if (saveDataType)
+         {
+@@ -469,6 +491,7 @@
+ 		                          config.getAttributeAsLong(TIME, 0L));
+ 
+         result.setThreadName(config.getAttribute(THREAD_NAME, ""));
++        result.setThreadCount(config.getAttributeAsInteger(THREAD_COUNT,-1));
+         result.setDataType(config.getAttribute(DATA_TYPE, ""));
+         result.setResponseCode(config.getAttribute(RESPONSE_CODE, ""));
+         result.setResponseMessage(config.getAttribute(RESPONSE_MESSAGE, ""));
+@@ -612,6 +635,11 @@
+         {
+             config.setAttribute(THREAD_NAME, result.getThreadName());
+         }
++        if (saveThreadCount)
++        {
++            config.setAttribute(THREAD_COUNT,
++            		String.valueOf(result.getThreadCount()));
++        }
+         if (saveDataType)
+         {
+             config.setAttribute(DATA_TYPE, result.getDataType());
+@@ -755,6 +783,12 @@
+             text.append(sample.getThreadName());
+             text.append(delimiter);
+         }
++        
++        if (saveThreadCount)
++        {
++            text.append(sample.getThreadCount());
++            text.append(delimiter);
++        }
+ 
+         if (saveDataType)
+         {
+diff -Nur jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/save/SaveServiceConstants.java jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/save/SaveServiceConstants.java
+--- jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/save/SaveServiceConstants.java	2004-02-13 02:40:54.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/save/SaveServiceConstants.java	2005-07-12 15:39:08.308736800 +0200
+@@ -129,6 +129,11 @@
+      should be saved.  **/
+     public static final String SAVE_THREAD_NAME_PROP
+             = "jmeter.save.saveservice.thread_name";
++    
++    /** The name of the property indicating whether the thread count
++    should be saved.  **/
++   public static final String SAVE_THREAD_COUNT_PROP
++           = "jmeter.save.saveservice.thread_count";
+ 
+     /** The name of the property indicating whether the time
+      should be saved.  **/
+@@ -158,6 +163,7 @@
+     public static final String SAMPLE_RESULT_TAG_NAME = "sampleResult";
+     public static final String SUCCESSFUL = "success";
+     public static final String THREAD_NAME = "threadName";
++    public static final String THREAD_COUNT = "threadCount";
+     public static final String TIME = "time";
+     public static final String TIME_STAMP = "timeStamp";
+ 
+diff -Nur jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/threads/JMeterThread.java jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/threads/JMeterThread.java
+--- jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/threads/JMeterThread.java	2005-03-14 00:54:44.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/threads/JMeterThread.java	2005-07-08 15:07:33.953255300 +0200
+@@ -260,6 +260,7 @@
+             controller.addIterationListener(new IterationListener());
+ 			if (!startEarlier) threadContext.setSamplingStarted(true);
+             threadStarted();
++            monitor.threadStartExecuting(this);
+             while (running)
+             {
+                 Sampler sam;
+@@ -280,6 +281,7 @@
+                         if (sampler instanceof TestBean) ((TestBean)sampler).prepare();               
+                         SampleResult result = sampler.sample(null); // TODO: remove this useless Entry parameter
+                         result.setThreadName(threadName);
++                        result.setThreadCount(monitor.getExecutingThreadCount());
+                         threadContext.setPreviousResult(result);
+                         runPostProcessors(pack.getPostProcessors());
+                         checkAssertions(pack.getAssertions(), result);
+diff -Nur jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java
+--- jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java	2004-02-14 03:34:30.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java	2005-07-08 15:06:21.504165300 +0200
+@@ -23,5 +23,7 @@
+  */
+ public interface JMeterThreadMonitor 
+ {
++    public void threadStartExecuting(JMeterThread thread);
+     public void threadFinished(JMeterThread thread);
++    public int getExecutingThreadCount();
+ }
+diff -Nur jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/util/JMeterVersion.java jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/util/JMeterVersion.java
+--- jakarta-jmeter-2.0.3/src/core/org/apache/jmeter/util/JMeterVersion.java	2005-03-17 03:32:38.000000000 +0100
++++ jakarta-jmeter-2.0.3.new/src/core/org/apache/jmeter/util/JMeterVersion.java	2005-07-12 15:44:57.046819900 +0200
+@@ -44,7 +44,7 @@
+ 	 * This ensures that JMeterUtils always gets the correct version, even if it is
+ 	 * not re-compiled during the build.
+ 	 */
+-	private static final String VERSION = "2.0.3";
++	private static final String VERSION = "2.0.3.20050712";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2005 The Apache Software Foundation";
+ 	

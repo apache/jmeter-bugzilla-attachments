@@ -1,0 +1,30 @@
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(revision 1325711)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(working copy)
+@@ -241,6 +241,7 @@
+             }
+         } while (result || (updateCount != -1));
+         if (out!=null && pstmt instanceof CallableStatement){
++            ArrayList<Object> outputValues = new ArrayList<Object>();
+             CallableStatement cs = (CallableStatement) pstmt;
+             sb.append("Output variables by position:\n");
+             for(int i=0; i < out.length; i++){
+@@ -252,6 +253,17 @@
+                     sb.append("\n");
+                 }
+             }
++            String varnames[] = getVariableNames().split(COMMA);
++            if(varnames.length > 0) {
++        	JMeterVariables jmvars = getThreadContext().getVariables();
++                for(int i = 0; i < varnames.length && i < outputValues.size(); i++) {
++                    String name = varnames[i].trim();
++                    if (name.length()>0){ // Save the value in the variable if present
++                        Object o = outputValues.get(i);
++                        jmvars.put(name, o == null ? null : o.toString());
++                    }
++                }
++            }
+         }
+         return sb.toString();
+     }

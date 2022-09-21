@@ -1,0 +1,543 @@
+From ab6171705e00affc02667ffd75018fb5b6099c76 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@debeka.de>
+Date: Tue, 19 Jun 2018 13:46:46 +0200
+Subject: [PATCH 1/2] Use pre-compiled text formatter instead of String#format
+
+---
+ ...heticResponseTimeDistributionGraphConsumer.java | 20 +++---
+ .../impl/TransactionsPerSecondGraphConsumer.java   |  7 +-
+ .../org/apache/jorphan/text/BooleanFormatter.java  | 46 +++++++++++++
+ .../org/apache/jorphan/text/CombinedFormatter.java | 46 +++++++++++++
+ .../org/apache/jorphan/text/NoOpFormatter.java     | 28 ++++++++
+ .../apache/jorphan/text/PreCompiledFormatter.java  | 24 +++++++
+ .../jorphan/text/PreCompiledFormatterBuilder.java  | 79 ++++++++++++++++++++++
+ .../org/apache/jorphan/text/SimpleFormatter.java   | 26 +++++++
+ .../org/apache/jorphan/text/StaticFormatter.java   | 39 +++++++++++
+ .../org/apache/jorphan/text/StringFormatter.java   | 45 ++++++++++++
+ .../jorphan/text/PreCompiledFormatterSpec.groovy   | 50 ++++++++++++++
+ 11 files changed, 397 insertions(+), 13 deletions(-)
+ create mode 100644 src/jorphan/org/apache/jorphan/text/BooleanFormatter.java
+ create mode 100644 src/jorphan/org/apache/jorphan/text/CombinedFormatter.java
+ create mode 100644 src/jorphan/org/apache/jorphan/text/NoOpFormatter.java
+ create mode 100644 src/jorphan/org/apache/jorphan/text/PreCompiledFormatter.java
+ create mode 100644 src/jorphan/org/apache/jorphan/text/PreCompiledFormatterBuilder.java
+ create mode 100644 src/jorphan/org/apache/jorphan/text/SimpleFormatter.java
+ create mode 100644 src/jorphan/org/apache/jorphan/text/StaticFormatter.java
+ create mode 100644 src/jorphan/org/apache/jorphan/text/StringFormatter.java
+ create mode 100644 test/src/org/apache/jorphan/text/PreCompiledFormatterSpec.groovy
+
+diff --git a/src/core/org/apache/jmeter/report/processor/graph/impl/SyntheticResponseTimeDistributionGraphConsumer.java b/src/core/org/apache/jmeter/report/processor/graph/impl/SyntheticResponseTimeDistributionGraphConsumer.java
+index 01ffd8c65..cb07be8f1 100644
+--- a/src/core/org/apache/jmeter/report/processor/graph/impl/SyntheticResponseTimeDistributionGraphConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/graph/impl/SyntheticResponseTimeDistributionGraphConsumer.java
+@@ -17,23 +17,24 @@
+  */
+ package org.apache.jmeter.report.processor.graph.impl;
+ 
+-import java.text.MessageFormat;
+ import java.util.Arrays;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+ import org.apache.jmeter.report.core.Sample;
+-import org.apache.jmeter.report.processor.ListResultData;
+-import org.apache.jmeter.report.processor.MapResultData;
+-import org.apache.jmeter.report.processor.SumAggregatorFactory;
+-import org.apache.jmeter.report.processor.ValueResultData;
+ import org.apache.jmeter.report.processor.graph.AbstractGraphConsumer;
+ import org.apache.jmeter.report.processor.graph.AbstractSeriesSelector;
+ import org.apache.jmeter.report.processor.graph.CountValueSelector;
+ import org.apache.jmeter.report.processor.graph.GraphKeysSelector;
+ import org.apache.jmeter.report.processor.graph.GroupInfo;
+ import org.apache.jmeter.report.processor.graph.SeriesData;
++import org.apache.jmeter.report.processor.ListResultData;
++import org.apache.jmeter.report.processor.MapResultData;
++import org.apache.jmeter.report.processor.SumAggregatorFactory;
++import org.apache.jmeter.report.processor.ValueResultData;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.text.PreCompiledFormatter;
++import org.apache.jorphan.text.PreCompiledFormatterBuilder;
+ 
+ /**
+  * The class SyntheticResponseTimeDistributionGraphConsumer provides a graph to visualize
+@@ -44,9 +45,12 @@ import org.apache.jmeter.util.JMeterUtils;
+ public class SyntheticResponseTimeDistributionGraphConsumer extends
+         AbstractGraphConsumer {
+     private static final String FAILED_LABEL = JMeterUtils.getResString("response_time_distribution_failed_label");
+-    private static final MessageFormat SATISFIED_LABEL = new MessageFormat(JMeterUtils.getResString("response_time_distribution_satisfied_label"));
+-    private static final MessageFormat TOLERATED_LABEL = new MessageFormat(JMeterUtils.getResString("response_time_distribution_tolerated_label"));
+-    private static final MessageFormat UNTOLERATED_LABEL = new MessageFormat(JMeterUtils.getResString("response_time_distribution_untolerated_label"));
++    private static final PreCompiledFormatter SATISFIED_LABEL = PreCompiledFormatterBuilder.build(
++            JMeterUtils.getResString("response_time_distribution_satisfied_label"));
++    private static final PreCompiledFormatter TOLERATED_LABEL = PreCompiledFormatterBuilder.build(
++            JMeterUtils.getResString("response_time_distribution_tolerated_label"));
++    private static final PreCompiledFormatter UNTOLERATED_LABEL = PreCompiledFormatterBuilder.build(
++            JMeterUtils.getResString("response_time_distribution_untolerated_label"));
+     private static final String SERIE_COLOR_PROPERTY = "color";
+     private static final String SATISFIED_COLOR = "#9ACD32";
+     private static final String TOLERATED_COLOR = "yellow";
+diff --git a/src/core/org/apache/jmeter/report/processor/graph/impl/TransactionsPerSecondGraphConsumer.java b/src/core/org/apache/jmeter/report/processor/graph/impl/TransactionsPerSecondGraphConsumer.java
+index 85b9b26fe..027ddc60f 100644
+--- a/src/core/org/apache/jmeter/report/processor/graph/impl/TransactionsPerSecondGraphConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/graph/impl/TransactionsPerSecondGraphConsumer.java
+@@ -39,7 +39,6 @@ import org.apache.jmeter.report.processor.graph.TimeStampKeysSelector;
+ public class TransactionsPerSecondGraphConsumer extends
+         AbstractOverTimeGraphConsumer {
+ 
+-    private static final String STATUS_SERIES_FORMAT = "%s-%s";
+     private static final String SUCCESS_SERIES_SUFFIX = "success";
+     private static final String FAILURE_SERIES_SUFFIX = "failure";
+ 
+@@ -72,10 +71,8 @@ public class TransactionsPerSecondGraphConsumer extends
+ 
+                     @Override
+                     public Iterable<String> select(Sample sample) {
+-                        String label = String.format(STATUS_SERIES_FORMAT,
+-                                sample.getName(),
+-                                sample.getSuccess() ? SUCCESS_SERIES_SUFFIX
+-                                        : FAILURE_SERIES_SUFFIX);
++                        String success = sample.getSuccess() ? SUCCESS_SERIES_SUFFIX : FAILURE_SERIES_SUFFIX;
++                        String label = sample.getName() + "-" + success;
+                         return Arrays.asList(label);
+                     }
+                 },
+diff --git a/src/jorphan/org/apache/jorphan/text/BooleanFormatter.java b/src/jorphan/org/apache/jorphan/text/BooleanFormatter.java
+new file mode 100644
+index 000000000..71062a4b0
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/BooleanFormatter.java
+@@ -0,0 +1,46 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++import java.util.function.Function;
++
++public class BooleanFormatter implements SimpleFormatter {
++
++  Function<String, String> transformer;
++
++  public BooleanFormatter() {
++    this(s -> s);
++  }
++
++  public BooleanFormatter(Function<String, String> transformer) {
++    this.transformer = transformer;
++  }
++
++  @Override
++  public void format(StringBuilder sb, Object arg) {
++    String valueAsString = arg instanceof Boolean ? String.valueOf(arg) : "true";
++    sb.append(transformer.apply(arg == null ? "false" : valueAsString));
++  }
++
++  @Override
++  public int argsNeeded() {
++    return 1;
++  }
++
++}
+diff --git a/src/jorphan/org/apache/jorphan/text/CombinedFormatter.java b/src/jorphan/org/apache/jorphan/text/CombinedFormatter.java
+new file mode 100644
+index 000000000..3500f7700
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/CombinedFormatter.java
+@@ -0,0 +1,46 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++import java.util.List;
++
++public class CombinedFormatter implements PreCompiledFormatter {
++
++  private List<SimpleFormatter> formatters;
++
++  public CombinedFormatter(List<SimpleFormatter> formatters) {
++    this.formatters = formatters;
++  }
++
++  @Override
++  public String format(Object... args) {
++    StringBuilder sb = new StringBuilder();
++    int index = 0;
++    for (SimpleFormatter f : formatters) {
++      if (f.argsNeeded() > 0) {
++        f.format(sb, args[index]);
++      } else {
++        f.format(sb, null);
++      }
++      index += f.argsNeeded();
++    }
++    return sb.toString();
++  }
++
++}
+diff --git a/src/jorphan/org/apache/jorphan/text/NoOpFormatter.java b/src/jorphan/org/apache/jorphan/text/NoOpFormatter.java
+new file mode 100644
+index 000000000..f2fae9bca
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/NoOpFormatter.java
+@@ -0,0 +1,28 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++public class NoOpFormatter implements PreCompiledFormatter {
++
++  @Override
++  public String format(Object... args) {
++    return "";
++  }
++
++}
+diff --git a/src/jorphan/org/apache/jorphan/text/PreCompiledFormatter.java b/src/jorphan/org/apache/jorphan/text/PreCompiledFormatter.java
+new file mode 100644
+index 000000000..987962c98
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/PreCompiledFormatter.java
+@@ -0,0 +1,24 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++public interface PreCompiledFormatter {
++
++  public String format(Object... args);
++}
+diff --git a/src/jorphan/org/apache/jorphan/text/PreCompiledFormatterBuilder.java b/src/jorphan/org/apache/jorphan/text/PreCompiledFormatterBuilder.java
+new file mode 100644
+index 000000000..267f59fa4
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/PreCompiledFormatterBuilder.java
+@@ -0,0 +1,79 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++public class PreCompiledFormatterBuilder {
++
++  private PreCompiledFormatterBuilder() {
++    // hide publicly
++  }
++
++  private static Map<String, SimpleFormatter> availableFormatters;
++  static {
++    availableFormatters = new HashMap<>();
++    availableFormatters.put("s", new StringFormatter());
++    availableFormatters.put("S", new StringFormatter(String::toUpperCase));
++    availableFormatters.put("b", new BooleanFormatter());
++    availableFormatters.put("B", new BooleanFormatter(String::toUpperCase));
++    availableFormatters.put("%", new StaticFormatter("%"));
++    availableFormatters.put("n", new StaticFormatter("\n"));
++  }
++
++  private static Pattern formatPattern = Pattern.compile("%(\\w)");
++
++  public static PreCompiledFormatter build(String format) {
++    List<SimpleFormatter> f = new ArrayList<>();
++    Matcher matcher = formatPattern.matcher(format);
++    while (matcher.find()) {
++      StringBuffer buf = new StringBuffer();
++      matcher.appendReplacement(buf,
++          Matcher.quoteReplacement(""));
++      String prefix = buf.toString();
++      if (prefix.length() > 0) {
++        f.add(new StaticFormatter(prefix));
++      }
++      if (availableFormatters.containsKey(matcher.group(1))) {
++        f.add(availableFormatters.get(matcher.group(1)));
++      } else {
++        throw new IllegalArgumentException("No formatter available for %" + matcher.group(1) + " in [" + format + "]");
++      }
++    }
++    String tailString = extractTail(matcher);
++    if (!tailString.isEmpty()) {
++      f.add(new StaticFormatter(tailString));
++    }
++    if (f.isEmpty()) {
++      return new NoOpFormatter();
++    }
++    return new CombinedFormatter(f);
++  }
++
++  private static String extractTail(Matcher matcher) {
++    StringBuffer buf = new StringBuffer();
++    matcher.appendTail(buf);
++    return buf.toString();
++  }
++}
+diff --git a/src/jorphan/org/apache/jorphan/text/SimpleFormatter.java b/src/jorphan/org/apache/jorphan/text/SimpleFormatter.java
+new file mode 100644
+index 000000000..09e80e386
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/SimpleFormatter.java
+@@ -0,0 +1,26 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++public interface SimpleFormatter {
++
++  public void format(StringBuilder sb, Object arg);
++
++  public int argsNeeded();
++}
+diff --git a/src/jorphan/org/apache/jorphan/text/StaticFormatter.java b/src/jorphan/org/apache/jorphan/text/StaticFormatter.java
+new file mode 100644
+index 000000000..ed42a54a1
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/StaticFormatter.java
+@@ -0,0 +1,39 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++public class StaticFormatter implements SimpleFormatter {
++
++  private final String text;
++
++  public StaticFormatter(final String text) {
++    this.text = text;
++  }
++
++  @Override
++  public void format(StringBuilder sb, Object arg) {
++    sb.append(text);
++  }
++
++  @Override
++  public int argsNeeded() {
++    return 0;
++  }
++
++}
+diff --git a/src/jorphan/org/apache/jorphan/text/StringFormatter.java b/src/jorphan/org/apache/jorphan/text/StringFormatter.java
+new file mode 100644
+index 000000000..bcd67f945
+--- /dev/null
++++ b/src/jorphan/org/apache/jorphan/text/StringFormatter.java
+@@ -0,0 +1,45 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.text;
++
++import java.util.function.Function;
++
++public class StringFormatter implements SimpleFormatter {
++
++  Function<String, String> transform;
++
++  public StringFormatter() {
++    this(s -> s);
++  }
++
++  public StringFormatter(Function<String, String> transform) {
++    this.transform = transform;
++  }
++
++  @Override
++  public void format(StringBuilder sb, Object arg) {
++    sb.append(transform.apply(arg == null ? "null" : arg.toString()));
++  }
++
++  @Override
++  public int argsNeeded() {
++    return 1;
++  }
++
++}
+diff --git a/test/src/org/apache/jorphan/text/PreCompiledFormatterSpec.groovy b/test/src/org/apache/jorphan/text/PreCompiledFormatterSpec.groovy
+new file mode 100644
+index 000000000..ca4c930f8
+--- /dev/null
++++ b/test/src/org/apache/jorphan/text/PreCompiledFormatterSpec.groovy
+@@ -0,0 +1,50 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.io
++
++import org.apache.jorphan.text.PreCompiledFormatter
++import org.apache.jorphan.text.PreCompiledFormatterBuilder
++import spock.lang.Specification
++import spock.lang.Unroll
++
++@Unroll
++class PreCompiledFormatterSpec extends Specification {
++
++    def "empty format gives an empty string"() {
++        given:
++            def sut = PreCompiledFormatterBuilder.build("")
++        expect:
++            sut.format() == ""
++    }
++
++    def "formats are the same as String.format"() {
++        given:
++            def sut = PreCompiledFormatterBuilder.build(format)
++            Object[] args = allArgs.toArray(new Object[0])
++        expect:
++            sut.format(args) == String.format(format, args)
++        where:
++            format       | allArgs
++            "Hello, %s!" | ['World']
++            "%s-%s"      | [42, 23]
++            "%s => %S"   | ['aBc', 'aBc']
++            "%s => %b"   | [true, true]
++    }
++
++}
+-- 
+2.13.7
+

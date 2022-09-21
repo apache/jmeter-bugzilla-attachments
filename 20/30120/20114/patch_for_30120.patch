@@ -1,0 +1,136 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 534327)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -401,9 +401,8 @@
+ 				TestElement el = currentNode.getTestElement();
+ 				comp.modifyTestElement(el);
+ 			}
+-			if (currentNode != treeListener.getCurrentNode()) {
+-				currentNodeUpdated = true;
+-			}
++			// The current node is now updated
++			currentNodeUpdated = true;
+ 			currentNode = treeListener.getCurrentNode();
+ 		} catch (Exception e) {
+ 			log.error("Problem retrieving gui", e);
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/AddToTree.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/AddToTree.java	(revision 534327)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/AddToTree.java	(working copy)
+@@ -26,9 +26,11 @@
+ import javax.swing.JComponent;
+ import javax.swing.tree.TreePath;
+ 
++import org.apache.jmeter.exceptions.IllegalUserActionException;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -63,19 +65,20 @@
+ 	 * Adds the specified class to the current node of the tree.
+ 	 */
+ 	public void doAction(ActionEvent e) {
++        GuiPackage guiPackage = GuiPackage.getInstance();
+ 		try {
+-			TestElement node = GuiPackage.getInstance().createTestElement(((JComponent) e.getSource()).getName());
+-			addObjectToTree(node);
+-		} catch (Exception err) {
+-			log.error("", err);
++            GuiPackage.getInstance().updateCurrentNode();
++			TestElement testElement = guiPackage.createTestElement(((JComponent) e.getSource()).getName());
++            JMeterTreeNode parentNode = guiPackage.getCurrentNode();
++            JMeterTreeNode node = guiPackage.getTreeModel().addComponent(testElement, parentNode);
++            guiPackage.getMainFrame().getTree().setSelectionPath(new TreePath(node.getPath()));
++        }
++		catch (IllegalUserActionException iuae) {
++            log.error("", iuae); // $NON-NLS-1$
++		    JMeterUtils.reportErrorToUser(iuae.getMessage());
+ 		}
++        catch (Exception err) {
++			log.error("", err); // $NON-NLS-1$
++		}
+ 	}
+-
+-	protected void addObjectToTree(TestElement el) {
+-		GuiPackage guiPackage = GuiPackage.getInstance();
+-		JMeterTreeNode node = new JMeterTreeNode(el, guiPackage.getTreeModel());
+-		guiPackage.getTreeModel().insertNodeInto(node, guiPackage.getTreeListener().getCurrentNode(),
+-				guiPackage.getTreeListener().getCurrentNode().getChildCount());
+-		guiPackage.getMainFrame().getTree().setSelectionPath(new TreePath(node.getPath()));
+-	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/AbstractJMeterGuiComponent.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/AbstractJMeterGuiComponent.java	(revision 534327)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/AbstractJMeterGuiComponent.java	(working copy)
+@@ -83,6 +83,7 @@
+ 		namePanel = new NamePanel();
+ 		commentPanel=new CommentPanel();
+ 		setName(getStaticLabel());
++        setComment("");
+ 	}
+ 
+ 	/**
+@@ -93,6 +94,14 @@
+ 		namePanel.setName(name);
+ 	}
+ 
++    /**
++     * Provides a default implementation for the name property. It's unlikely
++     * developers will need to override.
++     */
++    public void setComment(String comment) {
++        commentPanel.setText(comment);
++    }
++
+ 	/**
+ 	 * Provides a default implementation for the enabled property. It's unlikely
+ 	 * developers will need to override.
+@@ -120,6 +129,19 @@
+ 		} else
+ 			return "";
+ 	}
++    
++    /**
++     * Provides a default implementation for the comment property. It's unlikely
++     * developers will need to override.
++     */
++    public String getComment() {
++        if (getCommentPanel() != null) {
++            return getCommentPanel().getText();
++        }
++        else {
++            return "";
++        }
++    }
+ 
+ 	/**
+ 	 * Provides the Name Panel for extending classes. Extending classes are free
+@@ -179,12 +201,13 @@
+ 
+ 	/**
+ 	 * Provides a default implementat that resets the name field to the value of
+-	 * getStaticLabel(), and sets enabled to true. Your GUI may need more things
++	 * getStaticLabel(), reset comment and sets enabled to true. Your GUI may need more things
+ 	 * cleared, in which case you should override, clear the extra fields, and
+ 	 * still call super.clear().
+ 	 */
+ 	public void clear() {
+ 		setName(getStaticLabel());
++        setComment("");
+ 		enabled = true;
+ 	}
+ 
+@@ -209,7 +232,7 @@
+ 		// This stores the state of the TestElement
+ 		log.debug("setting element to enabled: " + enabled);
+ 		mc.setProperty(new BooleanProperty(TestElement.ENABLED, enabled));
+-		mc.setProperty(TestPlan.COMMENTS, getCommentPanel().getText());
++		mc.setProperty(TestPlan.COMMENTS, getComment());
+ 	}
+ 
+ 	/**

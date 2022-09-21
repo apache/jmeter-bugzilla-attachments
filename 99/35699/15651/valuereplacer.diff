@@ -1,0 +1,30 @@
+--- orig/ValueReplacer.java	2005-07-12 13:15:30.834991600 +0200
++++ ValueReplacer.java	2005-07-12 13:14:01.627299400 +0200
+@@ -129,12 +129,26 @@
+         while(iter.hasNext())
+         {
+             JMeterProperty val = iter.next();
++            String name = val.getName();
++
+             if (log.isDebugEnabled())
+             {
+                 log.debug("About to replace in property of tipe: "
+                   +val.getClass()+": "+val);
+             }
+-            if (val instanceof StringProperty)
++            
++            // There's a few properties which are excluded from this processing:
++            if (name.equals(TestElement.ENABLED)
++                    || name.equals(TestElement.GUI_CLASS)
++                    || name.equals(TestElement.NAME)
++                    || name.equals(TestElement.TEST_CLASS))
++            {
++            	if (log.isDebugEnabled())
++                {
++            		log.debug("Skip special property.");
++                }
++            }
++            else if (val instanceof StringProperty)
+             {
+                 val = transform.transformValue((StringProperty) val);
+                 if (log.isDebugEnabled())

@@ -1,0 +1,188 @@
+Index: /Workspaces-JMeter/Jmeter/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 770776)
++++ /Workspaces-JMeter/Jmeter/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -95,6 +95,8 @@
+         implements ActionListener, TreeSelectionListener, Clearable
+     {
+ 
++    private static final long serialVersionUID = 1L;
++
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     // Maximum size that we will display
+@@ -293,7 +295,7 @@
+      * @return description of this visualizer
+      */
+     public String toString() {
+-        String desc = "Shows the text results of sampling in tree form";
++        String desc = JMeterUtils.getResString("view_results_desc"); //$NON-NLS-1$
+ 
+         if (log.isDebugEnabled()) {
+             log.debug("toString1 : Returning description - " + desc);
+@@ -338,7 +340,7 @@
+                         if (rh != null) {
+                             StringBuffer sb = new StringBuffer(sd.length() + rh.length()+20);
+                             sb.append(sd);
+-                            sb.append("\nRequest Headers:\n");
++                            sb.append("\n"+JMeterUtils.getResString("view_results_request_headers")+"\n"); //$NON-NLS-1$
+                             sb.append(rh);
+                             sd = sb.toString();
+                         }
+@@ -346,14 +348,14 @@
+                     }
+ 
+                     StringBuffer statsBuff = new StringBuffer(200);
+-                    statsBuff.append("Thread Name: ").append(res.getThreadName()).append(NL);
++                    statsBuff.append(JMeterUtils.getResString("view_results_thread_name")).append(res.getThreadName()).append(NL); //$NON-NLS-1$
+                     String startTime = dateFormat.format(new Date(res.getStartTime()));
+-                    statsBuff.append("Sample Start: ").append(startTime).append(NL);
+-                    statsBuff.append("Load time: ").append(res.getTime()).append(NL);
+-                    statsBuff.append("Latency: ").append(res.getLatency()).append(NL);
+-                    statsBuff.append("Size in bytes: ").append(res.getBytes()).append(NL);
+-                    statsBuff.append("Sample Count: ").append(res.getSampleCount()).append(NL);
+-                    statsBuff.append("Error Count: ").append(res.getErrorCount()).append(NL);
++                    statsBuff.append(JMeterUtils.getResString("view_results_sample_start")).append(startTime).append(NL); //$NON-NLS-1$
++                    statsBuff.append(JMeterUtils.getResString("view_results_load_time")).append(res.getTime()).append(NL); //$NON-NLS-1$
++                    statsBuff.append(JMeterUtils.getResString("view_results_latency")).append(res.getLatency()).append(NL); //$NON-NLS-1$
++                    statsBuff.append(JMeterUtils.getResString("view_results_size_in_bytes")).append(res.getBytes()).append(NL); //$NON-NLS-1$
++                    statsBuff.append(JMeterUtils.getResString("view_results_sample_count")).append(res.getSampleCount()).append(NL); //$NON-NLS-1$
++                    statsBuff.append(JMeterUtils.getResString("view_results_error_count")).append(res.getErrorCount()).append(NL); //$NON-NLS-1$
+                     statsDoc.insertString(statsDoc.getLength(), statsBuff.toString(), null);
+                     statsBuff = new StringBuffer(); //reset for reuse
+ 
+@@ -382,7 +384,7 @@
+                         break;
+                     }
+ 
+-                    statsBuff.append("Response code: ").append(responseCode).append(NL);
++                    statsBuff.append(JMeterUtils.getResString("view_results_response_code")).append(responseCode).append(NL); //$NON-NLS-1$
+                     statsDoc.insertString(statsDoc.getLength(), statsBuff.toString(), style);
+                     statsBuff = new StringBuffer(100); //reset for reuse
+ 
+@@ -390,14 +392,14 @@
+                     String responseMsgStr = res.getResponseMessage();
+ 
+                     log.debug("valueChanged1 : response message - " + responseMsgStr);
+-                    statsBuff.append("Response message: ").append(responseMsgStr).append(NL);
++                    statsBuff.append(JMeterUtils.getResString("view_results_response_message")).append(responseMsgStr).append(NL); //$NON-NLS-1$
+ 
+                     statsBuff.append(NL);
+-                    statsBuff.append("Response headers:").append(NL);
++                    statsBuff.append(JMeterUtils.getResString("view_results_response_headers")).append(NL); //$NON-NLS-1$
+                     statsBuff.append(res.getResponseHeaders()).append(NL);
+                     statsBuff.append(NL);
+                     final String samplerClass = res.getClass().getName();
+-                    statsBuff.append(samplerClass.substring(1+samplerClass.lastIndexOf('.'))).append(" fields:").append(NL);
++                    statsBuff.append(samplerClass.substring(1+samplerClass.lastIndexOf('.'))).append(" " + JMeterUtils.getResString("view_results_fields")).append(NL); //$NON-NLS-1$
+                     statsBuff.append("ContentType: ").append(res.getContentType()).append(NL);
+                     statsBuff.append("DataEncoding: ").append(res.getDataEncodingNoDefault()).append(NL);
+                     statsDoc.insertString(statsDoc.getLength(), statsBuff.toString(), null);
+@@ -435,9 +437,9 @@
+                     }
+ 
+                     StringBuffer statsBuff = new StringBuffer(100);
+-                    statsBuff.append("Assertion error: ").append(res.isError()).append(NL);
+-                    statsBuff.append("Assertion failure: ").append(res.isFailure()).append(NL);
+-                    statsBuff.append("Assertion failure message : ").append(res.getFailureMessage()).append(NL);
++                    statsBuff.append(JMeterUtils.getResString("view_results_assertion_error")).append(res.isError()).append(NL); //$NON-NLS-1$
++                    statsBuff.append(JMeterUtils.getResString("view_results_assertion_failure")).append(res.isFailure()).append(NL); //$NON-NLS-1$
++                    statsBuff.append(JMeterUtils.getResString("view_results_assertion_failure_message")).append(res.getFailureMessage()).append(NL); //$NON-NLS-1$
+                     statsDoc.insertString(statsDoc.getLength(), statsBuff.toString(), null);
+                     statsBuff = null;
+                 }
+@@ -586,7 +588,8 @@
+             // he's ready to wait.
+             int len = res.getResponseData().length;
+             if (MAX_DISPLAY_SIZE > 0 && len > MAX_DISPLAY_SIZE) {
+-                response = "Response too large to be displayed. Size: " + len + " > Max: "+MAX_DISPLAY_SIZE;
++                response = JMeterUtils.getResString("view_results_response_too_large_message") //$NON-NLS-1$
++                    + len + " > Max: "+MAX_DISPLAY_SIZE;
+                 log.warn(response);
+             } else {
+                 response = res.getResponseDataAsString();
+Index: /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(revision 770776)
++++ /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -861,7 +861,15 @@
+ var_name=Reference Name
+ variable_name_param=Name of variable (may include variable and function references)
+ view_graph_tree_title=View Graph Tree
++view_results_assertion_error=Assertion error: 
++view_results_assertion_failure=Assertion failure: 
++view_results_assertion_failure_message=Assertion failure message: 
++view_results_desc=Shows the text results of sampling in tree form
++view_results_error_count=Error Count: 
++view_results_fields=fields:
+ view_results_in_table=View Results in Table
++view_results_latency=Latency: 
++view_results_load_time=Load time: 
+ view_results_render_embedded=Download embedded resources
+ view_results_render_html=Render HTML
+ view_results_render_json=Render JSON
+@@ -867,6 +875,14 @@
+ view_results_render_json=Render JSON
+ view_results_render_text=Show Text
+ view_results_render_xml=Render XML
++view_results_request_headers=Request Headers:
++view_results_response_code=Response code: 
++view_results_response_headers=Response headers:
++view_results_response_message=Response message: 
++view_results_response_too_large_message=Response too large to be displayed. Size: 
++view_results_sample_count=Sample Count: 
++view_results_sample_start=Sample Start: 
++view_results_size_in_bytes=Size in bytes: 
+ view_results_tab_assertion=Assertion result
+ view_results_tab_request=Request
+ view_results_tab_response=Response data
+@@ -871,6 +887,7 @@
+ view_results_tab_request=Request
+ view_results_tab_response=Response data
+ view_results_tab_sampler=Sampler result
++view_results_thread_name=Thread Name: 
+ view_results_title=View Results
+ view_results_tree_title=View Results Tree
+ warning=Warning!
+Index: /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 770776)
++++ /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -703,7 +703,15 @@
+ var_name=Nom de r\u00E9f\u00E9rence \:
+ variable_name_param=Nom de variable (peut inclure une r\u00E9f\u00E9rence de variable ou fonction)
+ view_graph_tree_title=Voir le graphique en arbre
++view_results_assertion_error=Erreur d'assertion \: 
++view_results_assertion_failure=Echec d'assertion \: 
++view_results_assertion_failure_message=Message d'\u00E9chec d'assertion \: 
++view_results_desc=Affiche les r\u00E9sultats d'un \u00E9chantillon dans un arbre de r\u00E9sultats
++view_results_error_count=Compteur erreur\: 
++view_results_fields=champs \:
+ view_results_in_table=Tableau de r\u00E9sultats
++view_results_latency=Latence \: 
++view_results_load_time=Temps de r\u00E9ponse \: 
+ view_results_render_embedded=T\u00E9l\u00E9charger les ressources incluses
+ view_results_render_html=Afficher en HTML
+ view_results_render_json=Afficher en JSON
+@@ -709,10 +717,19 @@
+ view_results_render_json=Afficher en JSON
+ view_results_render_text=Afficher en texte brut
+ view_results_render_xml=Afficher en XML
+-view_results_tab_assertion=R\u00E9sultats des v\u00E9rificateurs
++view_results_request_headers=Ent\u00EAtes de requ\u00EAte \:
++view_results_response_code=Code HTTP de r\u00E9ponse \: 
++view_results_response_headers=Ent\u00EAtes de r\u00E9ponse \:
++view_results_response_message=Message HTTP de r\u00E9ponse \: 
++view_results_response_too_large_message=R\u00E9ponse d\u00E9passant la taille maximale d'affichage. Taille \: 
++view_results_sample_count=Compteur \u00E9chantillon \: 
++view_results_sample_start=Date d\u00E9but \u00E9chantillon \: 
++view_results_size_in_bytes=Taille en octets \: 
++view_results_tab_assertion=R\u00E9sultats d'assertion
+ view_results_tab_request=Requ\u00EAte
+ view_results_tab_response=Donn\u00E9es de r\u00E9ponse
+ view_results_tab_sampler=R\u00E9sultat de l'\u00E9chantillon
++view_results_thread_name=Nom d'unit\u00E9 \: 
+ view_results_title=Voir les r\u00E9sultats
+ view_results_tree_title=Arbre de r\u00E9sultats
+ warning=Attention \!
+

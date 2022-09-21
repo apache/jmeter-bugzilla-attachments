@@ -1,0 +1,264 @@
+Index: src/core/org/apache/jmeter/gui/action/RemoteStart.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/RemoteStart.java,v
+retrieving revision 1.7
+diff -r1.7 RemoteStart.java
+61a62,63
+> import java.util.Iterator;
+> import java.util.StringTokenizer;
+77a80
+>  *@author	 Drew Gulino
+79c82
+<  *@version   1.0
+---
+>  *@version   1.1
+86a90
+>
+92a97,98
+> 		commands.add("remote_start_all");
+> 		commands.add("remote_stop_all");
+111,113c117
+< 			GuiPackage.getInstance().getMainFrame().showStoppingMessage(name);
+< 			JMeterEngine engine = (JMeterEngine)remoteEngines.get(name);
+< 			engine.stopTest();
+---
+> 			doRemoteStop(name);
+116a121,163
+> 			doRemoteInit(name);
+> 			doRemoteStart(name);
+> 		}
+> 		else if(action.equals("remote_start_all"))
+> 		{
+> 			String remote_hosts_string = JMeterUtils.getPropDefault("remote_hosts",
+> 								  "127.0.0.1");
+> 			java.util.StringTokenizer st = new java.util.StringTokenizer(remote_hosts_string, ",");
+> 			while(st.hasMoreElements())
+> 			{
+> 				String el = (String)st.nextElement();
+> 				doRemoteInit(el);
+> 			}
+> 			st = new java.util.StringTokenizer(remote_hosts_string, ",");
+> 			while(st.hasMoreElements())
+> 			{
+> 				String el = (String)st.nextElement();
+> 				doRemoteStart(el);
+> 			}
+> 		}
+> 		else if(action.equals("remote_stop_all"))
+> 		{
+> 			String remote_hosts_string = JMeterUtils.getPropDefault("remote_hosts",
+> 								  "127.0.0.1");
+> 			java.util.StringTokenizer st = new java.util.StringTokenizer(remote_hosts_string, ",");
+> 			while(st.hasMoreElements())
+> 			{
+> 				String el = (String)st.nextElement();
+> 				doRemoteStop(el);
+> 			}
+> 		}
+> 	}
+>
+>
+> 	/*
+> 	 * Stops a remote testing engine
+> 	 *
+> 	 * @param name The DNS name or IP address of the remote testing engine
+> 	 *
+> 	 */
+> 	private void doRemoteStop(String name)
+> 	{
+> 		GuiPackage.getInstance().getMainFrame().showStoppingMessage(name);
+117a165,176
+> 			engine.stopTest();
+> 	}
+>
+> 	/*
+> 	 * Starts a remote testing engine
+> 	 *
+> 	 * @param name The DNS name or IP address of the remote testing engine
+> 	 *
+> 	 */
+> 	private void doRemoteStart(String name)
+> 	{
+> 		JMeterEngine engine = (JMeterEngine)remoteEngines.get(name);
+137d195
+< 		}
+139c197,222
+<
+---
+> 	/* Initializes remote engines
+> 	 *
+> 	 */
+> 	 private void doRemoteInit(String name)
+> 	 {
+> 		JMeterEngine engine = (JMeterEngine)remoteEngines.get(name);
+> 			if(engine == null)
+> 			{
+> 				try
+> 				{
+> 					engine = new ClientJMeterEngine(name);
+> 					remoteEngines.put(name, engine);
+> 				}
+> 				catch(Exception ex)
+> 				{
+> 					log.error("",ex);
+> 					JMeterUtils.reportErrorToUser("Bad call to remote host");
+> 					return;
+> 				}
+> 			}
+> 			else
+> 			{
+> 				engine.reset();
+> 			}
+> 			initEngine(engine, name);
+> 	}
+149a233,246
+> 	/* Initializes test on engine
+> 	 *
+> 	 * @param engine	remote engine object
+> 	 * @param host		host the engine will run on
+> 	 */
+> 	private void initEngine(JMeterEngine engine, String host)
+> 	{
+> 		GuiPackage gui = GuiPackage.getInstance();
+> 		HashTree testTree = gui.getTreeModel().getTestPlan();
+> 		convertSubTree(testTree);
+> 		testTree.add(testTree.getArray()[0],gui.getMainFrame());
+> 		engine.configure(testTree);
+> 	}
+>
+151c248
+< 	 * Description of the Method
+---
+> 	 * Starts the test on the remote engine
+159,162d255
+< 		HashTree testTree = gui.getTreeModel().getTestPlan();
+< 		convertSubTree(testTree);
+< 		testTree.add(testTree.getArray()[0],gui.getMainFrame());
+< 		engine.configure(testTree);
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java,v
+retrieving revision 1.9
+diff -r1.9 JMeterMenuBar.java
+103a104
+> 	JMenuItem remote_start_all;
+106a108
+> 	JMenuItem remote_stop_all;
+382a385,390
+> 		remote_start_all = new JMenuItem(JMeterUtils.getResString("remote_start_all"), 'Z');
+> 		remote_start_all.setAccelerator(
+> 			KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_MASK));
+> 		remote_start_all.addActionListener(ActionRouter.getInstance());
+> 		remote_start_all.setActionCommand("remote_start_all");
+> 		runMenu.add(remote_start_all);
+387a396,401
+> 		remote_stop_all = new JMenuItem(JMeterUtils.getResString("remote_stop_all"), 'X');
+> 		remote_stop_all.setAccelerator(
+> 			KeyStroke.getKeyStroke(KeyEvent.VK_X, KeyEvent.CTRL_MASK));
+> 		remote_stop_all.addActionListener(ActionRouter.getInstance());
+> 		remote_stop_all.setActionCommand("remote_stop_all");
+> 		runMenu.add(remote_stop_all);
+483a498
+>
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.29
+diff -r1.29 messages.properties
+38a39,40
+> remote_start_all=Remote Start All
+> remote_stop_all=Remote Stop All
+337,340c339
+< menu_extractors=Extractors and Post Request Processors
+< string_from_file_file_name=Enter full path to file
+< simple_data_writer_title=Simple Data Writer
+< include_equals=Include Equals?
+\ No newline at end of file
+---
+> menu_extractors=Extractors and Post Request Processors
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages_de.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_de.properties,v
+retrieving revision 1.25
+retrieving revision 1.23
+diff -r1.25 -r1.23
+334,337c334
+< graph_results_median=Median
+< string_from_file_file_name=Enter full path to file
+< simple_data_writer_title=Simple Data Writer
+< include_equals=Include Equals?
+\ No newline at end of file
+---
+> graph_results_median=Median
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages_ja.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_ja.properties,v
+retrieving revision 1.22
+retrieving revision 1.20
+diff -r1.22 -r1.20
+329,332c329
+< graph_results_median=Median
+< string_from_file_file_name=Enter full path to file
+< simple_data_writer_title=Simple Data Writer
+< include_equals=Include Equals?
+\ No newline at end of file
+---
+> graph_results_median=Median
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages_no.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_no.properties,v
+retrieving revision 1.22
+retrieving revision 1.20
+diff -r1.22 -r1.20
+321,324c321
+< graph_results_median=Median
+< string_from_file_file_name=Enter full path to file
+< simple_data_writer_title=Simple Data Writer
+< include_equals=Include Equals?
+\ No newline at end of file
+---
+> graph_results_median=Median
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/samplers/SampleResult.java,v
+retrieving revision 1.4
+retrieving revision 1.3
+diff -r1.4 -r1.3
+75,76c75,76
+<  *@created    $Date: 2003/02/20 02:59:15 $
+<  *@version    $Revision: 1.4 $
+---
+>  *@created    $Date: 2002/08/29 18:17:39 $
+>  *@version    $Revision: 1.3 $
+98d97
+<     private String dataEncoding;
+336,360d334
+<     /**
+<      * Returns the dataEncoding.
+<      * @return String
+<      */
+<     public String getDataEncoding()
+<     {
+<         if(dataEncoding != null)
+<         {
+<             return dataEncoding;
+<         }
+<         else
+<         {
+<             return "8859-1";
+<         }
+<     }
+<
+<     /**
+<      * Sets the dataEncoding.
+<      * @param dataEncoding The dataEncoding to set
+<      */
+<     public void setDataEncoding(String dataEncoding)
+<     {
+<         this.dataEncoding = dataEncoding;
+<     }
+<

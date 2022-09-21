@@ -1,0 +1,129 @@
+From 1fb78ae0d09d8b7c5f3ca8f92c2b7d2f72265d19 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 4 Feb 2017 15:37:32 +0100
+Subject: [PATCH 1/2] Make LoggerPanel more responsive under load.
+
+---
+ src/core/org/apache/jmeter/gui/LoggerPanel.java | 61 +++++++++++++++++++------
+ 1 file changed, 46 insertions(+), 15 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/gui/LoggerPanel.java b/src/core/org/apache/jmeter/gui/LoggerPanel.java
+index 2bf84da..0fcfaeb 100644
+--- a/src/core/org/apache/jmeter/gui/LoggerPanel.java
++++ b/src/core/org/apache/jmeter/gui/LoggerPanel.java
+@@ -20,13 +20,15 @@ package org.apache.jmeter.gui;
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Insets;
++import java.util.Iterator;
+ 
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+ import javax.swing.JTextArea;
+ import javax.swing.ScrollPaneConstants;
+-import javax.swing.SwingUtilities;
++import javax.swing.Timer;
+ 
++import org.apache.commons.collections.buffer.BoundedFifoBuffer;
+ import org.apache.jmeter.gui.util.JSyntaxTextArea;
+ import org.apache.jmeter.gui.util.JTextScrollPane;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -45,16 +47,22 @@ public class LoggerPanel extends JPanel implements LogTarget {
+ 
+     private final JTextArea textArea;
+ 
++    private volatile boolean logChanged = false;
++
+     private final PatternFormatter format;
+ 
+     // Limit length of log content
+     private static final int LOGGER_PANEL_MAX_LENGTH =
+             JMeterUtils.getPropDefault("jmeter.loggerpanel.maxlength", 80000); // $NON-NLS-1$
+-    
++
+     // Make panel handle event even if closed
+     private static final boolean LOGGER_PANEL_RECEIVE_WHEN_CLOSED =
+             JMeterUtils.getPropDefault("jmeter.loggerpanel.enable_when_closed", true); // $NON-NLS-1$
+ 
++    private final BoundedFifoBuffer events =
++            new BoundedFifoBuffer(LOGGER_PANEL_MAX_LENGTH); // $NON-NLS-1$
++
++
+     /**
+      * Pane for display JMeter log file
+      */
+@@ -89,6 +97,9 @@ public class LoggerPanel extends JPanel implements LogTarget {
+         areaScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+         areaScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+         this.add(areaScrollPane, BorderLayout.CENTER);
++
++        initWorker();
++
+         return jTextArea;
+     }
+ 
+@@ -100,22 +111,41 @@ public class LoggerPanel extends JPanel implements LogTarget {
+         if(!LOGGER_PANEL_RECEIVE_WHEN_CLOSED && !GuiPackage.getInstance().getMenuItemLoggerPanel().getModel().isSelected()) {
+             return;
+         }
+-        
+-        SwingUtilities.invokeLater(new Runnable() {
+-            @Override
+-            public void run() {
+-                synchronized (textArea) {
+-                    textArea.append(format.format(logEvent));
+-                    int currentLength = textArea.getText().length();
+-                    // If LOGGER_PANEL_MAX_LENGTH is 0, it means all log events are kept
+-                    if(LOGGER_PANEL_MAX_LENGTH != 0 && currentLength> LOGGER_PANEL_MAX_LENGTH) {
+-                        textArea.setText(textArea.getText().substring(Math.max(0, currentLength-LOGGER_PANEL_MAX_LENGTH), 
+-                                currentLength));
++
++        synchronized (events) {
++            if (events.isFull()) {
++                events.remove();
++            }
++            events.add(format.format(logEvent));
++        }
++
++        logChanged = true;
++    }
++
++    private void initWorker() {
++        Timer timer = new Timer(
++            100,
++            e -> {
++                if (!logChanged) {
++                    return;
++                }
++                logChanged = false;
++                StringBuilder builder = new StringBuilder();
++                synchronized (events) {
++                    @SuppressWarnings("unchecked")
++                    Iterator<String> lines = events.iterator();
++                    while (lines.hasNext()) {
++                        builder.append(lines.next());
+                     }
+-                    textArea.setCaretPosition(textArea.getText().length());
++                }
++                String logText = builder.toString();
++                synchronized (textArea) {
++                    textArea.setText(logText);
++                    textArea.setCaretPosition(logText.length());
+                 }
+             }
+-        });
++        );
++        timer.start();
+     }
+ 
+     /**
+@@ -123,5 +153,6 @@ public class LoggerPanel extends JPanel implements LogTarget {
+      */
+     public void clear() {
+         this.textArea.setText(""); // $NON-NLS-1$
++        events.clear();
+     }
+ }
+-- 
+2.7.4
+

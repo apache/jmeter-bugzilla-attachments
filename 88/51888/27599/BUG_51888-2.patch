@@ -1,0 +1,98 @@
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 1174682)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -23,6 +23,7 @@
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.ListIterator;
++import java.util.concurrent.CountDownLatch;
+ 
+ import org.apache.jmeter.assertions.Assertion;
+ import org.apache.jmeter.assertions.AssertionResult;
+@@ -127,6 +128,10 @@
+ 
+     private volatile Sampler currentSampler;
+ 
++    private CountDownLatch latch;
++
++    private Logger logger = LoggingManager.getLoggerForClass();
++
+     public JMeterThread(HashTree test, JMeterThreadMonitor monitor, ListenerNotifier note) {
+         this.monitor = monitor;
+         threadVars = new JMeterVariables();
+@@ -303,6 +308,18 @@
+         } catch (Error e) {// Make sure errors are output to the log file
+             log.error("Test failed!", e);
+         } finally {
++            if(latch != null)
++            {
++                try {
++                    if(logger.isDebugEnabled()) {
++                        logger.debug(Thread.currentThread().getName() + " of thread "+ threadName+" waiting on latch");
++                    }
++                    latch.await();
++                    latch = null;
++                } catch (InterruptedException e) {
++                    // 
++                }
++            }
+             threadContext.clear();
+             log.info("Thread finished: " + threadName);
+             threadFinished(iterationListener);
+@@ -567,28 +584,42 @@
+     }
+ 
+     public void stop() { // Called by StandardJMeterEngine, TestAction and AccessLogSampler
++        latch = new CountDownLatch(1);
++        if(logger.isDebugEnabled()) {
++            logger.debug(Thread.currentThread().getName() + " stop was called for "+getThreadName()+", latch set to 1");
++        }
+         running = false;
+         log.info("Stopping: " + threadName);
+     }
+ 
+     /** {@inheritDoc} */
+     public boolean interrupt(){
+-        Sampler samp = currentSampler; // fetch once
+-        if (samp instanceof Interruptible){
+-            log.warn("Interrupting: " + threadName + " sampler: " +samp.getName());
+-            try {
+-                boolean found = ((Interruptible)samp).interrupt();
+-                if (!found) {
+-                    log.warn("No operation pending");
++        try {
++            Sampler samp = currentSampler; // fetch once
++            if (samp instanceof Interruptible){
++                log.warn("Interrupting: " + threadName + " sampler: " +samp.getName());
++                try {
++                    boolean found = ((Interruptible)samp).interrupt();
++                    if (!found) {
++                        log.warn("No operation pending");
++                    }
++                    return found;
++                } catch (Exception e) {
++                    log.warn("Caught Exception interrupting sampler: "+e.toString());
+                 }
+-                return found;
+-            } catch (Exception e) {
+-                log.warn("Caught Exception interrupting sampler: "+e.toString());
++            } else if (samp != null){
++                log.warn("Sampler is not Interruptible: "+samp.getName());
++            }
++            return false;
++        }
++        finally {
++            if(latch != null) {
++                if(logger.isDebugEnabled()) {
++                    logger.debug(Thread.currentThread().getName() + " countDown called for "+ getThreadName());
++                }
++                latch.countDown();
+             }
+-        } else if (samp != null){
+-            log.warn("Sampler is not Interruptible: "+samp.getName());
+         }
+-        return false;
+     }
+ 
+     private void stopTest() {

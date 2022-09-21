@@ -1,0 +1,148 @@
+Setup of example for JMETER-Proxy bug
+--------------------------------------
+
+This is a small example to reconstuct the problem with the JMETER-PROXY.
+
+A simple client JAVA application calls a method of a remote service "JMeterTestService" that is deployed in an application server.
+On client side, it can be configured if PROXY should be turned ON or OFF (proxy host name and port can be configured).
+
+
+If the JMETER-Proxy is used, the following bug can be seen: The HTTP request has a smaller value on the client side than on the server side.
+
+You can observe this, when you inspect the "content-length" entries in logfile "jmetertest_clientside.log" on the client:
+
+ HTTP REQUEST HEADERS: 
+        Content-Type: application/x-java-serialized-object
+        User-Agent: Jakarta Commons-HttpClient/2.0.2
+        Host: localhost:9095
+        Proxy-Connection: Keep-Alive
+        Content-Length: 265
+
+and "jmetertest_serverside.log" on the server with entry:
+
+ HTTP REQUEST HEADERS:
+        content-length: 278
+        content-type: application/x-java-serialized-object
+        host: dsa12a.dsa-ac.de
+        user-agent: Jakarta Commons-HttpClient/2.0.2
+        accept: text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2
+        proxy-connection: keep-alive
+        Proxy-Path-Translated: /opt/SUNWwbsvr/docs/test-cluster/JMeterTest/remoting/JMeterTestService
+        Proxy-Path-Translated-Base: /opt/SUNWwbsvr/docs
+        WL-Proxy-Client-IP: 172.29.16.92
+        WL-Proxy-SSL: false
+        Proxy-Client-IP: 172.29.16.92
+        X-Forwarded-For: 172.29.16.92
+        Connection: Keep-Alive
+        WL-PATH-TRIM: /test-cluster
+        X-WebLogic-Request-ClusterInfo: true
+        X-WebLogic-KeepAliveSecs: 30
+
+
+
+
+
+The following two JAVA projects are available (for client and server side):
+----------------------------------------------------------------------------
+
+
+   a) JMeterTest_ClientProject : JAVA project for a simple Client calling a method "helloWorld" at service "JMeterTestService".
+   
+    ---
+       -- log4j.properties                                    - log4j configuration file for client side
+      
+       -- src
+            -- clientConfig.xml                               - configuration file for services and bean definitions
+            
+            -- jmetertest
+                 -- SimpleClient.java                         - contains main()-method with simple call of remote service "JMeterTestService"
+                 -- JMeterTestService.java                    - interface of remote service "JMeterTestService"
+                 -- JMeterTestHttpRequestExecutor.java        - own implementation of a HTTP request executor with PROXY-ON/OFF settings
+                 -- ...                 
+            
+       -- log
+            -- jmetertest_clientside.log                      - clientside log file, will contain log4j output for the client
+            
+            
+       -- lib						      - necessary JAR files on client side
+            -- spring.jar, spring-beans.jar, log4j.jar,      
+               commons-logging.jar, commons-httpclient.jar
+            
+            
+   
+   b) JMeterTest_ServerProject : JAVA project for service "JMeterTestService", will be deployed as as WAR file in an application server.
+   
+    --- 
+       -- WEB-INF
+            -- remoting-servlet.xml                           - definition file 1 for serverside services (in application server)
+            -- web.xml                                        - definition file 2
+            
+            -- classes
+                -- all *.class files                          - will be stored here when JAVA sources are compiled
+                -- log4j.properties (copy)                    - will be copied form src directory also
+                
+            -- lib                                            - necessary JAR files on server side
+                -- spring-jar, spring-remoting.jar,
+                   commons-httpclient.jar, servlet.jar
+                   log4j.jar, commons-logging.jar
+       -- src     
+            --  jmetertest
+                 -- JMeterTestHttpServiceExporter.java
+                 -- JmeterTestAbstractHttpInvokerServiceExporter.java
+                 -- JMeterTestService.java                    - interface of remote service "JMeterTestService"
+                 -- JMetertestServiceImpl.java                - implementation for this service (returns a simple String value)
+
+            -- log4j.properties (original)                    - log4j configuration file for server side
+
+
+
+
+Installation in eclispe with JDK 1.4.2_08
+-----------------------------------------
+
+A. Import project "JMeterTest_ClientProject" into eclipse.
+
+    Set project properties: 
+      - In "Java Build Path", add all jar files from the "lib" directory here ("add jars" command)
+      - In "Java Build Path", set "Default Output Folder" to directory "JMeterTest_ClientProject/bin"
+
+
+B. Import project "JMeterTest_ServerProject" into eclipse
+
+   Set project properties:
+      - In "Java Build Path", add all jar files from the "lib" directory here
+      - In "Java Build Path", set "Default Output Folder" to directory "JMeterTest_ServerProject/WEB-INF/classes"
+      
+
+C. Compile/Build both projects, so that class files are generated
+
+D. Deploy server application in an application server:
+      - Create WAR file by executing the script "build_WAR_file.bat" in root directory of project "JMeterTest_ServerProject".
+        This will create a WAR file "JMeterTest.war" (containing directory "WEB-INF" and directory "META-INF" with a manifest file.
+      - You can now deploy the WAR file in an application server (for example,in a TOMCAT or a BEA WebLogic Server)
+
+F. Execute client JAVA application "SimpleClient.class" (calling the remote service)  
+   This class calls the remote service "JMeterTestService" in the application server which returns a simple String "Hello World".
+   
+G. Inspect log files on both client and server sides: 
+
+     - client side:
+        -- The logfile is in directory %JMeterTest_ClientProject%/log/jmetertest_clientside.log
+
+     - server side:     
+        -- For TOMCAT, the logfile is in directory %TOMCAT_HOME%/bin/jmetertest_clientside.log
+        -- For BEA WebLogic, the logfile is in a directory of the NodeManager. Search for this file on your server installation.
+   
+H. You can configure if, a PROXY is used on client side or not:
+   
+   Set boolean flag "MIT_PROXY" = true in JAVA file "JMeterTestHttpRequestExecutor" if PROXY server is to be used.
+   In this case, you have to set String attribute "proxyHost" and integer attribute "proxyPort" to point to the PROXY.
+   
+   You will have to configure the JMETER Proxy to pass all intercepted traffic on to the remote host and port where
+   the application server can be reached.
+
+        
+             
+
+
+   

@@ -1,0 +1,292 @@
+Index: src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterVersion.java	(revision 1001614)
++++ src/core/org/apache/jmeter/util/JMeterVersion.java	(working copy)
+@@ -44,7 +44,7 @@
+      * This ensures that JMeterUtils always gets the correct
+      * version, even if JMeterUtils is not re-compiled during the build.
+      */
+-    private static final String VERSION = "2.4.1";
++    private static final String VERSION = "2.4.20100927";
+ 
+     static final String COPYRIGHT = "Copyright (c) 1998-2010 The Apache Software Foundation";
+ 
+Index: src/core/org/apache/jmeter/save/converters/SampleResultConverter.java
+===================================================================
+--- src/core/org/apache/jmeter/save/converters/SampleResultConverter.java	(revision 1001614)
++++ src/core/org/apache/jmeter/save/converters/SampleResultConverter.java	(working copy)
+@@ -73,6 +73,7 @@
+     private static final String ATT_DATA_TYPE         = "dt"; //$NON-NLS-1$
+     private static final String ATT_ERROR_COUNT       = "ec"; //$NON-NLS-1$
+     private static final String ATT_HOSTNAME          = "hn"; //$NON-NLS-1$
++    private static final String ATT_INSTANCEID		  = "ii"; //$NON-NLS-1$
+     private static final String ATT_LABEL             = "lb"; //$NON-NLS-1$
+     private static final String ATT_LATENCY           = "lt"; //$NON-NLS-1$
+ 
+@@ -278,7 +279,11 @@
+         SampleEvent event = (SampleEvent) context.get(SaveService.SAMPLE_EVENT_OBJECT);
+         if (event != null) {
+             if (save.saveHostname()){
+-                writer.addAttribute(ATT_HOSTNAME, event.getHostname());
++                writer.addAttribute(ATT_HOSTNAME, event.getInstanceId());
++            }
++            if(save.saveInstanceId())
++            {
++            	writer.addAttribute(ATT_INSTANCEID, event.getHostname());
+             }
+             for (int i = 0; i < SampleEvent.getVarCount(); i++){
+                writer.addAttribute(SampleEvent.getVarName(i), ConversionHelp.encode(event.getVarValue(i)));
+Index: src/core/org/apache/jmeter/save/CSVSaveService.java
+===================================================================
+--- src/core/org/apache/jmeter/save/CSVSaveService.java	(revision 1001614)
++++ src/core/org/apache/jmeter/save/CSVSaveService.java	(working copy)
+@@ -90,6 +90,7 @@
+     private static final String CSV_LATENCY = "Latency"; // $NON-NLS-1$
+     private static final String CSV_ENCODING = "Encoding"; // $NON-NLS-1$
+     private static final String CSV_HOSTNAME = "Hostname"; // $NON-NLS-1$
++    private static final String CSV_INSTANCEID = "InstanceId"; // $NON-NLS-1$    
+     private static final String CSV_IDLETIME = "IdleTime"; // $NON-NLS-1$
+ 
+     // Used to enclose variable name labels, to distinguish from any of the above labels
+@@ -176,6 +177,7 @@
+ 
+         SampleResult result = null;
+         String hostname = "";// $NON-NLS-1$
++        String instanceId = "";// $NON-NLS-1$
+         long timeStamp = 0;
+         long elapsed = 0;
+         String text = null;
+@@ -311,6 +313,11 @@
+                 field = CSV_HOSTNAME;
+                 hostname = parts[i++];
+             }
++            
++            if (saveConfig.saveInstanceId()) {
++                field = CSV_INSTANCEID;
++                instanceId = parts[i++];
++            }
+ 
+             if (saveConfig.saveIdleTime()) {
+                 field = CSV_IDLETIME;
+@@ -332,7 +339,7 @@
+             log.warn("Insufficient columns to parse field '" + field + "' at line " + lineNumber);
+             throw new JMeterError(e);
+         }
+-        return new SampleEvent(result,"",hostname);
++        return new SampleEvent(result,"",hostname, instanceId);
+     }
+ 
+     /**
+@@ -441,6 +448,11 @@
+             text.append(CSV_HOSTNAME);
+             text.append(delim);
+         }
++        
++        if (saveConfig.saveInstanceId()) {
++            text.append(CSV_INSTANCEID);
++            text.append(delim);
++        }
+ 
+         if (saveConfig.saveIdleTime()) {
+             text.append(CSV_IDLETIME);
+@@ -494,6 +506,7 @@
+             headerLabelMethods.put(CSV_SAMPLE_COUNT, new Functor("setSampleCount"));
+             headerLabelMethods.put(CSV_ERROR_COUNT, new Functor("setSampleCount"));
+             headerLabelMethods.put(CSV_HOSTNAME, new Functor("setHostname"));
++            headerLabelMethods.put(CSV_INSTANCEID, new Functor("setInstanceId"));
+             headerLabelMethods.put(CSV_IDLETIME, new Functor("setIdleTime"));
+     }
+ 
+@@ -856,6 +869,10 @@
+         if (saveConfig.saveHostname()) {
+             text.append(event.getHostname());
+         }
++        
++        if (saveConfig.saveInstanceId()) {
++            text.append(event.getInstanceId());
++        }
+ 
+         for (int i=0; i < SampleEvent.getVarCount(); i++){
+             text.append(event.getVarValue(i));
+Index: src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(revision 1001614)
++++ src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(working copy)
+@@ -179,6 +179,10 @@
+ 
+     // Save hostname for ResultSaver
+     private static final String SAVE_HOSTNAME_PROP = "jmeter.save.saveservice.hostname"; // $NON_NLS-1$
++    
++    // Save Instance id for ResultSaver
++	private static final String SAVE_INSTANCEID_PROP = "jmeter.save.saveservice.instanceid"; // $NON_NLS-1$
++
+ 
+     /***************************************************************************
+      * The name of the property indicating whether the time should be saved.
+@@ -222,6 +226,8 @@
+     private boolean url = _url, bytes = _bytes , fileName = _fileName;
+ 
+     private boolean hostname = _hostname;
++    
++    private boolean instanceId = _instanceId;
+ 
+     private boolean threadCounts = _threadCounts;
+ 
+@@ -272,6 +278,9 @@
+     private static final boolean _fileName;
+ 
+     private static final boolean _hostname;
++    
++    private static final boolean _instanceId;
++    
+ 
+     private static final boolean _threadCounts;
+ 
+@@ -289,6 +298,7 @@
+ 
+     private static final String DEFAULT_DELIMITER = ","; // $NON_NLS-1$
+ 
++
+     /**
+      * Read in the properties having to do with saving from a properties file.
+      */
+@@ -348,6 +358,8 @@
+         _fileName = TRUE.equalsIgnoreCase(props.getProperty(SAVE_FILENAME_PROP, FALSE));
+ 
+         _hostname = TRUE.equalsIgnoreCase(props.getProperty(SAVE_HOSTNAME_PROP, FALSE));
++        
++        _instanceId = TRUE.equalsIgnoreCase(props.getProperty(SAVE_INSTANCEID_PROP, FALSE));
+ 
+         _time = TRUE.equalsIgnoreCase(props.getProperty(SAVE_TIME_PROP, TRUE));
+ 
+@@ -431,6 +443,7 @@
+         fieldNames = value;
+         fileName = value;
+         hostname = value;
++        instanceId = value;
+         label = value;
+         latency = value;
+         message = value;
+@@ -507,6 +520,7 @@
+             s.bytes == bytes &&
+             s.fileName == fileName &&
+             s.hostname == hostname &&
++            s.instanceId == instanceId &&
+             s.sampleCount == sampleCount &&
+             s.idleTime == idleTime &&
+             s.threadCounts == threadCounts;
+@@ -552,6 +566,7 @@
+         hash = 31 * hash + (bytes ? 1 : 0);
+         hash = 31 * hash + (fileName ? 1 : 0);
+         hash = 31 * hash + (hostname ? 1 : 0);
++        hash = 31 * hash + (instanceId ? 1 : 0);
+         hash = 31 * hash + (threadCounts ? 1 : 0);
+         hash = 31 * hash + (delimiter != null  ? delimiter.hashCode() : 0);
+         hash = 31 * hash + (formatter != null  ? formatter.hashCode() : 0);
+@@ -819,6 +834,15 @@
+     public void setHostname(boolean save){
+         hostname = save;
+     }
++    
++    
++    public boolean saveInstanceId(){
++        return instanceId;
++    }
++
++    public void setInstanceId(boolean save){
++        instanceId = save;
++    }    
+ 
+     public boolean saveIdleTime() {
+         return idleTime;
+@@ -827,4 +851,5 @@
+     public void setIdleTime(boolean save) {
+         idleTime = save;
+     }
++
+ }
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/samplers/SampleEvent.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleEvent.java	(revision 1001614)
++++ src/core/org/apache/jmeter/samplers/SampleEvent.java	(working copy)
+@@ -22,6 +22,7 @@
+ import java.net.InetAddress;
+ import java.net.UnknownHostException;
+ 
++import org.apache.commons.lang.StringUtils;
+ import org.apache.jmeter.threads.JMeterVariables;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -40,6 +41,8 @@
+     public static final String SAMPLE_VARIABLES = "sample_variables"; // $NON-NLS-1$
+ 
+     public static final String HOSTNAME;
++    
++    public static final String INSTANCE_ID;
+ 
+     // List of variable names to be saved in JTL files
+     private static final String[] variableNames;
+@@ -64,6 +67,14 @@
+         if (varCount>0){
+             log.info(varCount + " sample_variables have been declared: "+vars);
+         }
++        
++        String id = "";
++        String value = JMeterUtils.getProperty("JMETER_INSTANCE_ID");
++        if(!StringUtils.isEmpty(value))
++        {
++        	id = value;
++        }
++        INSTANCE_ID = id;
+     }
+ 
+ 
+@@ -73,6 +84,7 @@
+ 
+     private final String hostname;
+ 
++    private final String instanceId;
+ 
+     /*
+      * Only for Unit tests
+@@ -93,6 +105,7 @@
+         this.result = result;
+         this.threadGroup = threadGroup;
+         this.hostname = HOSTNAME;
++        this.instanceId = INSTANCE_ID;
+         values = new String[variableNames.length];
+     }
+ 
+@@ -107,6 +120,7 @@
+         this.result = result;
+         this.threadGroup = threadGroup;
+         this.hostname = HOSTNAME;
++        this.instanceId = INSTANCE_ID;
+         values = new String[variableNames.length];
+         saveVars(jmvars);
+     }
+@@ -117,11 +131,13 @@
+      * @param result
+      * @param threadGroup
+      * @param hostname
++     * @param instanceId
+      */
+-    public SampleEvent(SampleResult result, String threadGroup, String hostname) {
++    public SampleEvent(SampleResult result, String threadGroup, String hostname,String instanceId) {
+         this.result = result;
+         this.threadGroup = threadGroup;
+         this.hostname = hostname;
++        this.instanceId = instanceId;
+         values = new String[variableNames.length];
+     }
+ 
+@@ -161,4 +177,8 @@
+     public String getHostname() {
+         return hostname;
+     }
++
++	public String getInstanceId() {
++		return instanceId;
++	}
+ }

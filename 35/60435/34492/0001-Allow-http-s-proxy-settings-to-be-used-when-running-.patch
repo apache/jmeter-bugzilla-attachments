@@ -1,0 +1,122 @@
+From 76a6ada497591b80f010b3f96201219620136572 Mon Sep 17 00:00:00 2001
+From: Cheyne Wilson <cheyne.wilson@airnz.co.nz>
+Date: Thu, 1 Dec 2016 12:16:54 +1300
+Subject: [PATCH] Allow http(s) proxy settings to be used when running ant
+ test.
+
+---
+ build.xml | 74 ++++++++++++++++++++++++++++++++++++++++-----------------------
+ 1 file changed, 47 insertions(+), 27 deletions(-)
+
+diff --git a/build.xml b/build.xml
+index 7f07fd1..9969e53 100644
+--- a/build.xml
++++ b/build.xml
+@@ -26,43 +26,43 @@
+   and these must be unpacked into the same directory structure.
+ 
+   To download additional jars needed for building the code and documentation:
++    ant download_jars
+ 
+-      ant download_jars
++  To build JMeter from source:
++    ant [install]
+ 
++  To rebuild:
++    ant clean install
+ 
+-    To build JMeter from source:
+-      ant [install]
++  To update documentation
++    ant docs-site [-Ddocs.force=true]
++    ant docs-printable [-Ddocs.force=true]
++  To build API documentation (Javadoc)
++    ant docs-api
++  To build all the docs
++    ant docs-all [-Ddocs.force=true]
+ 
+-    To rebuild:
+-      ant clean install
++  To build all and package up the files for distribution
++    ant distribution -Djmeter.version=vvvv [-Dsvn.revision=nnnnn]
+ 
+-    To update documentation
+-      ant docs-site [-Ddocs.force=true]
+-      ant docs-printable [-Ddocs.force=true]
+-    To build API documentation (Javadoc)
+-      ant docs-api
+-    To build all the docs
+-      ant docs-all [-Ddocs.force=true]
++  Add -Ddisable-svnCheck=true to disable svn check, if you build from src archive or offline
++  Add -Ddisable-check-versions=true to disable matching current svn revision and JMeterVersion.java,
++    if you want build your own custom JMeter package.
+ 
+-    To build all and package up the files for distribution
+-      ant distribution -Djmeter.version=vvvv [-Dsvn.revision=nnnnn]
++  To create a nightly build (separate bin/src/lib jars):
++    ant nightly [-Dsvn.revision=nnnnn]
+ 
+-    Add -Ddisable-svnCheck=true to disable svn check, if you build from src archive or offline
+-    Add -Ddisable-check-versions=true to disable matching current svn revision and JMeterVersion.java,
+-      if you want build your own custom JMeter package.
++  To create tar and tgz of the web-site documentation (docs and api)
++    ant site [ -Djmeter.version=vvvv ]
+ 
+-    To create a nightly build (separate bin/src/lib jars):
+-      ant nightly [-Dsvn.revision=nnnnn]
++  To use a proxy export/set the following before running the tasks.
++    export ANT_OPTS=-Dhttps.proxyHost=[hhhh] -Dhttps.proxyPort=[xxxx] -Dhttp.proxyHost=[hhhh] -Dhttp.proxyPort=[xxxx]
+ 
+-    To create tar and tgz of the web-site documentation (docs and api)
+-      ant site [ -Djmeter.version=vvvv ]
++  For more info:
++    ant -projecthelp
+ 
+-
+-    For more info:
+-      ant -projecthelp
+-
+-    To diagnose usage of deprecated APIs:
+-      ant -Ddeprecation=on clean compile
++  To diagnose usage of deprecated APIs:
++    ant -Ddeprecation=on clean compile
+   </description>
+ 
+   <!--
+@@ -123,6 +123,19 @@
+   <property name="skip.bug52310" value="false" />
+   <property name="skip.test_https" value="false" />
+ 
++  <!-- For simplicity, set the proxy host / port used by JMeter based on the same params used elsewhere. -->
++  <!-- This will pull from ANT_OPTS if set there, or from command line -->
++  <property name="jmeter.proxy.host" if:set="http.proxyHost" value="${http.proxyHost}" />
++  <property name="jmeter.proxy.port" if:set="http.proxyPort" value="${http.proxyPort}" />
++  <property name="jmeter.proxy.user" if:set="http.proxyUser" value="${http.proxyUser}" />
++  <property name="jmeter.proxy.password" if:set="http.proxyPassword" value="${http.proxyPassword}" />
++
++  <!-- Use https version only if http version is not set.  -->
++  <property name="jmeter.proxy.host" if:set="https.proxyHost" value="${https.proxyHost}" />
++  <property name="jmeter.proxy.port" if:set="https.proxyPort" value="${https.proxyPort}" />
++  <property name="jmeter.proxy.user" if:set="https.proxyUser" value="${https.proxyUser}" />
++  <property name="jmeter.proxy.password" if:set="https.proxyPassword" value="${https.proxyPassword}" />
++
+   <target name="findbugs" description="Run the stand-alone Findbugs detector">
+     <echoproperties prefix="findbugs"/>
+     <mkdir dir="reports"/>
+@@ -2577,6 +2590,13 @@ run JMeter unless all the JMeter jars are added.
+       <arg value="-l"/>
+       <arg value="${batchtest.name}.jtl"/>
+       <arg value="${remote}"/>
++
++      <!-- Allow a proxy to be used when running JMeter -->
++      <arg value="-P${jmeter.proxy.port}" if:set="jmeter.proxy.port" />
++      <arg value="-H${jmeter.proxy.host}" if:set="jmeter.proxy.host" />
++      <arg value="-u${jmeter.proxy.username}" if:set="jmeter.proxy.username" />
++      <arg value="-a${jmeter.proxy.password}" if:set="jmeter.proxy.password" />
++
+       <!-- Check properties can be passed to local/remote tests -->
+       <arg value="-Jmodule=Module"/>
+       <arg value="-Gmodule=Module"/>
+-- 
+2.7.0.windows.2
+

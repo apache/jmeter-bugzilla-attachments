@@ -1,0 +1,47 @@
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 531151)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -1114,6 +1114,7 @@
+ 	 * @return
+ 	 */
+ 	protected HTTPSampleResult resultProcessing(boolean areFollowingRedirect, int frameDepth, HTTPSampleResult res) {
++		boolean wasRedirected = false;
+ 		if (!areFollowingRedirect) {
+ 			if (res.isRedirect()) {
+ 				log.debug("Location set to - " + res.getRedirectLocation());
+@@ -1121,6 +1122,7 @@
+ 				if (getFollowRedirects()) {
+ 					res = followRedirects(res, frameDepth);
+ 					areFollowingRedirect = true;
++					wasRedirected = true;
+ 				}
+ 			}
+ 		}
+@@ -1131,7 +1133,12 @@
+ 				// If we followed redirects, we already have a container:
+ 				HTTPSampleResult container = (HTTPSampleResult) (areFollowingRedirect ? res.getParent() : res);
+ 
+-				res = downloadPageResources(res, container, frameDepth);
++				// Only download page resources if we were not redirected.
++				// If we were redirected, the page resources have already been
++				// downloaded for the sample made for the redirected url
++				if(!wasRedirected) {
++					res = downloadPageResources(res, container, frameDepth);
++				}
+ 			}
+ 		}
+ 		return res;
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_no.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_no.properties	(revision 531151)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_no.properties	(working copy)
+@@ -45,7 +45,7 @@
+ file_visualizer_submit_data=Inkluder sendte data
+ file_visualizer_title=Filrapport\u00F8r
+ file_visualizer_verbose=Utf\u00F8rlig output
+-follow_redirects=Follow redirects [TO-DO]
++follow_redirects=Follow redirects
+ ftp_sample_title=FTP foresp\u00F8rsel standard instillinger
+ ftp_testing_title=FTP foresp\u00F8rsel
+ gaussian_timer_delay=Konstant forsinkelsesoffset (i millisekund)\:

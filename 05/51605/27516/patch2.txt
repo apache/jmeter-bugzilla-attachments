@@ -1,0 +1,84 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(revision 1171698)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(working copy)
+@@ -68,7 +68,7 @@
+ 
+     private final JLabeledTextArea soapXml = new JLabeledTextArea(JMeterUtils.getResString("soap_data_title")); // $NON-NLS-1$
+ 
+-    private final JLabeledTextField wsdlField = new JLabeledTextField(JMeterUtils.getResString("wsdl_url")); // $NON-NLS-1$
++    private final JLabeledTextField wsdlField = new JLabeledTextField(JMeterUtils.getResString("wsdl_url"), 30); // $NON-NLS-1$
+ 
+     private final JButton wsdlButton = new JButton(JMeterUtils.getResString("load_wsdl")); // $NON-NLS-1$
+ 
+@@ -264,7 +264,7 @@
+         wsdlField.setText(sampler.getWsdlURL());
+         final String wsdlText = wsdlField.getText();
+         if (wsdlText != null && wsdlText.length() > 0) {
+-            fillWsdlMethods(wsdlField.getText(), true);
++            fillWsdlMethods(wsdlField.getText(), true, sampler.getSoapAction());
+         }
+         protocol.setText(sampler.getProtocol());
+         domain.setText(sampler.getDomain());
+@@ -368,7 +368,7 @@
+         } else if (eventSource == wsdlButton){
+             final String wsdlText = wsdlField.getText();
+             if (wsdlText != null && wsdlText.length() > 0) {
+-                fillWsdlMethods(wsdlText, false);
++                fillWsdlMethods(wsdlText, false, null);
+             } else {
+                 JOptionPane.showConfirmDialog(this,
+                         JMeterUtils.getResString("wsdl_url_error"), // $NON-NLS-1$
+@@ -380,11 +380,20 @@
+ 
+     /**
+      * @param wsdlText
++     * @param silent
++     * @param soapAction 
+      */
+-    private void fillWsdlMethods(final String wsdlText, boolean silent) {
++    private void fillWsdlMethods(final String wsdlText,  boolean silent, String soapAction) {
+         String[] wsdlData = browseWSDL(wsdlText, silent);
+         if (wsdlData != null) {
+             wsdlMethods.setValues(wsdlData);
++            if (HELPER != null && soapAction != null) {
++                String selected = HELPER.getSoapActionName(soapAction);
++                if (selected != null) {
++                    wsdlMethods.setText(selected);
++                }
++            }
++
+             wsdlMethods.repaint();
+         }
+     }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java	(revision 1171336)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java	(working copy)
+@@ -376,6 +376,20 @@
+     }
+ 
+     /**
++     * return the "wsdl method name" from a soap action
++     * @param soapAction the soap action
++     * @return the associated "wsdl method name" or null if not found
++     */
++    public String getSoapActionName(String soapAction) {
++        for (Map.Entry<String, String> entry : ACTIONS.entrySet()) {
++            if (entry.getValue().equals(soapAction)) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++    
++    /**
+      * Simple test for the class uses bidbuy.wsdl from Apache's soap driver
+      * examples.
+      *
+@@ -403,4 +417,5 @@
+             exception.printStackTrace();
+         }
+     }
++
+ }

@@ -1,0 +1,199 @@
+Index: /src/jmeter-rel-2-2/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- /src/jmeter-rel-2-2/src/core/org/apache/jmeter/resources/messages.properties	(revision 414637)
++++ /src/jmeter-rel-2-2/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -493,6 +493,7 @@
+ proxy_assertions=Add Assertions
+ proxy_cl_error=If specifying a proxy server, host and port must be given
+ proxy_headers=Capture HTTP Headers
++proxy_httpsspoofing=Attempt https Spoofing
+ proxy_regex=Regex matching
+ proxy_separators=Add Separators
+ proxy_target=Target Controller\:
+Index: /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 414637)
++++ /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -57,6 +57,9 @@
+ 	/** Whether or not to capture the HTTP headers. */
+ 	private boolean captureHttpHeaders;
+ 
++	/** Whether to try to spoof as https **/
++	private boolean httpsSpoof;
++
+ 	/**
+ 	 * Default constructor - used by newInstance call in Daemon
+ 	 */
+@@ -87,6 +90,7 @@
+ 		this.target = _target;
+ 		this.clientSocket = _clientSocket;
+ 		this.captureHttpHeaders = _target.getCaptureHttpHeaders();
++		this.httpsSpoof = target.getHttpsSpoof();
+ 	}
+ 
+ 	/**
+@@ -109,7 +113,25 @@
+ 			 */
+ 			headers = request.getHeaderManager();
+ 			sampler.setHeaderManager(headers);
++			
++			/* 
++			 * If we are trying to spoof https, change the protocol
++			 */
++			if(httpsSpoof)
++				sampler.setProtocol("https");
++			
+ 			result = sampler.sample();
++			
++			/*
++			 * If we're dealing with text data, and if we're spoofing https, 
++			 * replace all occurences of "https" with "http" for the client. 
++			 */
++			if(httpsSpoof && result.getDataType() == result.TEXT)
++			{
++				String noHttpsResult = new String(result.getResponseData());
++				result.setResponseData(noHttpsResult.replaceAll("https", "http").getBytes());
++			}
++				
+ 			writeToClient(result, new BufferedOutputStream(clientSocket.getOutputStream()));
+ 			/*
+ 			 * We don't want to store any cookies in the generated test plan
+Index: /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 414637)
++++ /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -115,6 +115,8 @@
+ 
+ 	public static final String REGEX_MATCH = "ProxyControlGui.regex_match"; // $NON-NLS-1$
+ 
++	public static final String HTTPS_SPOOF = "ProxyControlGui.https_spoof";
++
+ 	public static final int GROUPING_NO_GROUPS = 0;
+ 
+ 	public static final int GROUPING_ADD_SEPARATORS = 1;
+@@ -136,6 +138,8 @@
+ 	private boolean useKeepAlive;
+ 
+ 	private boolean regexMatch = false;// Should we match using regexes?
++	
++	private boolean httpsSpoof = false;
+ 
+ 	/**
+ 	 * Tree node where the samples should be stored.
+@@ -197,7 +201,16 @@
+ 		regexMatch = b;
+ 		setProperty(new BooleanProperty(REGEX_MATCH, b));
+ 	}
++	
++	/**
++	 * @param b
++	 */
++	public void setHttpsSpoof(boolean b) {
++		httpsSpoof = b;
++		setProperty(new BooleanProperty(HTTPS_SPOOF, b));
++	}
+ 
++	
+ 	public String getClassLabel() {
+ 		return JMeterUtils.getResString("proxy_title");
+ 	}
+@@ -233,6 +246,12 @@
+ 	public boolean getRegexMatch() {
+ 		return getPropertyAsBoolean(REGEX_MATCH, false);
+ 	}
++	
++	public boolean getHttpsSpoof() {
++		return getPropertyAsBoolean(HTTPS_SPOOF, false);
++	}
++	
++	
+ 
+ 	public Class getGuiClass() {
+ 		return org.apache.jmeter.protocol.http.proxy.gui.ProxyControlGui.class;
+Index: /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 414637)
++++ /src/jmeter-rel-2-2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -103,6 +103,12 @@
+ 	 */
+ 	private JCheckBox regexMatch;
+ 
++	/*
++	 * Spoof the client into thinking that it is communicating with http
++	 * even if it is really https.
++	 */
++	private JCheckBox httpsSpoof;
++	
+ 	/**
+ 	 * List of available target controllers
+ 	 */
+@@ -177,6 +183,7 @@
+ 			model.setAssertions(addAssertions.isSelected());
+ 			model.setUseKeepAlive(useKeepAlive.isSelected());
+ 			model.setRegexMatch(regexMatch.isSelected());
++			model.setHttpsSpoof(httpsSpoof.isSelected());			
+ 			TreeNodeWrapper nw = (TreeNodeWrapper) targetNodes.getSelectedItem();
+ 			if (nw == null) {
+ 				model.setTarget(null);
+@@ -223,6 +230,7 @@
+ 		addAssertions.setSelected(model.getAssertions());
+ 		useKeepAlive.setSelected(model.getUseKeepalive());
+ 		regexMatch.setSelected(model.getRegexMatch());
++		httpsSpoof.setSelected(model.getHttpsSpoof());
+ 
+ 		reinitializeTargetCombo();// Set up list of potential targets and
+ 									// enable listener
+@@ -282,7 +290,8 @@
+ 			model.stopProxy();
+ 			startProxy();
+ 		} else if (command.equals(ProxyControl.CAPTURE_HTTP_HEADERS) || command.equals(ProxyControl.ADD_ASSERTIONS)
+-				|| command.equals(ProxyControl.USE_KEEPALIVE) || command.equals(ProxyControl.REGEX_MATCH)) {
++				|| command.equals(ProxyControl.USE_KEEPALIVE) || command.equals(ProxyControl.REGEX_MATCH)
++				|| command.equals(ProxyControl.HTTPS_SPOOF)) {
+ 			enableRestart();
+ 		} else if (command.equals(ADD_EXCLUDE)) {
+ 			excludeModel.addNewRow();
+@@ -462,6 +471,12 @@
+ 		regexMatch.addActionListener(this);
+ 		regexMatch.setActionCommand(ProxyControl.REGEX_MATCH);
+ 
++		httpsSpoof = new JCheckBox(JMeterUtils.getResString("proxy_httpsspoofing"));
++		httpsSpoof.setName(ProxyControl.HTTPS_SPOOF);
++		httpsSpoof.setSelected(false);
++		httpsSpoof.addActionListener(this);
++		httpsSpoof.setActionCommand(ProxyControl.HTTPS_SPOOF);		
++		
+ 		HorizontalPanel panel = new HorizontalPanel();
+ 		panel.add(label);
+ 		panel.add(portField);
+@@ -472,6 +487,7 @@
+ 		panel.add(useKeepAlive);
+ 		panel.add(addAssertions);
+ 		panel.add(regexMatch);
++		panel.add(httpsSpoof);
+ 
+ 		return panel;
+ 	}
+Index: /src/jmeter-rel-2-2/xdocs/usermanual/component_reference.xml
+===================================================================
+--- /src/jmeter-rel-2-2/xdocs/usermanual/component_reference.xml	(revision 414637)
++++ /src/jmeter-rel-2-2/xdocs/usermanual/component_reference.xml	(working copy)
+@@ -1947,6 +1947,18 @@
+ 		<property name="Set Keep-Alive" required="Yes">Automatically set Keep-Alive in the generated samplers?</property>
+ 		<property name="Add Assertions" required="Yes">Add a blank assertion to each sampler?</property>
+ 		<property name="Regex Matching" required="Yes">Use Regex Matching when replacing variables?</property>
++        <property name="Attempt https Spoofing" required="Yes">
++          When you enable https spoofing, the following  happens:
++          <ul>
++            <li>All http requests from the client are turned into https (between the proxy
++              and the web server).</li>
++            <li>All text response data is scanned and any occurrence of the string "https" 
++              is replaced with &quot;http.&quot;</li>
++          </ul>
++          So if you want to use this feature, while you are browsing in your client,
++          instead of typing "https://..." into the browser, type &quot;http://...&quot;.  JMeter
++          will request and record <i>everything</i> as https, whether it should be or not.
++        </property>
+         <!--TODO: there's some undocumented flags here -->
+         <property name="Target Controller" required="Yes">The controller where the proxy will store the generated samples. By default, it will look for a Recording Controller and store them there wherever it is.</property>
+         <property name="Grouping" required="Yes">Whether to group samplers for requests from a single "click" (requests received without significant time separation), and how to represent that grouping in the recording:

@@ -1,0 +1,658 @@
+From d58c9798d56dd3dfd5363354ab69ec7c9312a475 Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Mon, 24 Aug 2015 22:52:19 +0100
+Subject: [PATCH] Replace old style for loops with forEach part 4 (core)
+
+---
+ .../jmeter/engine/RemoteJMeterEngineImpl.java      |   6 +-
+ .../org/apache/jmeter/gui/JMeterFileFilter.java    |   4 +-
+ .../org/apache/jmeter/gui/SavePropertyDialog.java  |  14 +--
+ .../apache/jmeter/gui/action/EnableComponent.java  |   8 +-
+ .../jmeter/gui/action/LookAndFeelCommand.java      |   4 +-
+ src/core/org/apache/jmeter/gui/action/Save.java    |  10 +-
+ .../apache/jmeter/gui/action/SearchTreeDialog.java |   3 +-
+ .../org/apache/jmeter/plugin/PluginManager.java    |  16 +--
+ .../org/apache/jmeter/reporters/FileReporter.java  |  46 +++------
+ .../org/apache/jmeter/reporters/ResultSaver.java   |   7 +-
+ .../org/apache/jmeter/samplers/SampleResult.java   |   4 +-
+ .../org/apache/jmeter/save/CSVSaveService.java     |  13 ++-
+ .../org/apache/jmeter/save/OldSaveService.java     | 114 ++++++++++-----------
+ .../save/converters/SampleResultConverter.java     |  10 +-
+ .../apache/jmeter/testbeans/gui/WrapperEditor.java |   4 +-
+ .../org/apache/jmeter/testelement/TestPlan.java    |   6 +-
+ .../org/apache/jmeter/threads/JMeterThread.java    |  12 +--
+ .../org/apache/jmeter/threads/JMeterVariables.java |   9 +-
+ 18 files changed, 134 insertions(+), 156 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java b/src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java
+index 24c0b27..3c56447 100644
+--- a/src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java
++++ b/src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java
+@@ -216,9 +216,9 @@ public final class RemoteJMeterEngineImpl extends java.rmi.server.UnicastRemoteO
+         if(remotelySetProperties != null) {
+             Properties jmeterProperties = JMeterUtils.getJMeterProperties();
+             log.info("Cleaning previously set properties "+remotelySetProperties);
+-            for (Iterator<?> iterator = remotelySetProperties.keySet().iterator(); iterator.hasNext();) {
+-                String key = (String) iterator.next();
+-                jmeterProperties.remove(key);
++            for (Object key : remotelySetProperties.keySet()) {
++                String k = (String) key; // TODO: is casting to String necessary?
++                jmeterProperties.remove(k);
+             }
+         }
+         backingEngine.setProperties(p);
+diff --git a/src/core/org/apache/jmeter/gui/JMeterFileFilter.java b/src/core/org/apache/jmeter/gui/JMeterFileFilter.java
+index 5c140d2..dfd0a1f 100644
+--- a/src/core/org/apache/jmeter/gui/JMeterFileFilter.java
++++ b/src/core/org/apache/jmeter/gui/JMeterFileFilter.java
+@@ -92,8 +92,8 @@ public class JMeterFileFilter extends javax.swing.filechooser.FileFilter impleme
+             return true;
+         }
+ 
+-        for (int i = 0; i < exts.length; i++) {
+-            if (filename.endsWith(exts[i])) {
++        for (String ext : exts) {
++            if (filename.endsWith(ext)) {
+                 return true;
+             }
+         }
+diff --git a/src/core/org/apache/jmeter/gui/SavePropertyDialog.java b/src/core/org/apache/jmeter/gui/SavePropertyDialog.java
+index 90bc845..b2e9eb5 100644
+--- a/src/core/org/apache/jmeter/gui/SavePropertyDialog.java
++++ b/src/core/org/apache/jmeter/gui/SavePropertyDialog.java
+@@ -83,10 +83,10 @@ public class SavePropertyDialog extends JDialog implements ActionListener {
+         initDialog();
+     }
+ 
+-    private int countMethods(Method[] m) {
++    private int countMethods(Method[] methods) {
+         int count = 0;
+-        for (int i = 0; i < m.length; i++) {
+-            if (m[i].getName().startsWith(NAME_SAVE_PFX)) {
++        for (Method method : methods) {
++            if (method.getName().startsWith(NAME_SAVE_PFX)) {
+                 count++;
+             }
+         }
+@@ -99,14 +99,14 @@ public class SavePropertyDialog extends JDialog implements ActionListener {
+         int x = (countMethods(methods) / 3) + 1;
+         log.debug("grid panel is " + 3 + " by " + x);
+         JPanel checkPanel = new JPanel(new GridLayout(x, 3));
+-        for (int i = 0; i < methods.length; i++) {
+-            String name = methods[i].getName();
+-            if (name.startsWith(NAME_SAVE_PFX) && methods[i].getParameterTypes().length == 0) {
++        for (Method method : methods) {
++            String name = method.getName();
++            if (name.startsWith(NAME_SAVE_PFX) && method.getParameterTypes().length == 0) {
+                 try {
+                     name = name.substring(NAME_SAVE_PFX_LEN);
+                     JCheckBox check = new JCheckBox(
+                             JMeterUtils.getResString(RESOURCE_PREFIX + name)
+-                            ,((Boolean) methods[i].invoke(saveConfig, new Object[0])).booleanValue());
++                            , ((Boolean) method.invoke(saveConfig, new Object[0])).booleanValue());
+                     checkPanel.add(check, BorderLayout.NORTH);
+                     check.addActionListener(this);
+                     String actionCommand = NAME_SET_PREFIX + name; // $NON-NLS-1$
+diff --git a/src/core/org/apache/jmeter/gui/action/EnableComponent.java b/src/core/org/apache/jmeter/gui/action/EnableComponent.java
+index 0f88564..255544f 100644
+--- a/src/core/org/apache/jmeter/gui/action/EnableComponent.java
++++ b/src/core/org/apache/jmeter/gui/action/EnableComponent.java
+@@ -70,10 +70,10 @@ public class EnableComponent implements Command {
+ 
+     private void toggleComponents(JMeterTreeNode[] nodes) {
+         GuiPackage pack = GuiPackage.getInstance();
+-        for (int i = 0; i < nodes.length; i++) {
+-            boolean enable = !nodes[i].isEnabled();
+-            nodes[i].setEnabled(enable);
+-            pack.getGui(nodes[i].getTestElement()).setEnabled(enable);
++        for (JMeterTreeNode node : nodes) {
++            boolean enable = !node.isEnabled();
++            node.setEnabled(enable);
++            pack.getGui(node.getTestElement()).setEnabled(enable);
+         }
+     }
+ 
+diff --git a/src/core/org/apache/jmeter/gui/action/LookAndFeelCommand.java b/src/core/org/apache/jmeter/gui/action/LookAndFeelCommand.java
+index 97b521c..f1c0024 100644
+--- a/src/core/org/apache/jmeter/gui/action/LookAndFeelCommand.java
++++ b/src/core/org/apache/jmeter/gui/action/LookAndFeelCommand.java
+@@ -56,8 +56,8 @@ public class LookAndFeelCommand implements Command {
+ 
+     static {
+         UIManager.LookAndFeelInfo[] lfs = JMeterMenuBar.getAllLAFs();
+-        for (int i = 0; i < lfs.length; i++) {
+-            commands.add(ActionNames.LAF_PREFIX + lfs[i].getClassName());
++        for (UIManager.LookAndFeelInfo lf : lfs) {
++            commands.add(ActionNames.LAF_PREFIX + lf.getClassName());
+         }
+         String jMeterLaf = getJMeterLaf();
+         if (log.isInfoEnabled()) {
+diff --git a/src/core/org/apache/jmeter/gui/action/Save.java b/src/core/org/apache/jmeter/gui/action/Save.java
+index 6ab6be1..45bd63b 100644
+--- a/src/core/org/apache/jmeter/gui/action/Save.java
++++ b/src/core/org/apache/jmeter/gui/action/Save.java
+@@ -147,10 +147,10 @@ public class Save implements Command {
+                 TestElement element = GuiPackage.getInstance().createTestElement(TestFragmentControllerGui.class.getName());
+                 HashTree hashTree = new ListedHashTree();
+                 HashTree tfTree = hashTree.add(new JMeterTreeNode(element, null));
+-                for (int i = 0; i < nodes.length; i++) {
++                for (JMeterTreeNode node : nodes) {
+                     // Clone deeply current node
+                     TreeCloner cloner = new TreeCloner(false);
+-                    GuiPackage.getInstance().getTreeModel().getCurrentSubTree(nodes[i]).traverse(cloner);
++                    GuiPackage.getInstance().getTreeModel().getCurrentSubTree(node).traverse(cloner);
+                     // Add clone to tfTree
+                     tfTree.add(cloner.getClonedTree());
+                 }
+@@ -398,9 +398,9 @@ public class Save implements Command {
+      * @param nodes
+      */
+     private static final boolean checkAcceptableForTestFragment(JMeterTreeNode[] nodes) {
+-        for (int i = 0; i < nodes.length; i++) {
+-            Object userObject = nodes[i].getUserObject();
+-            if(userObject instanceof org.apache.jmeter.threads.ThreadGroup ||
++        for (JMeterTreeNode node : nodes) {
++            Object userObject = node.getUserObject();
++            if (userObject instanceof org.apache.jmeter.threads.ThreadGroup ||
+                     userObject instanceof TestPlan) {
+                 return false;
+             }
+diff --git a/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java b/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java
+index 5f60592..f2fceb8 100644
+--- a/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java
++++ b/src/core/org/apache/jmeter/gui/action/SearchTreeDialog.java
+@@ -216,8 +216,7 @@ public class SearchTreeDialog extends JDialog implements ActionListener {
+         GuiPackage guiInstance = GuiPackage.getInstance();
+         JTree jTree = guiInstance.getMainFrame().getTree();
+ 
+-        for (Iterator<JMeterTreeNode> iterator = nodes.iterator(); iterator.hasNext();) {
+-            JMeterTreeNode jMeterTreeNode = iterator.next();
++        for (JMeterTreeNode jMeterTreeNode : nodes) {
+             jMeterTreeNode.setMarkedBySearch(true);
+             if (expand) {
+                 jTree.expandPath(new TreePath(jMeterTreeNode.getPath()));
+diff --git a/src/core/org/apache/jmeter/plugin/PluginManager.java b/src/core/org/apache/jmeter/plugin/PluginManager.java
+index 868ca3c..479cf37 100644
+--- a/src/core/org/apache/jmeter/plugin/PluginManager.java
++++ b/src/core/org/apache/jmeter/plugin/PluginManager.java
+@@ -52,19 +52,19 @@ public final class PluginManager {
+         String[][] icons = plugin.getIconMappings();
+         ClassLoader classloader = plugin.getClass().getClassLoader();
+ 
+-        for (int i = 0; i < icons.length; i++) {
+-            URL resource = classloader.getResource(icons[i][1].trim());
++        for (String[] icon : icons) {
++            URL resource = classloader.getResource(icon[1].trim());
+ 
+             if (resource == null) {
+-                log.warn("Can't find icon for " + icons[i][0] + " - " + icons[i][1]);
++                log.warn("Can't find icon for " + icon[0] + " - " + icon[1]);
+             } else {
+-                GUIFactory.registerIcon(icons[i][0], new ImageIcon(resource));
+-                if (icons[i].length > 2 && icons[i][2] != null) {
+-                    URL resource2 = classloader.getResource(icons[i][2].trim());
++                GUIFactory.registerIcon(icon[0], new ImageIcon(resource));
++                if (icon.length > 2 && icon[2] != null) {
++                    URL resource2 = classloader.getResource(icon[2].trim());
+                     if (resource2 == null) {
+-                        log.info("Can't find disabled icon for " + icons[i][0] + " - " + icons[i][2]);
++                        log.info("Can't find disabled icon for " + icon[0] + " - " + icon[2]);
+                     } else {
+-                        GUIFactory.registerDisabledIcon(icons[i][0], new ImageIcon(resource2));
++                        GUIFactory.registerDisabledIcon(icon[0], new ImageIcon(resource2));
+                     }
+                 }
+             }
+diff --git a/src/core/org/apache/jmeter/reporters/FileReporter.java b/src/core/org/apache/jmeter/reporters/FileReporter.java
+index b08a571..530ef41 100644
+--- a/src/core/org/apache/jmeter/reporters/FileReporter.java
++++ b/src/core/org/apache/jmeter/reporters/FileReporter.java
+@@ -180,14 +180,9 @@ private static class GraphPanel extends JPanel {
+     public float getMax() {
+         float maxValue = 0;
+ 
+-        for (int t = 0; t < keys.size(); t++) {
+-            String key = keys.get(t);
+-            List<Integer> temp = data.get(key);
+-
+-            for (int j = 0; j < temp.size(); j++) {
+-                float f = temp.get(j).intValue();
+-
+-                maxValue = Math.max(f, maxValue);
++        for (String key : keys) {
++            for (Integer i : data.get(key)) {
++                maxValue = Math.max(i, maxValue);
+             }
+         }
+         return (float) (maxValue + maxValue * 0.1);
+@@ -201,14 +196,9 @@ private static class GraphPanel extends JPanel {
+     public float getMin() {
+         float minValue = 9999999;
+ 
+-        for (int t = 0; t < keys.size(); t++) {
+-            String key = keys.get(t);
+-            List<Integer> temp = data.get(key);
+-
+-            for (int j = 0; j < temp.size(); j++) {
+-                float f = temp.get(j).intValue();
+-
+-                minValue = Math.min(f, minValue);
++        for (String key : keys) {
++            for (Integer i : data.get(key)) {
++                minValue = Math.min(i, minValue);
+             }
+         }
+         return (float) (minValue - minValue * 0.1);
+@@ -261,16 +251,11 @@ private static class GraphPanel extends JPanel {
+         float maxValue = 0;
+         float minValue = 999999;
+ 
+-        for (int t = 0; t < keys.size(); t++) {
+-            String key = keys.get(t);
+-            List<Integer> temp = data.get(key);
+-
+-            for (int j = 0; j < temp.size(); j++) {
+-                float f = temp.get(j).intValue();
+-
+-                minValue = Math.min(f, minValue);
+-                maxValue = Math.max(f, maxValue);
+-                totalValue += f;
++        for (String key : keys) {
++            for (Integer i : data.get(key)) {
++                minValue = Math.min(i, minValue);
++                maxValue = Math.max(i, maxValue);
++                totalValue += i;
+                 total++;
+             }
+         }
+@@ -319,13 +304,12 @@ private static class GraphPanel extends JPanel {
+      * @return the max size of all lists for all key
+      */
+     public int getDataWidth() {
+-        int size = 0;
++        int maxSize = 0;
+ 
+-        for (int t = 0; t < keys.size(); t++) {
+-            String key = keys.get(t);
+-            size = Math.max(size, data.get(key).size());
++        for (String key : keys) {
++            maxSize = Math.max(maxSize, data.get(key).size());
+         }
+-        return size;
++        return maxSize;
+     }
+ 
+     /**
+diff --git a/src/core/org/apache/jmeter/reporters/ResultSaver.java b/src/core/org/apache/jmeter/reporters/ResultSaver.java
+index 52107cb..67f75c1 100644
+--- a/src/core/org/apache/jmeter/reporters/ResultSaver.java
++++ b/src/core/org/apache/jmeter/reporters/ResultSaver.java
+@@ -148,10 +148,9 @@ public class ResultSaver extends AbstractTestElement implements Serializable, Sa
+     */
+    private void processSample(SampleResult s, Counter c) {
+         saveSample(s, c.num++);
+-        SampleResult[] sr = s.getSubResults();
+-        for (int i = 0; i < sr.length; i++) {
+-            processSample(sr[i], c);
+-        }
++       for (SampleResult sr : s.getSubResults()) {
++           processSample(sr, c);
++       }
+     }
+ 
+     /**
+diff --git a/src/core/org/apache/jmeter/samplers/SampleResult.java b/src/core/org/apache/jmeter/samplers/SampleResult.java
+index de1988d..11639fe 100644
+--- a/src/core/org/apache/jmeter/samplers/SampleResult.java
++++ b/src/core/org/apache/jmeter/samplers/SampleResult.java
+@@ -846,8 +846,8 @@ public class SampleResult implements Serializable, Cloneable {
+                 return false;
+             }
+         }
+-        for (int i = 0; i < BINARY_TYPES.length; i++){
+-            if (ct.startsWith(BINARY_TYPES[i])){
++        for (String binaryType : BINARY_TYPES) {
++            if (ct.startsWith(binaryType)) {
+                 return true;
+             }
+         }
+diff --git a/src/core/org/apache/jmeter/save/CSVSaveService.java b/src/core/org/apache/jmeter/save/CSVSaveService.java
+index 77d637c..bd83cd3 100644
+--- a/src/core/org/apache/jmeter/save/CSVSaveService.java
++++ b/src/core/org/apache/jmeter/save/CSVSaveService.java
+@@ -595,13 +595,12 @@ public final class CSVSaveService {
+         SampleSaveConfiguration saveConfig = new SampleSaveConfiguration(false);
+ 
+         int varCount = 0;
+-        for (int i = 0; i < parts.length; i++) {
+-            String label = parts[i];
++        for (String label : parts) {
+             if (isVariableName(label)) {
+                 varCount++;
+             } else {
+                 Functor set = (Functor) headerLabelMethods.get(label);
+-                set.invoke(saveConfig, new Boolean[] { Boolean.TRUE });
++                set.invoke(saveConfig, new Boolean[]{Boolean.TRUE});
+             }
+         }
+ 
+@@ -701,8 +700,8 @@ public final class CSVSaveService {
+             }
+             writer.write(LINE_SEP);
+         }
+-        for (int idx = 0; idx < data.size(); idx++) {
+-            List<?> row = (List<?>) data.get(idx);
++        for (Object d : data) {
++            List<?> row = (List<?>) d;
+             for (int idy = 0; idy < row.size(); idy++) {
+                 if (idy > 0) {
+                     writer.write(DELIM);
+@@ -905,8 +904,8 @@ public final class CSVSaveService {
+ 
+             if (results != null) {
+                 // Find the first non-null message
+-                for (int i = 0; i < results.length; i++) {
+-                    message = results[i].getFailureMessage();
++                for (AssertionResult result : results) {
++                    message = result.getFailureMessage();
+                     if (message != null) {
+                         break;
+                     }
+diff --git a/src/core/org/apache/jmeter/save/OldSaveService.java b/src/core/org/apache/jmeter/save/OldSaveService.java
+index 76be92e..6c00552 100644
+--- a/src/core/org/apache/jmeter/save/OldSaveService.java
++++ b/src/core/org/apache/jmeter/save/OldSaveService.java
+@@ -127,18 +127,18 @@ public final class OldSaveService {
+         result.setResponseData(getBinaryData(config.getChild(BINARY)));
+         Configuration[] subResults = config.getChildren(SAMPLE_RESULT_TAG_NAME);
+ 
+-        for (int i = 0; i < subResults.length; i++) {
+-            result.storeSubResult(getSampleResult(subResults[i]));
++        for (Configuration subResult : subResults) {
++            result.storeSubResult(getSampleResult(subResult));
+         }
+         Configuration[] assResults = config.getChildren(ASSERTION_RESULT_TAG_NAME);
+ 
+-        for (int i = 0; i < assResults.length; i++) {
+-            result.addAssertionResult(getAssertionResult(assResults[i]));
++        for (Configuration assResult : assResults) {
++            result.addAssertionResult(getAssertionResult(assResult));
+         }
+ 
+         Configuration[] samplerData = config.getChildren("property"); // $NON-NLS-1$
+-        for (int i = 0; i < samplerData.length; i++) {
+-            result.setSamplerData(samplerData[i].getValue("")); // $NON-NLS-1$
++        for (Configuration aSamplerData : samplerData) {
++            result.setSamplerData(aSamplerData.getValue("")); // $NON-NLS-1$
+         }
+         return result;
+     }
+@@ -338,10 +338,10 @@ public final class OldSaveService {
+ 
+         String gui_class=""; // $NON-NLS-1$
+         Configuration[] children = config.getChildren();
+-        for (int i = 0; i < children.length; i++) {
+-            if (children[i].getName().equals("property")) { // $NON-NLS-1$
+-                if (children[i].getAttribute("name").equals(TestElement.GUI_CLASS)){ // $NON-NLS-1$
+-                    gui_class=children[i].getValue();
++        for (Configuration child : children) {
++            if (child.getName().equals("property")) { // $NON-NLS-1$
++                if (child.getAttribute("name").equals(TestElement.GUI_CLASS)) { // $NON-NLS-1$
++                    gui_class = child.getValue();
+                 }
+             }
+         }
+@@ -350,26 +350,26 @@ public final class OldSaveService {
+ 
+         element = (TestElement) Class.forName(newClass).newInstance();
+ 
+-        for (int i = 0; i < children.length; i++) {
+-            if (children[i].getName().equals("property")) { // $NON-NLS-1$
++        for (Configuration child : children) {
++            if (child.getName().equals("property")) { // $NON-NLS-1$
+                 try {
+-                    JMeterProperty prop = createProperty(children[i], newClass);
+-                    if (prop!=null) {
++                    JMeterProperty prop = createProperty(child, newClass);
++                    if (prop != null) {
+                         element.setProperty(prop);
+                     }
+                 } catch (Exception ex) {
+                     log.error("Problem loading property", ex);
+-                    element.setProperty(children[i].getAttribute("name"), ""); // $NON-NLS-1$ // $NON-NLS-2$
++                    element.setProperty(child.getAttribute("name"), ""); // $NON-NLS-1$ // $NON-NLS-2$
+                 }
+-            } else if (children[i].getName().equals("testelement")) { // $NON-NLS-1$
+-                element.setProperty(new TestElementProperty(children[i].getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
+-                        createTestElement(children[i])));
+-            } else if (children[i].getName().equals("collection")) { // $NON-NLS-1$
+-                element.setProperty(new CollectionProperty(children[i].getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
+-                        createCollection(children[i], newClass)));
+-            } else if (children[i].getName().equals("map")) { // $NON-NLS-1$
+-                element.setProperty(new MapProperty(children[i].getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
+-                        createMap(children[i],newClass)));
++            } else if (child.getName().equals("testelement")) { // $NON-NLS-1$
++                element.setProperty(new TestElementProperty(child.getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
++                        createTestElement(child)));
++            } else if (child.getName().equals("collection")) { // $NON-NLS-1$
++                element.setProperty(new CollectionProperty(child.getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
++                        createCollection(child, newClass)));
++            } else if (child.getName().equals("map")) { // $NON-NLS-1$
++                element.setProperty(new MapProperty(child.getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
++                        createMap(child, newClass)));
+             }
+         }
+         return element;
+@@ -381,24 +381,24 @@ public final class OldSaveService {
+         Collection<JMeterProperty> coll = (Collection<JMeterProperty>) Class.forName(config.getAttribute("class")).newInstance(); // $NON-NLS-1$
+         Configuration[] items = config.getChildren();
+ 
+-        for (int i = 0; i < items.length; i++) {
+-            if (items[i].getName().equals("property")) { // $NON-NLS-1$
+-                JMeterProperty prop = createProperty(items[i], testClass);
+-                if (prop!=null) {
++        for (Configuration item : items) {
++            if (item.getName().equals("property")) { // $NON-NLS-1$
++                JMeterProperty prop = createProperty(item, testClass);
++                if (prop != null) {
+                     coll.add(prop);
+                 }
+-            } else if (items[i].getName().equals("testelement")) { // $NON-NLS-1$
+-                coll.add(new TestElementProperty(items[i].getAttribute("name", ""), createTestElement(items[i]))); // $NON-NLS-1$ // $NON-NLS-2$
+-            } else if (items[i].getName().equals("collection")) { // $NON-NLS-1$
+-                coll.add(new CollectionProperty(items[i].getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
+-                        createCollection(items[i], testClass)));
+-            } else if (items[i].getName().equals("string")) { // $NON-NLS-1$
+-                JMeterProperty prop = createProperty(items[i], testClass);
+-                if (prop!=null) {
++            } else if (item.getName().equals("testelement")) { // $NON-NLS-1$
++                coll.add(new TestElementProperty(item.getAttribute("name", ""), createTestElement(item))); // $NON-NLS-1$ // $NON-NLS-2$
++            } else if (item.getName().equals("collection")) { // $NON-NLS-1$
++                coll.add(new CollectionProperty(item.getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
++                        createCollection(item, testClass)));
++            } else if (item.getName().equals("string")) { // $NON-NLS-1$
++                JMeterProperty prop = createProperty(item, testClass);
++                if (prop != null) {
+                     coll.add(prop);
+                 }
+-            } else if (items[i].getName().equals("map")) { // $NON-NLS-1$
+-                coll.add(new MapProperty(items[i].getAttribute("name", ""), createMap(items[i], testClass))); // $NON-NLS-1$ // $NON-NLS-2$
++            } else if (item.getName().equals("map")) { // $NON-NLS-1$
++                coll.add(new MapProperty(item.getAttribute("name", ""), createMap(item, testClass))); // $NON-NLS-1$ // $NON-NLS-2$
+             }
+         }
+         return coll;
+@@ -440,23 +440,23 @@ public final class OldSaveService {
+         Map<String, JMeterProperty> map = (Map<String, JMeterProperty>) Class.forName(config.getAttribute("class")).newInstance();
+         Configuration[] items = config.getChildren();
+ 
+-        for (int i = 0; i < items.length; i++) {
+-            if (items[i].getName().equals("property")) { // $NON-NLS-1$
+-                JMeterProperty prop = createProperty(items[i], testClass);
+-                if (prop!=null) {
++        for (Configuration item : items) {
++            if (item.getName().equals("property")) { // $NON-NLS-1$
++                JMeterProperty prop = createProperty(item, testClass);
++                if (prop != null) {
+                     map.put(prop.getName(), prop);
+                 }
+-            } else if (items[i].getName().equals("testelement")) { // $NON-NLS-1$
+-                map.put(items[i].getAttribute("name", ""), new TestElementProperty(items[i].getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
+-                        createTestElement(items[i])));
+-            } else if (items[i].getName().equals("collection")) { // $NON-NLS-1$
+-                map.put(items[i].getAttribute("name"),  // $NON-NLS-1$
+-                        new CollectionProperty(items[i].getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
+-                        createCollection(items[i], testClass)));
+-            } else if (items[i].getName().equals("map")) { // $NON-NLS-1$
+-                map.put(items[i].getAttribute("name", ""),  // $NON-NLS-1$ // $NON-NLS-2$
+-                        new MapProperty(items[i].getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
+-                        createMap(items[i], testClass)));
++            } else if (item.getName().equals("testelement")) { // $NON-NLS-1$
++                map.put(item.getAttribute("name", ""), new TestElementProperty(item.getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
++                        createTestElement(item)));
++            } else if (item.getName().equals("collection")) { // $NON-NLS-1$
++                map.put(item.getAttribute("name"),  // $NON-NLS-1$
++                        new CollectionProperty(item.getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
++                                createCollection(item, testClass)));
++            } else if (item.getName().equals("map")) { // $NON-NLS-1$
++                map.put(item.getAttribute("name", ""),  // $NON-NLS-1$ // $NON-NLS-2$
++                        new MapProperty(item.getAttribute("name", ""), // $NON-NLS-1$ // $NON-NLS-2$
++                                createMap(item, testClass)));
+             }
+         }
+         return map;
+@@ -474,8 +474,8 @@ public final class OldSaveService {
+         HashTree subTree = new ListedHashTree(element);
+         Configuration[] subNodes = config.getChildren("node"); // $NON-NLS-1$
+ 
+-        for (int i = 0; i < subNodes.length; i++) {
+-            HashTree t = generateNode(subNodes[i]);
++        for (Configuration subNode : subNodes) {
++            HashTree t = generateNode(subNode);
+ 
+             if (t != null) {
+                 subTree.add(element, t);
+@@ -493,8 +493,8 @@ public final class OldSaveService {
+         Configuration[] samples = savedSamples.getChildren();
+         final boolean errorsOnly = rc.isErrorLogging();
+         final boolean successOnly = rc.isSuccessOnlyLogging();
+-        for (int i = 0; i < samples.length; i++) {
+-            SampleResult result = OldSaveService.getSampleResult(samples[i]);
++        for (Configuration sample : samples) {
++            SampleResult result = OldSaveService.getSampleResult(sample);
+             if (ResultCollector.isSampleWanted(result.isSuccessful(), errorsOnly, successOnly)) {
+                 visualizer.add(result);
+             }
+diff --git a/src/core/org/apache/jmeter/save/converters/SampleResultConverter.java b/src/core/org/apache/jmeter/save/converters/SampleResultConverter.java
+index 487b9fe..2a8b155 100644
+--- a/src/core/org/apache/jmeter/save/converters/SampleResultConverter.java
++++ b/src/core/org/apache/jmeter/save/converters/SampleResultConverter.java
+@@ -241,9 +241,9 @@ public class SampleResultConverter extends AbstractCollectionConverter {
+             SampleSaveConfiguration save) {
+         if (save.saveSubresults()) {
+             SampleResult[] subResults = res.getSubResults();
+-            for (int i = 0; i < subResults.length; i++) {
+-                subResults[i].setSaveConfig(save);
+-                writeItem(subResults[i], context, writer);
++            for (SampleResult subResult : subResults) {
++                subResult.setSaveConfig(save);
++                writeItem(subResult, context, writer);
+             }
+         }
+     }
+@@ -264,8 +264,8 @@ public class SampleResultConverter extends AbstractCollectionConverter {
+             SampleSaveConfiguration save) {
+         if (save.saveAssertions()) {
+             AssertionResult[] assertionResults = res.getAssertionResults();
+-            for (int i = 0; i < assertionResults.length; i++) {
+-                writeItem(assertionResults[i], context, writer);
++            for (AssertionResult assertionResult : assertionResults) {
++                writeItem(assertionResult, context, writer);
+             }
+         }
+     }
+diff --git a/src/core/org/apache/jmeter/testbeans/gui/WrapperEditor.java b/src/core/org/apache/jmeter/testbeans/gui/WrapperEditor.java
+index a8ca0bd..bdca754 100644
+--- a/src/core/org/apache/jmeter/testbeans/gui/WrapperEditor.java
++++ b/src/core/org/apache/jmeter/testbeans/gui/WrapperEditor.java
+@@ -177,8 +177,8 @@ class WrapperEditor extends PropertyEditorSupport implements PropertyChangeListe
+         if (tags == null) {
+             return false;
+         }
+-        for (int i = 0; i < tags.length; i++) {
+-            if (tags[i].equals(text)) {
++        for (String tag : tags) {
++            if (tag.equals(text)) {
+                 return true;
+             }
+         }
+diff --git a/src/core/org/apache/jmeter/testelement/TestPlan.java b/src/core/org/apache/jmeter/testelement/TestPlan.java
+index de6c4a9..cfa306c 100644
+--- a/src/core/org/apache/jmeter/testelement/TestPlan.java
++++ b/src/core/org/apache/jmeter/testelement/TestPlan.java
+@@ -256,9 +256,9 @@ public class TestPlan extends AbstractTestElement implements Serializable, TestS
+         }
+         // we set the classpath
+         String[] paths = this.getTestPlanClasspathArray();
+-        for (int idx=0; idx < paths.length; idx++) {
+-            NewDriver.addURL(paths[idx]);
+-            log.info("add " + paths[idx] + " to classpath");
++        for (String path : paths) {
++            NewDriver.addURL(path);
++            log.info("add " + path + " to classpath");
+         }
+     }
+ 
+diff --git a/src/core/org/apache/jmeter/threads/JMeterThread.java b/src/core/org/apache/jmeter/threads/JMeterThread.java
+index 55666dd..1ad53a4 100644
+--- a/src/core/org/apache/jmeter/threads/JMeterThread.java
++++ b/src/core/org/apache/jmeter/threads/JMeterThread.java
+@@ -341,10 +341,8 @@ public class JMeterThread implements Runnable, Interruptible {
+         List<Controller> controllersToReinit = pathToRootTraverser.getControllersToRoot();
+ 
+         // Trigger end of loop condition on all parent controllers of current sampler
+-        for (Iterator<Controller> iterator = controllersToReinit
+-                .iterator(); iterator.hasNext();) {
+-            Controller parentController =  iterator.next();
+-            if(parentController instanceof AbstractThreadGroup) {
++        for (Controller parentController : controllersToReinit) {
++            if (parentController instanceof AbstractThreadGroup) {
+                 AbstractThreadGroup tg = (AbstractThreadGroup) parentController;
+                 tg.startNextLoop();
+             } else {
+@@ -692,9 +690,9 @@ public class JMeterThread implements Runnable, Interruptible {
+                 if (scopedAssertion.isScopeChildren(scope) || scopedAssertion.isScopeAll(scope)){
+                     SampleResult children[] = parent.getSubResults();
+                     boolean childError = false;
+-                    for (int i=0;i <children.length; i++){
+-                        processAssertion(children[i], assertion);
+-                        if (!children[i].isSuccessful()){
++                    for (SampleResult child : children) {
++                        processAssertion(child, assertion);
++                        if (!child.isSuccessful()) {
+                             childError = true;
+                         }
+                     }
+diff --git a/src/core/org/apache/jmeter/threads/JMeterVariables.java b/src/core/org/apache/jmeter/threads/JMeterVariables.java
+index b6968a0..09a4d97 100644
+--- a/src/core/org/apache/jmeter/threads/JMeterVariables.java
++++ b/src/core/org/apache/jmeter/threads/JMeterVariables.java
+@@ -49,11 +49,10 @@ public class JMeterVariables {
+     }
+ 
+     private void preloadVariables(){
+-        for (int i = 0; i < PRE_LOAD.length; i++){
+-            String property=PRE_LOAD[i];
+-            String value=JMeterUtils.getProperty(property);
+-            if (value != null){
+-                variables.put(property,value);
++        for (String property : PRE_LOAD) {
++            String value = JMeterUtils.getProperty(property);
++            if (value != null) {
++                variables.put(property, value);
+             }
+         }
+     }
+-- 
+1.9.1
+

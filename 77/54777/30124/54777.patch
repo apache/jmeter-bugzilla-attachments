@@ -1,0 +1,100 @@
+Index: src/core/org/apache/jmeter/save/WritebackPrintWriter.java
+===================================================================
+--- src/core/org/apache/jmeter/save/WritebackPrintWriter.java	(revision 0)
++++ src/core/org/apache/jmeter/save/WritebackPrintWriter.java	(revision 0)
+@@ -0,0 +1,71 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.save;
++
++import java.io.PrintWriter;
++import java.io.Writer;
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Decorator of PrintWriter
++ * Simple goal is decreasing flush rate for high-throughput println() method
++ */
++public class WritebackPrintWriter extends PrintWriter{
++    private static final long flush_period_in_bytes = JMeterUtils.getPropDefault("reporters.writeback.flush_period_in_bytes", 10240); // flush size bytes (every 10Kb)
++    private static final long flush_period_in_ms = JMeterUtils.getPropDefault("reporters.writeback.flush_period_in_ms", 1000); //flush period in ms (every second)
++    
++    private AtomicLong last_flush_bytes = new AtomicLong(0);
++    private AtomicLong last_flush_time = new AtomicLong(0);
++
++    public WritebackPrintWriter(Writer bufferedWriter) { 
++        super(bufferedWriter, false);
++    }    
++    
++    @Override
++    public void write(char buf[], int off, int len) {
++        synchronized(this) {
++            super.write(buf, off, len);
++            last_flush_bytes.addAndGet(len-off);
++        }
++    }
++    
++    public void write(char c) {
++        synchronized(this) {
++            super.write(c);
++            last_flush_bytes.addAndGet(1);
++        }
++    }
++    
++    @Override
++    public void flush() {
++        if(System.currentTimeMillis() - last_flush_time.get() > flush_period_in_ms
++                || last_flush_bytes.get() > flush_period_in_bytes) {
++            synchronized(this) {
++                long time = System.currentTimeMillis();
++                super.flush();
++                last_flush_bytes.getAndSet(0);
++                last_flush_time.getAndSet(time);
++            }
++        } else {
++            //it's not your time
++        }
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/reporters/ResultCollector.java
+===================================================================
+--- src/core/org/apache/jmeter/reporters/ResultCollector.java	(revision 1461012)
++++ src/core/org/apache/jmeter/reporters/ResultCollector.java	(working copy)
+@@ -46,6 +46,7 @@
+ import org.apache.jmeter.save.CSVSaveService;
+ import org.apache.jmeter.save.OldSaveService;
+ import org.apache.jmeter.save.SaveService;
++import org.apache.jmeter.save.WritebackPrintWriter;
+ import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestStateListener;
+@@ -419,8 +420,8 @@
+                     log.warn("Error creating directories for "+pdir.toString());
+                 }
+             }
+-            writer = new PrintWriter(new OutputStreamWriter(new BufferedOutputStream(new FileOutputStream(filename,
+-                    trimmed)), SaveService.getFileEncoding("UTF-8")), true); // $NON-NLS-1$
++            writer = new WritebackPrintWriter(new OutputStreamWriter(new BufferedOutputStream(new FileOutputStream(filename,
++                    trimmed)), SaveService.getFileEncoding("UTF-8"))); // $NON-NLS-1$
+             log.debug("Opened file: "+filename);
+             files.put(filename, new FileEntry(writer, saveConfig));
+         } else {

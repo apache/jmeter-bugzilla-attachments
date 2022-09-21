@@ -1,0 +1,32 @@
+Index: src/core/org/apache/jmeter/gui/action/LoggerPanelEnableDisable.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/LoggerPanelEnableDisable.java    (revision 1239287)
++++ src/core/org/apache/jmeter/gui/action/LoggerPanelEnableDisable.java    (working copy)
+@@ -23,6 +23,7 @@
+ import java.util.Set;
+ 
+ import javax.swing.JSplitPane;
++import javax.swing.UIManager;
+ 
+ import org.apache.jmeter.gui.GuiPackage;
+ 
+@@ -60,15 +61,17 @@
+      *            the generic UI action event
+      */
+     public void doAction(ActionEvent e) {
+-        if (ActionNames.LOGGER_PANEL_ENABLE_DISABLE.equals(e.getActionCommand())) {
+             GuiPackage guiInstance = GuiPackage.getInstance();
++        JSplitPane splitPane = ((JSplitPane)guiInstance.getLoggerPanel().getParent());
++        if (ActionNames.LOGGER_PANEL_ENABLE_DISABLE.equals(e.getActionCommand())) {
+             if (guiInstance.getMenuItemLoggerPanel().getModel().isSelected()) {
++                splitPane.setDividerSize(UIManager.getInt("SplitPane.dividerSize"));
+                 guiInstance.getLoggerPanel().setVisible(true);
+-                JSplitPane splitPane = ((JSplitPane)guiInstance.getLoggerPanel().getParent());
+                 splitPane.setDividerLocation(0.8);
+             } else {
+                 guiInstance.getLoggerPanel().clear();
+                 guiInstance.getLoggerPanel().setVisible(false);
++                splitPane.setDividerSize(0);
+             }
+         }
+     }

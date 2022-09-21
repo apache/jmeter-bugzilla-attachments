@@ -1,0 +1,108 @@
+Index: src/components/org/apache/jmeter/config/CSVDataSet.java
+===================================================================
+--- src/components/org/apache/jmeter/config/CSVDataSet.java	(revision 963957)
++++ src/components/org/apache/jmeter/config/CSVDataSet.java	(working copy)
+@@ -86,6 +86,8 @@
+     private transient String alias;
+ 
+     private transient String shareMode;
++    
++    private boolean firstLineIsNames = false;
+ 
+     private Object readResolve(){
+         recycle = true;
+@@ -121,6 +123,7 @@
+                 String header = server.reserveFile(_fileName, getFileEncoding(), alias, true);
+                 try {
+                     vars = CSVSaveService.csvSplitString(header, getDelimiter().charAt(0));
++                    firstLineIsNames = true;
+                 } catch (IOException e) {
+                     log.warn("Could not split CSV header line",e);
+                 }
+@@ -139,7 +142,7 @@
+             }
+             // TODO: fetch this once as per vars above?
+             JMeterVariables threadVars = context.getVariables();
+-            String line = server.readLine(alias,getRecycle());
++            String line = server.readLine(alias, getRecycle(), firstLineIsNames);
+             if (line!=null) {// i.e. not EOF
+                 String[] lineValues = getQuotedData() ?
+                         CSVSaveService.csvSplitString(line, delim.charAt(0))
+Index: src/core/org/apache/jmeter/services/FileServer.java
+===================================================================
+--- src/core/org/apache/jmeter/services/FileServer.java	(revision 963957)
++++ src/core/org/apache/jmeter/services/FileServer.java	(working copy)
+@@ -181,15 +181,28 @@
+       return readLine(filename, true);
+     }
+ 
++    /**
++     * Get the next line of the named file, first line is name to false
++     *
++     * @param filename
++     * @param recycle - should file be restarted at EOF?
++     * @return String containing the next line in the file (null if EOF reached and not recycle)
++     * @throws IOException
++     */
++    public String readLine(String filename, boolean recycle) throws IOException {
++        return readLine(filename, recycle, false);
++    }
+    /**
+      * Get the next line of the named file.
+      *
+      * @param filename
+      * @param recycle - should file be restarted at EOF?
++     * @param firstLineIsNames - 1st line is fields names
+      * @return String containing the next line in the file (null if EOF reached and not recycle)
+      * @throws IOException
+      */
+-    public synchronized String readLine(String filename, boolean recycle) throws IOException {
++    public synchronized String readLine(String filename, boolean recycle, 
++            boolean firstLineIsNames) throws IOException {
+         FileEntry fileEntry = files.get(filename);
+         if (fileEntry != null) {
+             if (fileEntry.inputOutputObject == null) {
+@@ -203,6 +216,10 @@
+                 reader.close();
+                 reader = createBufferedReader(fileEntry, filename);
+                 fileEntry.inputOutputObject = reader;
++                if (firstLineIsNames) {
++                    // read first line and forget
++                    reader.readLine();
++                }
+                 line = reader.readLine();
+             }
+             if (log.isDebugEnabled()) { log.debug("Read:"+line); }
+Index: test/src/org/apache/jmeter/config/TestCVSDataSet.java
+===================================================================
+--- test/src/org/apache/jmeter/config/TestCVSDataSet.java	(revision 963957)
++++ test/src/org/apache/jmeter/config/TestCVSDataSet.java	(working copy)
+@@ -112,7 +112,26 @@
+         assertEquals("c2",threadVars.get("C"));
+         assertEquals("d2",threadVars.get("D|1"));
+     }
+-
++    
++    // Test CSV file with a header line and recycle is true
++    public void testHeaderOpenAndRecycle(){
++        CSVDataSet csv = new CSVDataSet();
++        csv.setFilename("testfiles/testheader.csv");
++        csv.setDelimiter("|");
++        csv.setRecycle(true);
++        assertNull(csv.getVariableNames()); // read 1st line
++        // read 5 lines + restart to file begin
++        csv.iterationStart(null); // line 2
++        csv.iterationStart(null); // line 3
++        csv.iterationStart(null); // line 4
++        csv.iterationStart(null); // line 5
++        csv.iterationStart(null); // return to 2nd line (first line is names)
++        assertEquals("a1",threadVars.get("A"));
++        assertEquals("b1",threadVars.get("B"));
++        assertEquals("c1",threadVars.get("C"));
++        assertEquals("d1",threadVars.get("D|1"));
++    }
++    
+     private CSVDataSet initCSV(){
+         CSVDataSet csv = new CSVDataSet();
+         csv.setFilename("testfiles/test.csv");
+

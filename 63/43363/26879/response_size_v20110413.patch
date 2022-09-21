@@ -1,0 +1,640 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(revision 1091668)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(working copy)
+@@ -60,6 +60,7 @@
+ import org.apache.commons.httpclient.params.HttpClientParams;
+ import org.apache.commons.httpclient.params.HttpMethodParams;
+ import org.apache.commons.httpclient.protocol.Protocol;
++import org.apache.commons.io.input.CountingInputStream;
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+@@ -244,15 +245,17 @@
+             res.setRequestHeaders(getConnectionHeaders(httpMethod));
+ 
+             // Request sent. Now get the response:
+-            InputStream instream = httpMethod.getResponseBodyAsStream();
++            InputStream instream = new CountingInputStream(httpMethod.getResponseBodyAsStream());
+ 
+             if (instream != null) {// will be null for HEAD
+                 try {
+                     Header responseHeader = httpMethod.getResponseHeader(HEADER_CONTENT_ENCODING);
+                     if (responseHeader!= null && ENCODING_GZIP.equals(responseHeader.getValue())) {
+-                        instream = new GZIPInputStream(instream);
++                        InputStream tmpInput = new GZIPInputStream(instream); // tmp inputstream needs to hava a good counting
++                        res.setResponseData(readResponse(res, tmpInput, (int) httpMethod.getResponseContentLength()));                        
++                    } else {
++                        res.setResponseData(readResponse(res, instream, (int) httpMethod.getResponseContentLength()));
+                     }
+-                    res.setResponseData(readResponse(res, instream, (int) httpMethod.getResponseContentLength()));
+                 } finally {
+                     JOrphanUtils.closeQuietly(instream);
+                 }
+@@ -290,11 +293,11 @@
+             }
+ 
+             // record some sizes to allow HTTPSampleResult.getBytes() with different options
+-            res.setContentLength((int) httpMethod.getResponseContentLength());
++            res.setBodySize(((CountingInputStream) instream).getCount());
+             res.setHeadersSize(calculateHeadersSize(httpMethod));
+             if (log.isDebugEnabled()) {
+-                log.debug("ResponseHeadersSize=" + res.getHeadersSize() + " Content-Length=" + res.getContentLength()
+-                        + " Total=" + (res.getHeadersSize() + res.getContentLength()));
++                log.debug("Response headersSize=" + res.getHeadersSize() + " bodySize=" + res.getBodySize()
++                        + " Total=" + (res.getHeadersSize() + res.getBodySize()));
+             }
+             
+             // If we redirected automatically, the URL may have changed
+Index: src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	(revision 1091668)
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	(working copy)
+@@ -93,6 +93,15 @@
+     private static final SampleResult[] EMPTY_SR = new SampleResult[0];
+ 
+     private static final AssertionResult[] EMPTY_AR = new AssertionResult[0];
++    
++    private static final boolean GETBYTES_BODY_REALSIZE = 
++        JMeterUtils.getPropDefault("sampleresult.getbytes.body_real_size", true); // $NON-NLS-1$
++
++    private static final boolean GETBYTES_HEADERS_SIZE = 
++        JMeterUtils.getPropDefault("sampleresult.getbytes.headers_size", true); // $NON-NLS-1$
++    
++    private static final boolean GETBYTES_NETWORK_SIZE = 
++        GETBYTES_HEADERS_SIZE && GETBYTES_BODY_REALSIZE ? true : false;
+ 
+     private SampleSaveConfiguration saveConfig;
+ 
+@@ -181,6 +190,10 @@
+     private int sampleCount = 1;
+ 
+     private int bytes = 0; // Allows override of sample size in case sampler does not want to store all the data
++    
++    private int headersSize = 0;
++    
++    private int bodySize = 0;
+ 
+     /** Currently active threads in this thread group */
+     private volatile int groupThreads = 0;
+@@ -1082,6 +1095,14 @@
+      * @return byte count
+      */
+     public int getBytes() {
++        if (GETBYTES_NETWORK_SIZE) {
++            int tmpSum = this.getHeadersSize() + this.getBodySize();
++            return tmpSum == 0 ? bytes : tmpSum;
++        } else if (GETBYTES_HEADERS_SIZE) {
++            return this.getHeadersSize();
++        } else if (GETBYTES_BODY_REALSIZE) {
++            return this.getBodySize();
++        }
+         return bytes == 0 ? responseData.length : bytes;
+     }
+ 
+@@ -1192,4 +1213,37 @@
+     public void removeSubResults() {
+         this.subResults = null;
+     }
++    
++    /**
++     * Set the headers size in bytes
++     * 
++     * @param size
++     */
++    public void setHeadersSize(int size) {
++        this.headersSize = size;
++    }
++    
++    /**
++     * Get the headers size in bytes
++     * 
++     * @return the headers size
++     */
++    public int getHeadersSize() {
++        return headersSize;
++    }
++
++    /**
++     * @return the body size in bytes
++     */
++    public int getBodySize() {
++        return bodySize == 0 ? responseData.length : bodySize;
++    }
++
++    /**
++     * @param bodySize the body size to set
++     */
++    public void setBodySize(int bodySize) {
++        this.bodySize = bodySize;
++    }
++
+ }
+Index: test/src/org/apache/jmeter/assertions/SizeAssertionTest.java
+===================================================================
+--- test/src/org/apache/jmeter/assertions/SizeAssertionTest.java	(revision 1091668)
++++ test/src/org/apache/jmeter/assertions/SizeAssertionTest.java	(working copy)
+@@ -39,6 +39,7 @@
+           jmctx = JMeterContextService.getContext();
+           assertion = new SizeAssertion();
+           assertion.setThreadContext(jmctx);
++          assertion.setTestFieldResponseBody();
+           vars = new JMeterVariables();
+           jmctx.setVariables(vars);
+           sample0 = new SampleResult();
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1091668)
++++ bin/jmeter.properties	(working copy)
+@@ -243,17 +243,6 @@
+ #log_config=logkit.xml
+ 
+ #---------------------------------------------------------------------------
+-# HTTP common configuration
+-#---------------------------------------------------------------------------
+-
+-# Response size calculate method
+-# Include headers: add the headers size in total of response size
+-# Use Content-Length: if web server uses a deflate/gzip module,
+-# gets the value of Content-Length to get response size rather uncompressed length
+-#http.getbytes.include.headers=false
+-#http.getbytes.use.contentlength=false
+-
+-#---------------------------------------------------------------------------
+ # HTTP Java configuration
+ #---------------------------------------------------------------------------
+ 
+@@ -699,6 +688,14 @@
+ # The encoding to be used if none is provided (default ISO-8859-1)
+ #sampleresult.default.encoding=ISO-8859-1
+ 
++# Network response size calculation method
++# Use real size: number of bytes for response body return by webserver
++# (i.e. the network bytes received for response)
++# if set to false, the (uncompressed) response data size will used (default before 2.4.1)
++# Include headers: add the headers size in real size
++#sampleresult.getbytes.body_real_size=true
++#sampleresult.getbytes.headers_size=true
++
+ # CookieManager behaviour - should cookies with null/empty values be deleted?
+ # Default is true. Use false to revert to original behaviour
+ #CookieManager.delete_null_cookies=true
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	(revision 1091668)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	(working copy)
+@@ -34,6 +34,7 @@
+ import java.util.Set;
+ import java.util.zip.GZIPInputStream;
+ 
++import org.apache.commons.io.input.CountingInputStream;
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+@@ -241,12 +242,13 @@
+ 
+         // works OK even if ContentEncoding is null
+         boolean gzipped = ENCODING_GZIP.equals(conn.getContentEncoding());
+-
++        InputStream instream = null;
+         try {
++            instream = new CountingInputStream(conn.getInputStream());
+             if (gzipped) {
+-                in = new BufferedInputStream(new GZIPInputStream(conn.getInputStream()));
++                in = new BufferedInputStream(new GZIPInputStream(instream));
+             } else {
+-                in = new BufferedInputStream(conn.getInputStream());
++                in = new BufferedInputStream(instream);
+             }
+         } catch (IOException e) {
+             if (! (e.getCause() instanceof FileNotFoundException))
+@@ -281,7 +283,9 @@
+             }
+             in = new BufferedInputStream(conn.getErrorStream());
+         }
+-        return readResponse(res, in, contentLength);
++        byte[] responseData = readResponse(res, in, contentLength);
++        res.setBodySize(((CountingInputStream) instream).getCount());
++        return responseData;
+     }
+ 
+     /**
+@@ -562,14 +566,12 @@
+                 res.setRedirectLocation(conn.getHeaderField(HEADER_LOCATION));
+             }
+             
+-            // record some sizes to allow HTTPSampleResult.getBytes() with different options
+-            String contentLength = conn.getHeaderField(HEADER_CONTENT_LENGTH);
+-            res.setContentLength(contentLength != null ? Integer.parseInt(contentLength) : 0); // 0 to getBytes with responseData length
++            // record headers size to allow HTTPSampleResult.getBytes() with different options
+             res.setHeadersSize(responseHeaders.replaceAll("\n", "\r\n") // $NON-NLS-1$ $NON-NLS-2$
+                     .length() + 2); // add 2 for a '\r\n' at end of headers (before data) 
+             if (log.isDebugEnabled()) {
+-                log.debug("ResponseHeadersSize=" + res.getHeadersSize() + " Content-Length=" + res.getContentLength()
+-                        + " Total=" + (res.getHeadersSize() + res.getContentLength()));
++                log.debug("Response headersSize=" + res.getHeadersSize() + " bodySize=" + res.getBodySize()
++                        + " Total=" + (res.getHeadersSize() + res.getBodySize()));
+             }
+             
+             // If we redirected automatically, the URL may have changed
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1091668)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -65,16 +65,19 @@
+ appearance=Look and Feel
+ argument_must_not_be_negative=The Argument must not be negative\!
+ assertion_assume_success=Ignore Status
++assertion_body_resp=Response Body
+ assertion_code_resp=Response Code
+ assertion_contains=Contains
+ assertion_equals=Equals
+ assertion_headers=Response Headers
+ assertion_matches=Matches
+ assertion_message_resp=Response Message
++assertion_network_size=Full Response
+ assertion_not=Not
+ assertion_pattern_match_rules=Pattern Matching Rules
+ assertion_patterns_to_test=Patterns to Test
+ assertion_resp_field=Response Field to Test
++assertion_resp_size_field=Response Size Field to Test
+ assertion_substring=Substring
+ assertion_text_resp=Text Response
+ assertion_textarea_label=Assertions\:
+@@ -988,6 +991,8 @@
+ view_results_sample_start=Sample Start: 
+ view_results_search_pane=Search pane
+ view_results_size_in_bytes=Size in bytes: 
++view_results_size_body_in_bytes=Body size in bytes: 
++view_results_size_headers_in_bytes=Headers size in bytes: 
+ view_results_tab_assertion=Assertion result
+ view_results_tab_request=Request
+ view_results_tab_response=Response data
+Index: src/components/org/apache/jmeter/assertions/gui/SizeAssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/SizeAssertionGui.java	(revision 1091668)
++++ src/components/org/apache/jmeter/assertions/gui/SizeAssertionGui.java	(working copy)
+@@ -20,6 +20,7 @@
+ 
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
++
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+ import javax.swing.ButtonGroup;
+@@ -38,7 +39,22 @@
+  */
+ public class SizeAssertionGui extends AbstractAssertionGui implements ActionListener {
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 241L;
++    
++    /** Radio button indicating that the body response should be tested. */
++    private JRadioButton responseBodyButton;
++
++    /** Radio button indicating that the network response size should be tested. */
++    private JRadioButton responseNetworkButton;
++
++    /** Radio button indicating that the responseMessage should be tested. */
++    private JRadioButton responseMessageButton;
++
++    /** Radio button indicating that the responseCode should be tested. */
++    private JRadioButton responseCodeButton;
++
++    /** Radio button indicating that the headers should be tested. */
++    private JRadioButton responseHeadersButton;
+ 
+     private JTextField size;
+ 
+@@ -69,6 +85,18 @@
+     public void modifyTestElement(TestElement el) {
+         configureTestElement(el);
+         SizeAssertion assertion = (SizeAssertion) el;
++        
++        if (responseHeadersButton.isSelected()) {
++            assertion.setTestFieldResponseHeaders();
++        } else if (responseBodyButton.isSelected()) {
++            assertion.setTestFieldResponseBody();
++        } else if (responseCodeButton.isSelected()) {
++            assertion.setTestFieldResponseCode();
++        } else if (responseMessageButton.isSelected()) {
++            assertion.setTestFieldResponseMessage();
++        } else {
++            assertion.setTestFieldNetworkSize();
++        }
+         assertion.setAllowedSize(size.getText());
+         assertion.setCompOper(getState());
+         saveScopeSettings(assertion);
+@@ -81,6 +109,12 @@
+     public void clearGui() {
+         super.clearGui();
+ 
++        responseNetworkButton.setSelected(true); // default
++        responseHeadersButton.setSelected(false);
++        responseBodyButton.setSelected(false);
++        responseCodeButton.setSelected(false);
++        responseMessageButton.setSelected(false);
++        
+         size.setText(""); //$NON-NLS-1$
+         equalButton.setSelected(true);
+         notequalButton.setSelected(false);
+@@ -98,6 +132,18 @@
+         size.setText(assertion.getAllowedSize());
+         setState(assertion.getCompOper());
+         showScopeSettings(assertion);
++        
++        if (assertion.isTestFieldResponseHeaders()) {
++        responseHeadersButton.setSelected(true);
++        } else if (assertion.isTestFieldResponseBody()) {
++            responseBodyButton.setSelected(true);
++        } else if (assertion.isTestFieldResponseCode()) {
++            responseCodeButton.setSelected(true);
++        } else if (assertion.isTestFieldResponseMessage()) {
++            responseMessageButton.setSelected(true);
++        } else {
++            responseNetworkButton.setSelected(true);
++        }
+     }
+ 
+     /**
+@@ -139,6 +185,7 @@
+         add(makeTitlePanel());
+ 
+         add(createScopePanel(true));
++        add(createFieldPanel());
+ 
+         // USER_INPUT
+         JPanel sizePanel = new JPanel();
+@@ -153,6 +200,40 @@
+ 
+         add(sizePanel);
+     }
++    
++    /**
++     * Create a panel allowing the user to choose which response field should be
++     * tested.
++     *
++     * @return a new panel for selecting the response field
++     */
++    private JPanel createFieldPanel() {
++        JPanel panel = new JPanel();
++        panel.setBorder(BorderFactory.createTitledBorder(JMeterUtils.getResString("assertion_resp_size_field"))); //$NON-NLS-1$
++
++        responseNetworkButton = new JRadioButton(JMeterUtils.getResString("assertion_network_size")); //$NON-NLS-1$
++        responseHeadersButton = new JRadioButton(JMeterUtils.getResString("assertion_headers")); //$NON-NLS-1$
++        responseBodyButton = new JRadioButton(JMeterUtils.getResString("assertion_body_resp")); //$NON-NLS-1$
++        responseCodeButton = new JRadioButton(JMeterUtils.getResString("assertion_code_resp")); //$NON-NLS-1$
++        responseMessageButton = new JRadioButton(JMeterUtils.getResString("assertion_message_resp")); //$NON-NLS-1$
++
++        ButtonGroup group = new ButtonGroup();
++        group.add(responseNetworkButton);
++        group.add(responseHeadersButton);
++        group.add(responseBodyButton);
++        group.add(responseCodeButton);
++        group.add(responseMessageButton);
++
++        panel.add(responseNetworkButton);
++        panel.add(responseHeadersButton);
++        panel.add(responseBodyButton);
++        panel.add(responseCodeButton);
++        panel.add(responseMessageButton);
++
++        responseNetworkButton.setSelected(true);
++
++        return panel;
++    }
+ 
+     private Box createComparatorButtonPanel() {
+         ButtonGroup group = new ButtonGroup();
+Index: src/components/org/apache/jmeter/visualizers/SamplerResultTab.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/SamplerResultTab.java	(revision 1091668)
++++ src/components/org/apache/jmeter/visualizers/SamplerResultTab.java	(working copy)
+@@ -227,6 +227,8 @@
+                 statsBuff.append(JMeterUtils.getResString("view_results_load_time")).append(sampleResult.getTime()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_latency")).append(sampleResult.getLatency()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_size_in_bytes")).append(sampleResult.getBytes()).append(NL); //$NON-NLS-1$
++                statsBuff.append(JMeterUtils.getResString("view_results_size_headers_in_bytes")).append(sampleResult.getHeadersSize()).append(NL); //$NON-NLS-1$
++                statsBuff.append(JMeterUtils.getResString("view_results_size_body_in_bytes")).append(sampleResult.getBodySize()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_sample_count")).append(sampleResult.getSampleCount()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_error_count")).append(sampleResult.getErrorCount()).append(NL); //$NON-NLS-1$
+                 statsDoc.insertString(statsDoc.getLength(), statsBuff.toString(), null);
+@@ -280,6 +282,8 @@
+                 resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_load_time"), sampleResult.getTime())); //$NON-NLS-1$
+                 resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_latency"), sampleResult.getLatency())); //$NON-NLS-1$
+                 resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_size_in_bytes"), sampleResult.getBytes())); //$NON-NLS-1$
++                resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_size_headers_in_bytes"), sampleResult.getHeadersSize())); //$NON-NLS-1$
++                resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_size_body_in_bytes"), sampleResult.getBodySize())); //$NON-NLS-1$
+                 resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_sample_count"), sampleResult.getSampleCount())); //$NON-NLS-1$
+                 resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_error_count"), sampleResult.getErrorCount())); //$NON-NLS-1$
+                 resultModel.addRow(new RowResult(JMeterUtils.getParsedLabel("view_results_response_code"), responseCode)); //$NON-NLS-1$
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java	(revision 1091668)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java	(working copy)
+@@ -23,7 +23,6 @@
+ 
+ import org.apache.jmeter.protocol.http.util.HTTPConstants;
+ import org.apache.jmeter.samplers.SampleResult;
+-import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  * This is a specialisation of the SampleResult class for the HTTP protocol.
+@@ -32,23 +31,10 @@
+ public class HTTPSampleResult extends SampleResult {
+ 
+     private static final long serialVersionUID = 240L;
+-    
+-    private static final boolean GETBYTES_INCLUDE_HEADERS = 
+-        JMeterUtils.getPropDefault("http.getbytes.include.headers", false); // $NON-NLS-1$
+-    
+-    private static final boolean GETBYTES_USE_CONTENTLENGTH = 
+-        JMeterUtils.getPropDefault("http.getbytes.use.contentlength", false); // $NON-NLS-1$
+-
+-    private static final boolean GETBYTES_HEADERS_CONTENTLENGTH = 
+-        GETBYTES_INCLUDE_HEADERS && GETBYTES_USE_CONTENTLENGTH ? true : false;
+ 
+     private String cookies = ""; // never null
+ 
+     private String method;
+-    
+-    private int headersSize = 0;
+-    
+-    private int contentLength = 0;
+ 
+     /**
+      * The raw value of the Location: header; may be null.
+@@ -230,53 +216,4 @@
+         setResponseMessage(HTTP_NO_CONTENT_MSG);
+     }
+     
+-    /**
+-     * Set the headers size in bytes
+-     * 
+-     * @param size
+-     */
+-    public void setHeadersSize(int size) {
+-        this.headersSize = size;
+-    }
+-    
+-    /**
+-     * Get the headers size in bytes
+-     * 
+-     * @return the headers size
+-     */
+-    public int getHeadersSize() {
+-        return headersSize;
+-    }
+-
+-    /**
+-     * @return the contentLength
+-     */
+-    public int getContentLength() {
+-        return contentLength == 0 ? super.getBytes() : contentLength;
+-    }
+-
+-    /**
+-     * @param contentLength the contentLength to set
+-     */
+-    public void setContentLength(int contentLength) {
+-        this.contentLength = contentLength;
+-    }
+-
+-    /*
+-     * (non-Javadoc)
+-     * 
+-     * @see org.apache.jmeter.samplers.SampleResult#getBytes()
+-     */
+-    @Override
+-    public int getBytes() {
+-        if (GETBYTES_HEADERS_CONTENTLENGTH) {
+-            return headersSize + contentLength;
+-        } else if (GETBYTES_INCLUDE_HEADERS) {
+-            return headersSize + super.getBytes();
+-        } else if (GETBYTES_USE_CONTENTLENGTH) {
+-            return contentLength;
+-        }
+-        return super.getBytes(); // Default
+-    }
+-    
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1091668)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -308,10 +308,10 @@
+             // record some sizes to allow HTTPSampleResult.getBytes() with different options
+             long totalBytes = metrics.getReceivedBytesCount();
+             res.setHeadersSize((int) headerBytes);
+-            res.setContentLength((int)(totalBytes - headerBytes));
++            res.setBodySize((int)(totalBytes - headerBytes));
+             if (log.isDebugEnabled()) {
+-                log.debug("ResponseHeadersSize=" + res.getHeadersSize() + " Content-Length=" + res.getContentLength()
+-                        + " Total=" + (res.getHeadersSize() + res.getContentLength()));
++                log.debug("ResponseHeadersSize=" + res.getHeadersSize() + " Content-Length=" + res.getBodySize()
++                        + " Total=" + (res.getHeadersSize() + res.getBodySize()));
+             }
+ 
+             // If we redirected automatically, the URL may have changed
+Index: src/components/org/apache/jmeter/assertions/SizeAssertion.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/SizeAssertion.java	(revision 1091668)
++++ src/components/org/apache/jmeter/assertions/SizeAssertion.java	(working copy)
+@@ -34,7 +34,7 @@
+  */
+ public class SizeAssertion extends AbstractScopedAssertion implements Serializable, Assertion {
+ 
+-    private static final long serialVersionUID = 233L;
++    private static final long serialVersionUID = 241L;
+ 
+     // * Static int to signify the type of logical comparitor to assert
+     public final static int EQUAL = 1;
+@@ -53,6 +53,18 @@
+     private static final String SIZE_KEY = "SizeAssertion.size"; // $NON-NLS-1$
+ 
+     private static final String OPERATOR_KEY = "SizeAssertion.operator"; // $NON-NLS-1$
++    
++    private final static String TEST_FIELD = "Assertion.test_field";  // $NON-NLS-1$
++
++    private final static String RESPONSE_NETWORK_SIZE = "SizeAssertion.response_network_size"; // $NON-NLS-1$
++
++    private final static String RESPONSE_HEADERS = "SizeAssertion.response_headers"; // $NON-NLS-1$
++
++    private final static String RESPONSE_BODY = "SizeAssertion.response_data"; // $NON-NLS-1$
++
++    private final static String RESPONSE_CODE = "SizeAssertion.response_code"; // $NON-NLS-1$
++
++    private final static String RESPONSE_MESSAGE = "SizeAssertion.response_message"; // $NON-NLS-1$
+ 
+     /**
+      * Returns the result of the Assertion. 
+@@ -72,6 +84,14 @@
+                 result.setFailureMessage("Error parsing variable name: "+variableName+" value: "+value);
+                 return result;
+             }
++        } else if (isTestFieldResponseHeaders()) {
++            resultSize = response.getHeadersSize();
++        }  else if (isTestFieldResponseBody()) {
++            resultSize = response.getBodySize();
++        } else if (isTestFieldResponseCode()) {
++            resultSize = response.getResponseCode().length();
++        } else if (isTestFieldResponseMessage()) {
++            resultSize = response.getResponseMessage().length();
+         } else {
+             resultSize = response.getBytes();
+         }
+@@ -168,4 +188,53 @@
+         }
+         return result ? "" : comparatorErrorMessage;
+     }
++    
++    private void setTestField(String testField) {
++        setProperty(TEST_FIELD, testField);
++    }
++
++    public void setTestFieldNetworkSize(){
++        setTestField(RESPONSE_NETWORK_SIZE);
++    }
++    
++    public void setTestFieldResponseHeaders(){
++        setTestField(RESPONSE_HEADERS);
++    }
++    
++    public void setTestFieldResponseBody(){
++        setTestField(RESPONSE_BODY);
++    }
++    
++    public void setTestFieldResponseCode(){
++        setTestField(RESPONSE_CODE);
++    }
++    
++    public void setTestFieldResponseMessage(){
++        setTestField(RESPONSE_MESSAGE);
++    }
++
++    public String getTestField() {
++        return getPropertyAsString(TEST_FIELD);
++    }
++
++    public boolean isTestFieldNetworkSize(){
++        return RESPONSE_NETWORK_SIZE.equals(getTestField());
++    }
++
++    public boolean isTestFieldResponseHeaders(){
++        return RESPONSE_HEADERS.equals(getTestField());
++    }
++    
++    public boolean isTestFieldResponseBody(){
++        return RESPONSE_BODY.equals(getTestField());
++    }
++
++    public boolean isTestFieldResponseCode(){
++        return RESPONSE_CODE.equals(getTestField());
++    }
++
++    public boolean isTestFieldResponseMessage(){
++        return RESPONSE_MESSAGE.equals(getTestField());
++    }
++
+ }
+

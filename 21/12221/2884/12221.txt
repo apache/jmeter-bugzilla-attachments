@@ -1,0 +1,95 @@
+From: Mike Stover [mstover1@apache.org]
+Sent: Monday, 26 August 2002 23:32
+To: JMeter Users List
+Subject: RE: Problems using [0-9]+ and \d+ and \w+ with __regexFunction
+
+John,
+      This all sounds like an interesting bug.  Time for me to play with it.
+
+-Mike
+
+On 26 Aug 2002 at 19:43, John Kavadias wrote:
+
+> Hi Mike,
+> 
+> > I use the "+" all the time in my regex's.  I suspect that what you have done is created the function in the function dialog, and then later modified it directly.  This won't work.
+> 
+> > For instance, if you create the function ${__regexFunction(%5Cd*,%240%24,ALL,,,)}, and then modify it to: ${__regexFunction(%5Cd+,%240%24,ALL,,,)}
+> (just changed the '*' to '+'), this won't work.
+> 
+> I can put this concern to rest. The function was re-generated each time using the helper dialog's Generate. I kept the dialog open while tweaking function arguments and running test plans.
+> 
+> However you show encoding from the Function Helper Dialog's Generate in your example.
+> 
+> This triggered a thought: I did NOT have 'Encode?' ticked for the parameter whose value is the generated (ie argument list encoded) function string.
+> 
+> I have found that when 'Encode?' is NOT ticked, I get the failure I described in the original posting. When 'Encode?' IS ticked, it all works (the '+' makes it through to the regex invocation).
+> 
+> The function argument list is encoded once by Function Helper Dialog's Generate, as you advise. '+' in the Function Helper Dialog's regex field becomes %2B in the encoded/generated function string.
+> 
+> Pasting that string into an HTTP Request parameter value where 'Encode?' IS ticked produces %252B in the XML file for the test plan. The double encoding of the function argument list makes the HTTP request parameter value work as a regex invocation. It also makes the regex work across file 
+saves/loads for the test plan.
+> 
+> Here is my UNencoded __regexFunction:
+> 
+> ${__regexFunction(productId=(\w+)\W,$1$,RAND,,NOMATCH,productIdREF)}
+> 
+> Here is a .jmx save file fragment when the above is generated, then pasted into an HTTP Request parameter value which IS marked as Encoded:
+> 
+> <testelement class="org.apache.jmeter.protocol.http.util.HTTPArgument">
+> <property name="HTTPArgument.always_encode">true</property>
+> <property name="Argument.name">productId</property>
+> <property name="HTTPArgument.encoded_value">%24%7B__regexFunction%28productId%253D%2528%255Cw%252B%2529%255CW%2C%25241%2524%2CRAND%2C%2CNOMATCH%2CproductIdREF%29%7D</property>
+> <property name="HTTPArgument.encoded_name">productId</property>
+> <property name="Argument.value">${__regexFunction(productId%3D%28%5Cw%2B%29%5CW,%241%24,RAND,,NOMATCH,productIdREF)}</property>
+> </testelement>
+> 
+> 
+> Here is a .jmx save file fragment when the above is generated, then pasted into an HTTP Request parameter value which is NOT marked as Encoded:
+> 
+> <testelement class="org.apache.jmeter.protocol.http.util.HTTPArgument">
+> <property name="HTTPArgument.always_encode">false</property>
+> <property name="Argument.name">productId</property>
+> <property name="HTTPArgument.encoded_value">${__regexFunction(productId=(\w+)\W,$1$,RAND,,NOMATCH,productIdREF)}</property>
+> <property name="HTTPArgument.encoded_name">productId</property>
+> <property name="Argument.value">${__regexFunction(productId=(\w+)\W,$1$,RAND,,NOMATCH,productIdREF)}</property>
+> </testelement>
+> 
+> Saving the test plan removes the encoding performed by Function Helper Dialog's Generate in this case.
+> 
+> 
+> [[ Aside: I closed the file from which I got the above fragments, opened it again and saved it to a new file name. A very interesting observation on the new file: the '\w+' in the parameter value has become '\w ':
+> 
+> <testelement class="org.apache.jmeter.protocol.http.util.HTTPArgument">
+> <property name="HTTPArgument.always_encode">false</property>
+> <property name="Argument.name">productId</property>
+> <property name="HTTPArgument.encoded_value">${__regexFunction(productId=(\w )\W,$1$,RAND,,NOMATCH,productIdREF)}</property>
+> <property name="HTTPArgument.encoded_name">productId</property>
+> <property name="Argument.value">${__regexFunction(productId=(\w )\W,$1$,RAND,,NOMATCH,productIdREF)}</property>
+> </testelement>
+> 
+> The encoded version of the __regexFunction in the same file was unchanged in the new save file. This happens on both my Solaris and WinNT installations/builds of JMeter. ]]
+> 
+> 
+> When 'Encode?' is ticked it also affects how the 'substitution value' (argument 2 of __regexFunction) becomes the actual value provided in the HTTP GET URL. For example if : is part of the substitution value, you get : if 'Encode?' is NOT ticked and %3A if 'Encode?' IS ticked.
+> 
+> This means you cannot use a function string which requires argument encoding as the 'value' of an HTTP request parameter that you want to have UNencoded.
+> 
+> > The other issue is probably a bug (using the ALL option), which I'll look into.
+> 
+> Thanks for your response and your work.
+> Further comments appreciated.
+> John Kavadias    johnk@nstc.nec.com.au
+
+
+
+--
+Michael Stover
+mstover1@apache.org
+Yahoo IM: mstover_ya
+ICQ: 152975688
+
+--
+To unsubscribe, e-mail:   <mailto:jmeter-user-unsubscribe@jakarta.apache.org>
+For additional commands, e-mail: <mailto:jmeter-user-help@jakarta.apache.org>
+

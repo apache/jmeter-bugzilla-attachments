@@ -1,0 +1,244 @@
+From fa07c5d969164a0e04c68fa2935d773867374a03 Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Sun, 23 Aug 2015 22:10:37 +0100
+Subject: [PATCH] Replace old style for loops with forEach - part 1.
+
+---
+ .../org/apache/jmeter/visualizers/AxisGraph.java   | 11 ++++----
+ .../org/apache/jmeter/functions/CharFunction.java  | 10 ++++----
+ .../apache/commons/cli/avalon/CLArgsParser.java    | 23 ++++++++---------
+ .../protocol/java/control/gui/ClassFilter.java     | 10 +++-----
+ .../jmeter/protocol/http/sampler/AjpSampler.java   | 11 +++-----
+ .../protocol/jdbc/AbstractJDBCTestElement.java     | 29 +++++++++++-----------
+ 6 files changed, 44 insertions(+), 50 deletions(-)
+
+diff --git a/src/components/org/apache/jmeter/visualizers/AxisGraph.java b/src/components/org/apache/jmeter/visualizers/AxisGraph.java
+index 28332a5..05ce888 100644
+--- a/src/components/org/apache/jmeter/visualizers/AxisGraph.java
++++ b/src/components/org/apache/jmeter/visualizers/AxisGraph.java
+@@ -316,12 +316,11 @@ public class AxisGraph extends JPanel {
+     }
+ 
+     private double findMax(double _data[][]) {
+-        double max = 0;
+-        max = _data[0][0];
+-        for (int i = 0; i < _data.length; i++) {
+-            for (int j = 0; j < _data[i].length; j++) {
+-                if (_data[i][j] > max) {
+-                    max = _data[i][j];
++        double max = _data[0][0];
++        for (double[] dArray : _data) {
++            for (double d : dArray) {
++                if (d > max) {
++                    max = d;
+                 }
+             }
+         }
+diff --git a/src/functions/org/apache/jmeter/functions/CharFunction.java b/src/functions/org/apache/jmeter/functions/CharFunction.java
+index 1177291..e535caa 100644
+--- a/src/functions/org/apache/jmeter/functions/CharFunction.java
++++ b/src/functions/org/apache/jmeter/functions/CharFunction.java
+@@ -56,14 +56,14 @@ public class CharFunction extends AbstractFunction {
+             throws InvalidVariableException {
+ 
+         StringBuilder sb = new StringBuilder(values.length);
+-        for (int i=0; i < values.length; i++){
+-            String numberString = ((CompoundVariable) values[i]).execute().trim();
++        for (Object val : values) {
++            String numberString = ((CompoundVariable) val).execute().trim();
+             try {
+-                long value=Long.decode(numberString).longValue();
++                long value = Long.decode(numberString).longValue();
+                 char ch = (char) value;
+                 sb.append(ch);
+-            } catch (NumberFormatException e){
+-                log.warn("Could not parse "+numberString+" : "+e);
++            } catch (NumberFormatException e) {
++                log.warn("Could not parse " + numberString + " : " + e);
+             }
+         }
+         return sb.toString();
+diff --git a/src/jorphan/org/apache/commons/cli/avalon/CLArgsParser.java b/src/jorphan/org/apache/commons/cli/avalon/CLArgsParser.java
+index 2d98b1b..e344f6b 100644
+--- a/src/jorphan/org/apache/commons/cli/avalon/CLArgsParser.java
++++ b/src/jorphan/org/apache/commons/cli/avalon/CLArgsParser.java
+@@ -153,9 +153,9 @@ public final class CLArgsParser {
+      * @return the descriptor
+      */
+     private final CLOptionDescriptor getDescriptorFor(final int id) {
+-        for (int i = 0; i < m_optionDescriptors.length; i++) {
+-            if (m_optionDescriptors[i].getId() == id) {
+-                return m_optionDescriptors[i];
++        for (CLOptionDescriptor optionDescriptor : m_optionDescriptors) {
++            if (optionDescriptor.getId() == id) {
++                return optionDescriptor;
+             }
+         }
+ 
+@@ -170,9 +170,9 @@ public final class CLArgsParser {
+      * @return the descriptor
+      */
+     private final CLOptionDescriptor getDescriptorFor(final String name) {
+-        for (int i = 0; i < m_optionDescriptors.length; i++) {
+-            if (m_optionDescriptors[i].getName().equals(name)) {
+-                return m_optionDescriptors[i];
++        for (CLOptionDescriptor optionDescriptor : m_optionDescriptors) {
++            if (optionDescriptor.getName().equals(name)) {
++                return optionDescriptor;
+             }
+         }
+ 
+@@ -277,8 +277,8 @@ public final class CLArgsParser {
+             final CLOption option = arguments.elementAt(i);
+             final int id = option.getDescriptor().getId();
+ 
+-            for (int j = 0; j < incompatible.length; j++) {
+-                if (id == incompatible[j]) {
++            for (int anIncompatible : incompatible) {
++                if (id == anIncompatible) {
+                     final CLOption originalOption = arguments.elementAt(original);
+                     final int originalId = originalOption.getDescriptor().getId();
+ 
+@@ -495,8 +495,8 @@ public final class CLArgsParser {
+     }
+ 
+     private final boolean isSeparator(final char ch, final char[] separators) {
+-        for (int i = 0; i < separators.length; i++) {
+-            if (ch == separators[i]) {
++        for (char separator : separators) {
++            if (ch == separator) {
+                 return true;
+             }
+         }
+@@ -668,8 +668,7 @@ public final class CLArgsParser {
+         final int size = m_options.size();
+         m_optionIndex = new Hashtable<>(size * 2);
+ 
+-        for (int i = 0; i < size; i++) {
+-            final CLOption option = m_options.get(i);
++        for (final CLOption option : m_options) {
+             final CLOptionDescriptor optionDescriptor = getDescriptorFor(option.getDescriptor().getId());
+ 
+             m_optionIndex.put(Integer.valueOf(option.getDescriptor().getId()), option);
+diff --git a/src/junit/org/apache/jmeter/protocol/java/control/gui/ClassFilter.java b/src/junit/org/apache/jmeter/protocol/java/control/gui/ClassFilter.java
+index 9ea61f0..54983ff 100644
+--- a/src/junit/org/apache/jmeter/protocol/java/control/gui/ClassFilter.java
++++ b/src/junit/org/apache/jmeter/protocol/java/control/gui/ClassFilter.java
+@@ -36,14 +36,12 @@ class ClassFilter {
+ 
+     private boolean include(String text) {
+         if (pkgs.length == 0) return true; // i.e. no filter
+-        boolean inc = false;
+-        for (int idx=0; idx < pkgs.length; idx++) {
+-            if (text.startsWith(pkgs[idx])){
+-                inc = true;
+-                break;
++        for (String pkg : pkgs) {
++            if (text.startsWith(pkg)) {
++                return true;
+             }
+         }
+-        return inc;
++        return false;
+     }
+ 
+     String[] filterArray(List<String> items) {
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AjpSampler.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AjpSampler.java
+index 92016f5..667c13b 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AjpSampler.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/AjpSampler.java
+@@ -316,15 +316,12 @@ public class AjpSampler extends HTTPSamplerBase implements Interruptible {
+     private String encode(String value)  {
+         StringBuilder newValue = new StringBuilder();
+         char[] chars = value.toCharArray();
+-        for (int i = 0; i < chars.length; i++)
+-        {
+-            if (chars[i] == '\\')//$NON-NLS-1$
++        for (char c : chars) {
++            if (c == '\\')//$NON-NLS-1$
+             {
+                 newValue.append("\\\\");//$NON-NLS-1$
+-            }
+-            else
+-            {
+-                newValue.append(chars[i]);
++            } else {
++                newValue.append(c);
+             }
+         }
+         return newValue.toString();
+diff --git a/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java b/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+index 0657140..8d758b2 100644
+--- a/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
++++ b/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+@@ -33,6 +33,7 @@ import java.util.Collection;
+ import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Map;
+ import java.util.concurrent.ConcurrentHashMap;
+ 
+@@ -85,11 +86,11 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+ 
+         //Get all fields in java.sql.Types and store the corresponding int values
+         Field[] fields = java.sql.Types.class.getFields();
+-        for (int i=0; i<fields.length; i++) {
++        for (Field field : fields) {
+             try {
+-                String name = fields[i].getName();
+-                Integer value = (Integer)fields[i].get(null);
+-                mapJdbcNameToInt.put(name.toLowerCase(java.util.Locale.ENGLISH),value);
++                String name = field.getName();
++                Integer value = (Integer) field.get(null);
++                mapJdbcNameToInt.put(name.toLowerCase(Locale.ENGLISH), value);
+             } catch (IllegalAccessException e) {
+                 throw new RuntimeException(e); // should not happen
+             }
+@@ -431,7 +432,7 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+         
+ 
+         JMeterVariables jmvars = getThreadContext().getVariables();
+-        String varnames[] = getVariableNames().split(COMMA);
++        String varNames[] = getVariableNames().split(COMMA);
+         String resultVariable = getResultVariable().trim();
+         List<Map<String, Object> > results = null;
+         if(resultVariable.length() > 0) {
+@@ -460,8 +461,8 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+                 } else {
+                     sb.append('\t');
+                 }
+-                if (i <= varnames.length) { // i starts at 1
+-                    String name = varnames[i - 1].trim();
++                if (i <= varNames.length) { // i starts at 1
++                    String name = varNames[i - 1].trim();
+                     if (name.length()>0){ // Save the value in the variable if present
+                         jmvars.put(name+UNDERSCORE+j, o == null ? null : o.toString());
+                     }
+@@ -469,16 +470,16 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+             }
+         }
+         // Remove any additional values from previous sample
+-        for(int i=0; i < varnames.length; i++){
+-            String name = varnames[i].trim();
+-            if (name.length()>0 && jmvars != null){
+-                final String varCount = name+"_#"; // $NON-NLS-1$
++        for (String varName : varNames) {
++            String name = varName.trim();
++            if (name.length() > 0 && jmvars != null) {
++                final String varCount = name + "_#"; // $NON-NLS-1$
+                 // Get the previous count
+                 String prevCount = jmvars.get(varCount);
+-                if (prevCount != null){
++                if (prevCount != null) {
+                     int prev = Integer.parseInt(prevCount);
+-                    for (int n=j+1; n <= prev; n++ ){
+-                        jmvars.remove(name+UNDERSCORE+n);
++                    for (int n = j + 1; n <= prev; n++) {
++                        jmvars.remove(name + UNDERSCORE + n);
+                     }
+                 }
+                 jmvars.put(varCount, Integer.toString(j)); // save the current count
+-- 
+1.9.1
+

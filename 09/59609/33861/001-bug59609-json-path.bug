@@ -1,0 +1,218 @@
+diff --git a/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java b/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+index 1f45b35..296be61 100644
+--- a/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
++++ b/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+@@ -21,6 +21,9 @@ package org.apache.jmeter.extractor.json.jsonpath;
+ import java.io.Serializable;
+ import java.util.Arrays;
+ import java.util.List;
++import java.util.Map;
++
++import net.minidev.json.JSONObject;
+ 
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -125,11 +128,12 @@ public class JSONPostProcessor extends AbstractScopedTestElement implements Seri
+                                         new StringBuilder(getComputeConcatenation()
+                                                 ? extractedValues.size() * 20
+                                                 : 1);
+-                                for (Object stringExtracted : extractedValues) {
+-                                    vars.put(currentRefName + "_" + index, 
+-                                            stringExtracted != null ? stringExtracted.toString() : ""); //$NON-NLS-1$
++                                for (Object extractedObject : extractedValues) {
++                                    String extractedString = stringifyJSONObject(extractedObject);
++                                    vars.put(currentRefName + "_" + index,
++                                            extractedString); //$NON-NLS-1$
+                                     if (getComputeConcatenation()) {
+-                                        concat.append(stringExtracted)
++                                        concat.append(extractedString)
+                                                 .append(JSONPostProcessor.JSON_CONCATENATION_SEPARATOR);
+                                     }
+                                     index++;
+@@ -141,9 +145,9 @@ public class JSONPostProcessor extends AbstractScopedTestElement implements Seri
+                             } else if (matchNumber == 0) {
+                                 // Random extraction
+                                 int matchSize = extractedValues.size();
+-                                Object obj = extractedValues.get(JMeterUtils.getRandomInt(matchSize));
+-                                vars.put(currentRefName, 
+-                                        obj != null ? obj.toString() : ""); //$NON-NLS-1$
++                                int matchNr = JMeterUtils.getRandomInt(matchSize);
++                                placeObjectIntoVars(vars, currentRefName,
++                                        extractedValues, matchNr);
+                             } else {
+                                 // extract at position
+                                 if (matchNumber > extractedValues.size()) {
+@@ -155,20 +159,14 @@ public class JSONPostProcessor extends AbstractScopedTestElement implements Seri
+                                     }
+                                     vars.put(currentRefName, defaultValues[i]);
+                                 } else {
+-                                    Object obj = extractedValues.get(matchNumber - 1);
+-                                    vars.put(currentRefName, 
+-                                            obj != null ? obj.toString() : ""); //$NON-NLS-1$
++                                    placeObjectIntoVars(vars, currentRefName, extractedValues, matchNumber - 1);
+                                 }
+                             }
+                         } else {
+                             // else just one value extracted
+-                            Object obj = extractedValues.get(0);
+-                            String objAsString = 
+-                                    obj != null ? obj.toString() : ""; //$NON-NLS-1$
+-                            vars.put(currentRefName, 
+-                                    objAsString); 
++                            placeObjectIntoVars(vars, currentRefName, extractedValues, 0);
+                             if (matchNumber < 0 && getComputeConcatenation()) {
+-                                vars.put(currentRefName + ALL_SUFFIX, objAsString);
++                                vars.put(currentRefName + ALL_SUFFIX, vars.get(currentRefName));
+                             }
+                         }
+                         vars.put(currentRefName + REF_MATCH_NR, Integer.toString(extractedValues.size()));
+@@ -187,6 +185,20 @@ public class JSONPostProcessor extends AbstractScopedTestElement implements Seri
+         }
+     }
+ 
++    private void placeObjectIntoVars(JMeterVariables vars, String currentRefName,
++            List<Object> extractedValues, int matchNr) {
++        vars.put(currentRefName,
++                stringifyJSONObject(extractedValues.get(matchNr)));
++    }
++
++    @SuppressWarnings("unchecked")
++    private String stringifyJSONObject(Object obj) {
++        if (obj instanceof Map) {
++            return new JSONObject((Map<String, ?>) obj).toJSONString();
++        }
++        return obj == null ? "" : obj.toString(); //$NON-NLS-1$
++    }
++
+     public String getJsonPathExpressions() {
+         return getPropertyAsString(JSON_PATH_EXPRESSIONS);
+     }
+diff --git a/test/src/org/apache/jmeter/extractor/TestJSONPostProcessor.java b/test/src/org/apache/jmeter/extractor/TestJSONPostProcessor.java
+new file mode 100644
+index 0000000..4e21e5e
+--- /dev/null
++++ b/test/src/org/apache/jmeter/extractor/TestJSONPostProcessor.java
+@@ -0,0 +1,123 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.extractor;
++
++import java.nio.charset.StandardCharsets;
++
++import net.minidev.json.parser.JSONParser;
++import net.minidev.json.parser.ParseException;
++
++import org.apache.jmeter.extractor.json.jsonpath.JSONPostProcessor;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.Assert;
++import org.junit.Test;
++
++public class TestJSONPostProcessor {
++
++    private static final String VAR_NAME = "varName";
++
++    @Test
++    public void testBug59609() throws ParseException {
++        JMeterContext context = JMeterContextService.getContext();
++        JSONPostProcessor processor = setupProcessor(context, "0", false);
++
++        String innerValue = "{\"a\":\"one\",\"b\":\"two\"}";
++        String data = "{\"context\":" + innerValue + "}";
++        SampleResult result = new SampleResult();
++        result.setResponseData(data.getBytes(StandardCharsets.UTF_8));
++
++        JMeterVariables vars = new JMeterVariables();
++        context.setVariables(vars);
++        context.setPreviousResult(result);
++
++        processor.setJsonPathExpressions("$.context");
++        processor.process();
++
++        JSONParser parser = new JSONParser(0);
++        Object expectedValue = parser.parse(innerValue);
++        Assert.assertEquals(expectedValue, parser.parse(vars.get(VAR_NAME)));
++        Assert.assertEquals("1", vars.get(VAR_NAME + "_matchNr"));
++    }
++
++    @Test
++    public void testExtractSimpleArrayElements() {
++        JMeterContext context = JMeterContextService.getContext();
++        JSONPostProcessor processor = setupProcessor(context, "-1");
++        String data = "[1,2,3]";
++        SampleResult result = new SampleResult();
++        result.setResponseData(data.getBytes(StandardCharsets.UTF_8));
++        JMeterVariables vars = new JMeterVariables();
++        context.setVariables(vars);
++        context.setPreviousResult(result);
++
++        processor.setJsonPathExpressions("$[*]");
++        processor.process();
++
++        Assert.assertEquals("1,2,3", vars.get(VAR_NAME+ "_ALL"));
++        for (int i = 1; i <= 3; i++) {
++            String v = Integer.toString(i);
++            Assert.assertEquals(v, vars.get(VAR_NAME + "_" + v));
++        }
++
++        Assert.assertEquals("3", vars.get(VAR_NAME + "_matchNr"));
++    }
++
++    @Test
++    public void testExtractComplexElements() {
++        JMeterContext context = JMeterContextService.getContext();
++        JSONPostProcessor processor = setupProcessor(context, "-1");
++        String data = "[{\"a\":[1,{\"d\":2},3]},[\"b\"],3]";
++        SampleResult result = new SampleResult();
++        result.setResponseData(data.getBytes(StandardCharsets.UTF_8));
++        JMeterVariables vars = new JMeterVariables();
++        context.setVariables(vars);
++        context.setPreviousResult(result);
++
++        processor.setJsonPathExpressions("$[*]");
++        processor.process();
++
++        String jsonWithoutOuterParens = data.substring(1, data.length() - 1);
++        Assert.assertEquals(jsonWithoutOuterParens, vars.get(VAR_NAME + "_ALL"));
++
++        Assert.assertEquals("{\"a\":[1,{\"d\":2},3]}", vars.get(VAR_NAME + "_1"));
++        Assert.assertEquals("[\"b\"]", vars.get(VAR_NAME + "_2"));
++        Assert.assertEquals("3", vars.get(VAR_NAME + "_3"));
++
++        Assert.assertEquals("3", vars.get(VAR_NAME + "_matchNr"));
++    }
++
++    private JSONPostProcessor setupProcessor(JMeterContext context,
++    String matchNumbers) {
++        return setupProcessor(context, matchNumbers, true);
++    }
++
++    private JSONPostProcessor setupProcessor(JMeterContext context,
++            String matchNumbers, boolean computeConcatenation) {
++        JSONPostProcessor processor = new JSONPostProcessor();
++        processor.setThreadContext(context);
++        processor.setRefNames(VAR_NAME);
++        processor.setMatchNumbers(matchNumbers);
++        processor.setComputeConcatenation(computeConcatenation);
++        return processor;
++    }
++
++}

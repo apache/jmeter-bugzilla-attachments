@@ -1,0 +1,83 @@
+From 4aaf0ca20ee25dd94d3127f574beb5adc0282330 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Fri, 21 Aug 2020 12:53:01 +0200
+Subject: [PATCH] Encode only JSON active characters
+
+---
+ .../jmeter/report/dashboard/JsonizerVisitor.java      |  5 +++--
+ .../report/processor/ErrorsSummaryConsumer.java       | 11 +++++++++--
+ 2 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/report/dashboard/JsonizerVisitor.java b/src/core/src/main/java/org/apache/jmeter/report/dashboard/JsonizerVisitor.java
+index e41f9ecb73..89b723c4f2 100644
+--- a/src/core/src/main/java/org/apache/jmeter/report/dashboard/JsonizerVisitor.java
++++ b/src/core/src/main/java/org/apache/jmeter/report/dashboard/JsonizerVisitor.java
+@@ -20,13 +20,14 @@ package org.apache.jmeter.report.dashboard;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+-import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.report.core.JsonUtil;
+ import org.apache.jmeter.report.processor.ListResultData;
+ import org.apache.jmeter.report.processor.MapResultData;
+ import org.apache.jmeter.report.processor.ResultData;
+ import org.apache.jmeter.report.processor.ResultDataVisitor;
+ import org.apache.jmeter.report.processor.ValueResultData;
++
++import com.fasterxml.jackson.core.io.JsonStringEncoder;
+ /**
+  * The class JsonizerVisitor provides a visitor that can get json-like string
+  * from ResultData.
+@@ -96,7 +97,7 @@ public class JsonizerVisitor implements ResultDataVisitor<String> {
+             Object value = valueResult.getValue();
+             result = String.valueOf(value);
+             if (value instanceof String) {
+-                result = '"' + StringEscapeUtils.escapeEcmaScript(result.replace('\"', '\'')) + '"';
++                result = '"' + new String(JsonStringEncoder.getInstance().quoteAsString(result)) + '"';
+             }
+         }
+         return result;
+diff --git a/src/core/src/main/java/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java b/src/core/src/main/java/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java
+index 2264044187..f0175730aa 100644
+--- a/src/core/src/main/java/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java
++++ b/src/core/src/main/java/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java
+@@ -24,6 +24,8 @@ import org.apache.jmeter.report.utils.MetricUtils;
+ import org.apache.jmeter.samplers.SampleSaveConfiguration;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
++import com.fasterxml.jackson.core.io.JsonStringEncoder;
++
+ /**
+  * <p>
+  * The class ErrorSummaryConsumer provides a consumer that calculates error
+@@ -89,7 +91,7 @@ public class ErrorsSummaryConsumer extends AbstractSummaryConsumer<Long> {
+         String responseCode = sample.getResponseCode();
+         String responseMessage = sample.getResponseMessage();
+         String key = responseCode + (!StringUtils.isEmpty(responseMessage) ?
+-                 "/" + StringEscapeUtils.escapeJson(StringEscapeUtils.escapeHtml4(responseMessage)) : "");
++                 "/" + escapeJson(responseMessage) : "");
+         if (MetricUtils.isSuccessCode(responseCode) ||
+                 (StringUtils.isEmpty(responseCode) &&
+                         !StringUtils.isEmpty(sample.getFailureMessage()))) {
+@@ -97,12 +99,17 @@ public class ErrorsSummaryConsumer extends AbstractSummaryConsumer<Long> {
+             if (ASSERTION_RESULTS_FAILURE_MESSAGE) {
+                 String msg = sample.getFailureMessage();
+                 if (!StringUtils.isEmpty(msg)) {
+-                    key = StringEscapeUtils.escapeJson(StringEscapeUtils.escapeHtml4(msg));
++                    key = escapeJson(msg);
+                 }
+             }
+         }
+         return key;
+     }
++
++    private static String escapeJson(String responseMessage) {
++        return new String(JsonStringEncoder.getInstance().quoteAsString(StringEscapeUtils.escapeHtml4(responseMessage)));
++    }
++
+     /*
+      * (non-Javadoc)
+      *
+-- 
+2.25.1
+

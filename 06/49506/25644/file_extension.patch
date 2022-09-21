@@ -1,0 +1,132 @@
+Index: src/core/org/apache/jmeter/gui/util/FilePanel.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/FilePanel.java	(revision 957726)
++++ src/core/org/apache/jmeter/gui/util/FilePanel.java	(working copy)
+@@ -53,7 +53,7 @@
+ 
+     private final String title;
+ 
+-    private final String filetype;
++    private final String[] filetype;
+ 
+     /**
+      * Constructor for the FilePanel object.
+@@ -66,7 +66,7 @@
+         this(title, null);
+     }
+ 
+-    public FilePanel(String title, String filetype) {
++    public FilePanel(String title, String[] filetype) {
+         this.title = title;
+         this.filetype = filetype;
+         init();
+@@ -143,7 +143,7 @@
+             if(filetype == null){
+                 chooser = FileDialoger.promptToOpenFile();
+             } else {
+-                chooser = FileDialoger.promptToOpenFile(new String[] { filetype });
++                chooser = FileDialoger.promptToOpenFile(filetype);
+             }
+             if (chooser != null && chooser.getSelectedFile() != null) {
+                 filename.setText(chooser.getSelectedFile().getPath());
+Index: src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java
+===================================================================
+--- src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	(revision 957726)
++++ src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	(working copy)
+@@ -108,6 +108,9 @@
+ 
+     /** Logging. */
+     private static final Logger log = LoggingManager.getLoggerForClass();
++    
++    /** File Extensions */
++    private static final String[] EXTS = { ".jtl", ".csv" }; // $NON-NLS-1$ $NON-NLS-2$
+ 
+     /** A panel allowing results to be saved. */
+     private FilePanel filePanel;
+@@ -157,7 +160,7 @@
+             }
+         });
+ 
+-        filePanel = new FilePanel(JMeterUtils.getResString("file_visualizer_output_file"), ".jtl"); // $NON-NLS-1$ $NON-NLS-2$
++        filePanel = new FilePanel(JMeterUtils.getResString("file_visualizer_output_file"), EXTS); // $NON-NLS-1$
+         filePanel.addChangeListener(this);
+         filePanel.add(new JLabel(JMeterUtils.getResString("log_only"))); // $NON-NLS-1$
+         filePanel.add(errorLogging);
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(revision 957726)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(working copy)
+@@ -46,7 +46,7 @@
+ 
+     private static final long serialVersionUID = 240L;
+ 
+-    private static final String ALL_FILES = "*.*"; //$NON-NLS-1$
++    private static final String[] ALL_FILES = { "*.*" }; //$NON-NLS-1$
+ 
+     //++ These names are used in the JMX files, and must not be changed
+     /** Take source from the named file */
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(revision 957726)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(working copy)
+@@ -56,6 +56,9 @@
+ public class WebServiceSamplerGui extends AbstractSamplerGui implements java.awt.event.ActionListener {
+ 
+     private static final long serialVersionUID = 240L;
++    
++    /** File Extensions */
++    private static final String[] EXTS = { ".xml" }; // $NON-NLS-1$
+ 
+     private final JLabeledTextField domain = new JLabeledTextField(JMeterUtils.getResString("web_server_domain")); // $NON-NLS-1$
+ 
+@@ -79,7 +82,7 @@
+ 
+     private transient WSDLHelper HELPER = null;
+ 
+-    private final FilePanel soapXmlFile = new FilePanel(JMeterUtils.getResString("get_xml_from_file"), ".xml"); // $NON-NLS-1$
++    private final FilePanel soapXmlFile = new FilePanel(JMeterUtils.getResString("get_xml_from_file"), EXTS); // $NON-NLS-1$
+ 
+     private final JLabeledTextField randomXmlFile = new JLabeledTextField(JMeterUtils.getResString("get_xml_from_random")); // $NON-NLS-1$
+ 
+Index: src/components/org/apache/jmeter/control/gui/IncludeControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/IncludeControllerGui.java	(revision 957726)
++++ src/components/org/apache/jmeter/control/gui/IncludeControllerGui.java	(working copy)
+@@ -34,9 +34,12 @@
+ {
+ 
+     private static final long serialVersionUID = 240L;
++    
++    /** File Extensions */
++    private static final String[] EXTS = { ".jmx" }; // $NON-NLS-1$ $NON-NLS-2$
+ 
+     private FilePanel includePanel =
+-        new FilePanel(JMeterUtils.getResString("include_path"), ".jmx"); //$NON-NLS-1$ //$NON-NLS-2$
++        new FilePanel(JMeterUtils.getResString("include_path"), EXTS); //$NON-NLS-1$
+ 
+     /**
+      * Initializes the gui panel for the ModuleController instance.
+Index: src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java	(revision 957726)
++++ src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java	(working copy)
+@@ -57,6 +57,9 @@
+     private static final String WARNING_THRESHOLD_FIELD = "warningThresholdField"; // $NON-NLS-1$
+ 
+     private static final String ERROR_THRESHOLD_FIELD = "errorThresholdField"; // $NON-NLS-1$
++    
++    /** File Extensions */
++    private static final String[] EXTS = { ".txt" }; // $NON-NLS-1$
+ 
+     // instance attributes
+     private JTextField errorThresholdField = null;
+@@ -252,7 +255,7 @@
+         assertionPanel.add(thresholdPanel);
+ 
+         // file panel
+-        filePanel = new FilePanel(JMeterUtils.getResString("html_assertion_file"), ".txt"); //$NON-NLS-1$ //$NON-NLS-2$
++        filePanel = new FilePanel(JMeterUtils.getResString("html_assertion_file"), EXTS); //$NON-NLS-1$
+         assertionPanel.add(filePanel);
+ 
+         mainPanel.add(assertionPanel, BorderLayout.NORTH);
+

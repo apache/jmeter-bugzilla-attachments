@@ -1,0 +1,122 @@
+diff --git a/src/components/src/main/java/org/apache/jmeter/timers/ConstantThroughputTimerBeanInfo.java b/src/components/src/main/java/org/apache/jmeter/timers/ConstantThroughputTimerBeanInfo.java
+index 0d28dffb43..19c53af136 100644
+--- a/src/components/src/main/java/org/apache/jmeter/timers/ConstantThroughputTimerBeanInfo.java
++++ b/src/components/src/main/java/org/apache/jmeter/timers/ConstantThroughputTimerBeanInfo.java
+@@ -18,14 +18,19 @@
+ package org.apache.jmeter.timers;
+ 
+ import java.beans.PropertyDescriptor;
++import java.util.function.Function;
+ 
+ import org.apache.jmeter.testbeans.BeanInfoSupport;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ 
+ /**
+  * BeanInfo for the ConstantThroughputTimer.
+  */
+ public class ConstantThroughputTimerBeanInfo extends BeanInfoSupport {
+ 
++    private static Logger log = LoggerFactory.getLogger(ConstantThroughputTimerBeanInfo.class);
++
+     public ConstantThroughputTimerBeanInfo() {
+         super(ConstantThroughputTimer.class);
+ 
+@@ -36,10 +41,23 @@ public class ConstantThroughputTimerBeanInfo extends BeanInfoSupport {
+         PropertyDescriptor p = property("throughput"); //$NON-NLS-1$
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, 0.0);
++        p.setValue(VALIDATOR, (Function<Object, Boolean>) ConstantThroughputTimerBeanInfo::validateThroughput);
+ 
+         p = property("calcMode", ConstantThroughputTimer.Mode.class); //$NON-NLS-1$
+         p.setValue(DEFAULT, ConstantThroughputTimer.Mode.ThisThreadOnly.ordinal());
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE); // must be defined
+     }
+ 
++    private static boolean validateThroughput(Object o) {
++        try {
++            double value = Double.parseDouble(o.toString());
++            if (value < 0) {
++                log.warn("Number must not be less than zero: [{}]", value);
++            }
++        } catch (NumberFormatException e) {
++            log.warn("No valid number: [{}]", o);
++        }
++        return false;
++    }
++
+ }
+diff --git a/src/core/src/main/java/org/apache/jmeter/testbeans/BeanInfoSupport.java b/src/core/src/main/java/org/apache/jmeter/testbeans/BeanInfoSupport.java
+index 5971b31ef2..a00dc0717a 100644
+--- a/src/core/src/main/java/org/apache/jmeter/testbeans/BeanInfoSupport.java
++++ b/src/core/src/main/java/org/apache/jmeter/testbeans/BeanInfoSupport.java
+@@ -91,6 +91,9 @@ public abstract class BeanInfoSupport extends SimpleBeanInfo {
+     /** TextEditor property */
+     public static final String TEXT_LANGUAGE = GenericTestBeanCustomizer.TEXT_LANGUAGE;
+ 
++    /** An optional validator, that is a Function<Object, Boolean> **/
++    public static final String VALIDATOR = GenericTestBeanCustomizer.VALIDATOR;
++
+     /** The BeanInfo for our class as obtained by the introspector. */
+     private final BeanInfo rootBeanInfo;
+ 
+diff --git a/src/core/src/main/java/org/apache/jmeter/testbeans/TestBeanHelper.java b/src/core/src/main/java/org/apache/jmeter/testbeans/TestBeanHelper.java
+index fa19b19d8c..16b4a848fc 100644
+--- a/src/core/src/main/java/org/apache/jmeter/testbeans/TestBeanHelper.java
++++ b/src/core/src/main/java/org/apache/jmeter/testbeans/TestBeanHelper.java
+@@ -25,6 +25,7 @@ import java.lang.reflect.InvocationTargetException;
+ import java.lang.reflect.Method;
+ import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.function.Function;
+ 
+ import org.apache.jmeter.testbeans.gui.GenericTestBeanCustomizer;
+ import org.apache.jmeter.testbeans.gui.TableEditor;
+@@ -83,6 +84,7 @@ public class TestBeanHelper {
+                 Class<?> type = desc.getPropertyType();
+                 Object value = unwrapProperty(desc, jprop, type);
+ 
++                validateObjectValue(desc, jprop, value);
+                 if (log.isDebugEnabled()) {
+                     log.debug("Setting {}={}", jprop.getName(), value);
+                 }
+@@ -105,6 +107,17 @@ public class TestBeanHelper {
+         }
+     }
+ 
++    private static void validateObjectValue(PropertyDescriptor desc, JMeterProperty jprop, Object value) {
++        Object validator = desc.getValue(BeanInfoSupport.VALIDATOR);
++        if (validator instanceof Function) {
++            @SuppressWarnings("unchecked")
++            Function<Object, Boolean> validatorFunction = (Function<Object, Boolean>) validator;
++            if (!validatorFunction.apply(value)) {
++                log.warn("Invalid value [{}] for property [{}]", value, jprop.getName());
++            }
++        }
++    }
++
+     private static Object unwrapProperty(PropertyDescriptor desc, JMeterProperty jprop, Class<?> type) {
+         Object value;
+         if(jprop instanceof TestElementProperty)
+diff --git a/src/core/src/main/java/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java b/src/core/src/main/java/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java
+index 25ee55cfb5..e3aca1ad6e 100644
+--- a/src/core/src/main/java/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java
++++ b/src/core/src/main/java/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java
+@@ -96,7 +96,7 @@ import org.slf4j.LoggerFactory;
+  * </dl>
+  */
+ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomizer {
+-    private static final long serialVersionUID = 241L;
++    private static final long serialVersionUID = 242L;
+ 
+     private static final Logger log = LoggerFactory.getLogger(GenericTestBeanCustomizer.class);
+ 
+@@ -160,6 +160,8 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
+ 
+     public static final String DEFAULT_GROUP = "";
+ 
++    public static final String VALIDATOR = "validator";
++
+     @SuppressWarnings("unused") // TODO - use or remove
+     private int scrollerCount = 0;
+ 

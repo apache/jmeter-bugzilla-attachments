@@ -1,0 +1,31 @@
+From 4e00ed43f4ae9a4a44e8286ec052339bab4e31df Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 29 Nov 2015 15:24:13 +0100
+Subject: [PATCH] Use invokeLater instead of invokeAndWait.
+
+---
+ src/core/org/apache/jmeter/util/JMeterUtils.java | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/util/JMeterUtils.java b/src/core/org/apache/jmeter/util/JMeterUtils.java
+index cc36061..4a6f0b9 100644
+--- a/src/core/org/apache/jmeter/util/JMeterUtils.java
++++ b/src/core/org/apache/jmeter/util/JMeterUtils.java
+@@ -1309,13 +1309,7 @@ public class JMeterUtils implements UnitTestManager {
+         if(SwingUtilities.isEventDispatchThread()) {
+             runnable.run();
+         } else {
+-            try {
+-                SwingUtilities.invokeAndWait(runnable);
+-            } catch (InterruptedException e) {
+-                log.warn("Interrupted in thread "+Thread.currentThread().getName(), e);
+-            } catch (InvocationTargetException e) {
+-                throw new Error(e);
+-            }
++            SwingUtilities.invokeLater(runnable);
+         }
+     }
+     
+-- 
+1.9.1
+

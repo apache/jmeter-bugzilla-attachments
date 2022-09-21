@@ -1,0 +1,114 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java (revision 1169873)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java (working copy)
+@@ -24,25 +24,26 @@
+ 
+ import javax.swing.JButton;
+ import javax.swing.JCheckBox;
+-import javax.swing.JOptionPane;
+ import javax.swing.JLabel;
++import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+ import javax.swing.border.Border;
+ import javax.swing.border.EmptyBorder;
+ 
+ import org.apache.commons.lang.ArrayUtils;
++import org.apache.jmeter.gui.UnsharedComponent;
++import org.apache.jmeter.gui.util.FilePanel;
++import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.protocol.http.sampler.WebServiceSampler;
++import org.apache.jmeter.protocol.http.util.WSDLHelper;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+-import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jorphan.gui.JLabeledChoice;
+ import org.apache.jorphan.gui.JLabeledTextArea;
+ import org.apache.jorphan.gui.JLabeledTextField;
+ import org.apache.jorphan.gui.layout.VerticalLayout;
+-import org.apache.jmeter.protocol.http.util.WSDLHelper;
+-import org.apache.jmeter.protocol.http.control.AuthManager;
+ 
+ /**
+  * This is the GUI for the webservice samplers. It extends AbstractSamplerGui
+@@ -68,7 +69,7 @@
+ 
+     private final JLabeledTextArea soapXml = new JLabeledTextArea(JMeterUtils.getResString("soap_data_title")); // $NON-NLS-1$
+ 
+-    private final JLabeledTextField wsdlField = new JLabeledTextField(JMeterUtils.getResString("wsdl_url")); // $NON-NLS-1$
++    private final JLabeledTextField wsdlField = new JLabeledTextField(JMeterUtils.getResString("wsdl_url"), 30); // $NON-NLS-1$
+ 
+     private final JButton wsdlButton = new JButton(JMeterUtils.getResString("load_wsdl")); // $NON-NLS-1$
+ 
+@@ -264,7 +265,7 @@
+         wsdlField.setText(sampler.getWsdlURL());
+         final String wsdlText = wsdlField.getText();
+         if (wsdlText != null && wsdlText.length() > 0) {
+-            fillWsdlMethods(wsdlField.getText());
++            fillWsdlMethods(wsdlField.getText(), sampler.getSoapAction());
+         }
+         protocol.setText(sampler.getProtocol());
+         domain.setText(sampler.getDomain());
+@@ -365,7 +366,7 @@
+         } else if (eventSource == wsdlButton){
+             final String wsdlText = wsdlField.getText();
+             if (wsdlText != null && wsdlText.length() > 0) {
+-                fillWsdlMethods(wsdlText);
++                fillWsdlMethods(wsdlText, null);
+             } else {
+                 JOptionPane.showConfirmDialog(this,
+                         JMeterUtils.getResString("wsdl_url_error"), // $NON-NLS-1$
+@@ -377,11 +378,19 @@
+ 
+     /**
+      * @param wsdlText
++     * @param soapAction 
+      */
+-    private void fillWsdlMethods(final String wsdlText) {
++    private void fillWsdlMethods(final String wsdlText, String soapAction) {
+         String[] wsdlData = browseWSDL(wsdlText);
+         if (wsdlData != null) {
+             wsdlMethods.setValues(wsdlData);
++            if (HELPER != null && soapAction != null) {
++                String selected = HELPER.getSoapActionName(soapAction);
++                if (selected != null) {
++                    wsdlMethods.setText(selected);
++                }
++            }
++
+             wsdlMethods.repaint();
+         }
+     }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java  (revision 1169873)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java  (working copy)
+@@ -371,6 +371,20 @@
+     }
+ 
+     /**
++     * return the "wsdl method name" from a soap action
++     * @param soapAction the soap action
++     * @return the associated "wsdl method name" or null if not found
++     */
++    public String getSoapActionName(String soapAction) {
++        for (Map.Entry<String, String> entry : ACTIONS.entrySet()) {
++            if (entry.getValue().equals(soapAction)) {
++                return entry.getKey();
++            }
++        }
++        return null;
++    }
++    
++    /**
+      * Simple test for the class uses bidbuy.wsdl from Apache's soap driver
+      * examples.
+      *
+@@ -398,4 +412,5 @@
+             exception.printStackTrace();
+         }
+     }
++
+ }

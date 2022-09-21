@@ -1,0 +1,826 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 956529)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -370,6 +370,9 @@
+ jms_subscriber_on_message=Use MessageListener.onMessage()
+ jms_subscriber_receive=Use TopicSubscriber.receive()
+ jms_subscriber_title=JMS Subscriber
++jms_receiver_on_message=Use MessageListener.onMessage()
++jms_receiver_receive=Use QueueSubscriber.receive()
++jms_receiver_title=JMS Receiver
+ jms_testing_title=Messaging Request
+ jms_text_message=Text Message
+ jms_timeout=Timeout (milliseconds)
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/ClientPool.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/ClientPool.java	(revision 956529)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/ClientPool.java	(working copy)
+@@ -67,6 +67,16 @@
+     public static synchronized void addClient(Publisher client) {
+         clients.add(client);
+     }
++    
++    /**
++     * Add a ReceiveReceiver to the ClientPool. This is so that we can make sure
++     * to close all clients and make sure all threads are destroyed.
++     *
++     * @param client
++     */
++	public static void addClient(ReceiveReceiver client) {
++		clients.add(client);
++	}
+ 
+     /**
+      * Clear all the clients created by either Publish or Subscribe sampler. We
+@@ -92,6 +102,10 @@
+                 OnMessageSubscriber sub = (OnMessageSubscriber) client;
+                 sub.close();
+                 sub = null;
++            } else if (client instanceof ReceiveReceiver) {
++            	ReceiveReceiver rec = (ReceiveReceiver) client;
++            	rec.close();
++            	rec = null;
+             }
+         }
+         clients.clear();
+@@ -109,4 +123,9 @@
+     public static synchronized Object get(Object key) {
+         return client_map.get(key);
+     }
++
++	public static void removeClient(ReceiveReceiver receiver) {
++		receiver.close();
++		clients.remove(receiver);
++	}
+ }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/ConnectionFactory.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/ConnectionFactory.java	(revision 956529)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/ConnectionFactory.java	(working copy)
+@@ -181,8 +181,8 @@
+         throw new JMSException("Factory has not been initialised");
+     }
+ 
+-    public static synchronized QueueConnection getQueueConnection(Context ctx, String queueConn) {
+-        if (factory != null) {
++    public static synchronized QueueConnection getQueueConnection() {
++        if (qfactory != null) {
+             try {
+                 return qfactory.createQueueConnection();
+             } catch (JMSException e) {
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java	(revision 956529)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java	(working copy)
+@@ -25,6 +25,7 @@
+ import javax.naming.Context;
+ import javax.naming.InitialContext;
+ import javax.naming.NamingException;
++import javax.jms.Queue;
+ import javax.jms.Topic;
+ 
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -101,6 +102,31 @@
+         }
+         return t;
+     }
++    
++    /**
++     * Method will lookup a given topic using JNDI.
++     *
++     * @param ctx
++     * @param name
++     * @return the topic or null
++     */
++    // TODO this method probably belongs in a separate utility class.
++    // Also, why allow null input? Better to throw NPE or IAE
++    public static Queue lookupQueue(Context ctx, String name) {
++    	Queue q = null;
++        if (name != null && ctx != null) {
++            try {
++                q = (Queue) ctx.lookup(name);
++            } catch (NamingException e) {
++                log.error("JNDI error: " + e.getMessage());
++            }
++        } else if (name == null) {
++            log.error("lookupTopic: name was null");
++        } else {
++            log.error("lookupTopic: Context was null");
++        }
++        return q;
++    }
+ 
+     /**
+      * clear all the InitialContext objects.
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveReceiver.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveReceiver.java	(revision 0)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveReceiver.java	(revision 0)
+@@ -0,0 +1,230 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.jms.client;
++
++import java.util.concurrent.ConcurrentLinkedQueue;
++
++import javax.jms.JMSException;
++import javax.jms.Message;
++import javax.jms.Queue;
++import javax.jms.QueueConnection;
++import javax.jms.QueueReceiver;
++import javax.jms.QueueSession;
++import javax.jms.TextMessage;
++import javax.naming.Context;
++import javax.naming.InitialContext;
++import javax.naming.NamingException;
++
++import org.apache.jmeter.protocol.jms.Utils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Receives messages in a separate thread until told to stop.
++ * Run loop permanently receives messages; the sampler calls reset()
++ * when it has taken enough messages.
++ *
++ */
++/*
++ * TODO Needs rework - there is a window between receiving a message and calling reset()
++ * which means that a message can be lost. It's not clear why a separate thread is needed,
++ * given that the sampler loops until enough samples have been received.
++ * Also, messages are received in wait mode, so the RUN flag won't be checked until
++ * at least one more message has been received.
++*/
++public class ReceiveReceiver implements Runnable {
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private final QueueConnection CONN;
++
++    private final QueueSession SESSION;
++
++    private final QueueReceiver RECEIVER;
++
++    //@GuardedBy("this")
++    private int counter;
++
++    private int loop = 1;
++    
++    private final ConcurrentLinkedQueue<TextMessage> queue = new ConcurrentLinkedQueue<TextMessage>();
++
++    //@GuardedBy("this")
++    private Thread CLIENTTHREAD;
++
++    public ReceiveReceiver(boolean useProps, String jndi, String url, String connfactory, String topic,
++            boolean useAuth, String user, String pwd) {
++        Context ctx = initJNDI(useProps, jndi, url, useAuth, user, pwd);
++        QueueConnection _conn = null;
++        Queue _topic = null;
++        QueueSession _session = null;
++        QueueReceiver _subscriber = null;
++        if (ctx != null) {
++            try {
++                ConnectionFactory.getQueueConnectionFactory(ctx,connfactory);
++                _conn = ConnectionFactory.getQueueConnection();
++                _topic = InitialContextFactory.lookupQueue(ctx, topic);
++                if (_topic == null){
++                    log.warn("queue <"+topic+"> could not be found.");
++                }
++                _session = _conn.createQueueSession(false, QueueSession.AUTO_ACKNOWLEDGE);
++                _subscriber = _session.createReceiver(_topic);
++                log.info("created the queue connection successfully");
++            } catch (JMSException e) {
++                log.error("Connection error: " + e.getMessage());
++            }
++        } else {
++            log.error("Could not initialize JNDI Initial Context Factory");
++        }
++        this.CONN = _conn;
++        this.SESSION = _session;
++        this.RECEIVER = _subscriber;
++    }
++
++    /**
++     * Initialize the JNDI initial context
++     *
++     * @param useProps
++     * @param jndi
++     * @param url
++     * @param useAuth
++     * @param user
++     * @param pwd
++     * @return  the JNDI initial context or null
++     */
++    // Called by ctor
++    private Context initJNDI(boolean useProps, String jndi, String url, boolean useAuth, String user, String pwd) {
++        if (useProps) {
++            try {
++                return new InitialContext();
++            } catch (NamingException e) {
++                log.error(e.getMessage());
++                return null;
++            }
++        } else {
++            return InitialContextFactory.lookupContext(jndi, url, useAuth, user, pwd);
++        }
++    }
++
++    /**
++     * Set the number of iterations for each call to sample()
++     *
++     * @param loop
++     */
++    public void setLoop(int loop) {
++        this.loop = loop;
++    }
++
++    /**
++     * Resume will call Connection.start() and begin receiving messages from the
++     * JMS provider.
++     */
++    public void resume() {
++        if (this.CONN == null) {
++            log.error("Connection not set up");
++            return;
++        }
++        try {
++            this.CONN.start();
++        } catch (JMSException e) {
++            log.error("failed to start recieving");
++        }
++    }
++
++    /**
++     * Get the message
++     * @return the next message from the queue or null if none
++     */
++    public synchronized TextMessage getMessage() {
++        TextMessage msg = queue.poll();
++        this.counter--;
++        return msg;
++    }
++
++    /**
++     * close() will stop the connection first. Then it closes the subscriber,
++     * session and connection.
++     */
++    public synchronized void close() { // called from testEnded() thread
++        try {
++            this.CONN.stop();
++            Utils.close(RECEIVER, log);
++            Utils.close(SESSION, log);
++            Utils.close(CONN, log);
++            this.CLIENTTHREAD.interrupt();
++            this.CLIENTTHREAD = null;
++            queue.clear();
++        } catch (JMSException e) {
++            log.error(e.getMessage());
++        } catch (Exception e) {
++            log.error(e.getMessage());
++        }
++    }
++
++    /**
++     * Increment the count and return the new value
++     *
++     * @param increment
++     */
++    public synchronized int count(int increment) {
++        counter += increment;
++        return counter;
++    }
++
++    /**
++     * start will create a new thread and pass this class. once the thread is
++     * created, it calls Thread.start().
++     */
++    public void start() {
++        // No point starting thread unless subscriber exists
++        if (RECEIVER == null) {
++            log.error("Subscriber has not been set up");
++            return;
++        }
++        this.CLIENTTHREAD = new Thread(this, "Subscriber2");
++        this.CLIENTTHREAD.start();
++    }
++
++    /**
++     * run calls listen to begin listening for inbound messages from the
++     * provider.
++     * 
++     * Updates the count field so the caller can check how many messages have been receieved.
++     * 
++     */
++    public void run() {
++        if (RECEIVER == null) { // just in case
++            log.error("Subscriber has not been set up");
++            return;
++        }
++        while (count(0) < loop) {
++            try {
++                Message message = this.RECEIVER.receive();
++                if (message != null && message instanceof TextMessage) {
++                    queue.add((TextMessage)message);
++                    count(1);
++                } else {
++                	log.warn("Discarded non TextMessage " +  message);
++                }
++            } catch (JMSException e) {
++                log.error("Communication error: " + e.getMessage());
++            }
++        }
++    }
++}
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSReceiverGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSReceiverGui.java	(revision 0)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSReceiverGui.java	(revision 0)
+@@ -0,0 +1,234 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.jms.control.gui;
++
++import java.awt.Font;
++import java.awt.event.ActionEvent;
++
++import javax.swing.JCheckBox;
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++import javax.swing.border.Border;
++import javax.swing.border.EmptyBorder;
++import javax.swing.event.ChangeEvent;
++import javax.swing.event.ChangeListener;
++
++import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++
++import org.apache.jmeter.protocol.jms.sampler.ReceiverSampler;;
++
++/**
++ * This is the GUI for JMS Receiver <br>
++ *
++ */
++public class JMSReceiverGui extends AbstractSamplerGui implements java.awt.event.ActionListener, ChangeListener {
++
++    private static final long serialVersionUID = 240L;
++
++    private final JCheckBox useProperties =
++        new JCheckBox(JMeterUtils.getResString("jms_use_properties_file"), false); // $NON-NLS-1$
++
++    private final JLabeledTextField jndiICF =
++        new JLabeledTextField(JMeterUtils.getResString("jms_initial_context_factory")); // $NON-NLS-1$
++
++    private final JLabeledTextField urlField =
++        new JLabeledTextField(JMeterUtils.getResString("jms_provider_url")); // $NON-NLS-1$
++
++    private final JLabeledTextField jndiConnFac =
++        new JLabeledTextField(JMeterUtils.getResString("jms_connection_factory")); // $NON-NLS-1$
++
++    private final JLabeledTextField jmsQueue =
++        new JLabeledTextField(JMeterUtils.getResString("jms_queue")); // $NON-NLS-1$
++
++    private final JLabeledTextField jmsUser =
++        new JLabeledTextField(JMeterUtils.getResString("jms_user")); // $NON-NLS-1$
++
++    private final JLabeledTextField jmsPwd =
++        new JLabeledTextField(JMeterUtils.getResString("jms_pwd")); // $NON-NLS-1$
++
++    private final JLabeledTextField iterations =
++        new JLabeledTextField(JMeterUtils.getResString("jms_itertions")); // $NON-NLS-1$
++
++    private final JCheckBox useAuth =
++        new JCheckBox(JMeterUtils.getResString("jms_use_auth"), false); //$NON-NLS-1$
++
++    private final JCheckBox readResponse =
++        new JCheckBox(JMeterUtils.getResString("jms_read_response"), true); // $NON-NLS-1$
++
++    private final JPanel lookup = new JPanel();
++
++    public JMSReceiverGui() {
++        init();
++    }
++
++    public String getLabelResource() {
++        return "jms_receiver_title"; // $NON-NLS-1$
++    }
++
++    /**
++     * @see org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()
++     */
++    public TestElement createTestElement() {
++        ReceiverSampler sampler = new ReceiverSampler();
++        this.configureTestElement(sampler);
++        sampler.setUseJNDIProperties(String.valueOf(useProperties.isSelected()));
++        sampler.setJNDIIntialContextFactory(jndiICF.getText());
++        sampler.setProviderUrl(urlField.getText());
++        sampler.setConnectionFactory(jndiConnFac.getText());
++        sampler.setQueue(jmsQueue.getText());
++        sampler.setUsername(jmsUser.getText());
++        sampler.setPassword(jmsPwd.getText());
++        sampler.setUseAuth(useAuth.isSelected());
++        sampler.setIterations(iterations.getText());
++        sampler.setReadResponse(String.valueOf(readResponse.isSelected()));
++        return sampler;
++    }
++
++    /**
++     * Modifies a given TestElement to mirror the data in the gui components.
++     *
++     * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++     */
++    public void modifyTestElement(TestElement s) {
++        ReceiverSampler sampler = (ReceiverSampler) s;
++        this.configureTestElement(sampler);
++        sampler.setUseJNDIProperties(String.valueOf(useProperties.isSelected()));
++        sampler.setJNDIIntialContextFactory(jndiICF.getText());
++        sampler.setProviderUrl(urlField.getText());
++        sampler.setConnectionFactory(jndiConnFac.getText());
++        sampler.setQueue(jmsQueue.getText());
++        sampler.setUsername(jmsUser.getText());
++        sampler.setPassword(jmsPwd.getText());
++        sampler.setUseAuth(useAuth.isSelected());
++        sampler.setIterations(iterations.getText());
++        sampler.setReadResponse(String.valueOf(readResponse.isSelected()));
++    }
++
++    /**
++     * init() adds jndiICF to the mainPanel. The class reuses logic from
++     * SOAPSampler, since it is common.
++     */
++    private void init() {
++        this.setLayout(new VerticalLayout(5, VerticalLayout.LEFT, VerticalLayout.TOP));
++
++        // MAIN PANEL
++        JPanel mainPanel = new JPanel();
++        Border margin = new EmptyBorder(10, 10, 5, 10);
++        mainPanel.setBorder(margin);
++        mainPanel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
++
++        // TITLE
++        JLabel panelTitleLabel = new JLabel(getStaticLabel());
++        Font curFont = panelTitleLabel.getFont();
++        int curFontSize = curFont.getSize();
++        curFontSize += 4;
++        panelTitleLabel.setFont(new Font(curFont.getFontName(), curFont.getStyle(), curFontSize));
++        mainPanel.add(panelTitleLabel);
++        // NAME
++        mainPanel.add(getNamePanel());
++
++        // Button for browsing webservice wsdl
++
++        lookup.setLayout(new VerticalLayout(6, VerticalLayout.LEFT));
++        mainPanel.add(lookup);
++        lookup.add(useProperties);
++        useProperties.addChangeListener(this);
++        lookup.add(jndiICF);
++        lookup.add(urlField);
++        lookup.add(jndiConnFac);
++
++        JPanel commonParams = new JPanel();
++        commonParams.setLayout(new VerticalLayout(6, VerticalLayout.LEFT));
++        mainPanel.add(commonParams);
++        commonParams.add(jmsQueue);
++        commonParams.add(useAuth);
++        commonParams.add(jmsUser);
++        commonParams.add(jmsPwd);
++        commonParams.add(iterations);
++        commonParams.add(readResponse);
++
++        // we have to add the gui to the change listener
++        this.add(mainPanel);
++    }
++
++    /**
++     * the implementation loads the URL and the soap action for the request.
++     */
++    @Override
++    public void configure(TestElement el) {
++        super.configure(el);
++        ReceiverSampler sampler = (ReceiverSampler) el;
++        useProperties.setSelected(sampler.getUseJNDIPropertiesAsBoolean());
++        jndiICF.setText(sampler.getJNDIInitialContextFactory());
++        urlField.setText(sampler.getProviderUrl());
++        jndiConnFac.setText(sampler.getConnectionFactory());
++        jmsQueue.setText(sampler.getQueue());
++        jmsUser.setText(sampler.getUsername());
++        jmsPwd.setText(sampler.getPassword());
++        iterations.setText(sampler.getIterations());
++        useAuth.setSelected(sampler.isUseAuth());
++        readResponse.setSelected(sampler.getReadResponseAsBoolean());
++    }
++
++    @Override
++    public void clearGui(){
++        super.clearGui();
++        useProperties.setSelected(false); // $NON-NLS-1$
++        jndiICF.setText(""); // $NON-NLS-1$
++        urlField.setText(""); // $NON-NLS-1$
++        jndiConnFac.setText(""); // $NON-NLS-1$
++        jmsQueue.setText(""); // $NON-NLS-1$
++        jmsUser.setText(""); // $NON-NLS-1$
++        jmsPwd.setText(""); // $NON-NLS-1$
++        iterations.setText(""); // $NON-NLS-1$
++        useAuth.setSelected(false);
++        readResponse.setSelected(true);
++    }
++
++    /**
++     * method from ActionListener
++     *
++     * @param event
++     *            that occurred
++     */
++    public void actionPerformed(ActionEvent event) {
++        if (event.getSource() == useProperties) {
++        }
++    }
++
++    /**
++     * When the state of a widget changes, it will notify the gui. the method
++     * then enables or disables certain parameters.
++     */
++    public void stateChanged(ChangeEvent event) {
++        if (event.getSource() == useProperties) {
++            if (useProperties.isSelected()) {
++                this.jndiICF.setEnabled(false);
++                this.urlField.setEnabled(false);
++            } else {
++                this.jndiICF.setEnabled(true);
++                this.urlField.setEnabled(true);
++            }
++        }
++    }
++}
+\ No newline at end of file
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/ReceiverSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/ReceiverSampler.java	(revision 0)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/ReceiverSampler.java	(revision 0)
+@@ -0,0 +1,195 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.jms.sampler;
++
++import java.util.Enumeration;
++
++import javax.jms.JMSException;
++import javax.jms.TextMessage;
++
++import org.apache.jmeter.samplers.Interruptible;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.TestListener;
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++
++import org.apache.jmeter.protocol.jms.client.ClientPool;
++import org.apache.jmeter.protocol.jms.client.ReceiveReceiver;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * This class implements the JMS Receiver sampler
++ */
++public class ReceiverSampler extends BaseJMSSampler implements Interruptible, TestListener {
++
++    private static final long serialVersionUID = 233L;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    // No need to synch/ - only used by sampler and ClientPool (which does its own synch)
++    private transient ReceiveReceiver RECEIVER = null;
++
++    private transient volatile boolean interrupted = false;
++
++    // Don't change the string, as it is used in JMX files
++    private static final String QUEUE = "jms.queue"; // $NON-NLS-1$
++
++    public ReceiverSampler() {
++    }
++
++    public void testEnded(String test) {
++        testEnded();
++    }
++
++    public void testStarted(String test) {
++        testStarted();
++    }
++
++    /**
++     * testEnded is called by Jmeter's engine.
++     * Clears the client pool.
++     */
++    public void testEnded() {
++        log.debug("ReceiverSampler.testEnded called");
++        ClientPool.clearClient();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testStarted() {
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testIterationStart(LoopIterationEvent event) {
++    }
++
++    /**
++     * Create the ReceiveReceiver client for the sampler.
++     */
++    private void initReceiveClient() {
++        interrupted = false;
++        this.RECEIVER = new ReceiveReceiver(this.getUseJNDIPropertiesAsBoolean(), this
++                .getJNDIInitialContextFactory(), this.getProviderUrl(), this.getConnectionFactory(), this.getQueue(),
++                this.isUseAuth(), this.getUsername(), this.getPassword());
++        this.RECEIVER.resume();
++        ClientPool.addClient(this.RECEIVER);
++        log.debug("ReceiverSampler.initReceiveClient called");
++    }
++
++    /**
++     * sample method will check which client it should use and call the
++     * appropriate client specific sample method.
++     *
++     * @return the appropriate sample result
++     */
++    @Override
++    public SampleResult sample() {
++        SampleResult result = new SampleResult();
++        result.setDataType(SampleResult.TEXT);
++        StringBuffer buffer = new StringBuffer();
++        StringBuffer propBuffer = new StringBuffer();
++        int cnt;
++        
++        
++        result.setSampleLabel(getName());
++        if (this.RECEIVER == null) {
++            this.initReceiveClient();
++            this.RECEIVER.start();
++        }
++        int loop = this.getIterationCount();
++        this.RECEIVER.setLoop(loop);
++
++        result.sampleStart();
++        while (this.RECEIVER.count(0) < loop && interrupted == false) {
++            try {
++                Thread.sleep(0, 50);
++            } catch (InterruptedException e) {
++                log.debug(e.getMessage());
++            }
++        }
++        result.sampleEnd();
++        result.setResponseMessage(loop + " samples messages received");
++        for(cnt = 0; cnt < loop ; cnt++) {
++            TextMessage msg = this.RECEIVER.getMessage();
++            if (msg != null) {
++                try {
++                    buffer.append(msg.getText());
++                    Enumeration<?> props = msg.getPropertyNames();
++                    while(props.hasMoreElements()) {
++                        String name = (String) props.nextElement();
++                        propBuffer.append("PROPERTY: ");
++                        propBuffer.append(name);
++                        propBuffer.append("=");
++                        propBuffer.append(msg.getObjectProperty(name));
++                        propBuffer.append("\n");
++                    }
++                } catch (JMSException e) {
++                    log.error(e.getMessage());
++                }
++            }
++        }
++        
++        ClientPool.removeClient(this.RECEIVER);
++        
++        if (this.getReadResponseAsBoolean()) {
++            result.setResponseData(buffer.toString().getBytes());
++        } else {
++            result.setBytes(buffer.toString().getBytes().length);
++        }
++        result.setResponseHeaders(propBuffer.toString());
++        result.setSuccessful(true);
++        result.setResponseCodeOK();
++        result.setResponseMessage(loop + " message(s) received successfully");
++        result.setSamplerData(loop + " messages expected");
++        result.setSampleCount(loop);
++
++        return result;
++    }
++
++    // ----------- get/set methods ------------------- //
++    /**
++     * Handle an interrupt of the test.
++     */
++    public boolean interrupt() {
++        boolean oldvalue = interrupted;
++        interrupted = true;   // so we break the loops in Sample
++        return !oldvalue;
++    }
++
++    /**
++     * set the queue
++     *
++     * @param queue
++     */
++    public void setQueue(String queue) {
++        setProperty(QUEUE, queue);
++    }
++
++    /**
++     * return the queue used for the benchmark
++     *
++     * @return the queue
++     */
++    public String getQueue() {
++        return getPropertyAsString(QUEUE);
++    }
++}
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java	(revision 956625)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java	(working copy)
+@@ -57,6 +57,8 @@
+ 
+     // Don't change the string, as it is used in JMX files
+     private static final String CLIENT_CHOICE = "jms.client_choice"; // $NON-NLS-1$
++    
++    private static final String TOPIC = "jms.topic"; // $NON-NLS-1$
+ 
+     public SubscriberSampler() {
+     }
+@@ -327,4 +329,22 @@
+ 
+     // This was the old value that was checked for
+     private final static String RECEIVE_STR = JMeterUtils.getResString(JMSSubscriberGui.RECEIVE_RSC); // $NON-NLS-1$
++    
++    /**
++     * set the topic
++     *
++     * @param topic
++     */
++    public void setTopic(String topic) {
++        setProperty(TOPIC, topic);
++    }
++
++    /**
++     * return the topic used for the benchmark
++     *
++     * @return the topic
++     */
++    public String getTopic() {
++        return getPropertyAsString(TOPIC);
++    }
+ }

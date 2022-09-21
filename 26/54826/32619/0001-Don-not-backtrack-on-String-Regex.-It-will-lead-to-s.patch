@@ -1,0 +1,26 @@
+From be8d8bf405c113940cabed01cd08ec8894ebd71d Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 28 Mar 2015 17:36:43 +0100
+Subject: [PATCH] Don not backtrack on String-Regex. It will lead to
+ stackoverflows on larger values
+
+---
+ src/components/org/apache/jmeter/visualizers/RenderAsJSON.java | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java b/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java
+index fc25e80..20fd4af 100644
+--- a/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java
++++ b/src/components/org/apache/jmeter/visualizers/RenderAsJSON.java
+@@ -31,7 +31,7 @@ public class RenderAsJSON extends SamplerResultTab implements ResultRenderer {
+ 
+     private static final String NORMAL_CHARACTER_REGEX = "[^\"\\\\]";  // $NON-NLS-1$
+ 
+-    private static final String STRING_REGEX = "\"(" + ESC_CHAR_REGEX + "|" + NORMAL_CHARACTER_REGEX + ")*\""; // $NON-NLS-1$
++    private static final String STRING_REGEX = "\"(" + ESC_CHAR_REGEX + "|" + NORMAL_CHARACTER_REGEX + ")*+\""; // $NON-NLS-1$
+ 
+     // This 'other value' regex is deliberately weak, even accepting an empty string, to be useful when reporting malformed data.
+     private static final String OTHER_VALUE_REGEX = "[^\\{\\[\\]\\}\\,]*"; // $NON-NLS-1$
+-- 
+1.9.1
+

@@ -1,0 +1,170 @@
+Index: src/components/org/apache/jmeter/assertions/ResponseAssertion.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/assertions/ResponseAssertion.java,v
+retrieving revision 1.1
+diff -u -r1.1 ResponseAssertion.java
+--- src/components/org/apache/jmeter/assertions/ResponseAssertion.java	11 Aug 2002 19:24:39 -0000	1.1
++++ src/components/org/apache/jmeter/assertions/ResponseAssertion.java	29 Dec 2002 14:54:49 -0000
+@@ -1,3 +1,5 @@
++package org.apache.jmeter.assertions;
++
+ /*
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+@@ -52,7 +54,6 @@
+  * information on the Apache Software Foundation, please see
+  * <http://www.apache.org/>.
+  */
+-package org.apache.jmeter.assertions;
+ 
+ import java.util.*;
+ import java.io.Serializable;
+@@ -66,9 +67,10 @@
+  *  Title: Jakarta-JMeter Description: Copyright: Copyright (c) 2001 Company:
+  *  Apache
+  *
+- *@author     Michael Stover
+- *@created    $Date: 2002/08/11 19:24:39 $
+- *@version    1.0
++ * @author     Michael Stover
++ * @author     <a href="mailto:jacarlco@katun.com">Jonathan Carlson</a>
++ * @created    $Date: 2002/08/11 19:24:39 $
++ * @version    1.0
+  ***********************************************************/
+ 
+ public class ResponseAssertion extends AbstractTestElement implements Serializable, Assertion
+@@ -86,8 +88,15 @@
+ 	public final static int MATCH = 1 << 0;
+ 	public final static int CONTAINS = 1 << 1;
+ 	public final static int NOT = 1 << 2;
+-	private transient static Perl5Compiler compiler = new Perl5Compiler();
+-	private transient static Perl5Matcher matcher = new Perl5Matcher();
++
++	private transient static ThreadLocal compilerMatcher =
++		new ThreadLocal()
++		{
++			protected Object initialValue()
++			{
++				return new CompilerMatcher();
++			}
++		};
+ 
+ 	/************************************************************
+ 	 *  !ToDo (Constructor description)
+@@ -278,6 +287,12 @@
+ 		setTestType(getTestType() & (NOT ^ (CONTAINS | MATCH | NOT)));
+ 	}
+ 
++	/**
++	 * Make sure the response satisfies the specified assertion requirements.
++	 * 
++	 * @param response an instance of SampleResult
++	 * @return an instance of AssertionResult
++	 */
+ 	private AssertionResult evaluateResponse(SampleResult response)
+ 	{
+ 		boolean pass = true;
+@@ -285,28 +300,32 @@
+ 		AssertionResult result = new AssertionResult();
+ 		try
+ 		{
++			String responseString = new String(response.getResponseData());
++			// Get the CompilerMatcher for this thread
++			CompilerMatcher localCompilerMatcher =
++					(CompilerMatcher) this.compilerMatcher.get();
+ 			Iterator iter = getTestStrings().iterator();
+ 			while (iter.hasNext())
+ 			{
+-				String pattern = (String)iter.next();
++				String stringPattern = (String) iter.next();
++				boolean found;
+ 				if ((CONTAINS & getTestType()) > 0)
+ 				{
+-					pass = pass && (not ? !matcher.contains(new String(response.getResponseData()),
+-							compiler.compile(pattern)) :
+-							matcher.contains(new String(response.getResponseData()),
+-							compiler.compile(pattern)));
++					found = localCompilerMatcher
++							.contains(responseString, stringPattern);
+ 				}
+ 				else
+ 				{
+-					pass = pass && (not ? !matcher.matches(new String(response.getResponseData()),
+-							compiler.compile(pattern)) :
+-							matcher.matches(new String(response.getResponseData()),
+-							compiler.compile(pattern)));
++					found = localCompilerMatcher
++							.matches(responseString, stringPattern);
+ 				}
++				pass = not ? !found : found;
++
+ 				if (!pass)
+ 				{
+ 					result.setFailure(true);
+-					result.setFailureMessage("Test Failed, expected " + notMessage + failMessage + pattern);
++					result.setFailureMessage(
++						"Test Failed, expected " + notMessage + failMessage + stringPattern);
+ 					break;
+ 				}
+ 			}
+@@ -324,4 +343,60 @@
+ 		}
+ 		return result;
+ 	}
++
++	/**
++	 * Performs regular expression matching and compiled regular expression
++	 * pattern caching.
++	 *
++	 * This static member class is *not* thread-safe so it must be
++	 * accessed from a java.lang.ThreadLocal instance for multi-thread usage.
++	 * ThreadLocal causes slightly extra memory usage, but allows for faster
++	 * thread-safe processing than synchronization would afford.
++	 */
++	public static class CompilerMatcher
++	{
++		private Perl5Compiler compiler = new Perl5Compiler();
++		private Perl5Matcher matcher = new Perl5Matcher();
++		private Map compiledPatterns = new HashMap();
++
++		/**
++		 * Returns true if the compiled version of the patternString regular
++		 * expression argument matches the aString argument.
++		 */
++		public boolean matches(String aString, String patternString)
++			throws MalformedPatternException
++		{
++			return this.matcher.matches(aString, this.getTestPattern(patternString));
++		}
++
++		/**
++		 * Returns true if the compiled version of the patternString regular
++		 * expression argument is contained in the aString argument.
++		 */
++		public boolean contains(String aString, String patternString)
++			throws MalformedPatternException
++		{
++			return this.matcher.contains(aString, this.getTestPattern(patternString));
++		}
++
++		/**
++		 * Compiles and caches a regexp pattern for the given string pattern.
++		 * This would be of no benefit (and may bloat memory usage) if the
++		 * string pattern arg is never the same.  But for this usage that
++		 * won't be the case.
++		 */
++		private Pattern getTestPattern(String stringPattern)
++			throws MalformedPatternException
++		{
++			Pattern pattern = (Pattern) compiledPatterns.get(stringPattern);
++			if (pattern == null)
++			{
++				pattern = compiler.compile(stringPattern);
++				compiledPatterns.put(stringPattern, pattern);
++				//log.debug("Compiled and cached a pattern: '" + stringPattern + "' - " + Thread.currentThread());
++			}
++			return pattern;
++		}
++	}
++
+ }

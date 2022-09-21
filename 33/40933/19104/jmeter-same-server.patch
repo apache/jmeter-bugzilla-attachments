@@ -1,0 +1,148 @@
+--- ./src/core/org/apache/jmeter/resources/messages.properties.orig	2006-11-07 15:42:19.000000000 +0000
++++ ./src/core/org/apache/jmeter/resources/messages.properties	2006-11-07 15:42:47.000000000 +0000
+@@ -753,6 +753,7 @@
+ web_server_domain=Server Name or IP\:
+ web_server_port=Port Number\:
+ web_testing_retrieve_images=Retrieve All Embedded Resources from HTML Files
++web_testing_same_server=(Only from same server)
+ web_testing_title=HTTP Request
+ webservice_proxy_host=Proxy Host
+ webservice_proxy_note=If Use HTTP Proxy is checked, but no host or port are provided, the sampler
+@@ -796,4 +797,4 @@
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+ zh_tw=Chinese (Traditional)
+-# Please add new entries in alphabetical order
+\ No newline at end of file
++# Please add new entries in alphabetical order
+--- ./src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java.orig	2006-11-07 15:23:26.000000000 +0000
++++ ./src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java	2006-11-07 16:18:28.000000000 +0000
+@@ -23,6 +23,8 @@
+ import javax.swing.BorderFactory;
+ import javax.swing.JCheckBox;
+ import javax.swing.JPanel;
++import javax.swing.event.ChangeListener;
++import javax.swing.event.ChangeEvent;
+ 
+ import org.apache.jmeter.gui.util.HorizontalPanel;
+ import org.apache.jmeter.protocol.http.config.gui.MultipartUrlConfigGui;
+@@ -44,6 +46,8 @@
+ 
+ 	private JCheckBox getImages;
+ 
++	private JCheckBox sameServer;
++
+ 	private JCheckBox isMon;
+ 
+ 	public HttpTestSampleGui() {
+@@ -53,7 +57,10 @@
+ 	public void configure(TestElement element) {
+ 		super.configure(element);
+ 		urlConfigGui.configure(element);
+-		getImages.setSelected(((HTTPSamplerBase) element).isImageParser());
++		boolean isImageParser = ((HTTPSamplerBase) element).isImageParser();
++		getImages.setSelected(isImageParser);
++		sameServer.setEnabled(isImageParser);
++		sameServer.setSelected(((HTTPSamplerBase) element).isImageParserSameServer());
+ 		isMon.setSelected(((HTTPSamplerBase) element).isMonitor());
+ 	}
+ 
+@@ -78,6 +85,7 @@
+ 			sampler.removeProperty(HTTPSamplerBase.IMAGE_PARSER);// TODO - why?
+ 		}
+         ((HTTPSamplerBase) sampler).setMonitor(isMon.isSelected());
++		((HTTPSamplerBase) sampler).setImageParserSameServer(sameServer.isSelected());
+ 		this.configureTestElement(sampler);
+ 	}
+ 
+@@ -97,6 +105,17 @@
+ 
+ 		// OPTIONAL TASKS
+ 		add(createOptionalTasksPanel(), BorderLayout.SOUTH);
++		getImages.addChangeListener(new ChangeListener() {
++			public void stateChanged(ChangeEvent e) {
++				if (getImages.isSelected()) {
++					sameServer.setEnabled(true);
++				}
++				else {
++					sameServer.setSelected(false);
++					sameServer.setEnabled(false);
++				}
++			}
++		});
+ 	}
+ 
+ 	private JPanel createOptionalTasksPanel() {
+@@ -109,10 +128,14 @@
+ 		JPanel retrieveImagesPanel = new JPanel();
+ 		getImages = new JCheckBox(JMeterUtils.getResString("web_testing_retrieve_images")); // $NON-NLS-1$
+ 		retrieveImagesPanel.add(getImages);
++		JPanel sameServerPanel = new JPanel();
++		sameServer = new JCheckBox(JMeterUtils.getResString("web_testing_same_server")); // $NON-NLS-1$
++		retrieveImagesPanel.add(sameServer);
+ 		JPanel isMonitorPanel = new JPanel();
+ 		isMon = new JCheckBox(JMeterUtils.getResString("monitor_is_title")); // $NON-NLS-1$
+ 		isMonitorPanel.add(isMon);
+ 		optionalTasksPanel.add(retrieveImagesPanel);
++		optionalTasksPanel.add(sameServerPanel);
+ 		optionalTasksPanel.add(isMonitorPanel);
+ 		return optionalTasksPanel;
+ 	}
+--- ./src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java.orig	2006-11-07 15:46:52.000000000 +0000
++++ ./src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	2006-11-07 16:42:27.000000000 +0000
+@@ -146,6 +146,8 @@
+ 	// public final static String ENCODED_PATH= "HTTPSampler.encoded_path";
+ 	public final static String IMAGE_PARSER = "HTTPSampler.image_parser"; // $NON-NLS-1$
+ 
++	public final static String SAME_SERVER = "HTTPSampler.image_parser_same_server"; // $NON-NLS-1$
++
+ 	public final static String MONITOR = "HTTPSampler.monitor"; // $NON-NLS-1$
+ 
+ 	/** A number to indicate that the port has not been set. * */
+@@ -484,10 +486,18 @@
+ 		return getPropertyAsBoolean(IMAGE_PARSER);
+ 	}
+ 
++	public boolean isImageParserSameServer() {
++		return getPropertyAsBoolean(SAME_SERVER);
++	}
++
+ 	public void setImageParser(boolean parseImages) {
+ 		setProperty(new BooleanProperty(IMAGE_PARSER, parseImages));
+ 	}
+ 
++	public void setImageParserSameServer(boolean sameServer) {
++		setProperty(new BooleanProperty(SAME_SERVER, sameServer));
++	}
++
+ 	/**
+ 	 * Obtain a result that will help inform the user that an error has occured
+ 	 * during sampling, and how long it took to detect the error.
+@@ -706,6 +716,7 @@
+ 	 */
+ 	protected HTTPSampleResult downloadPageResources(HTTPSampleResult res, HTTPSampleResult container, int frameDepth) {
+ 		Iterator urls = null;
++		URL resUrl = res.getURL();
+ 		try {
+ 			final byte[] responseData = res.getResponseData();
+             if (responseData.length > 0){  // Bug 39205
+@@ -717,7 +728,7 @@
+                         HTMLParser.getParser(parserName) 
+                         : 
+                         HTMLParser.getParser(); // we don't; use the default parser
+-                    urls = parser.getEmbeddedResourceURLs(responseData, res.getURL());
++                    urls = parser.getEmbeddedResourceURLs(responseData, resUrl);
+     			} 
+             }
+ 		} catch (HTMLParseException e) {
+@@ -749,6 +760,10 @@
+                             continue;
+                         }
+                     }
++                    if (isImageParserSameServer() && !resUrl.getHost().equals(url.getHost())) {
++                        log.debug("Skipping embedded resource (not same server): "+url);
++                        continue;
++                    }
+                     HTTPSampleResult binRes = sample(url, GET, false, frameDepth + 1);
+ 					res.addSubResult(binRes);
+ 					res.setSuccessful(res.isSuccessful() && binRes.isSuccessful());

@@ -1,0 +1,108 @@
+Index: src/core/org/apache/jmeter/control/GenericController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/GenericController.java	(revision 1170850)
++++ src/core/org/apache/jmeter/control/GenericController.java	(working copy)
+@@ -333,6 +333,19 @@
+          */
+         iterationListeners.addFirst(lis);
+     }
++    
++    /**
++     * Remove listener
++     */
++    public void removeIterationListener(LoopIterationListener iterationListener) {
++        for (Iterator iterator = iterationListeners.iterator(); iterator.hasNext();) {
++            LoopIterationListener listener = (LoopIterationListener) iterator.next();
++            if(listener == iterationListener)
++            {
++                iterator.remove();
++            }
++        }
++    }
+ 
+     protected void fireIterEvents() {
+         if (isFirst()) {
+Index: src/core/org/apache/jmeter/control/Controller.java
+===================================================================
+--- src/core/org/apache/jmeter/control/Controller.java	(revision 1166194)
++++ src/core/org/apache/jmeter/control/Controller.java	(working copy)
+@@ -56,4 +56,10 @@
+      * Called to initialize a controller at the beginning of a test iteration.
+      */
+     public void initialize();
++
++    /**
++     * Unregister IterationListener
++     * @param iterationListener {@link LoopIterationListener}
++     */
++    public void removeIterationListener(LoopIterationListener iterationListener);
+ }
+Index: src/core/org/apache/jmeter/threads/AbstractThreadGroup.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/AbstractThreadGroup.java	(revision 1166194)
++++ src/core/org/apache/jmeter/threads/AbstractThreadGroup.java	(working copy)
+@@ -111,6 +111,11 @@
+     public void addIterationListener(LoopIterationListener lis) {
+         getSamplerController().addIterationListener(lis);
+     }
++    
++    /** {@inheritDoc} */
++    public void removeIterationListener(LoopIterationListener iterationListener) {
++        getSamplerController().removeIterationListener(iterationListener);
++    }
+ 
+     /** {@inheritDoc} */
+     public void initialize() {
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 1171011)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -123,6 +123,9 @@
+ 
+     private volatile Sampler currentSampler;
+ 
++    private LoopIterationListener iterationListener;
++
++
+     public JMeterThread(HashTree test, JMeterThreadMonitor monitor, ListenerNotifier note) {
+         this.monitor = monitor;
+         threadVars = new JMeterVariables();
+@@ -496,7 +499,8 @@
+             threadContext.setSamplingStarted(true);
+         }
+         controller.initialize();
+-        controller.addIterationListener(new IterationListener());
++        this.iterationListener = new IterationListener();
++        controller.addIterationListener(iterationListener);
+         if (!startEarlier) {
+             threadContext.setSamplingStarted(true);
+         }
+@@ -523,6 +527,7 @@
+         if (gp != null){// check there is a GUI
+             gp.getMainFrame().updateCounts();
+         }
++        controller.removeIterationListener(iterationListener);
+     }
+ 
+     private static class ThreadListenerTraverser implements HashTreeTraverser {
+@@ -708,7 +713,7 @@
+         }
+     }
+ 
+-    private void notifyTestListeners() {
++    void notifyTestListeners() {
+         threadVars.incIteration();
+         Iterator<TestListener> iter = testListeners.iterator();
+         while (iter.hasNext()) {
+Index: src/core/org/apache/jmeter/threads/JMeterContext.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterContext.java	(revision 1171011)
++++ src/core/org/apache/jmeter/threads/JMeterContext.java	(working copy)
+@@ -65,6 +65,7 @@
+         samplingStarted = false;
+         threadNum = 0;
+         readBuffer = null;
++        thread = null;
+     }
+ 
+     /**

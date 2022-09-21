@@ -1,0 +1,194 @@
+diff --git a/src/core/org/apache/jmeter/resources/messages.properties b/src/core/org/apache/jmeter/resources/messages.properties
+index 3f6f3b9..d313310 100644
+--- a/src/core/org/apache/jmeter/resources/messages.properties
++++ b/src/core/org/apache/jmeter/resources/messages.properties
+@@ -777,11 +777,14 @@
+ proxy_general_lifecycle=State
+ proxy_general_settings=Global Settings
+ proxy_headers=Capture HTTP Headers
++proxy_pause_http_sampler=Pause between HTTP requests (ms)\:
+ proxy_prefix_http_sampler_name=Prefix\:
+ proxy_regex=Regex matching
+ proxy_sampler_settings=HTTP Sampler settings
+ proxy_sampler_type=Type\:
+ proxy_separators=Add Separators
++proxy_settings_pause_error_digits=Only digits allowed
++proxy_settings_pause_error_invalid_data=Invalid data
+ proxy_settings_port_error_digits=Only digits allowed
+ proxy_settings_port_error_invalid_data=Invalid data
+ proxy_target=Target Controller\:
+diff --git a/src/core/org/apache/jmeter/resources/messages_fr.properties b/src/core/org/apache/jmeter/resources/messages_fr.properties
+index 9b8c905..4d4686e 100644
+--- a/src/core/org/apache/jmeter/resources/messages_fr.properties
++++ b/src/core/org/apache/jmeter/resources/messages_fr.properties
+@@ -767,11 +767,14 @@
+ proxy_general_lifecycle=Etat
+ proxy_general_settings=Param\u00E8tres g\u00E9n\u00E9raux
+ proxy_headers=Capturer les ent\u00EAtes HTTP
++proxy_pause_http_sampler=Pause entre chaque requ\u00EAte HTTP (ms) \:
+ proxy_prefix_http_sampler_name=Pr\u00E9fixe \:
+ proxy_regex=Correspondance des variables par regex ?
+ proxy_sampler_settings=Param\u00E8tres Echantillon HTTP
+ proxy_sampler_type=Type \:
+ proxy_separators=Ajouter des s\u00E9parateurs
++proxy_settings_pause_error_digits=Seuls les chiffres sont autoris\u00E9s.
++proxy_settings_pause_error_invalid_data=Donn\u00E9es invalides
+ proxy_settings_port_error_digits=Seuls les chiffres sont autoris\u00E9s.
+ proxy_settings_port_error_invalid_data=Donn\u00E9es invalides
+ proxy_target=Contr\u00F4leur Cible \:
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+index f0c236b..6c318f4 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+@@ -158,6 +158,8 @@
+     private static final String SAMPLER_DOWNLOAD_IMAGES = "ProxyControlGui.sampler_download_images"; // $NON-NLS-1$
+     
+     private static final String PREFIX_HTTP_SAMPLER_NAME = "ProxyControlGui.proxy_prefix_http_sampler_name"; // $NON-NLS-1$
++    
++    private static final String PROXY_PAUSE_HTTP_SAMPLER = "ProxyControlGui.proxy_pause_http_sampler"; // $NON-NLS-1$
+ 
+     private static final String REGEX_MATCH = "ProxyControlGui.regex_match"; // $NON-NLS-1$
+ 
+@@ -185,8 +187,7 @@
+     private static final String SAMPLER_TYPE_HTTP_SAMPLER_HC3_1 = "1";
+     private static final String SAMPLER_TYPE_HTTP_SAMPLER_HC4 = "2";
+ 
+-    private static final long SAMPLE_GAP =
+-        JMeterUtils.getPropDefault("proxy.pause", 5000); // $NON-NLS-1$
++    private static long SAMPLE_GAP; // $NON-NLS-1$
+     // Detect if user has pressed a new link
+ 
+     // for ssl connection
+@@ -392,6 +393,10 @@
+     public void setPrefixHTTPSampleName(String prefixHTTPSampleName) {
+         setProperty(PREFIX_HTTP_SAMPLER_NAME, prefixHTTPSampleName);
+     }
++    
++    public void setProxyPauseHTTPSample(String proxyPauseHTTPSample) {
++    setProperty(PROXY_PAUSE_HTTP_SAMPLER, proxyPauseHTTPSample);
++    }
+ 
+     public void setNotifyChildSamplerListenerOfFilteredSamplers(boolean b) {
+         notifyChildSamplerListenersOfFilteredSamples = b;
+@@ -478,6 +483,10 @@
+     public String getPrefixHTTPSampleName() {
+         return getPropertyAsString(PREFIX_HTTP_SAMPLER_NAME);
+     }
++    
++    public String getProxyPauseHTTPSample() {
++        return getPropertyAsString(PROXY_PAUSE_HTTP_SAMPLER);
++        }
+ 
+     public boolean getNotifyChildSamplerListenerOfFilteredSamplers() {
+         return getPropertyAsBoolean(NOTIFY_CHILD_SAMPLER_LISTENERS_FILTERED, true);
+@@ -519,6 +528,11 @@
+         notifyTestListenersOfStart();
+         try {
+             server = new Daemon(getPort(), this);
++            if (getProxyPauseHTTPSample().isEmpty()) {
++                SAMPLE_GAP = JMeterUtils.getPropDefault("proxy.pause", 5000);
++                } else {
++                    SAMPLE_GAP = Long.parseLong(getProxyPauseHTTPSample().trim());
++                }
+             server.start();
+             if (GuiPackage.getInstance() != null) {
+                 GuiPackage.getInstance().register(server);
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+index 5744db1..3e368c6 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+@@ -160,6 +160,11 @@
+      * Add a prefix to HTTP sample name recorded
+      */
+     private JTextField prefixHTTPSampleName;
++    
++    /*
++     * Delay between HTTP requests
++     */
++    private JTextField proxyPauseHTTPSample;
+ 
+     /**
+      * Regular expression to include results based on content type
+@@ -224,6 +229,8 @@
+     private static final String ADD_SUGGESTED_EXCLUDES = "exclude_suggested";
+ 
+     private static final String PREFIX_HTTP_SAMPLER_NAME = "proxy_prefix_http_sampler_name"; // $NON-NLS-1$
++    
++    private static final String PROXY_PAUSE_HTTP_SAMPLER = "proxy_pause_http_sampler"; // $NON-NLS-1$
+     //- action names
+ 
+     // Resource names for column headers
+@@ -279,6 +286,7 @@
+             model.setUseKeepAlive(useKeepAlive.isSelected());
+             model.setSamplerDownloadImages(samplerDownloadImages.isSelected());
+             model.setPrefixHTTPSampleName(prefixHTTPSampleName.getText());
++            model.setProxyPauseHTTPSample(proxyPauseHTTPSample.getText());
+             model.setNotifyChildSamplerListenerOfFilteredSamplers(notifyChildSamplerListenerOfFilteredSamplersCB.isSelected());
+             model.setRegexMatch(regexMatch.isSelected());
+             model.setContentTypeInclude(contentTypeInclude.getText());
+@@ -631,6 +639,21 @@
+             enableRestart();
+         } else if(fieldName.equals(PREFIX_HTTP_SAMPLER_NAME)) {
+             model.setPrefixHTTPSampleName(prefixHTTPSampleName.getText());
++        } else if(fieldName.equals(PROXY_PAUSE_HTTP_SAMPLER)) {
++            try {
++                Integer.parseInt(proxyPauseHTTPSample.getText());
++                } catch (NumberFormatException nfe) {
++                    int length = proxyPauseHTTPSample.getText().length();
++                    if (length > 0) {
++                        JOptionPane.showMessageDialog(this, 
++                                JMeterUtils.getResString("proxy_settings_pause_error_digits"), // $NON-NLS-1$
++                                JMeterUtils.getResString("proxy_settings_pause_error_invalid_data"), // $NON-NLS-1$
++                                JOptionPane.WARNING_MESSAGE);
++                        // Drop the last character:
++                        proxyPauseHTTPSample.setText(proxyPauseHTTPSample.getText().substring(0, length-1));
++                        }
++                    }
++            enableRestart();
+         }
+     }
+ 
+@@ -817,10 +840,16 @@
+         prefixHTTPSampleName = new JTextField(4);
+         prefixHTTPSampleName.addKeyListener(this);
+         prefixHTTPSampleName.setName(PREFIX_HTTP_SAMPLER_NAME);
+-        // TODO Not sure this is needed
+         prefixHTTPSampleName.setActionCommand(ENABLE_RESTART);
+         JLabel labelPrefix = new JLabel(JMeterUtils.getResString("proxy_prefix_http_sampler_name")); // $NON-NLS-1$
+         labelPrefix.setLabelFor(prefixHTTPSampleName);
++
++        proxyPauseHTTPSample = new JTextField(6);
++        proxyPauseHTTPSample.addKeyListener(this);
++        proxyPauseHTTPSample.setName(PROXY_PAUSE_HTTP_SAMPLER);
++        proxyPauseHTTPSample.setActionCommand(ENABLE_RESTART);
++        JLabel labelProxyPause= new JLabel(JMeterUtils.getResString("proxy_pause_http_sampler")); // $NON-NLS-1$
++        labelProxyPause.setLabelFor(proxyPauseHTTPSample);
+ 
+         JLabel labelSamplerType = new JLabel(JMeterUtils.getResString("proxy_sampler_type")); // $NON-NLS-1$
+         labelSamplerType.setLabelFor(samplerTypeName);
+@@ -843,6 +872,13 @@
+         gbc.weightx = 3;
+         gbc.fill=GridBagConstraints.HORIZONTAL;
+         panel.add(prefixHTTPSampleName, gbc.clone());
++        gbc.gridx = 0;
++        gbc.gridy++;
++        panel.add(labelProxyPause, gbc.clone());
++        gbc.gridx++;
++        gbc.weightx = 3;
++        gbc.fill=GridBagConstraints.HORIZONTAL;
++        panel.add(proxyPauseHTTPSample, gbc.clone());
+         gbc.weightx = 1;
+         gbc.gridx = 0;
+         gbc.gridy++;
+diff --git a/xdocs/changes.xml b/xdocs/changes.xml
+index 6157e4f..993c04c 100644
+--- a/xdocs/changes.xml
++++ b/xdocs/changes.xml
+@@ -97,6 +97,7 @@
+ <ul>
+     <li><bug>61056</bug>HTTP : Support brotli decoding</li>
+     <li><bug>61135</bug>CookieManager : Drop Implementation select box and cleanup class</li>
++    <li><bug>61492</bug>HTTP(S) Test Script Recorder : Add the possibility to change the value of proxy.pause in the GUI</li>
+ </ul>
+ 
+ <h3>Other samplers</h3>

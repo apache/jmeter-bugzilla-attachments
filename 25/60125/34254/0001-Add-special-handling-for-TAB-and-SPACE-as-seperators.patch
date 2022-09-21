@@ -1,0 +1,44 @@
+From b5f6540f9f42c7c2135d609f16e97d585da01362 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Thu, 15 Sep 2016 20:20:35 +0200
+Subject: [PATCH] Add special handling for TAB and SPACE as seperators.
+
+---
+ .../apache/jmeter/report/dashboard/ReportGenerator.java    | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java b/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java
+index 9cb56f1..966faa0 100644
+--- a/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java
++++ b/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java
+@@ -76,8 +76,7 @@ public class ReportGenerator {
+             .equalsIgnoreCase(JMeterUtils.getPropDefault(
+                     "jmeter.save.saveservice.output_format", "csv"));
+ 
+-    private static final char CSV_DEFAULT_SEPARATOR =
+-            JMeterUtils.getPropDefault("jmeter.save.saveservice.default_delimiter", ",").charAt(0); //$NON-NLS-1$ //$NON-NLS-2$
++    private static final char CSV_DEFAULT_SEPARATOR = extractDefaultSeparator();
+ 
+     private static final String INVALID_CLASS_FMT = "Class name \"%s\" is not valid.";
+     private static final String INVALID_EXPORT_FMT = "Data exporter \"%s\" is unable to export data.";
+@@ -104,6 +103,17 @@ public class ReportGenerator {
+      */
+     private final ResultCollector resultCollector;
+ 
++    private static final char extractDefaultSeparator() {
++            String delimiter = JMeterUtils.getPropDefault("jmeter.save.saveservice.default_delimiter", ","); //$NON-NLS-1$ //$NON-NLS-2$
++            switch (delimiter) {
++                "TAB":
++                    return '\t';
++                "SPACE":
++                    return ' ';
++                default: return delimiter.charAt(0);
++            }
++    }
++
+     /**
+      * Instantiates a new report generator.
+      *
+-- 
+2.7.4
+

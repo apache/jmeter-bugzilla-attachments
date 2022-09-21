@@ -1,0 +1,83 @@
+Index: src/components/org/apache/jmeter/control/gui/TreeNodeWrapper.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/TreeNodeWrapper.java	(revision 1647388)
++++ src/components/org/apache/jmeter/control/gui/TreeNodeWrapper.java	(working copy)
+@@ -43,4 +43,11 @@
+     public String toString() {
+         return label;
+     }
++
++    /**
++     * @return the label
++     */
++    public String getLabel() {
++        return label;
++    }
+ }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1647388)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -739,6 +739,7 @@
+ provider_url=Provider URL
+ proxy_assertions=Add Assertions
+ proxy_cl_error=If specifying a proxy server, host and port must be given
++proxy_cl_wrong_target_cl=Target Controller is configured to "Use Recording Controller" but no such controller exists, \nensure you add a Recording Controller as child of Thread Group node to start recording correctly
+ proxy_content_type_exclude=Exclude\:
+ proxy_content_type_filter=Content-type filter
+ proxy_content_type_include=Include\:
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1647388)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -724,6 +724,7 @@
+ provider_url=Provider URL
+ proxy_assertions=Ajouter une Assertion R\u00E9ponse
+ proxy_cl_error=Si un serveur proxy est sp\u00E9cifi\u00E9, h\u00F4te et port doivent \u00EAtre donn\u00E9
++proxy_cl_wrong_target_cl=Le contr\u00F4leur cible est configur\u00E9 en mode "Utiliser un contr\u00F4leur enregistreur" \nmais aucun contr\u00F4leur de ce type n'existe, assurez vous de l'ajouter comme fils \nde Groupe d'unit\u00E9s afin de pouvoir d\u00E9marrer l'enregisteur
+ proxy_content_type_exclude=Exclure \:
+ proxy_content_type_filter=Filtre de type de contenu
+ proxy_content_type_include=Inclure \:
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 1647388)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -991,7 +991,7 @@
+      * @return the tree node for the controller where the proxy must store the
+      *         generated samplers.
+      */
+-    private JMeterTreeNode findTargetControllerNode() {
++    public JMeterTreeNode findTargetControllerNode() {
+         JMeterTreeNode myTarget = getTarget();
+         if (myTarget != null) {
+             return myTarget;
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 1647437)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -66,6 +66,7 @@
+ import org.apache.jmeter.gui.util.MenuFactory;
+ import org.apache.jmeter.gui.util.PowerTableModel;
+ import org.apache.jmeter.gui.util.VerticalPanel;
++import org.apache.jmeter.protocol.http.control.RecordingController;
+ import org.apache.jmeter.protocol.http.proxy.ProxyControl;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -486,6 +487,17 @@
+     private void startProxy() {
+         ValueReplacer replacer = GuiPackage.getInstance().getReplacer();
+         modifyTestElement(model);
++        TreeNodeWrapper treeNodeWrapper = (TreeNodeWrapper)targetNodesModel.getSelectedItem();
++        if (JMeterUtils.getResString("use_recording_controller").equals(treeNodeWrapper.getLabel())) {
++            JMeterTreeNode targetNode = model.findTargetControllerNode();
++            if(targetNode == null || !(targetNode.getTestElement() instanceof RecordingController)) {
++                JOptionPane.showMessageDialog(this,
++                        JMeterUtils.getResString("proxy_cl_wrong_target_cl"), // $NON-NLS-1$
++                        JMeterUtils.getResString("error_title"), // $NON-NLS-1$
++                        JOptionPane.ERROR_MESSAGE);
++                return;
++            }
++        }
+         // Proxy can take some while to start up; show a wating cursor
+         Cursor cursor = getCursor();
+         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));

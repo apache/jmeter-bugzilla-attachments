@@ -1,0 +1,21 @@
+Index: src/core/org/apache/jmeter/control/GenericController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/GenericController.java	(revision 1166154)
++++ src/core/org/apache/jmeter/control/GenericController.java	(working copy)
+@@ -181,7 +181,14 @@
+      * @throws NextIsNullException
+      */
+     protected Sampler nextIsAController(Controller controller) throws NextIsNullException {
+-        Sampler sampler = controller.next();
++        Sampler sampler = null;
++        try {
++            sampler = controller.next();
++        } catch (StackOverflowError soe) {
++            // Special case: see Bug 50618
++            log.info("StackOverflowError detected");
++            throw new NextIsNullException();
++        }
+         if (sampler == null) {
+             currentReturnedNull(controller);
+             sampler = next();
+

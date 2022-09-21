@@ -1,0 +1,192 @@
+diff -u -r --new-file rel-2-1-orig/src/core/org/apache/jmeter/resources/messages.properties rel-2-1/src/core/org/apache/jmeter/resources/messages.properties
+--- rel-2-1-orig/src/core/org/apache/jmeter/resources/messages.properties	Thu Oct 20 13:09:28 2005
++++ rel-2-1/src/core/org/apache/jmeter/resources/messages.properties	Thu Oct 20 11:41:14 2005
+@@ -764,3 +764,6 @@
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+ zh_tw=Chinese (Traditional)
++xpath_response_param1=XPath query for (X)HTML returned by previous response
++function_name_param_optional=Name of function (optional).  Used to store values for use elsewhere in the testplan.
++
+diff -u -r --new-file rel-2-1-orig/src/functions/org/apache/jmeter/functions/XPathResponse.java rel-2-1/src/functions/org/apache/jmeter/functions/XPathResponse.java
+--- rel-2-1-orig/src/functions/org/apache/jmeter/functions/XPathResponse.java	Thu Jan  1 00:00:00 1970
++++ rel-2-1/src/functions/org/apache/jmeter/functions/XPathResponse.java	Thu Oct 20 13:25:17 2005
+@@ -0,0 +1,178 @@
++/*
++ * Created on 19.10.2005
++ * 
++ */
++package org.apache.jmeter.functions;
++
++import java.io.ByteArrayInputStream;
++import java.io.IOException;
++import java.io.UnsupportedEncodingException;
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.List;
++
++import javax.xml.parsers.ParserConfigurationException;
++import javax.xml.transform.TransformerException;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.XPathUtil;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++import org.apache.xpath.XPathAPI;
++import org.w3c.dom.Document;
++import org.w3c.dom.Element;
++import org.w3c.dom.Node;
++import org.xml.sax.SAXException;
++
++/**
++ * Provides element/text extraction from (X)HTML response
++ * using XPath query language. Usage:
++ * 
++ * <code>
++ * ${__XPathResponse(/html/head/title,myTitle)}
++ *               - extracts Title from HTML response and put it to myTitle variable
++ * ${__XPathResponse(//form[@name='countryForm']//select[@name='country']/option[text()='Czech Republic'])/@value}
++ *               - extracts value attribute of option element that match text 'Czech Republic'
++ *                 inside of select element with name attribute  'country' inside of
++ *                 form with name attribute 'countryForm'
++ * </code>
++ *
++ * <h3>Bugs</h3>
++ * <ul>
++ *   <li>No caching - every call of this function parses HTML to DOM.
++ *       Considering to move DOM parser into SampleResult?</li>
++ *   <li>Exception handling - have no idea how to properly throw exception from function
++ *       (it seems that it is silently written to log, instead of stopping tests?).</li>
++ * </ul>
++ * 
++ * @author <a href="mailto:hpaluch@gitus.cz">Henryk Paluch</a>
++ *            of <a href="http://www.gitus.com">Gitus a.s.</a>
++ */
++public class XPathResponse extends AbstractFunction {
++
++    private static Logger log = LoggingManager.getLoggerForClass();
++	   	
++    private static final List desc = new ArrayList(2);
++	private static final String KEY = "__XPathResponse";	
++
++    static {
++        desc.add(JMeterUtils.getResString("xpath_response_param1"));
++        desc.add(JMeterUtils.getResString("function_name_param_optional"));
++    }
++
++    private String varName;
++    private String xpathQuery;
++    
++    /**
++     * Converts (X)HTML response to DOM object Tree.
++     * This version cares of charset of response.
++     * @param result
++     * @return
++     * 
++     * Note: damned checked exceptions...
++     */
++    protected static Document parseResponse(SampleResult result)
++      throws UnsupportedEncodingException, IOException, ParserConfigurationException,SAXException
++    {
++      //TODO: validate contentType for reasonable types?
++
++      // NOTE: responseData encoding is server specific
++      //       Therefore we do byte -> unicode -> byte conversion
++      //       to ensure UTF-8 encoding as required by XPathUtil
++      String unicodeData = new String(result.getResponseData(),
++		                      result.getDataEncoding());
++      // convert unicode String -> UTF-8 bytes
++      byte[] utf8data = unicodeData.getBytes("UTF-8");
++      ByteArrayInputStream in = new ByteArrayInputStream(utf8data);
++      // this method assumes UTF-8 input data
++      return XPathUtil.makeDocument(in,false,false,false,true);
++    }
++
++    /**
++     * Extract value from Document d by XPath query.
++     * @param d
++     * @param query
++     * @return extracted value
++     * @throws TransformerException
++     */
++    protected String getValueForXPath(Document d,String query)
++     throws TransformerException
++    {
++		String val = "";
++		Node match = XPathAPI.selectSingleNode(d,query);
++		if ( match!=null){
++			if ( match instanceof Element){
++			   // elements have empty nodeValue, but we are usually
++			   // interested in their content
++			   val = match.getFirstChild().getNodeValue();
++			} else {				
++			   val = match.getNodeValue();
++			}
++		}
++		if ( log.isDebugEnabled()){
++			log.debug(KEY+"("+query+") is '"+val+"'");
++		}
++		return val;
++    	
++    }
++    
++	/* (non-Javadoc)
++	 * @see org.apache.jmeter.functions.Function#execute(org.apache.jmeter.samplers.SampleResult, org.apache.jmeter.samplers.Sampler)
++	 */
++	public String execute(SampleResult previousResult, Sampler currentSampler)
++			throws InvalidVariableException {
++		
++		if ( previousResult==null){
++			throw new IllegalStateException("Function "+KEY+" is allowed *AFTER* response only.");
++		}
++		try{			
++			Document d = parseResponse(previousResult);		
++			String val = getValueForXPath(d,xpathQuery);						
++			if ( varName !=null){
++				JMeterVariables vars = getVariables();
++				vars.put(varName,val);
++			}			
++			return val;
++		}catch(Exception e){
++			// Damned checked exceptions!
++			if ( log.isErrorEnabled()){
++				log.error("error on "+KEY+"("+xpathQuery+")",e);
++			}		
++			throw new RuntimeException(e);
++		}
++	}
++
++	/**
++	 * Process function arguments.
++	 * Validates argument count (must be exactly 2 arguments).
++	 * @parameters function parameters
++	 */
++	public void setParameters(Collection parameters)
++			throws InvalidVariableException {
++
++        if (parameters.size()<1 || parameters.size()>2)
++        {
++            throw new InvalidVariableException("Function "+KEY+" takes  1 or 2 arguments but "+parameters.size()+" given.");
++        }
++        Object[] values = parameters.toArray();
++        xpathQuery = ((CompoundVariable)values[0]).execute();
++        if ( values.length==2){
++        	varName = ((CompoundVariable)values[1]).execute();
++        } else {
++        	varName = null;
++        }
++	}
++
++	public String getReferenceKey() {
++		return KEY;
++	}
++
++	public List getArgumentDesc() {
++		return desc;
++	}
++
++}

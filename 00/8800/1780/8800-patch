@@ -1,0 +1,43 @@
+? 8800-patch
+Index: FileReporter.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/reporters/FileReporter.java,v
+retrieving revision 1.6
+diff -u -r1.6 FileReporter.java
+--- FileReporter.java	4 Mar 2002 23:08:54 -0000	1.6
++++ FileReporter.java	4 May 2002 01:39:17 -0000
+@@ -87,16 +87,30 @@
+ 		String line;
+ 		while ((line = reader.readLine()) != null) {
+ 			try {
+-				if (line.startsWith("#") || line.trim().length() == 0) continue;
+-				StringTokenizer st = new StringTokenizer(line, " ,");
+-				String key = (String) st.nextToken();
+-				Integer value = new Integer((String) st.nextToken());
++				line.trim();
++				if (line.startsWith("#") || line.length() == 0)
++					continue;
++				int splitter = line.lastIndexOf(' ');
++				String key = line.substring(0, splitter);
++				int end = line.lastIndexOf(',');
++				Integer value = null;
++				if (end == -1) {
++					value = new Integer(
++						line.substring(splitter + 1));
++				} else {
++					value = new Integer(
++						line.substring(splitter + 1, end));
++				}
+ 				Vector v = getData(key);
+ 				if (v == null) {
+ 					v = new Vector();
+ 					this.data.put(key, v);
+ 				}
+ 				v.addElement(value);
++			} catch (NumberFormatException nfe) {
++				System.out.println(nfe.toString());
++				System.out.println("This line could not be parsed: "
++					+ line);
+ 			} catch (Exception e) {
+ 				System.out.println(e.toString());
+ 			}

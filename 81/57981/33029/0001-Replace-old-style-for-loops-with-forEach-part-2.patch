@@ -1,0 +1,430 @@
+From 21033e08c92477524dfb34c9968f97089a7eb5da Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Sun, 23 Aug 2015 23:33:48 +0100
+Subject: [PATCH] Replace old style for loops with forEach part 2
+
+---
+ src/core/org/apache/jmeter/JMeter.java             | 18 ++++++--------
+ .../org/apache/jmeter/gui/util/FileListPanel.java  |  4 ++--
+ .../apache/jmeter/gui/util/JLabeledRadioI18N.java  | 12 +++++-----
+ .../org/apache/jmeter/gui/util/JMeterMenuBar.java  | 28 ++++++++++------------
+ .../org/apache/jmeter/gui/util/JMeterToolBar.java  | 13 +++++-----
+ .../org/apache/jmeter/gui/util/MenuFactory.java    | 22 ++++++++---------
+ .../org/apache/jorphan/gui/JLabeledChoice.java     |  8 +++----
+ .../org/apache/jorphan/gui/JLabeledTextArea.java   |  4 ++--
+ .../org/apache/jorphan/gui/JLabeledTextField.java  |  4 ++--
+ .../org/apache/jorphan/reflect/ClassFinder.java    | 18 +++++++-------
+ .../org/apache/jorphan/reflect/Functor.java        |  4 ++--
+ .../org/apache/jorphan/util/JOrphanUtils.java      |  4 ++--
+ 12 files changed, 63 insertions(+), 76 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/JMeter.java b/src/core/org/apache/jmeter/JMeter.java
+index 9df9358..52f4f78 100644
+--- a/src/core/org/apache/jmeter/JMeter.java
++++ b/src/core/org/apache/jmeter/JMeter.java
+@@ -593,10 +593,7 @@ public class JMeter implements JMeterPlugin {
+         // These can potentially occur multiple times
+ 
+         List<CLOption> clOptions = parser.getArguments();
+-        int size = clOptions.size();
+-
+-        for (int i = 0; i < size; i++) {
+-            CLOption option = clOptions.get(i);
++        for (CLOption option : clOptions) {
+             String name = option.getArgument(0);
+             String value = option.getArgument(1);
+             FileInputStream fis = null;
+@@ -605,7 +602,7 @@ public class JMeter implements JMeterPlugin {
+ 
+             // Should not have any text arguments
+             case CLOption.TEXT_ARGUMENT:
+-                throw new IllegalArgumentException("Unknown arg: "+option.getArgument());
++                throw new IllegalArgumentException("Unknown arg: " + option.getArgument());
+ 
+             case PROPFILE2_OPT: // Bug 33920 - allow multiple props
+                 try {
+@@ -628,7 +625,7 @@ public class JMeter implements JMeterPlugin {
+                     fis = new FileInputStream(new File(name));
+                     System.getProperties().load(fis);
+                 } catch (IOException e) {
+-                    log.warn("Cannot find system property file "+e.getLocalizedMessage());
++                    log.warn("Cannot find system property file " + e.getLocalizedMessage());
+                 } finally {
+                     JOrphanUtils.closeQuietly(fis);
+                 }
+@@ -658,14 +655,14 @@ public class JMeter implements JMeterPlugin {
+                 } else {
+                     File propFile = new File(name);
+                     if (propFile.canRead()) {
+-                        log.info("Setting Global properties from the file "+name);
++                        log.info("Setting Global properties from the file " + name);
+                         try {
+                             fis = new FileInputStream(propFile);
+                             remoteProps.load(fis);
+                         } catch (FileNotFoundException e) {
+-                            log.warn("Could not find properties file: "+e.getLocalizedMessage());
++                            log.warn("Could not find properties file: " + e.getLocalizedMessage());
+                         } catch (IOException e) {
+-                            log.warn("Could not load properties file: "+e.getLocalizedMessage());
++                            log.warn("Could not load properties file: " + e.getLocalizedMessage());
+                         } finally {
+                             JOrphanUtils.closeQuietly(fis);
+                         }
+@@ -760,8 +757,7 @@ public class JMeter implements JMeterPlugin {
+                     new SearchByClass<>(ReplaceableController.class);
+             tree.traverse(replaceableControllers);
+             Collection<ReplaceableController> replaceableControllersRes = replaceableControllers.getSearchResults();
+-            for (Iterator<ReplaceableController> iter = replaceableControllersRes.iterator(); iter.hasNext();) {
+-                ReplaceableController replaceableController = iter.next();
++            for (ReplaceableController replaceableController : replaceableControllersRes) {
+                 replaceableController.resolveReplacementSubTree(root);
+             }
+ 
+diff --git a/src/core/org/apache/jmeter/gui/util/FileListPanel.java b/src/core/org/apache/jmeter/gui/util/FileListPanel.java
+index 184e11c..1837269 100644
+--- a/src/core/org/apache/jmeter/gui/util/FileListPanel.java
++++ b/src/core/org/apache/jmeter/gui/util/FileListPanel.java
+@@ -207,8 +207,8 @@ public class FileListPanel extends JPanel implements ActionListener {
+             chooser.showOpenDialog(GuiPackage.getInstance().getMainFrame());
+             File[] cfiles = chooser.getSelectedFiles();
+             if (cfiles != null) {
+-                for (int idx=0; idx < cfiles.length; idx++) {
+-                    this.addFilename(cfiles[idx].getPath());
++                for (File cfile : cfiles) {
++                    this.addFilename(cfile.getPath());
+                 }
+                 fireFileChanged();
+             }
+diff --git a/src/core/org/apache/jmeter/gui/util/JLabeledRadioI18N.java b/src/core/org/apache/jmeter/gui/util/JLabeledRadioI18N.java
+index 7644f2f..f470887 100644
+--- a/src/core/org/apache/jmeter/gui/util/JLabeledRadioI18N.java
++++ b/src/core/org/apache/jmeter/gui/util/JLabeledRadioI18N.java
+@@ -101,15 +101,15 @@ public class JLabeledRadioI18N extends JPanel implements JLabeledField, ActionLi
+      *
+      */
+     private void initButtonGroup(String[] resouces, String selected) {
+-        for (int idx = 0; idx < resouces.length; idx++) {
+-            JRadioButton btn = new JRadioButton(JMeterUtils.getResString(resouces[idx]));
+-            btn.setActionCommand(resouces[idx]);
++        for (String resource : resouces) {
++            JRadioButton btn = new JRadioButton(JMeterUtils.getResString(resource));
++            btn.setActionCommand(resource);
+             btn.addActionListener(this);
+             // add the button to the button group
+             this.bGroup.add(btn);
+             // add the button
+             this.add(btn);
+-            if (selected != null && selected.equals(resouces[idx])) {
++            if (selected != null && selected.equals(resource)) {
+                 btn.setSelected(true);
+             }
+         }
+@@ -195,8 +195,8 @@ public class JLabeledRadioI18N extends JPanel implements JLabeledField, ActionLi
+      */
+     private void notifyChangeListeners() {
+         ChangeEvent ce = new ChangeEvent(this);
+-        for (int index = 0; index < mChangeListeners.size(); index++) {
+-            mChangeListeners.get(index).stateChanged(ce);
++        for (ChangeListener mChangeListener : mChangeListeners) {
++            mChangeListener.stateChanged(ce);
+         }
+     }
+ 
+diff --git a/src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java b/src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+index cf1dfc8..0fb343d 100644
+--- a/src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
++++ b/src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+@@ -213,8 +213,8 @@ public class JMeterMenuBar extends JMenuBar implements LocaleChangeListener {
+         if (menu != null) {
+             editMenu.removeAll();
+             Component[] comps = menu.getComponents();
+-            for (int i = 0; i < comps.length; i++) {
+-                editMenu.add(comps[i]);
++            for (Component comp : comps) {
++                editMenu.add(comp);
+             }
+             editMenu.setEnabled(true);
+         } else {
+@@ -275,11 +275,10 @@ public class JMeterMenuBar extends JMenuBar implements LocaleChangeListener {
+         this.add(searchMenu);
+         this.add(runMenu);
+         this.add(optionsMenu);
+-        for (Iterator<MenuCreator> iterator = menuCreators.iterator(); iterator.hasNext();) {
+-            MenuCreator menuCreator = iterator.next();
++        for (MenuCreator menuCreator : menuCreators) {
+             JMenu[] topLevelMenus = menuCreator.getTopLevelMenus();
+             for (JMenu topLevelMenu : topLevelMenus) {
+-                this.add(topLevelMenu);                
++                this.add(topLevelMenu);
+             }
+         }
+         this.add(helpMenu);
+@@ -320,13 +319,12 @@ public class JMeterMenuBar extends JMenuBar implements LocaleChangeListener {
+         JMenuItem functionHelper = makeMenuItemRes("function_dialog_menu_item", 'F', ActionNames.FUNCTIONS, KeyStrokes.FUNCTIONS); //$NON-NLS-1$
+ 
+         lafMenu = makeMenuRes("appearance",'L'); //$NON-NLS-1$
+-        UIManager.LookAndFeelInfo lafs[] = getAllLAFs();
+-        for (int i = 0; i < lafs.length; ++i) {
+-            JMenuItem laf = new JMenuItem(lafs[i].getName());
+-            laf.addActionListener(ActionRouter.getInstance());
+-            laf.setActionCommand(ActionNames.LAF_PREFIX + lafs[i].getClassName());
+-            laf.setToolTipText(lafs[i].getClassName()); // show the classname to the user
+-            lafMenu.add(laf);
++        for (LookAndFeelInfo laf : getAllLAFs()) {
++            JMenuItem menuItem = new JMenuItem(laf.getName());
++            menuItem.addActionListener(ActionRouter.getInstance());
++            menuItem.setActionCommand(ActionNames.LAF_PREFIX + laf.getClassName());
++            menuItem.setToolTipText(laf.getClassName()); // show the classname to the user
++            lafMenu.add(menuItem);
+         }
+         optionsMenu.add(functionHelper);
+         optionsMenu.add(lafMenu);
+@@ -724,10 +722,8 @@ public class JMeterMenuBar extends JMenuBar implements LocaleChangeListener {
+             }
+         }
+ 
+-        MenuElement[] subelements = menu.getSubElements();
+-
+-        for (int i = 0; i < subelements.length; i++) {
+-            updateMenuElement(subelements[i]);
++        for (MenuElement subElement : menu.getSubElements()) {
++            updateMenuElement(subElement);
+         }
+     }
+ 
+diff --git a/src/core/org/apache/jmeter/gui/util/JMeterToolBar.java b/src/core/org/apache/jmeter/gui/util/JMeterToolBar.java
+index b10666d..8d47a67 100644
+--- a/src/core/org/apache/jmeter/gui/util/JMeterToolBar.java
++++ b/src/core/org/apache/jmeter/gui/util/JMeterToolBar.java
+@@ -205,9 +205,9 @@ public class JMeterToolBar extends JToolBar implements LocaleChangeListener {
+     private Map<String, Boolean> getCurrentButtonsStates() {
+         Component[] components = getComponents();
+         Map<String, Boolean> buttonStates = new HashMap<>(components.length);
+-        for (int i = 0; i < components.length; i++) {
+-            if (components[i] instanceof JButton) {
+-                JButton button = (JButton) components[i];
++        for (Component component : components) {
++            if (component instanceof JButton) {
++                JButton button = (JButton) component;
+                 buttonStates.put(button.getActionCommand(), Boolean.valueOf(button.isEnabled()));
+             }
+         }
+@@ -286,10 +286,9 @@ public class JMeterToolBar extends JToolBar implements LocaleChangeListener {
+      *            {@link Map} of button names and their states
+      */
+     private void updateButtons(Map<String, Boolean> buttonStates) {
+-        Component[] components = getComponents();
+-        for (int i = 0; i < components.length; i++) {
+-            if (components[i] instanceof JButton) {
+-                JButton button = (JButton) components[i];
++        for (Component component : getComponents()) {
++            if (component instanceof JButton) {
++                JButton button = (JButton) component;
+                 Boolean enabled = buttonStates.get(button.getActionCommand());
+                 if (enabled != null) {
+                     button.setEnabled(enabled.booleanValue());
+diff --git a/src/core/org/apache/jmeter/gui/util/MenuFactory.java b/src/core/org/apache/jmeter/gui/util/MenuFactory.java
+index e4928c1..b832bb9 100644
+--- a/src/core/org/apache/jmeter/gui/util/MenuFactory.java
++++ b/src/core/org/apache/jmeter/gui/util/MenuFactory.java
+@@ -152,8 +152,8 @@ public final class MenuFactory {
+         try {
+             String[] classesToSkip =
+                 JOrphanUtils.split(JMeterUtils.getPropDefault("not_in_menu", ""), ","); //$NON-NLS-1$
+-            for (int i = 0; i < classesToSkip.length; i++) {
+-                elementsToSkip.add(classesToSkip[i].trim());
++            for (String aClassesToSkip : classesToSkip) {
++                elementsToSkip.add(aClassesToSkip.trim());
+             }
+ 
+             initializeMenus();
+@@ -269,8 +269,8 @@ public final class MenuFactory {
+ 
+     public static JMenu makeMenus(String[] categories, String label, String actionCommand) {
+         JMenu addMenu = new JMenu(label);
+-        for (int i = 0; i < categories.length; i++) {
+-            addMenu.add(makeMenu(categories[i], actionCommand));
++        for (String category : categories) {
++            addMenu.add(makeMenu(category, actionCommand));
+         }
+         GuiUtils.makeScrollableMenu(addMenu);
+         return addMenu;
+@@ -648,10 +648,9 @@ public final class MenuFactory {
+ 
+     // Is any node an instance of one of the classes?
+     private static boolean foundClass(JMeterTreeNode nodes[],Class<?> classes[]){
+-        for (int i = 0; i < nodes.length; i++) {
+-            JMeterTreeNode node = nodes[i];
+-            for (int j=0; j < classes.length; j++) {
+-                if (classes[j].isInstance(node.getUserObject())){
++        for (JMeterTreeNode node : nodes) {
++            for (Class<?> aClass : classes) {
++                if (aClass.isInstance(node.getUserObject())) {
+                     return true;
+                 }
+             }
+@@ -661,12 +660,11 @@ public final class MenuFactory {
+ 
+     // Is any node an instance of one of the classes, but not an exception?
+     private static boolean foundClass(JMeterTreeNode nodes[],Class<?> classes[], Class<?> except){
+-        for (int i = 0; i < nodes.length; i++) {
+-            JMeterTreeNode node = nodes[i];
++        for (JMeterTreeNode node : nodes) {
+             Object userObject = node.getUserObject();
+             if (!except.isInstance(userObject)) {
+-                for (int j=0; j < classes.length; j++) {
+-                    if (classes[j].isInstance(userObject)){
++                for (Class<?> aClass : classes) {
++                    if (aClass.isInstance(userObject)) {
+                         return true;
+                     }
+                 }
+diff --git a/src/jorphan/org/apache/jorphan/gui/JLabeledChoice.java b/src/jorphan/org/apache/jorphan/gui/JLabeledChoice.java
+index e65a0b6..a3b0968 100644
+--- a/src/jorphan/org/apache/jorphan/gui/JLabeledChoice.java
++++ b/src/jorphan/org/apache/jorphan/gui/JLabeledChoice.java
+@@ -111,8 +111,8 @@ public class JLabeledChoice extends JPanel implements JLabeledField {
+ 
+     public void setValues(String[] items) {
+         choiceList.removeAllItems();
+-        for (int i = 0; i < items.length; i++) {
+-            choiceList.addItem(items[i]);
++        for (String item : items) {
++            choiceList.addItem(item);
+         }
+     }
+ 
+@@ -277,8 +277,8 @@ public String getToolTipText() {
+      */
+     private void notifyChangeListeners() {
+         ChangeEvent ce = new ChangeEvent(this);
+-        for (int index = 0; index < mChangeListeners.size(); index++) {
+-            mChangeListeners.get(index).stateChanged(ce);
++        for (ChangeListener mChangeListener : mChangeListeners) {
++            mChangeListener.stateChanged(ce);
+         }
+     }
+ 
+diff --git a/src/jorphan/org/apache/jorphan/gui/JLabeledTextArea.java b/src/jorphan/org/apache/jorphan/gui/JLabeledTextArea.java
+index 87c589f..cbbe94e 100644
+--- a/src/jorphan/org/apache/jorphan/gui/JLabeledTextArea.java
++++ b/src/jorphan/org/apache/jorphan/gui/JLabeledTextArea.java
+@@ -243,8 +243,8 @@ public class JLabeledTextArea extends JPanel implements JLabeledField, FocusList
+      */
+     private void notifyChangeListeners() {
+         ChangeEvent ce = new ChangeEvent(this);
+-        for (int index = 0; index < mChangeListeners.size(); index++) {
+-            mChangeListeners.get(index).stateChanged(ce);
++        for (ChangeListener mChangeListener : mChangeListeners) {
++            mChangeListener.stateChanged(ce);
+         }
+     }
+     
+diff --git a/src/jorphan/org/apache/jorphan/gui/JLabeledTextField.java b/src/jorphan/org/apache/jorphan/gui/JLabeledTextField.java
+index 386bd86..d5b462e 100644
+--- a/src/jorphan/org/apache/jorphan/gui/JLabeledTextField.java
++++ b/src/jorphan/org/apache/jorphan/gui/JLabeledTextField.java
+@@ -243,8 +243,8 @@ public class JLabeledTextField extends JPanel implements JLabeledField, FocusLis
+      */
+     protected void notifyChangeListeners() {
+         ChangeEvent ce = new ChangeEvent(this);
+-        for (int index = 0; index < mChangeListeners.size(); index++) {
+-            mChangeListeners.get(index).stateChanged(ce);
++        for (ChangeListener mChangeListener : mChangeListeners) {
++            mChangeListener.stateChanged(ce);
+         }
+     }
+ }
+diff --git a/src/jorphan/org/apache/jorphan/reflect/ClassFinder.java b/src/jorphan/org/apache/jorphan/reflect/ClassFinder.java
+index df53b02..1e9aa56 100644
+--- a/src/jorphan/org/apache/jorphan/reflect/ClassFinder.java
++++ b/src/jorphan/org/apache/jorphan/reflect/ClassFinder.java
+@@ -26,6 +26,7 @@ import java.lang.reflect.Method;
+ import java.lang.reflect.Modifier;
+ import java.util.ArrayList;
+ import java.util.Arrays;
++import java.util.Collections;
+ import java.util.Enumeration;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -168,8 +169,7 @@ public final class ClassFinder {
+     // For each directory in the search path, add all the jars found there
+     private static String[] addJarsInPath(String[] paths) {
+         Set<String> fullList = new HashSet<>();
+-        for (int i = 0; i < paths.length; i++) {
+-            final String path = paths[i];
++        for (final String path : paths) {
+             fullList.add(path); // Keep the unexpanded path
+             // TODO - allow directories to end with .jar by removing this check?
+             if (!path.endsWith(DOT_JAR)) {
+@@ -181,9 +181,7 @@ public final class ClassFinder {
+                             return name.endsWith(DOT_JAR);
+                         }
+                     });
+-                    for (int x = 0; x < jars.length; x++) {
+-                        fullList.add(jars[x]);
+-                    }
++                    Collections.addAll(fullList, jars);
+                 }
+             }
+         }
+@@ -475,8 +473,8 @@ public final class ClassFinder {
+                 Class<?> c = Class.forName(strClassName, false, contextClassLoader);
+ 
+                 if (!c.isInterface() && !Modifier.isAbstract(c.getModifiers())) {
+-                    for (int i=0; i< parentClasses.length; i++) {
+-                        if(parentClasses[i].isAssignableFrom(c)){
++                    for (Class<?> parentClass : parentClasses) {
++                        if (parentClass.isAssignableFrom(c)) {
+                             return true;
+                         }
+                     }
+@@ -561,12 +559,12 @@ public final class ClassFinder {
+ 
+     private static void findClassesInPathsDir(String strPathElement, File dir, Set<String> listClasses) throws IOException {
+         String[] list = dir.list();
+-        for (int i = 0; i < list.length; i++) {
+-            File file = new File(dir, list[i]);
++        for (String aList : list) {
++            File file = new File(dir, aList);
+             if (file.isDirectory()) {
+                 // Recursive call
+                 findClassesInPathsDir(strPathElement, file, listClasses);
+-            } else if (list[i].endsWith(DOT_CLASS) && file.exists() && (file.length() != 0)) {
++            } else if (aList.endsWith(DOT_CLASS) && file.exists() && (file.length() != 0)) {
+                 final String path = file.getPath();
+                 listClasses.add(path.substring(strPathElement.length() + 1,
+                         path.lastIndexOf('.')) // $NON-NLS-1$
+diff --git a/src/jorphan/org/apache/jorphan/reflect/Functor.java b/src/jorphan/org/apache/jorphan/reflect/Functor.java
+index 77eb9e4..56ed618 100644
+--- a/src/jorphan/org/apache/jorphan/reflect/Functor.java
++++ b/src/jorphan/org/apache/jorphan/reflect/Functor.java
+@@ -349,8 +349,8 @@ public class Functor {
+                         }
+                     }
+                     Class<?>[] interfaces = p_types[i].getInterfaces();
+-                    for (int j = 0; j < interfaces.length; j++) {
+-                        methodToInvoke = doCreateMethod(p_class,getNewArray(i, interfaces[j], p_types));
++                    for (Class<?> anInterface : interfaces) {
++                        methodToInvoke = doCreateMethod(p_class, getNewArray(i, anInterface, p_types));
+                         if (methodToInvoke != null) {
+                             return methodToInvoke;
+                         }
+diff --git a/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java b/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java
+index 2167d69..effa374 100644
+--- a/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java
++++ b/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java
+@@ -416,8 +416,8 @@ public final class JOrphanUtils {
+      */
+     public static String baToHexString(byte ba[]) {
+         StringBuilder sb = new StringBuilder(ba.length*2);
+-        for (int i = 0; i < ba.length; i++) {
+-            int j = ba[i] & 0xff;
++        for (byte b : ba) {
++            int j = b & 0xff;
+             if (j < 16) {
+                 sb.append("0"); // $NON-NLS-1$ add zero padding
+             }
+-- 
+1.9.1
+

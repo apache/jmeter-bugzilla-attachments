@@ -1,0 +1,933 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 440277)
++++ bin/jmeter.properties	(working copy)
+@@ -407,6 +407,16 @@
+ #beanshell.server.port=9000
+ # The telnet server will be started on the next port
+ 
++#---------------------------------------------------------------------------
++# LDAP Sampler configuration
++#---------------------------------------------------------------------------
++# Maximum number of search results returned by a search that will be sorted
++# to guarantee a stable ordering (if more results then this limit are retruned
++# then no sorting is done). Set to 0 to turn off all sorting, in which case
++# "Equals" response assertions will be very likely to fail against search results.
++#ldapsampler.max_sorted_results=2000
++ldapsampler.max_sorted_results=2000
++
+ #
+ # Define the server initialisation file
+ beanshell.server.file=../extras/startup.bsh
+@@ -507,6 +517,15 @@
+ #Should JMeter expand the tree when loading a test plan?
+ #onload.expandtree=false
+ 
++# Number of characters to log for each of three sections (starting matching section, diff section,
++#   ending matching section where not all sections will appear for all diffs) diff display when an Equals
++#   assertion fails. So a value of 100 means a maximum of 300 characters of diff text will be displayed
++#   (+ a number of extra characters like "..." and "[[["/"]]]" which are used to decorate it).
++#assertion.equals_section_diff_len=100
++# test written out to log to signify start/end of diff delta
++#assertion.equals_diff_delta_start=[[[
++#assertion.equals_diff_delta_end=]]]
++
+ # Should JMeter automatically load additional JMeter properties?
+ # File name to look for (comment to disable)
+ user.properties=user.properties
+Index: src/components/org/apache/jmeter/assertions/gui/AssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/AssertionGui.java	(revision 440277)
++++ src/components/org/apache/jmeter/assertions/gui/AssertionGui.java	(working copy)
+@@ -81,6 +81,11 @@
+ 	private JRadioButton matchesBox;
+ 
+ 	/**
++	 * Radio button indicating if the field equals the first pattern.
++	 */
++	private JRadioButton equalsBox;
++
++    /**
+ 	 * Checkbox indicating to test that the field does NOT contain/match the
+ 	 * patterns.
+ 	 */
+@@ -142,11 +147,13 @@
+ 
+ 			if (containsBox.isSelected()) {
+ 				ra.setToContainsType();
++			} else if (matchesBox.isSelected()) {
++				ra.setToMatchType();
+ 			} else {
+-				ra.setToMatchType();
+-			}
++                ra.setToEqualsType();
++            }
+ 
+-			if (notBox.isSelected()) {
++            if (notBox.isSelected()) {
+ 				ra.setToNotType();
+ 			} else {
+ 				ra.unsetNotType();
+@@ -170,10 +177,16 @@
+ 		if (model.isContainsType()) {
+ 			containsBox.setSelected(true);
+ 			matchesBox.setSelected(false);
++            equalsBox.setSelected(false);
++        } else if (model.isMatchType()) {
++			containsBox.setSelected(false);
++			matchesBox.setSelected(true);
++            equalsBox.setSelected(false);
+ 		} else {
+ 			containsBox.setSelected(false);
+-			matchesBox.setSelected(true);
+-		}
++			matchesBox.setSelected(false);
++            equalsBox.setSelected(true);
++        }
+ 
+ 		if (model.isNotType()) {
+ 			notBox.setSelected(true);
+@@ -279,7 +292,11 @@
+ 		group.add(matchesBox);
+ 		panel.add(matchesBox);
+ 
+-		notBox = new JCheckBox(JMeterUtils.getResString("assertion_not"));
++		equalsBox = new JRadioButton(JMeterUtils.getResString("assertion_equals"));
++		group.add(equalsBox);
++		panel.add(equalsBox);
++
++        notBox = new JCheckBox(JMeterUtils.getResString("assertion_not"));
+ 		panel.add(notBox);
+ 
+ 		return panel;
+Index: src/components/org/apache/jmeter/assertions/ResponseAssertion.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/ResponseAssertion.java	(revision 440277)
++++ src/components/org/apache/jmeter/assertions/ResponseAssertion.java	(working copy)
+@@ -28,6 +28,7 @@
+ import org.apache.jmeter.testelement.property.NullProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.testelement.property.StringProperty;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+@@ -58,7 +59,7 @@
+ 
+ 	public final static String ASSUME_SUCCESS = "Assertion.assume_success"; // $NON-NLS-1$
+ 
+-	public final static String TEST_STRINGS = "Asserion.test_strings"; // $NON-NLS-1$
++	public final static String TEST_STRINGS = "Assertion.test_strings"; // $NON-NLS-1$
+ 
+ 	public final static String TEST_TYPE = "Assertion.test_type"; // $NON-NLS-1$
+ 
+@@ -72,21 +73,35 @@
+ 
+ 	private final static int NOT = 1 << 2;
+ 
+-	private static ThreadLocal matcher = new ThreadLocal() {
++	private final static int EQUALS = 1 << 3;
++
++    private static ThreadLocal matcher = new ThreadLocal() {
+ 		protected Object initialValue() {
+ 			return new Perl5Matcher();
+ 		}
+ 	};
+ 
+-	private static final PatternCacheLRU patternCache = new PatternCacheLRU(1000, new Perl5Compiler());
++    protected static final int  EQUALS_SECTION_DIFF_LEN
++            = JMeterUtils.getPropDefault("assertion.equals_section_diff_len", 100);
+ 
+-	/***************************************************************************
+-	 * !ToDo (Constructor description)
+-	 **************************************************************************/
+-	public ResponseAssertion() {
+-		setProperty(new CollectionProperty(TEST_STRINGS, new ArrayList()));
+-	}
++    /** Signifies truncated text in diff display. */
++    private static final String EQUALS_DIFF_TRUNC = "...";
+ 
++    private static final PatternCacheLRU patternCache = new PatternCacheLRU(1000, new Perl5Compiler());
++    private static final String COMPARISON_STR = "comparison: ";
++    private static final String RECEIVED_STR = "received  : ";
++    private static final String DIFF_DELTA_START
++            = JMeterUtils.getPropDefault("assertion.equals_diff_delta_start", "[[[");
++    private static final String DIFF_DELTA_END
++            = JMeterUtils.getPropDefault("assertion.equals_diff_delta_end", "]]]");
++
++    /***************************************************************************
++     * !ToDo (Constructor description)
++     **************************************************************************/
++    public ResponseAssertion() {
++        setProperty(new CollectionProperty(TEST_STRINGS, new ArrayList()));
++    }
++
+ 	/***************************************************************************
+ 	 * !ToDo (Constructor description)
+ 	 * 
+@@ -217,6 +232,10 @@
+ 		return (CollectionProperty) getProperty(TEST_STRINGS);
+ 	}
+ 
++	public boolean isEqualsType() {
++		return (getTestType() & EQUALS) > 0;
++	}
++
+ 	public boolean isContainsType() {
+ 		return (getTestType() & CONTAINS) > 0;
+ 	}
+@@ -230,14 +249,18 @@
+ 	}
+ 
+ 	public void setToContainsType() {
+-		setTestType((getTestType() | CONTAINS) & (~MATCH));
++		setTestType((getTestType() | CONTAINS) & ~ (MATCH | EQUALS));
+ 	}
+ 
+ 	public void setToMatchType() {
+-		setTestType((getTestType() | MATCH) & (~CONTAINS));
++		setTestType((getTestType() | MATCH) & ~(CONTAINS | EQUALS));
+ 	}
+ 
+-	public void setToNotType() {
++	public void setToEqualsType() {
++		setTestType((getTestType() | EQUALS) & ~(MATCH | CONTAINS));
++	}
++
++    public void setToNotType() {
+ 		setTestType((getTestType() | NOT));
+ 	}
+ 
+@@ -294,33 +317,46 @@
+ 		result.setError(false);
+ 
+ 		boolean contains = isContainsType(); // do it once outside loop
+-		boolean debugEnabled = log.isDebugEnabled();
++        boolean equals = isEqualsType();
++        boolean debugEnabled = log.isDebugEnabled();
+ 		if (debugEnabled){
+ 			log.debug("Type:" + (contains?"Contains":"Match") + (not? "(not)": ""));
+ 		}
+-		
+-		try {
++
++        try {
+ 			// Get the Matcher for this thread
+ 			Perl5Matcher localMatcher = (Perl5Matcher) matcher.get();
+ 			PropertyIterator iter = getTestStrings().iterator();
+ 			while (iter.hasNext()) {
+ 				String stringPattern = iter.next().getStringValue();
+-				Pattern pattern = patternCache.getPattern(stringPattern, Perl5Compiler.READ_ONLY_MASK);
+-				boolean found;
+-				if (contains) {
+-					found = localMatcher.contains(toCheck, pattern);
+-				} else {
+-					found = localMatcher.matches(toCheck, pattern);
+-				}
+-				pass = not ? !found : found;
++                boolean found;
++
++                if (equals) {
++                    found = toCheck.equals(stringPattern);
++                } else {
++                    Pattern pattern = patternCache.getPattern(stringPattern, Perl5Compiler.READ_ONLY_MASK);
++                    if (contains) {
++                        found = localMatcher.contains(toCheck, pattern);
++                    } else {
++                        found = localMatcher.matches(toCheck, pattern);
++                    }
++                }
++                pass = not ? !found : found;
+ 				if (!pass) {
+-					if (debugEnabled){log.debug("Failed: "+pattern);}
+-					result.setFailure(true);
+-					result.setFailureMessage(getFailText(stringPattern));
++                    String      failText = getFailText(stringPattern);
++
++                    if (equals) {
++                        failText += equalsComparisonText(toCheck, stringPattern);
++                    }
++                    log.info(failText);
++                    result.setFailure(true);
++					result.setFailureMessage(failText);
+ 					break;
+ 				}
+-				if (debugEnabled){log.debug("Passed: "+pattern);}
+-			}
++				if (debugEnabled){log.debug("Passed: (" + getName() + ") /" + stringPattern);}
++                if (equals)
++                    break;
++            }
+ 		} catch (MalformedCachePatternException e) {
+ 			result.setError(true);
+ 			result.setFailure(false);
+@@ -329,43 +365,186 @@
+ 		return result;
+ 	}
+ 
+-	/**
+-	 * Generate the failure reason from the TestType
+-	 * 
+-	 * @param stringPattern
+-	 * @return the message for the assertion report 
+-	 */
+-	// TODO strings should be resources
+-	private String getFailText(String stringPattern) {
+-		String text;
+-		String what;
+-		if (ResponseAssertion.RESPONSE_DATA.equals(getTestField())) {
+-			what = "text";
+-		} else if (ResponseAssertion.RESPONSE_CODE.equals(getTestField())) {
+-			what = "code";
+-		} else if (ResponseAssertion.RESPONSE_MESSAGE.equals(getTestField())) {
+-			what = "message";
+-		} else // Assume it is the URL
+-		{
+-			what = "URL";
+-		}
+-		switch (getTestType()) {
+-		case CONTAINS:
+-			text = " expected to contain ";
+-			break;
+-		case NOT | CONTAINS:
+-			text = " expected not to contain ";
+-			break;
+-		case MATCH:
+-			text = " expected to match ";
+-			break;
+-		case NOT | MATCH:
+-			text = " expected not to match ";
+-			break;
+-		default:// should never happen...
+-			text = " expected something using ";
+-		}
++    private static String trunc(final boolean right, final String str)
++    {
++        if (str.length() <= EQUALS_SECTION_DIFF_LEN)
++            return str;
++        else if (right)
++            return str.substring(0, EQUALS_SECTION_DIFF_LEN) + EQUALS_DIFF_TRUNC;
++        else
++            return EQUALS_DIFF_TRUNC + str.substring(str.length() - EQUALS_SECTION_DIFF_LEN, str.length());
++    }
+ 
+-		return "Test failed, " + what + text + "/" + stringPattern + "/";
+-	}
++    /**
++     *   Returns some helpful logging text to determine where equality between two strings
++     * is broken, with one pointer working from the front of the strings and another working
++     * backwards from the end.
++     *
++     * @param received      String received from sampler.
++     * @param comparison    String specified for "equals" response assertion.
++     * @return  Two lines of text separated by newlines, and then forward and backward pointers
++     *      denoting first position of difference.
++     */
++    private static String equalsComparisonText(final String received, final String comparison)
++    {
++        final StringBuffer      text;
++        int                     firstDiff;
++        int                     lastRecDiff = -1;
++        int                     lastCompDiff = -1;
++        final int               recLength = received.length();
++        final int               compLength = comparison.length();
++        final int               minLength = Math.min(recLength, compLength);
++        final String            startingEqSeq;
++        String                  recDeltaSeq = "";
++        String                  compDeltaSeq = "";
++        String                  endingEqSeq = "";
++        final StringBuffer      pad;
++
++
++        text = new StringBuffer(Math.max(recLength, compLength) * 2);
++        for (firstDiff = 0; firstDiff < minLength; firstDiff++)
++            if (received.charAt(firstDiff) != comparison.charAt(firstDiff))
++                break;
++        if (firstDiff == 0)
++            startingEqSeq = "";
++        else
++            startingEqSeq = trunc(false, received.substring(0, firstDiff));
++
++        lastRecDiff = recLength - 1;
++        lastCompDiff = compLength - 1;
++
++        while ((lastRecDiff > firstDiff) && (lastCompDiff > firstDiff)
++                && received.charAt(lastRecDiff) == comparison.charAt(lastCompDiff))
++        {
++            lastRecDiff--;
++            lastCompDiff--;
++        }
++        endingEqSeq = trunc(true, received.substring(lastRecDiff + 1, recLength));
++        if (endingEqSeq.length() == 0)
++        {
++            recDeltaSeq = trunc(true, received.substring(firstDiff, recLength));
++            compDeltaSeq = trunc(true, comparison.substring(firstDiff, compLength));
++        }
++        else
++        {
++            recDeltaSeq = trunc(true, received.substring(firstDiff, lastRecDiff + 1));
++            compDeltaSeq = trunc(true, comparison.substring(firstDiff, lastCompDiff + 1));
++        }
++        pad = new StringBuffer(Math.abs(recDeltaSeq.length() - compDeltaSeq.length()));
++        for (int i = 0; i < pad.capacity(); i++)
++            pad.append(' ');
++        if (recDeltaSeq.length() > compDeltaSeq.length())
++            compDeltaSeq += pad.toString();
++        else
++            recDeltaSeq += pad.toString();
++
++        text.append('\n').append(RECEIVED_STR).append('\n');
++        text.append(RECEIVED_STR);
++        text.append(startingEqSeq);
++        text.append(DIFF_DELTA_START);
++        text.append(recDeltaSeq);
++        text.append(DIFF_DELTA_END);
++        text.append(endingEqSeq);
++        text.append('\n').append(COMPARISON_STR).append('\n');
++        text.append(COMPARISON_STR);
++        text.append(startingEqSeq);
++        text.append(DIFF_DELTA_START);
++        text.append(compDeltaSeq);
++        text.append(DIFF_DELTA_END);
++        text.append(endingEqSeq);
++        text.append('\n');
++        return text.toString();
++    }
++
++//    public static void main(String[] args)
++//    {
++//        final String longA =
++//"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" +
++//"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
++//        final String longZ =
++//"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" + ;
++//"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
++//        String[][]  tests = new String[][] {
++//            new String[] { "aaa", "zzz" },
++//            new String[] { "aaa", "aaazzz" },
++//            new String[] { "aaaz", "aaazzz" },
++//            new String[] { "aaazzz", "aaaz" },
++//            new String[] { "aaazzz", "aaabcdezzz" },
++//
++//                // all long delta
++//            new String[] { longA, longZ },
++//                // all long v. short delta
++//            new String[] { longA, "yyy" },
++//                // all long v. short delta
++//            new String[] { "yyy", longA },
++//
++//                // long intial, long delta
++//            new String[] { longA + longA, longA + longZ },
++//                // long intial, long v. short delta
++//            new String[] { longA + "yyy", longA + longZ },
++//                // long intial, long v. short delta
++//            new String[] { longA + longZ, longA + "yyy" },
++//
++//                // long intial, long delta, long final
++//            new String[] { longA + longA + longZ, longA + longZ + longZ},
++//                // long intial, long delta v. short delta, long final
++//            new String[] { longA + longA + longZ, longA + "yyy" + longZ},
++//                // long intial, long delta v. short delta, long final
++//            new String[] { longA + "yyy" + longZ, longA + longZ}
++//        };
++//
++//        for (int i = 0; i < tests.length; i++)
++//        {
++//            String[] test = tests[i];
++//
++//            System.out.println();
++//            System.out.println(equalsComparisonText(test[0], test[1]));
++//        }
++//    }
++
++    /**
++     * Generate the failure reason from the TestType
++     *
++     * @param stringPattern
++     * @return the message for the assertion report
++     */
++    // TODO strings should be resources
++    private String getFailText(String stringPattern) {
++        String text;
++        String what;
++        if (ResponseAssertion.RESPONSE_DATA.equals(getTestField())) {
++            what = "text";
++        } else if (ResponseAssertion.RESPONSE_CODE.equals(getTestField())) {
++            what = "code";
++        } else if (ResponseAssertion.RESPONSE_MESSAGE.equals(getTestField())) {
++            what = "message";
++        } else // Assume it is the URL
++        {
++            what = "URL";
++        }
++        switch (getTestType()) {
++        case CONTAINS:
++            text = " expected to contain ";
++            break;
++        case NOT | CONTAINS:
++            text = " expected not to contain ";
++            break;
++        case MATCH:
++            text = " expected to match ";
++            break;
++        case NOT | MATCH:
++            text = " expected not to match ";
++            break;
++        case EQUALS:
++            text = " expected to equal ";
++            break;
++        case NOT | EQUALS:
++            text = " expected not to equal ";
++            break;
++        default:// should never happen...
++            text = " expected something using ";
++        }
++
++        return "Test failed, (" + getName() + "): " + what + text + "/" + stringPattern + "/";
++    }
+ }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 440277)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -46,6 +46,7 @@
+ assertion_code_resp=Response Code
+ assertion_contains=Contains
+ assertion_matches=Matches
++assertion_equals=Equals
+ assertion_message_resp=Response Message
+ assertion_not=Not
+ assertion_pattern_match_rules=Pattern Matching Rules
+Index: src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterVersion.java	(revision 440277)
++++ src/core/org/apache/jmeter/util/JMeterVersion.java	(working copy)
+@@ -41,7 +41,7 @@
+ 	 * JMeterUtils This ensures that JMeterUtils always gets the correct
+ 	 * version, even if it is not re-compiled during the build.
+ 	 */
+-	private static final String VERSION = "2.1.2";
++	private static final String VERSION = "2.1.2.20060906";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2006 The Apache Software Foundation";
+ 
+Index: src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+===================================================================
+--- src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(revision 440277)
++++ src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(working copy)
+@@ -17,20 +17,12 @@
+ 
+ package org.apache.jmeter.protocol.ldap.sampler;
+ 
+-import java.util.Hashtable;
+-import java.util.Iterator;
+-import java.util.Map;
++import java.util.*;
++import java.io.UnsupportedEncodingException;
+ 
+ import javax.naming.NamingEnumeration;
+ import javax.naming.NamingException;
+-import javax.naming.directory.Attribute;
+-import javax.naming.directory.Attributes;
+-import javax.naming.directory.BasicAttribute;
+-import javax.naming.directory.BasicAttributes;
+-import javax.naming.directory.DirContext;
+-import javax.naming.directory.InitialDirContext;
+-import javax.naming.directory.ModificationItem;
+-import javax.naming.directory.SearchResult;
++import javax.naming.directory.*;
+ 
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.config.Arguments;
+@@ -44,6 +36,7 @@
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -56,6 +49,10 @@
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    /** Signature start of response data generated by this sample. */
++    public static final String LDAPANSWER = "<ldapanswer>";
++    public static final String LDAPANSWER_END = LDAPANSWER.replaceFirst("<", "</");
++
+ 	public final static String SERVERNAME = "servername"; // $NON-NLS-1$
+ 
+ 	public final static String PORT = "port"; // $NON-NLS-1$
+@@ -125,15 +122,46 @@
+     // TODO replace these with ThreadLocal
+ 	private static Hashtable ldapConnections = new Hashtable();
+ 
+-	private static Hashtable ldapContexts = new Hashtable();
++	private static Hashtable    ldapContexts = new Hashtable();
++    protected static final int MAX_SORTED_RESULTS = JMeterUtils.getPropDefault("ldapsampler.max_sorted_results", 1000);
+ 
+-	/***************************************************************************
+-	 * !ToDo (Constructor description)
+-	 **************************************************************************/
+-	public LDAPExtSampler() {
+-	}
++    public static final String OBJECT_SCOPE_STR = "object";
++    public static final String ONELEVEL_SCOPE_STR = "onelevel";
++    public static final String SUBTREE_SCOPE_STR = "subtree";
+ 
+-	/***************************************************************************
++    public static final String MOD_OP_ADD_STR = "add";
++    public static final String MOD_OP_REPLACE_STR = "replace";
++    public static final String MOD_OP_REMOVE_STR = "remove";
++
++    private static final String[]   SCOPE_TO_STR = new String[] {
++            OBJECT_SCOPE_STR, ONELEVEL_SCOPE_STR, SUBTREE_SCOPE_STR };
++    private static final HashMap    SCOPE_FROM_STR;
++    private static final String[]   MOD_OP_TO_STR = new String[] {
++            null, MOD_OP_ADD_STR, MOD_OP_REPLACE_STR, MOD_OP_REMOVE_STR };
++    private static final HashMap    MOD_OP_FROM_STR;
++
++    static
++    {
++        SCOPE_FROM_STR = new HashMap(3);
++        MOD_OP_FROM_STR = new HashMap(3);
++
++        SCOPE_FROM_STR.put(OBJECT_SCOPE_STR, new Integer(SearchControls.OBJECT_SCOPE));
++        SCOPE_FROM_STR.put(ONELEVEL_SCOPE_STR, new Integer(SearchControls.ONELEVEL_SCOPE));
++        SCOPE_FROM_STR.put(SUBTREE_SCOPE_STR, new Integer(SearchControls.SUBTREE_SCOPE));
++
++        MOD_OP_FROM_STR.put(MOD_OP_ADD_STR, new Integer(DirContext.ADD_ATTRIBUTE));
++        MOD_OP_FROM_STR.put(MOD_OP_REPLACE_STR, new Integer(DirContext.REPLACE_ATTRIBUTE));
++        MOD_OP_FROM_STR.put(MOD_OP_REMOVE_STR, new Integer(DirContext.REMOVE_ATTRIBUTE));
++        MOD_OP_FROM_STR.put("delete", new Integer(DirContext.REMOVE_ATTRIBUTE));
++    }
++
++    /***************************************************************************
++     * !ToDo (Constructor description)
++     **************************************************************************/
++    public LDAPExtSampler() {
++    }
++
++    /***************************************************************************
+ 	 * Gets the username attribute of the LDAP object
+ 	 * 
+ 	 * @return The username
+@@ -489,7 +517,37 @@
+ 		return attrs;
+ 	}
+ 
+-	/***************************************************************************
++    public static String modificationOpToString(final int modOp)
++    {
++        return MOD_OP_TO_STR[modOp];
++    }
++
++    public static int modificationOpFromString(final String modOp)
++    {
++        final Integer   i = (Integer)MOD_OP_FROM_STR.get(modOp);
++
++        if (i == null)
++            return -1;
++        else
++            return i.intValue();
++    }
++
++    public static String searchScopeToString(final int scope)
++    {
++        return SCOPE_TO_STR[scope];
++    }
++
++    public static int searchScopeFromString(final String scope)
++    {
++        final Integer   i = (Integer)SCOPE_FROM_STR.get(scope);
++
++        if (i == null)
++            return -1;
++        else
++            return i.intValue();
++    }
++
++    /***************************************************************************
+ 	 * Collect all the value from the table (Arguments), using this create the
+ 	 * basicAttributes This will create the Basic Attributes for the User
+ 	 * defined TestCase for Modify test
+@@ -502,21 +560,16 @@
+ 		PropertyIterator iter = getLDAPArguments().iterator();
+ 		int count = 0;
+ 		while (iter.hasNext()) {
+-			LDAPArgument item = (LDAPArgument) iter.next().getObjectValue();
+-			if ((item.getValue()).equals("")) {
++			LDAPArgument    item = (LDAPArgument) iter.next().getObjectValue();
++            final int       modOp;
++
++            if ((item.getValue()).equals("")) {
+ 				attr = new BasicAttribute(item.getName());
+ 			} else {
+ 				attr = getBasicAttribute(item.getName(), item.getValue());
+ 			}
+-			if ("add".equals(item.getOpcode())) { // $NON-NLS-1$
+-				mods[count] = new ModificationItem(DirContext.ADD_ATTRIBUTE, attr);
+-			} else {
+-				if ("delete".equals(item.getOpcode())) { // $NON-NLS-1$
+-					mods[count] = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, attr);
+-				} else {
+-					mods[count] = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, attr);
+-				}
+-			}
++            modOp = modificationOpFromString(item.getOpcode());
++            mods[count] = new ModificationItem(modOp, attr);
+ 			count += 1;
+ 		}
+ 		return mods;
+@@ -681,7 +734,7 @@
+ 	 * @return !ToDo (Return description)
+ 	 **************************************************************************/
+ 	public SampleResult sample(Entry e) {
+-		String responseData = "<ldapanswer>";
++		String responseData = LDAPANSWER;
+ 		SampleResult res = new SampleResult();
+ 		res.setResponseData("successfull".getBytes());
+ 		res.setResponseMessage("Success");
+@@ -761,39 +814,29 @@
+ 				responseData = responseData + "<newdn>" + getPropertyAsString(NEWDN) + "</newdn></operation>";
+ 				renameTest(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals(SEARCHBASE)) {
+-				res.setSamplerData("Search with filter " + getPropertyAsString(SEARCHFILTER));
+-				responseData = responseData + "<operation><opertype>search</opertype>";
+-				responseData = responseData + "<searchfilter>" + getPropertyAsString(SEARCHFILTER) + "</searchfilter>";
+-				responseData = responseData + "<searchbase>" + getPropertyAsString(SEARCHBASE) + ","
+-						+ getPropertyAsString(ROOTDN) + "</searchbase>";
+-				responseData = responseData + "<scope>" + getPropertyAsString(SCOPE) + "</scope>";
+-				responseData = responseData + "<countlimit>" + getPropertyAsString(COUNTLIM) + "</countlimit>";
+-				responseData = responseData + "<timelimit>" + getPropertyAsString(TIMELIM) + "</timelimit>";
+-				responseData = responseData + "</operation><searchresult>";
++                final StringBuffer      sb = new StringBuffer(2 * 1024);
++                final String            scopeStr = getPropertyAsString(SCOPE);
++                int                     scope;
++
++                res.setSamplerData("Search with filter " + getPropertyAsString(SEARCHFILTER));
++                sb.append(responseData);
++                sb.append("<operation>");
++                writeSearchResponseHeader(sb);
++                scope = searchScopeFromString(scopeStr);
++                if (scope < 0)
++                        // for backwards compatibility
++                    scope = getPropertyAsInt(SCOPE);
++
+                 res.sampleStart();
+                 NamingEnumeration srch = temp_client.searchTest(dirContext, getPropertyAsString(SEARCHBASE), getPropertyAsString(SEARCHFILTER),
+-                        getPropertyAsInt(SCOPE), getPropertyAsLong(COUNTLIM), getPropertyAsInt(TIMELIM),
++                        scope, getPropertyAsLong(COUNTLIM), getPropertyAsInt(TIMELIM),
+                         getRequestAttributes(getPropertyAsString(ATTRIBS)), getPropertyAsBoolean(RETOBJ),
+                         getPropertyAsBoolean(DEREF));
+                 res.sampleEnd();
+-				while (srch.hasMore()) {
+-                    SearchResult sr = (SearchResult) srch.next();
+-					responseData = responseData + "<dn>" + sr.getName() + "," + getPropertyAsString(SEARCHBASE) + ","
+-							+ getRootdn() + "</dn>";
+-					responseData = responseData + "<returnedattr>" + sr.getAttributes().size() + "</returnedattr>";
+-                    NamingEnumeration attrlist = sr.getAttributes().getIDs();
+-					while (attrlist.hasMore()) {
+-						String iets = (String) attrlist.next();
+-						responseData = responseData + "<attribute><attributename>" + iets
+-								+ "</attributename>";
+-						responseData = responseData
+-								+ "<attributevalue>"
+-								+ sr.getAttributes().get(iets).toString().substring(
+-										iets.length() + 2) + "</attributevalue></attribute>";
+-					}
+-				}
+-				responseData = responseData + "</searchresult></operation>";
+-			}
++                writeSearchResults(sb, srch);
++                sb.append("</operation>");
++                responseData = sb.toString();
++            }
+ 
+ 		} catch (NamingException ex) {
+ 			String returnData = ex.toString();
+@@ -818,10 +861,181 @@
+ 		return res;
+ 	}
+ 
+-	public void testStarted() {
+-		testStarted("");
+-	}
++    public void writeSearchResponseHeader(final StringBuffer sb)
++    {
++        String          scopeStr = getPropertyAsString(SCOPE);
+ 
++        sb.append("<opertype>search</opertype>");
++        sb.append("<searchfilter>").append(getPropertyAsString(SEARCHFILTER)).append("</searchfilter>");
++        sb.append("<searchbase>").append(getPropertyAsString(SEARCHBASE)).append(",")
++                .append(getPropertyAsString(ROOTDN)).append("</searchbase>");
++        if (searchScopeFromString(scopeStr) == -1)
++            scopeStr = searchScopeToString(getPropertyAsInt(SCOPE));
++        sb.append("<scope>").append(scopeStr).append("</scope>");
++        sb.append("<countlimit>").append(getPropertyAsString(COUNTLIM)).append("</countlimit>");
++        sb.append("<timelimit>").append(getPropertyAsString(TIMELIM)).append("</timelimit>");
++    }
++
++    /**
++     *   Write out search results in a stable order (including order of all subelements which might
++     * be reordered like attributes and their values) so that simple textual comparison can be done,
++     * unless the number of results exceeds {@link #MAX_SORTED_RESULTS} in which case just stream
++     * the results out without sorting.
++     */
++    public void writeSearchResults(final StringBuffer sb, final NamingEnumeration srch)
++            throws NamingException
++    {
++        final ArrayList         sortedResults = new ArrayList(MAX_SORTED_RESULTS);
++        boolean                 abandonedSort;
++
++        sb.append("<searchresults>");
++        // read all sortedResults into memory so we can guarantee ordering
++        while (srch.hasMore() && (sortedResults.size() < MAX_SORTED_RESULTS)) {
++            final SearchResult    sr = (SearchResult) srch.next();
++
++            sortedResults.add(sr);
++        }
++
++        abandonedSort = (sortedResults.size() >= MAX_SORTED_RESULTS);
++        if (!abandonedSort)
++        {
++            Collections.sort(sortedResults, new Comparator()
++            {
++                public int compare(Object o1, Object o2)
++                {
++                    String      nm1 = ((SearchResult) o1).getName();
++                    String      nm2 = ((SearchResult) o2).getName();
++
++                    if (nm1 == null)
++                        nm1 = "";
++                    if (nm2 == null)
++                        nm2 = "";
++                    return nm1.compareTo(nm2);
++                }
++            });
++        }
++
++        for (Iterator it = sortedResults.iterator(); it.hasNext();)
++        {
++            final SearchResult  sr = (SearchResult) it.next();
++            writeSearchResult(sr, sb);
++        }
++
++        if (abandonedSort)
++        {
++                // if abonded sort because there were too many items, then read the
++                //  rest of the results now...
++            while (srch.hasMore()) {
++                final SearchResult    sr = (SearchResult) srch.next();
++
++                writeSearchResult(sr, sb);
++            }
++        }
++        sb.append("</searchresults>");
++    }
++
++    private void writeSearchResult(final SearchResult sr, final StringBuffer responseData)
++            throws NamingException
++    {
++        String              srName = sr.getName();
++        final Attributes    attrs = sr.getAttributes();
++        final ArrayList     sortedAttrs;
++        final String        searchBase = getPropertyAsString(SEARCHBASE);
++        final String        rootDn = getRootdn();
++
++        responseData.append("<searchresult>");
++        responseData.append("<dn>");
++        if (!srName.endsWith(searchBase))
++        {
++            if (srName.length() > 0)
++                srName = srName + ',';
++            srName = srName + searchBase;
++        }
++        if ((rootDn.length() > 0) && !srName.endsWith(rootDn))
++        {
++            if (srName.length() > 0)
++                srName = srName + ',';
++            srName = srName + rootDn;
++        }
++        responseData.append(srName);
++        responseData.append("</dn>");
++        responseData.append("<returnedattr>").append(attrs.size()).append("</returnedattr>");
++        sortedAttrs = new ArrayList(attrs.size());
++        for (NamingEnumeration en = attrs.getAll(); en.hasMore(); )
++        {
++            final Attribute     attr = (Attribute) en.next();
++
++            sortedAttrs.add(attr);
++        }
++        Collections.sort(sortedAttrs, new Comparator()
++        {
++            public int compare(Object o1, Object o2)
++            {
++                String      nm1 = ((Attribute) o1).getID();
++                String      nm2 = ((Attribute) o2).getID();
++
++                return nm1.compareTo(nm2);
++            }
++        });
++        for (Iterator ait = sortedAttrs.iterator(); ait.hasNext();)
++        {
++            final Attribute     attr = (Attribute) ait.next();
++
++            responseData.append("<attribute><attributename>").append(attr.getID()).append("</attributename>");
++            responseData.append("<attributevalue>");
++            if (attr.size() == 1)
++                responseData.append(getWriteValue(attr.get()));
++            else
++            {
++                final ArrayList     sortedVals = new ArrayList(attr.size());
++                boolean             first = true;
++
++                for (NamingEnumeration ven = attr.getAll(); ven.hasMore(); )
++                {
++                    final Object    value = getWriteValue(ven.next());
++
++                    sortedVals.add(value.toString());
++                }
++
++                Collections.sort(sortedVals);
++                
++                for (Iterator vit = sortedVals.iterator(); vit.hasNext();)
++                {
++                    final String    value = (String) vit.next();
++
++                    if (first)
++                        first = false;
++                    else
++                        responseData.append(", ");
++                    responseData.append(value);
++                }
++            }
++            responseData.append("</attributevalue></attribute>");
++        }
++        responseData.append("</searchresult>");
++    }
++
++    private String getWriteValue(final Object value)
++    {
++        if (value instanceof String)
++            // assume it's senstive data
++            return (String)value;
++        else if (value instanceof byte[])
++            try
++            {
++                return new String((byte[])value, "UTF-8");
++            }
++            catch (UnsupportedEncodingException e)
++            {
++                log.error("this can't happen: UTF-8 character encoding not supported", e);
++            }
++        return value.toString();
++    }
++
++    public void testStarted() {
++        testStarted("");
++    }
++
+ 	public void testEnded() {
+ 		testEnded("");
+ 	}

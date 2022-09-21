@@ -1,0 +1,1432 @@
+diff --git a/src/core/org/apache/jmeter/report/config/ConfigurationUtils.java b/src/core/org/apache/jmeter/report/config/ConfigurationUtils.java
+index 88b1630..39f255d 100644
+--- a/src/core/org/apache/jmeter/report/config/ConfigurationUtils.java
++++ b/src/core/org/apache/jmeter/report/config/ConfigurationUtils.java
+@@ -17,6 +17,9 @@
+  */
+ package org.apache.jmeter.report.config;
+ 
++import org.apache.jmeter.report.core.ConvertException;
++import org.apache.jmeter.report.core.Converters;
++
+ /**
+  * The class ConfigurationUtils provides helper method for configuration
+  * handling.
+@@ -47,28 +50,12 @@ public class ConfigurationUtils {
+      *             when unable to convert the string
+      */
+     public static <TProperty> TProperty convert(String value,
+-        Class<TProperty> clazz) throws ConfigurationException {
+-        TProperty result;
+-        if (clazz.isAssignableFrom(String.class)) {
+-            @SuppressWarnings("unchecked") // OK because checked above
+-            TProperty temp = (TProperty) value;
+-            result = temp;
+-        } else {
+-            StringConverter<TProperty> converter = Converters
+-                    .getConverter(clazz);
+-            if (converter == null) {
+-                throw new ConfigurationException(String.format(
+-                        NOT_SUPPORTED_CONVERTION_FMT, value, clazz.getName()));
+-            }
+-
+-            try {
+-                result = converter.convert(value);
+-            } catch (ConvertException ex) {
+-                throw new ConfigurationException(String.format(
+-                        NOT_SUPPORTED_CONVERTION_FMT, value, clazz.getName()),
+-                        ex);
+-            }
+-        }
+-        return result;
++            Class<TProperty> clazz) throws ConfigurationException {
++	try {
++	    return Converters.convert(clazz, value);
++	} catch (ConvertException ex) {
++	    throw new ConfigurationException(String.format(
++	            NOT_SUPPORTED_CONVERTION_FMT, value, clazz.getName()));
++	}
+     }
+ }
+diff --git a/src/core/org/apache/jmeter/report/config/ConvertException.java b/src/core/org/apache/jmeter/report/config/ConvertException.java
+deleted file mode 100644
+index d0f8f0e..0000000
+--- a/src/core/org/apache/jmeter/report/config/ConvertException.java
++++ /dev/null
+@@ -1,58 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-package org.apache.jmeter.report.config;
+-
+-/**
+- * The class ConvertException provides an exception when
+- * ConvertStringMethod.execute fails.
+- *
+- * @since 2.14
+- */
+-public class ConvertException extends Exception {
+-
+-    /** The Constant serialVersionUID. */
+-    private static final long serialVersionUID = -8837968211227052980L;
+-    private static final String MESSAGE_FORMAT = "Unable to convert \"%s\" to \"%s\"";
+-
+-    /**
+-     * Instantiates a new convert exception.
+-     *
+-     * @param value
+-     *            the value
+-     * @param type
+-     *            the type
+-     */
+-    public ConvertException(String value, String type) {
+-        super(String.format(MESSAGE_FORMAT, value, type));
+-    }
+-
+-    /**
+-     * Instantiates a new convert exception.
+-     *
+-     * @param value
+-     *            the value
+-     * @param type
+-     *            the type
+-     * @param cause
+-     *            the cause
+-     */
+-    public ConvertException(String value, String type, Throwable cause) {
+-        super(String.format(MESSAGE_FORMAT, value, type), cause);
+-    }
+-
+-}
+diff --git a/src/core/org/apache/jmeter/report/config/Converters.java b/src/core/org/apache/jmeter/report/config/Converters.java
+deleted file mode 100644
+index 0d2d80b..0000000
+--- a/src/core/org/apache/jmeter/report/config/Converters.java
++++ /dev/null
+@@ -1,95 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-package org.apache.jmeter.report.config;
+-
+-import java.io.File;
+-import java.util.HashMap;
+-
+-/**
+- * The class Converters provides converters of string.
+- *
+- * @since 2.14
+- */
+-public final class Converters {
+-
+-    private static HashMap<Class<?>, StringConverter<?>> converters = new HashMap<>();
+-
+-    static {
+-
+-        StringConverter<Double> doubleConverter = new StringConverter<Double>() {
+-
+-            @Override
+-            public Double convert(String value) throws ConvertException {
+-                try {
+-                    return Double.valueOf(value);
+-                } catch (NumberFormatException ex) {
+-                    throw new ConvertException(value, Double.class.getName(), ex);
+-                }
+-            }
+-        };
+-        converters.put(Double.class, doubleConverter);
+-        converters.put(double.class, doubleConverter);
+-
+-        StringConverter<Long> longConverter = new StringConverter<Long>() {
+-
+-            @Override
+-            public Long convert(String value) throws ConvertException {
+-                try {
+-                    return Long.valueOf(value);
+-                } catch (NumberFormatException ex) {
+-                    throw new ConvertException(value, Long.class.getName(), ex);
+-                }
+-            }
+-        };
+-        converters.put(Long.class, longConverter);
+-        converters.put(long.class, longConverter);
+-
+-        StringConverter<Boolean> booleanConverter = new StringConverter<Boolean>() {
+-
+-            @Override
+-            public Boolean convert(String value) {
+-                return Boolean.valueOf(value);
+-            }
+-        };
+-        converters.put(Boolean.class, booleanConverter);
+-        converters.put(boolean.class, booleanConverter);
+-
+-        converters.put(File.class, new StringConverter<File>() {
+-
+-            @Override
+-            public File convert(String value) throws ConvertException {
+-                return new File(value);
+-            }
+-        });
+-    }
+-
+-    /**
+-     * Gets the converter for the specified class.
+-     *
+-     * @param <TDest>
+-     *            the target type
+-     * @param clazz
+-     *            the target class
+-     * @return the converter
+-     */
+-    @SuppressWarnings("unchecked")
+-    public static <TDest> StringConverter<TDest> getConverter(Class<TDest> clazz) {
+-        return (StringConverter<TDest>) converters.get(clazz);
+-    }
+-
+-}
+diff --git a/src/core/org/apache/jmeter/report/config/StringConverter.java b/src/core/org/apache/jmeter/report/config/StringConverter.java
+deleted file mode 100644
+index 8b3c026..0000000
+--- a/src/core/org/apache/jmeter/report/config/StringConverter.java
++++ /dev/null
+@@ -1,40 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-package org.apache.jmeter.report.config;
+-
+-/**
+- * The interface StringConverter represents a converter from a string to another
+- * type.
+- *
+- * @param <TDest>
+- *            the generic type
+- * @since 2.14
+- */
+-public interface StringConverter<TDest> {
+-
+-    /**
+-     * Converts the specified value to the type TDest.
+-     *
+-     * @param value
+-     *            the value to convert
+-     * @return the destination type
+-     * @throws ConvertException
+-     *             occurs when the value cannot be converted to the type TDest
+-     */
+-    TDest convert(String value) throws ConvertException;
+-}
+diff --git a/src/core/org/apache/jmeter/report/core/ConvertException.java b/src/core/org/apache/jmeter/report/core/ConvertException.java
+new file mode 100644
+index 0000000..3fb820f
+--- /dev/null
++++ b/src/core/org/apache/jmeter/report/core/ConvertException.java
+@@ -0,0 +1,58 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.core;
++
++/**
++ * The class ConvertException provides an exception when
++ * ConvertStringMethod.execute fails.
++ *
++ * @since 2.14
++ */
++public class ConvertException extends Exception {
++
++    /** The Constant serialVersionUID. */
++    private static final long serialVersionUID = -8837968211227052980L;
++    private static final String MESSAGE_FORMAT = "Unable to convert \"%s\" to \"%s\"";
++
++    /**
++     * Instantiates a new convert exception.
++     *
++     * @param value
++     *            the value
++     * @param type
++     *            the type
++     */
++    public ConvertException(String value, String type) {
++        super(String.format(MESSAGE_FORMAT, value, type));
++    }
++
++    /**
++     * Instantiates a new convert exception.
++     *
++     * @param value
++     *            the value
++     * @param type
++     *            the type
++     * @param cause
++     *            the cause
++     */
++    public ConvertException(String value, String type, Throwable cause) {
++        super(String.format(MESSAGE_FORMAT, value, type), cause);
++    }
++
++}
+diff --git a/src/core/org/apache/jmeter/report/core/Converters.java b/src/core/org/apache/jmeter/report/core/Converters.java
+new file mode 100644
+index 0000000..e787f25
+--- /dev/null
++++ b/src/core/org/apache/jmeter/report/core/Converters.java
+@@ -0,0 +1,172 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.core;
++
++import java.io.File;
++import java.util.HashMap;
++
++/**
++ * The class Converters provides converters of string.
++ *
++ * @since 2.14
++ */
++public final class Converters {
++
++    private static HashMap<Class<?>, StringConverter<?>> converters = new HashMap<>();
++
++    static {
++
++	StringConverter<Character> characterConverter = new StringConverter<Character>() {
++
++	    @Override
++	    public Character convert(String value) throws ConvertException {
++		try {
++		    return Character.valueOf(value.charAt(0));
++		} catch (NumberFormatException ex) {
++		    throw new ConvertException(value, Double.class.getName(),
++	                    ex);
++		}
++	    }
++	};
++	converters.put(Character.class, characterConverter);
++	converters.put(char.class, characterConverter);
++
++	StringConverter<Double> doubleConverter = new StringConverter<Double>() {
++
++	    @Override
++	    public Double convert(String value) throws ConvertException {
++		try {
++		    return Double.valueOf(value);
++		} catch (NumberFormatException ex) {
++		    throw new ConvertException(value, Double.class.getName(),
++	                    ex);
++		}
++	    }
++	};
++	converters.put(Double.class, doubleConverter);
++	converters.put(double.class, doubleConverter);
++
++	StringConverter<Float> floatConverter = new StringConverter<Float>() {
++
++	    @Override
++	    public Float convert(String value) throws ConvertException {
++		try {
++		    return Float.valueOf(value);
++		} catch (NumberFormatException ex) {
++		    throw new ConvertException(value, Double.class.getName(),
++	                    ex);
++		}
++	    }
++	};
++	converters.put(Float.class, floatConverter);
++	converters.put(float.class, floatConverter);
++
++	StringConverter<Integer> integerConverter = new StringConverter<Integer>() {
++
++	    @Override
++	    public Integer convert(String value) throws ConvertException {
++		try {
++		    return Integer.valueOf(value);
++		} catch (NumberFormatException ex) {
++		    throw new ConvertException(value, Double.class.getName(),
++	                    ex);
++		}
++	    }
++	};
++	converters.put(Integer.class, integerConverter);
++	converters.put(int.class, integerConverter);
++
++	StringConverter<Long> longConverter = new StringConverter<Long>() {
++
++	    @Override
++	    public Long convert(String value) throws ConvertException {
++		try {
++		    return Long.valueOf(value);
++		} catch (NumberFormatException ex) {
++		    throw new ConvertException(value, Long.class.getName(), ex);
++		}
++	    }
++	};
++	converters.put(Long.class, longConverter);
++	converters.put(long.class, longConverter);
++
++	StringConverter<Boolean> booleanConverter = new StringConverter<Boolean>() {
++
++	    @Override
++	    public Boolean convert(String value) {
++		return Boolean.valueOf(value);
++	    }
++	};
++	converters.put(Boolean.class, booleanConverter);
++	converters.put(boolean.class, booleanConverter);
++
++	converters.put(File.class, new StringConverter<File>() {
++
++	    @Override
++	    public File convert(String value) throws ConvertException {
++		return new File(value);
++	    }
++	});
++    }
++
++    /**
++     * Gets the converter for the specified class.
++     *
++     * @param <TDest>
++     *            the target type
++     * @param clazz
++     *            the target class
++     * @return the converter
++     */
++    @SuppressWarnings("unchecked")
++    public static <TDest> StringConverter<TDest> getConverter(
++            Class<TDest> clazz) {
++	return (StringConverter<TDest>) converters.get(clazz);
++    }
++
++    /**
++     * Converts the specified value to the destination type
++     * 
++     * @param <TDest>
++     *            the target type
++     * @param clazz
++     *            the target class
++     * @param value
++     *            the value to convert
++     * @return the converted value
++     * @throws ConvertException
++     *             when the conversion failed
++     */
++    public static <TDest> TDest convert(Class<TDest> clazz, String value)
++            throws ConvertException {
++	TDest result;
++	if (clazz.isAssignableFrom(String.class)) {
++	    @SuppressWarnings("unchecked") // OK because checked above
++	    TDest temp = (TDest) value;
++	    result = temp;
++	} else {
++	    StringConverter<TDest> converter = Converters.getConverter(clazz);
++	    if (converter == null) {
++		throw new ConvertException(value, clazz.getName());
++	    }
++	    result = converter.convert(value);
++	}
++	return result;
++    }
++
++}
+diff --git a/src/core/org/apache/jmeter/report/core/CsvSampleWriter.java b/src/core/org/apache/jmeter/report/core/CsvSampleWriter.java
+index ebdd8b1..87eaf18 100644
+--- a/src/core/org/apache/jmeter/report/core/CsvSampleWriter.java
++++ b/src/core/org/apache/jmeter/report/core/CsvSampleWriter.java
+@@ -151,7 +151,7 @@ public class CsvSampleWriter extends AbstractSampleWriter {
+         char[] specials = new char[] { separator,
+                 CSVSaveService.QUOTING_CHAR, CharUtils.CR, CharUtils.LF };
+         for (int i = 0; i < columnCount; i++) {
+-            String data = sample.getString(i);
++            String data = sample.getData(i);
+             row.append(CSVSaveService.quoteDelimiters(data, specials))
+                     .append(separator);
+         }
+diff --git a/src/core/org/apache/jmeter/report/core/Sample.java b/src/core/org/apache/jmeter/report/core/Sample.java
+index ac74d86..149c017 100644
+--- a/src/core/org/apache/jmeter/report/core/Sample.java
++++ b/src/core/org/apache/jmeter/report/core/Sample.java
+@@ -19,6 +19,7 @@ package org.apache.jmeter.report.core;
+ 
+ import org.apache.jmeter.save.CSVSaveService;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.commons.lang3.StringUtils;
+ 
+ /**
+  * Represents a sample read from a CSV source.
+@@ -35,10 +36,10 @@ public class Sample {
+ 
+     private static final String CONTROLLER_PATTERN = "Number of samples in transaction";
+ 
+-    private boolean storesStartTimeStamp;
+-    private SampleMetadata metadata;
+-    private String[] data;
+-    private long row;
++    private final boolean storesStartTimeStamp;
++    private final SampleMetadata metadata;
++    private final String[] data;
++    private final long row;
+ 
+     /**
+      * Build a sample from a string array
+@@ -52,245 +53,73 @@ public class Sample {
+      *            The sample data as a string array
+      */
+     public Sample(long row, SampleMetadata metadata, String... data) {
+-        this.row = row;
+-        this.metadata = metadata;
+-        this.data = data;
+-        this.storesStartTimeStamp = JMeterUtils.getPropDefault(
+-                "sampleresult.timestamp.start", false);
++	this.row = row;
++	this.metadata = metadata;
++	this.data = data;
++	this.storesStartTimeStamp = JMeterUtils
++	        .getPropDefault("sampleresult.timestamp.start", false);
+     }
+ 
+     /**
+-     * @return the row number from the CSV source from which this sample has been
+-     * built.
++     * @return the row number from the CSV source from which this sample has
++     *         been built.
+      */
+     public long getSampleRow() {
+-        return row;
++	return row;
+     }
+ 
+     /**
+-     * Get the data whose column name is provided as a string. The use of this
+-     * method should be avoided because of its inefficiency.
++     * Gets the data stored in the column with the specified rank.
+      * 
+-     * @param name
+-     *            The data name from the sample metadata
+-     * @return The data value
+-     */
+-    public String getString(String name) {
+-        return data[metadata.indexOf(name)];
+-    }
+-
+-    /**
+-     * Get the data of the ith column as a string. Very fast because it is a
+-     * single array access.
+-     * 
+-     * @param i
+-     *            The column number (0 based) of the data to be returned
+-     * @return The data as a string
+-     */
+-    public String getString(int i) {
+-        return data[i];
+-    }
+-
+-    /**
+-     * Return the sample data whose column is specified as parameter. Use of
+-     * this method should be avoided beacause of its einneficiency
+-     * 
+-     * @param name
+-     *            The data colum name
+-     * @return The data as an integer
+-     */
+-    public int getInt(String name) {
+-        try {
+-            return Integer.parseInt(data[metadata.indexOf(name)]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
+-    }
+-
+-    /**
+-     * Return the sample data at the ith column as an integer.
+-     * 
+-     * @param i
+-     *            the column number (zero based) of the data to be returned
+-     * @return The ith column data an an integer
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as an integer
++     * @param index
++     *            the rank of the column
++     * @return the data of the column
+      */
+-    public int getInt(int i) {
+-        try {
+-            return Integer.parseInt(data[i]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
++    public String getData(int index) {
++	return data[index];
+     }
+ 
+     /**
+-     * Return the sample data whose column name is specified as a long. Use of
+-     * this method should be avoided because of it inefficiency.
++     * Gets the data stored in the column with the specified name.
+      * 
+      * @param name
+-     *            The column data name.
+-     * @return The data of the specified column as a long
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as a long
++     *            the name of the column
++     * @return the data of the column
+      */
+-    public long getLong(String name) {
+-        try {
+-            return Long.parseLong(data[metadata.indexOf(name)]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
++    public String getData(String name) {
++	return data[metadata.ensureIndexOf(name)];
+     }
+ 
+     /**
+-     * Return the sample data at the ith column as a long.
++     * Gets the data of the column matching the specified rank and converts it
++     * to an alternative type.
+      * 
+-     * @param i
+-     *            The column number (zero based) of the data to be returned as
+-     *            an integer
+-     * @return The ith column data as a long
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as a long
++     * @param clazz
++     *            the target class of the data
++     * @param index
++     *            the rank of the column
++     * @return the converted value of the data
+      */
+-    public long getLong(int i) {
+-        try {
+-            return Long.parseLong(data[i]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
++    public <TData> TData getData(Class<TData> clazz, int index) {
++	try {
++	    return Converters.convert(clazz, data[index]);
++	} catch (ConvertException ex) {
++	    throw new SampleException(ERROR_ON_SAMPLE + row, ex);
++	}
+     }
+ 
+     /**
+-     * Return the sample data whose column name is specified as a float. Use of
+-     * this method should be avoided because of it inefficiency.
++     * Gets the data of the column matching the specified name and converts it
++     * to an alternative type.
+      * 
++     * @param clazz
++     *            the target class of the data
+      * @param name
+-     *            The column data name.
+-     * @return The data of the specified column as a float
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as a float
+-     */
+-    public float getFloat(String name) {
+-        try {
+-            return Float.parseFloat(data[metadata.indexOf(name)]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
+-    }
+-
+-    /**
+-     * Return the sample data at the ith column as a float.
+-     * 
+-     * @param i
+-     *            The column number (zero based) of the data to be returned
+-     * @return The ith column data as a float
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as a float
+-     */
+-    public float getFloat(int i) {
+-        try {
+-            return Float.parseFloat(data[i]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
+-    }
+-
+-    /**
+-     * Return the sample data whose column name is specified as a double. Use of
+-     * this method should be avoided because of it inefficiency.
+-     * 
+-     * @param name
+-     *            The column data name.
+-     * @return The data of the specified column as a double
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as a double
+-     */
+-    public Double getDouble(String name) {
+-        try {
+-            return Double.valueOf(data[metadata.indexOf(name)]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
+-    }
+-
+-    /**
+-     * Return the sample data at the ith column as a double.
+-     * 
+-     * @param id
+-     *            The column number (zero based) of the data to be returned as a
+-     *            double
+-     * @return The ith column data as a double
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as a double
+-     */
+-    public double getDouble(int id) {
+-        try {
+-            return Double.parseDouble(data[id]);
+-        } catch (NumberFormatException ex) {
+-            throw new SampleException(ERROR_ON_SAMPLE + row, ex);
+-        }
+-    }
+-
+-    /**
+-     * Return the sample data whose column name is specified as a char. Use of
+-     * this method should be avoided because of it inefficiency.
+-     * 
+-     * @param name
+-     *            The column data name.
+-     * @return The data of the specified column as a char
+-     * @throws IndexOutOfBoundsException
+-     *             if the data for this column is an empty string
+-     */
+-    public char getChar(String name) {
+-        return data[metadata.indexOf(name)].charAt(0);
+-    }
+-
+-    /**
+-     * Return the sample data at the ith column as a char.
+-     * 
+-     * @param id
+-     *            The column number (zero based) of the data to be returned as a
+-     *            char
+-     * @return The ith column data as a char
+-     * @throws IndexOutOfBoundsException
+-     *             if the data for this column is an empty string
+-     */
+-    public char getChar(int id) {
+-        return data[id].charAt(0);
+-    }
+-
+-    /**
+-     * Return the sample data whose column name is specified as a boolean. Use
+-     * of this method should be avoided because of it inefficiency.
+-     * <p>
+-     * The boolean is assumed to be {@code true} if and only if the data string is
+-     * "true", in any other cases this method returns {@code false}
+-     * </p>
+-     * 
+-     * @param name
+-     *            The column data name.
+-     * @return The data of the specified column as a boolean
+-     */
+-    public boolean getBoolean(String name) {
+-        return Boolean.parseBoolean(data[metadata.indexOf(name)]);
+-    }
+-
+-    /**
+-     * Return the sample data at the ith column as a boolean.
+-     * <p>
+-     * The boolean is assumed to be {@code true} if and only if the data string is
+-     * "true", in any other cases this method returns {@code false}
+-     * </p>
+-     * 
+-     * @param id
+-     *            The column number (zero based) of the data to be returned as a
+-     *            boolean
+-     * @return The ith column data as a boolean
+-     * @throws NumberFormatException
+-     *             if the data could not be parsed as a boolean
++     *            the name of the column
++     * @return the converted value of the data
+      */
+-    public boolean getBoolean(int id) {
+-        return Boolean.parseBoolean(data[id]);
++    public <TData> TData getData(Class<TData> clazz, String name) {
++	return getData(clazz, metadata.ensureIndexOf(name));
+     }
+ 
+     /*
+@@ -300,14 +129,7 @@ public class Sample {
+      */
+     @Override
+     public String toString() {
+-        StringBuilder out = new StringBuilder();
+-        for (int i = 0; i < data.length; i++) {
+-            out.append(data[i]);
+-            if (i < data.length - 1) {
+-                out.append(metadata.getSeparator());
+-            }
+-        }
+-        return out.toString();
++	return StringUtils.join(data, metadata.getSeparator());
+     }
+ 
+     /**
+@@ -316,7 +138,7 @@ public class Sample {
+      * @return the time stamp
+      */
+     public long getTimestamp() {
+-        return getLong(metadata.indexOf(CSVSaveService.TIME_STAMP));
++	return getData(long.class, CSVSaveService.TIME_STAMP);
+     }
+ 
+     /**
+@@ -325,7 +147,7 @@ public class Sample {
+      * @return the elapsed time stored in the sample
+      */
+     public long getElapsedTime() {
+-        return getLong(metadata.indexOf(CSVSaveService.CSV_ELAPSED));
++	return getData(long.class, CSVSaveService.CSV_ELAPSED);
+     }
+ 
+     /**
+@@ -345,8 +167,8 @@ public class Sample {
+      * @return the start time
+      */
+     public long getStartTime() {
+-        return storesStartTimeStamp ? getTimestamp() : getTimestamp()
+-                - getElapsedTime();
++	return storesStartTimeStamp ? getTimestamp()
++	        : getTimestamp() - getElapsedTime();
+     }
+ 
+     /**
+@@ -367,8 +189,8 @@ public class Sample {
+      * @return the end time
+      */
+     public long getEndTime() {
+-        return storesStartTimeStamp ? getTimestamp() + getElapsedTime()
+-                : getTimestamp();
++	return storesStartTimeStamp ? getTimestamp() + getElapsedTime()
++	        : getTimestamp();
+     }
+ 
+     /**
+@@ -377,7 +199,7 @@ public class Sample {
+      * @return the response code stored in the sample
+      */
+     public String getResponseCode() {
+-        return getString(metadata.indexOf(CSVSaveService.RESPONSE_CODE));
++	return getData(CSVSaveService.RESPONSE_CODE);
+     }
+ 
+     /**
+@@ -386,7 +208,7 @@ public class Sample {
+      * @return the failure message stored in the sample
+      */
+     public String getFailureMessage() {
+-        return getString(metadata.indexOf(CSVSaveService.FAILURE_MESSAGE));
++	return getData(CSVSaveService.FAILURE_MESSAGE);
+     }
+ 
+     /**
+@@ -395,7 +217,7 @@ public class Sample {
+      * @return the name stored in the sample
+      */
+     public String getName() {
+-        return getString(metadata.indexOf(CSVSaveService.LABEL));
++	return getData(CSVSaveService.LABEL);
+     }
+ 
+     /**
+@@ -404,7 +226,7 @@ public class Sample {
+      * @return the response message stored in the sample
+      */
+     public String getResponseMessage() {
+-        return getString(metadata.indexOf(CSVSaveService.RESPONSE_MESSAGE));
++	return getData(CSVSaveService.RESPONSE_MESSAGE);
+     }
+ 
+     /**
+@@ -413,7 +235,7 @@ public class Sample {
+      * @return the latency stored in the sample
+      */
+     public long getLatency() {
+-        return getLong(metadata.indexOf(CSVSaveService.CSV_LATENCY));
++	return getData(long.class, CSVSaveService.CSV_LATENCY);
+     }
+ 
+     /**
+@@ -422,7 +244,7 @@ public class Sample {
+      * @return the success status stored in the sample
+      */
+     public boolean getSuccess() {
+-        return getBoolean(metadata.indexOf(CSVSaveService.SUCCESSFUL));
++	return getData(boolean.class, CSVSaveService.SUCCESSFUL);
+     }
+ 
+     /**
+@@ -431,7 +253,7 @@ public class Sample {
+      * @return the number of sent bytes stored in the sample
+      */
+     public int getSentBytes() {
+-        return getInt(metadata.indexOf(CSVSaveService.CSV_BYTES));
++	return getData(int.class, CSVSaveService.CSV_BYTES);
+     }
+ 
+     /**
+@@ -440,7 +262,7 @@ public class Sample {
+      * @return the number of threads in the group of this sample
+      */
+     public int getGroupThreads() {
+-        return getInt(metadata.indexOf(CSVSaveService.CSV_THREAD_COUNT1));
++	return getData(int.class, CSVSaveService.CSV_THREAD_COUNT1);
+     }
+ 
+     /**
+@@ -449,7 +271,7 @@ public class Sample {
+      * @return the overall number of threads
+      */
+     public int getAllThreads() {
+-        return getInt(metadata.indexOf(CSVSaveService.CSV_THREAD_COUNT2));
++	return getData(int.class, CSVSaveService.CSV_THREAD_COUNT2);
+     }
+ 
+     /**
+@@ -458,16 +280,17 @@ public class Sample {
+      * @return the thread name stored in the sample
+      */
+     public String getThreadName() {
+-        return getString(metadata.indexOf(CSVSaveService.THREAD_NAME));
++	return getData(CSVSaveService.THREAD_NAME);
+     }
+ 
+     /**
+      * Checks if this sample is a controller.
+      *
+-     * @return {@code true}, if this sample is a controller; otherwise {@code false}
++     * @return {@code true}, if this sample is a controller; otherwise
++     *         {@code false}
+      */
+     public boolean isController() {
+-        String message = getResponseMessage();
+-        return message != null && message.startsWith(CONTROLLER_PATTERN);
++	String message = getResponseMessage();
++	return message != null && message.startsWith(CONTROLLER_PATTERN);
+     }
+ }
+diff --git a/src/core/org/apache/jmeter/report/core/SampleMetadata.java b/src/core/org/apache/jmeter/report/core/SampleMetadata.java
+index bd3d989..c325520 100644
+--- a/src/core/org/apache/jmeter/report/core/SampleMetadata.java
++++ b/src/core/org/apache/jmeter/report/core/SampleMetadata.java
+@@ -38,6 +38,8 @@ import org.apache.jmeter.save.CSVSaveService;
+  */
+ public class SampleMetadata {
+ 
++    private static final String METADATA_EXCEPTION_MSG_FMT = "No <%s> data found in sample metadata <%s>";
++
+     /** The column list : accessed by CSVSampleWriter */
+     List<String> columns;
+ 
+@@ -56,8 +58,8 @@ public class SampleMetadata {
+      *            The list of columns names (must not be {@code null})
+      */
+     public SampleMetadata(char separator, String... columns) {
+-        Validate.notNull(columns, "columns must not be null");
+-        initialize(separator, Arrays.asList(columns));
++	Validate.notNull(columns, "columns must not be null");
++	initialize(separator, Arrays.asList(columns));
+     }
+ 
+     /**
+@@ -68,90 +70,90 @@ public class SampleMetadata {
+      *            {@code null})
+      */
+     public SampleMetadata(SampleSaveConfiguration saveConfig) {
+-        List<String> configuredColumns = new ArrayList<>();
+-        if (saveConfig.saveTimestamp()) {
+-            configuredColumns.add(CSVSaveService.TIME_STAMP);
+-        }
+-        if (saveConfig.saveTime()) {
+-            configuredColumns.add(CSVSaveService.CSV_ELAPSED);
+-        }
+-        if (saveConfig.saveLabel()) {
+-            configuredColumns.add(CSVSaveService.LABEL);
+-        }
+-        if (saveConfig.saveCode()) {
+-            configuredColumns.add(CSVSaveService.RESPONSE_CODE);
+-        }
+-        if (saveConfig.saveMessage()) {
+-            configuredColumns.add(CSVSaveService.RESPONSE_MESSAGE);
+-        }
+-        if (saveConfig.saveThreadName()) {
+-            configuredColumns.add(CSVSaveService.THREAD_NAME);
+-        }
+-        if (saveConfig.saveDataType()) {
+-            configuredColumns.add(CSVSaveService.DATA_TYPE);
+-        }
+-        if (saveConfig.saveSuccess()) {
+-            configuredColumns.add(CSVSaveService.SUCCESSFUL);
+-        }
+-        if (saveConfig.saveAssertionResultsFailureMessage()) {
+-            configuredColumns.add(CSVSaveService.FAILURE_MESSAGE);
+-        }
+-        if (saveConfig.saveBytes()) {
+-            configuredColumns.add(CSVSaveService.CSV_BYTES);
+-        }
+-        if (saveConfig.saveThreadCounts()) {
+-            configuredColumns.add(CSVSaveService.CSV_THREAD_COUNT1);
+-            configuredColumns.add(CSVSaveService.CSV_THREAD_COUNT2);
+-        }
+-        if (saveConfig.saveUrl()) {
+-            configuredColumns.add(CSVSaveService.CSV_URL);
+-        }
+-        if (saveConfig.saveFileName()) {
+-            configuredColumns.add(CSVSaveService.CSV_FILENAME);
+-        }
+-        if (saveConfig.saveLatency()) {
+-            configuredColumns.add(CSVSaveService.CSV_LATENCY);
+-        }
+-        if (saveConfig.saveEncoding()) {
+-            configuredColumns.add(CSVSaveService.CSV_ENCODING);
+-        }
+-        if (saveConfig.saveSampleCount()) {
+-            configuredColumns.add(CSVSaveService.CSV_SAMPLE_COUNT);
+-            configuredColumns.add(CSVSaveService.CSV_ERROR_COUNT);
+-        }
+-        if (saveConfig.saveHostname()) {
+-            configuredColumns.add(CSVSaveService.CSV_HOSTNAME);
+-        }
+-        if (saveConfig.saveIdleTime()) {
+-            configuredColumns.add(CSVSaveService.CSV_IDLETIME);
+-        }
+-        if (saveConfig.saveConnectTime()) {
+-            configuredColumns.add(CSVSaveService.CSV_CONNECT_TIME);
+-        }
+-        initialize(saveConfig.getDelimiter().charAt(0), configuredColumns);
++	List<String> configuredColumns = new ArrayList<>();
++	if (saveConfig.saveTimestamp()) {
++	    configuredColumns.add(CSVSaveService.TIME_STAMP);
++	}
++	if (saveConfig.saveTime()) {
++	    configuredColumns.add(CSVSaveService.CSV_ELAPSED);
++	}
++	if (saveConfig.saveLabel()) {
++	    configuredColumns.add(CSVSaveService.LABEL);
++	}
++	if (saveConfig.saveCode()) {
++	    configuredColumns.add(CSVSaveService.RESPONSE_CODE);
++	}
++	if (saveConfig.saveMessage()) {
++	    configuredColumns.add(CSVSaveService.RESPONSE_MESSAGE);
++	}
++	if (saveConfig.saveThreadName()) {
++	    configuredColumns.add(CSVSaveService.THREAD_NAME);
++	}
++	if (saveConfig.saveDataType()) {
++	    configuredColumns.add(CSVSaveService.DATA_TYPE);
++	}
++	if (saveConfig.saveSuccess()) {
++	    configuredColumns.add(CSVSaveService.SUCCESSFUL);
++	}
++	if (saveConfig.saveAssertionResultsFailureMessage()) {
++	    configuredColumns.add(CSVSaveService.FAILURE_MESSAGE);
++	}
++	if (saveConfig.saveBytes()) {
++	    configuredColumns.add(CSVSaveService.CSV_BYTES);
++	}
++	if (saveConfig.saveThreadCounts()) {
++	    configuredColumns.add(CSVSaveService.CSV_THREAD_COUNT1);
++	    configuredColumns.add(CSVSaveService.CSV_THREAD_COUNT2);
++	}
++	if (saveConfig.saveUrl()) {
++	    configuredColumns.add(CSVSaveService.CSV_URL);
++	}
++	if (saveConfig.saveFileName()) {
++	    configuredColumns.add(CSVSaveService.CSV_FILENAME);
++	}
++	if (saveConfig.saveLatency()) {
++	    configuredColumns.add(CSVSaveService.CSV_LATENCY);
++	}
++	if (saveConfig.saveEncoding()) {
++	    configuredColumns.add(CSVSaveService.CSV_ENCODING);
++	}
++	if (saveConfig.saveSampleCount()) {
++	    configuredColumns.add(CSVSaveService.CSV_SAMPLE_COUNT);
++	    configuredColumns.add(CSVSaveService.CSV_ERROR_COUNT);
++	}
++	if (saveConfig.saveHostname()) {
++	    configuredColumns.add(CSVSaveService.CSV_HOSTNAME);
++	}
++	if (saveConfig.saveIdleTime()) {
++	    configuredColumns.add(CSVSaveService.CSV_IDLETIME);
++	}
++	if (saveConfig.saveConnectTime()) {
++	    configuredColumns.add(CSVSaveService.CSV_CONNECT_TIME);
++	}
++	initialize(saveConfig.getDelimiter().charAt(0), configuredColumns);
+     }
+ 
+     private void initialize(char separator, List<String> columns) {
+-        this.separator = separator;
+-        this.columns = columns;
+-        int size = columns.size();
+-        for (int i = 0; i < size; i++) {
+-            index.put(this.columns.get(i).trim(), Integer.valueOf(i));
+-        }
++	this.separator = separator;
++	this.columns = columns;
++	int size = columns.size();
++	for (int i = 0; i < size; i++) {
++	    index.put(this.columns.get(i).trim(), Integer.valueOf(i));
++	}
+     }
+ 
+     /**
+      * @return the character used for separating columns
+      */
+     public char getSeparator() {
+-        return separator;
++	return separator;
+     }
+ 
+     /**
+      * @return the number of columns in the metadata
+      */
+     public int getColumnCount() {
+-        return columns.size();
++	return columns.size();
+     }
+ 
+     /**
+@@ -166,7 +168,7 @@ public class SampleMetadata {
+      *             <code>getColumnCount()</code>)
+      */
+     public String getColumnName(int i) {
+-        return columns.get(i);
++	return columns.get(i);
+     }
+ 
+     /**
+@@ -181,7 +183,7 @@ public class SampleMetadata {
+      *             <code>getColumnCount()</code>)
+      */
+     public String getColumnName(Integer i) {
+-        return columns.get(i.intValue());
++	return columns.get(i.intValue());
+     }
+ 
+     /**
+@@ -193,8 +195,26 @@ public class SampleMetadata {
+      *         does not exist in this metadata
+      */
+     public int indexOf(String col) {
+-        Integer out = index.get(col);
+-        return out == null ? -1 : out.intValue();
++	Integer out = index.get(col);
++	return out == null ? -1 : out.intValue();
++    }
++
++    /**
++     * Returns the index of the column with the specified name.
++     * 
++     * @param col
++     *            the column name for which the index is requested
++     * @return The index of the requested column
++     * @throws SampleException
++     *             when the column with the specified name is not found
++     */
++    public int ensureIndexOf(String col) {
++	int index = indexOf(col);
++	if (index < 0) {
++	    throw new SampleException(
++	            String.format(METADATA_EXCEPTION_MSG_FMT, col, toString()));
++	}
++	return index;
+     }
+ 
+     /*
+@@ -204,6 +224,6 @@ public class SampleMetadata {
+      */
+     @Override
+     public String toString() {
+-        return StringUtils.join(columns, separator);
++	return StringUtils.join(columns, separator);
+     }
+ }
+diff --git a/src/core/org/apache/jmeter/report/core/StringConverter.java b/src/core/org/apache/jmeter/report/core/StringConverter.java
+new file mode 100644
+index 0000000..70e4521
+--- /dev/null
++++ b/src/core/org/apache/jmeter/report/core/StringConverter.java
+@@ -0,0 +1,40 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.core;
++
++/**
++ * The interface StringConverter represents a converter from a string to another
++ * type.
++ *
++ * @param <TDest>
++ *            the generic type
++ * @since 2.14
++ */
++public interface StringConverter<TDest> {
++
++    /**
++     * Converts the specified value to the type TDest.
++     *
++     * @param value
++     *            the value to convert
++     * @return the destination type
++     * @throws ConvertException
++     *             occurs when the value cannot be converted to the type TDest
++     */
++    TDest convert(String value) throws ConvertException;
++}
+diff --git a/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java b/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java
+index 3807792..427fb1b 100644
+--- a/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java
++++ b/src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java
+@@ -28,17 +28,17 @@ import java.util.regex.Pattern;
+ 
+ import org.apache.commons.io.FileUtils;
+ import org.apache.jmeter.report.config.ConfigurationException;
+-import org.apache.jmeter.report.config.ConvertException;
+-import org.apache.jmeter.report.config.Converters;
+ import org.apache.jmeter.report.config.ExporterConfiguration;
+ import org.apache.jmeter.report.config.GraphConfiguration;
+ import org.apache.jmeter.report.config.ReportGeneratorConfiguration;
+-import org.apache.jmeter.report.config.StringConverter;
+ import org.apache.jmeter.report.core.ControllerSamplePredicate;
++import org.apache.jmeter.report.core.ConvertException;
++import org.apache.jmeter.report.core.Converters;
+ import org.apache.jmeter.report.core.Sample;
+ import org.apache.jmeter.report.core.SampleException;
+ import org.apache.jmeter.report.core.SamplePredicate;
+ import org.apache.jmeter.report.core.SampleSelector;
++import org.apache.jmeter.report.core.StringConverter;
+ import org.apache.jmeter.report.processor.AbstractSampleConsumer;
+ import org.apache.jmeter.report.processor.AggregateConsumer;
+ import org.apache.jmeter.report.processor.ApdexSummaryConsumer;
+diff --git a/src/core/org/apache/jmeter/report/processor/FieldSampleComparator.java b/src/core/org/apache/jmeter/report/processor/FieldSampleComparator.java
+index 9ca242e..c1b0468 100644
+--- a/src/core/org/apache/jmeter/report/processor/FieldSampleComparator.java
++++ b/src/core/org/apache/jmeter/report/processor/FieldSampleComparator.java
+@@ -19,15 +19,13 @@ package org.apache.jmeter.report.processor;
+ 
+ import org.apache.jmeter.report.core.Sample;
+ import org.apache.jmeter.report.core.SampleComparator;
+-import org.apache.jmeter.report.core.SampleException;
+ import org.apache.jmeter.report.core.SampleMetadata;
+ 
+ /**
+  * @since 2.14
+  */
+ public class FieldSampleComparator implements SampleComparator {
+-    private static final String METADATA_EXCEPTION_MSG_FMT = "No <%s> data found in sample metadata <%s>";
+-
++    
+     private int index;
+ 
+     private final String fieldName;
+@@ -38,11 +36,7 @@ public class FieldSampleComparator implements SampleComparator {
+ 
+     @Override
+     public final void initialize(SampleMetadata metadata) {
+-        index = metadata.indexOf(fieldName);
+-        if (index < 0) {
+-            throw new SampleException(String.format(METADATA_EXCEPTION_MSG_FMT,
+-                    fieldName, metadata));
+-        }
++        index = metadata.ensureIndexOf(fieldName);
+     }
+ 
+     /*
+@@ -54,6 +48,6 @@ public class FieldSampleComparator implements SampleComparator {
+      */
+     @Override
+     public long compare(Sample s1, Sample s2) {
+-        return Long.compare(s1.getLong(index), s2.getLong(index));
++        return Long.compare(s1.getData(long.class, index), s2.getData(long.class, index));
+     }
+ }
+diff --git a/src/core/org/apache/jmeter/report/processor/NormalizerSampleConsumer.java b/src/core/org/apache/jmeter/report/processor/NormalizerSampleConsumer.java
+index a0a3880..f8ca752 100644
+--- a/src/core/org/apache/jmeter/report/processor/NormalizerSampleConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/NormalizerSampleConsumer.java
+@@ -52,7 +52,7 @@ public class NormalizerSampleConsumer extends AbstractSampleConsumer {
+     @Override
+     public void startConsuming() {
+         sampleMetadata = getConsumedMetadata(0);
+-        timestamp = sampleMetadata.indexOf(CSVSaveService.TIME_STAMP);
++        timestamp = sampleMetadata.ensureIndexOf(CSVSaveService.TIME_STAMP);
+         super.setProducedMetadata(sampleMetadata, 0);
+         startProducing();
+     }
+@@ -61,7 +61,7 @@ public class NormalizerSampleConsumer extends AbstractSampleConsumer {
+     public void consume(Sample s, int channel) {
+         Date date = null;
+         try {
+-            String tStr = s.getString(timestamp);
++            String tStr = s.getData(timestamp);
+             try {
+                 // Try to parse the timestamp assuming is a long
+                 date = new Date(Long.parseLong(tStr));
+@@ -71,7 +71,7 @@ public class NormalizerSampleConsumer extends AbstractSampleConsumer {
+             }
+         } catch (Exception e) {
+             throw new SampleException(String.format(
+-                    PARSE_TIMESTAMP_EXCEPTION_MESSAGE, s.getString(timestamp),
++                    PARSE_TIMESTAMP_EXCEPTION_MESSAGE, s.getData(timestamp),
+                     s.toString()), e);
+         }
+         long time = date.getTime();
+@@ -81,7 +81,7 @@ public class NormalizerSampleConsumer extends AbstractSampleConsumer {
+             if (i == timestamp) {
+                 data[i] = Long.toString(time);
+             } else {
+-                data[i] = s.getString(i);
++                data[i] = s.getData(i);
+             }
+         }
+         Sample rewrited = new Sample(s.getSampleRow(), sampleMetadata, data);
+diff --git a/src/core/org/apache/jmeter/report/processor/TaggerConsumer.java b/src/core/org/apache/jmeter/report/processor/TaggerConsumer.java
+index eca3862..61594c0 100644
+--- a/src/core/org/apache/jmeter/report/processor/TaggerConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/TaggerConsumer.java
+@@ -98,7 +98,7 @@ public class TaggerConsumer<TIndex> extends AbstractSampleConsumer {
+         SampleMetadata metadata = builder.getMetadata();
+         int colCount = metadata.getColumnCount();
+         for (int i = 0; i < colCount - 1; i++) {
+-            builder.add(sample.getString(i));
++            builder.add(sample.getData(i));
+         }
+         builder.add(String.valueOf(index));
+         return builder.build();
+diff --git a/src/core/org/apache/jmeter/report/processor/graph/AbstractVersusRequestsGraphConsumer.java b/src/core/org/apache/jmeter/report/processor/graph/AbstractVersusRequestsGraphConsumer.java
+index 8deee28..ef9420c 100644
+--- a/src/core/org/apache/jmeter/report/processor/graph/AbstractVersusRequestsGraphConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/graph/AbstractVersusRequestsGraphConsumer.java
+@@ -250,7 +250,7 @@ public abstract class AbstractVersusRequestsGraphConsumer extends
+             SampleMetadata metadata = builder.getMetadata();
+             int colCount = metadata.getColumnCount();
+             for (int i = 0; i < colCount - 1; i++) {
+-                builder.add(sample.getString(i));
++                builder.add(sample.getData(i));
+             }
+             builder.add(String.valueOf(count));
+             return builder.build();
+diff --git a/src/core/org/apache/jmeter/report/processor/graph/impl/LatencyVSRequestGraphConsumer.java b/src/core/org/apache/jmeter/report/processor/graph/impl/LatencyVSRequestGraphConsumer.java
+index c0df181..ac6abc0 100644
+--- a/src/core/org/apache/jmeter/report/processor/graph/impl/LatencyVSRequestGraphConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/graph/impl/LatencyVSRequestGraphConsumer.java
+@@ -51,7 +51,7 @@ public class LatencyVSRequestGraphConsumer extends
+             @Override
+             public Double select(Sample sample) {
+                 return sample
+-                        .getDouble(AbstractVersusRequestsGraphConsumer.TIME_INTERVAL_LABEL);
++                        .getData(Double.class, AbstractVersusRequestsGraphConsumer.TIME_INTERVAL_LABEL);
+             }
+         };
+     }
+diff --git a/src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimeVSRequestGraphConsumer.java b/src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimeVSRequestGraphConsumer.java
+index 655b036..13acb1c 100644
+--- a/src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimeVSRequestGraphConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimeVSRequestGraphConsumer.java
+@@ -51,7 +51,7 @@ public class ResponseTimeVSRequestGraphConsumer extends
+             @Override
+             public Double select(Sample sample) {
+                 return sample
+-                        .getDouble(AbstractVersusRequestsGraphConsumer.TIME_INTERVAL_LABEL);
++                        .getData(Double.class, AbstractVersusRequestsGraphConsumer.TIME_INTERVAL_LABEL);
+             }
+         };
+     }

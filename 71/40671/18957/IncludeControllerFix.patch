@@ -1,0 +1,68 @@
+Index: src/components/org/apache/jmeter/control/IncludeController.java
+===================================================================
+--- src/components/org/apache/jmeter/control/IncludeController.java	(revision 451872)
++++ src/components/org/apache/jmeter/control/IncludeController.java	(working copy)
+@@ -20,12 +20,13 @@
+ import java.io.FileInputStream;
+ import java.io.FileNotFoundException;
+ import java.io.InputStream;
+-import java.util.Iterator;
+-import java.util.LinkedList;
++import java.util.*;
+ 
+ import org.apache.jmeter.save.SaveService;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.TestPlan;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.config.Arguments;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+@@ -99,8 +100,45 @@
+      * The way ReplaceableController works is clone is called first,
+      * followed by replace(HashTree) and finally getReplacement().
+      */
+-    public HashTree getReplacementSubTree() {
+-        return SUBTREE;
++    public HashTree getReplacementSubTree()
++    {
++		/**
++         * The IncludeController did not work before. Because everything needs to be
++         * placed under a TestPlan in the IncludeController, when JMeter traverses the
++         * subtree of the IncludeController before running, it only adds nodes which are
++         * instanceOf Sampler or Controller. Because TestPlan is not in these catergories,
++         * JMeter just skips it and that is why the IncludeController does not work.
++         *
++         * The solution is to only return the subtree under the TestPlan when JMeter asks
++         * for the replacement subtree for the reason mentioned above. As the TestPlan is
++         * skipped, we need to make a copy for all the user defined variables from the TestPlan.
++         * Because the user defined variable controller works anywhere in the tree, so it just
++         * needs to copy them to somewhere in the tree (I choose to copy them as a child
++         * under the TestPlan).
++        */
++        
++		Map args = ((TestPlan) this.SUB).getUserDefinedVariables();
++        Iterator iter = args.entrySet().iterator();
++        Arguments arguments = null;
++
++        while (iter.hasNext())
++        {
++            if (arguments == null)
++            {
++                arguments = new Arguments();
++                // have to enable the TestElement explicitly, or it will be removed
++                arguments.setProperty(TestElement.ENABLED, "true");
++            }
++            Map.Entry entry = (Map.Entry)iter.next();
++            arguments.addArgument((String)entry.getKey(), (String)entry.getValue(), "=");
++        }
++
++        // Get the subtree under the TestPlan
++        HashTree children = SUBTREE.getTree(this.SUB);
++        if (arguments != null)
++            children.add(arguments);
++
++        return children;
+     }
+ 
+     /**

@@ -1,0 +1,144 @@
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 TCPConfigGui.java
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	3 Apr 2008 15:53:48 -0000	1.1.1.2
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	16 Jul 2008 14:19:52 -0000
+@@ -45,6 +45,8 @@
+ 	private final static String TIMEOUT = "timeout"; //$NON-NLS-1$
+ 
+ 	private final static String NODELAY = "nodelay"; //$NON-NLS-1$
++	
++	private final static String UNESCAPE = "unescape"; //$NON-NLS-1$
+ 
+ 	private final static String REQUEST = "request"; //$NON-NLS-1$
+ 
+@@ -60,6 +62,8 @@
+ 	private JCheckBox setNoDelay;
+ 
+ 	private JTextArea requestData;
++	
++	private JCheckBox setUnescapeData;
+ 
+ 	private boolean displayName = true;
+ 
+@@ -86,6 +90,7 @@
+ 		timeout.setText(element.getPropertyAsString(TCPSampler.TIMEOUT));
+ 		setNoDelay.setSelected(element.getPropertyAsBoolean(TCPSampler.NODELAY));
+ 		requestData.setText(element.getPropertyAsString(TCPSampler.REQUEST));
++		setUnescapeData.setSelected(element.getPropertyAsBoolean(TCPSampler.UNESCAPE));
+ 	}
+ 
+ 	public TestElement createTestElement() {
+@@ -108,6 +113,7 @@
+ 		element.setProperty(TCPSampler.NODELAY, setNoDelay.isSelected());
+ 		element.setProperty(TCPSampler.TIMEOUT, timeout.getText());
+ 		element.setProperty(TCPSampler.REQUEST, requestData.getText());
++		element.setProperty(TCPSampler.UNESCAPE, setUnescapeData.isSelected());
+ 	}
+ 
+     /**
+@@ -122,6 +128,7 @@
+         requestData.setText(""); //$NON-NLS-1$
+         reUseConnection.setSelected(true);
+         setNoDelay.setSelected(false);
++        setUnescapeData.setSelected(false);
+     }    
+ 
+ 	private JPanel createTimeoutPanel() {
+@@ -202,6 +209,20 @@
+ 		return reqDataPanel;
+ 
+ 	}
++	
++	private JPanel createUnescapeRequestPannel() {
++        JLabel label = new JLabel(JMeterUtils.getResString("tcp_request_data_unescape")); // $NON-NLS-1$
++
++        setUnescapeData = new JCheckBox();
++        setUnescapeData.setName(UNESCAPE);
++        label.setLabelFor(setUnescapeData);
++
++        JPanel nodelayPanel = new JPanel(new BorderLayout(5, 0));
++        nodelayPanel.add(label, BorderLayout.WEST);
++        nodelayPanel.add(setUnescapeData, BorderLayout.CENTER);
++        return nodelayPanel;
++	    
++	}
+ 
+ 	// private JPanel createFilenamePanel()//Not used yet
+ 	// {
+@@ -233,6 +254,7 @@
+ 		mainPanel.add(createTimeoutPanel());
+ 		mainPanel.add(createNoDelayPanel());
+ 		mainPanel.add(createRequestPanel());
++		mainPanel.add(createUnescapeRequestPannel());
+ 
+ 		// mainPanel.add(createFilenamePanel());
+ 		add(mainPanel, BorderLayout.CENTER);
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.1.1.3
+diff -u -r1.1.1.3 messages.properties
+--- src/core/org/apache/jmeter/resources/messages.properties	15 Jul 2008 17:48:56 -0000	1.1.1.3
++++ src/core/org/apache/jmeter/resources/messages.properties	16 Jul 2008 14:19:52 -0000
+@@ -769,6 +769,7 @@
+ tcp_nodelay=Set NoDelay
+ tcp_port=Port Number\:
+ tcp_request_data=Text to send
++tcp_request_data_unescape=Unescape Text
+ tcp_sample_title=TCP Sampler
+ tcp_timeout=Timeout (milliseconds)\:
+ template_field=Template\:
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java,v
+retrieving revision 1.1.1.3
+diff -u -r1.1.1.3 TCPSampler.java
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	15 Jul 2008 17:48:57 -0000	1.1.1.3
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	16 Jul 2008 14:19:52 -0000
+@@ -30,6 +30,7 @@
+ import java.util.Map;
+ import java.util.Properties;
+ 
++import org.apache.commons.lang.StringEscapeUtils;
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.samplers.AbstractSampler;
+@@ -60,6 +61,8 @@
+ 	public static final String TIMEOUT = "TCPSampler.timeout"; //$NON-NLS-1$
+ 
+ 	public static final String REQUEST = "TCPSampler.request"; //$NON-NLS-1$
++	
++	public final static String UNESCAPE = "TCPSampler.unescape"; //$NON-NLS-1$
+ 
+ 	public static final String RE_USE_CONNECTION = "TCPSampler.reUseConnection"; //$NON-NLS-1$
+ 
+@@ -223,6 +226,14 @@
+ 		return getPropertyAsBoolean(NODELAY);
+ 	}
+ 
++    public void setUnescape(String unescape) {
++        this.setProperty(UNESCAPE, unescape);
++    }
++
++    public boolean getUnescape() {
++        return getPropertyAsBoolean(UNESCAPE);
++    }
++
+ 	/**
+ 	 * Returns a formatted string label describing this sampler Example output:
+ 	 * Tcp://Tcp.nowhere.com/pub/README.txt
+@@ -287,6 +298,11 @@
+ 				InputStream is = sock.getInputStream();
+ 				OutputStream os = sock.getOutputStream();
+ 				String req = getRequestData();
++				
++				if (getUnescape()) {
++				    req = StringEscapeUtils.unescapeJava(req);
++				}
++				
+ 				// TODO handle filenames
+ 				res.setSamplerData(req);
+ 				protocolHandler.write(os, req);

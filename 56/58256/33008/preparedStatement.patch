@@ -1,0 +1,90 @@
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>windows-1252
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(date 1388842110000)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(revision )
+@@ -23,16 +23,21 @@
+ import java.lang.reflect.Field;
+ import java.sql.CallableStatement;
+ import java.sql.Connection;
++import java.sql.Date;
+ import java.sql.PreparedStatement;
+ import java.sql.ResultSet;
+ import java.sql.ResultSetMetaData;
+ import java.sql.SQLException;
+ import java.sql.Statement;
++import java.sql.Types;
++import java.text.ParseException;
++import java.text.SimpleDateFormat;
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Map;
+ import java.util.concurrent.ConcurrentHashMap;
+ 
+@@ -286,7 +291,7 @@
+                     if (argument.equals(NULL_MARKER)){
+                         pstmt.setNull(i+1, targetSqlType);
+                     } else {
+-                        pstmt.setObject(i+1, argument, targetSqlType);
++                        setArgument(pstmt, argument, targetSqlType, i + 1);
+                     }
+                 }
+                 if (OUT.equalsIgnoreCase(inputOutput)||INOUT.equalsIgnoreCase(inputOutput)) {
+@@ -301,6 +306,44 @@
+             }
+         }
+         return outputs;
++    }
++
++    private void setArgument(PreparedStatement pstmt, String argument, int targetSqlType, int index) throws SQLException {
++        switch (targetSqlType) {
++        case Types.INTEGER:
++            pstmt.setInt(index, Integer.parseInt(argument));
++            break;
++        case Types.DOUBLE:
++        case Types.DECIMAL:
++            pstmt.setDouble(index, Double.parseDouble(argument));
++            break;
++        case Types.VARCHAR:
++            pstmt.setString(index, argument);
++            break;
++        case Types.BOOLEAN:
++            pstmt.setBoolean(index, Boolean.parseBoolean(argument));
++            break;
++        case Types.BIGINT:
++            pstmt.setLong(index, Long.parseLong(argument));
++            break;
++        case Types.DATE:
++            pstmt.setDate(index, parseDate(argument));
++            break;
++        case Types.FLOAT:
++            pstmt.setFloat(index, Float.parseFloat(argument));
++            break;
++        default:
++            pstmt.setObject(index, argument, targetSqlType);
++        }
++    }
++
++    private Date parseDate(String argument) throws SQLException {
++        try {
++            final java.util.Date javaDate = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).parse(argument);
++            return new Date(javaDate.getTime());
++        } catch (ParseException e) {
++            throw new SQLException(e);
++        }
+     }
+ 
+ 
+@@ -656,4 +699,4 @@
+         perConnCache.clear();
+     }
+ 
+-}
+\ No newline at end of file
++}

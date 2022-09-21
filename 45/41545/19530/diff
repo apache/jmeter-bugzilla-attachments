@@ -1,0 +1,161 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 502716)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -641,8 +641,12 @@
+ size_assertion_title=Size Assertion
+ soap_action=Soap Action
+ soap_data_title=Soap/XML-RPC Data
++soap_generate_template=Generate template
++soap_retrieve_operations=Retrieve operations
+ soap_sampler_title=SOAP/XML-RPC Request
+-soap_send_action=Send SOAPAction: 
++soap_send_action=Send SOAPAction:
++soap_soapxml_overwrite=Overwrite existing request?
++soap_wsdl=WSDL:
+ spline_visualizer_average=Average
+ spline_visualizer_incoming=Incoming
+ spline_visualizer_maximum=Maximum
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(revision 502716)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(working copy)
+@@ -21,25 +21,34 @@
+ import java.awt.Dimension;
+ import java.awt.GridBagLayout;
+ import java.awt.GridBagConstraints;
++import java.awt.Insets;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+-
++import javax.swing.JButton;
+ import javax.swing.JCheckBox;
++import javax.swing.JComboBox;
++import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+ 
++import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jmeter.protocol.http.sampler.SoapSampler;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+-import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jorphan.gui.JLabeledTextArea;
+ import org.apache.jorphan.gui.JLabeledTextField;
++import wsdlgenerator.WSDLOperation;
++import wsdlgenerator.WSDLRequestGenerator;
+ 
+ /**
+  */
+ public class SoapSamplerGui extends AbstractSamplerGui {
+ 	private JLabeledTextField urlField;
+ 	private JLabeledTextField soapAction;
++  private JLabeledTextField soapWsdl;
++  private JComboBox soapOperation;
++  private JButton retrieveSoapOperations;
++  private JButton generateSoapOperationTemplate;
+     private JCheckBox sendSoapAction;
+ 	private JLabeledTextArea soapXml;
+ 
+@@ -91,6 +100,10 @@
+ 		soapXml = new JLabeledTextArea(JMeterUtils.getResString("soap_data_title"), null); //$NON-NLS-1$
+ 		soapAction = new JLabeledTextField("", 10); //$NON-NLS-1$
+ 		sendSoapAction = new JCheckBox(JMeterUtils.getResString("soap_send_action"), true); //$NON-NLS-1$
++    retrieveSoapOperations = new JButton(JMeterUtils.getResString("soap_retrieve_operations"));
++    generateSoapOperationTemplate = new JButton(JMeterUtils.getResString("soap_generate_template"));
++    soapWsdl = new JLabeledTextField(JMeterUtils.getResString("soap_wsdl"), 10); //$NON-NLS-1$
++    soapOperation = new JComboBox();
+ 
+ 		JPanel mainPanel = new JPanel(new BorderLayout());
+ 	    JPanel soapActionPanel = new JPanel();
+@@ -111,6 +124,39 @@
+ 	    c.fill = GridBagConstraints.HORIZONTAL;
+ 	    c.weightx = 1;
+ 		soapActionPanel.add(soapAction, c);
++    JPanel soapOperationPanel = new JPanel();
++    c.fill = GridBagConstraints.HORIZONTAL;
++    c.gridwidth = 2;
++    c.gridx = 0;
++    c.gridy = 2;
++    soapActionPanel.add(soapOperationPanel, c);
++
++    soapOperationPanel.setLayout(new GridBagLayout());
++    c = new GridBagConstraints();
++    c.anchor = GridBagConstraints.WEST;
++    c.fill = GridBagConstraints.NONE;
++    c.gridx = 0;
++    c.gridy = 0;
++    c.weightx = 0;
++    soapOperationPanel.add(retrieveSoapOperations, c);
++    c.fill = GridBagConstraints.HORIZONTAL;
++    c.insets = new Insets(0, 5, 5, 0);
++    c.gridx = 1;
++    c.weightx = 1;
++    soapOperationPanel.add(soapWsdl, c);
++
++    c.fill = GridBagConstraints.NONE;
++    c.gridx = 0;
++    c.gridy = 1;
++    c.insets = new Insets(0, 0, 5, 0);
++    c.weightx = 0;
++    soapOperationPanel.add(generateSoapOperationTemplate, c);
++    c.fill = GridBagConstraints.HORIZONTAL;
++    c.insets = new Insets(0, 5, 5, 0);
++    c.gridx = 1;
++    c.weightx = 1;
++    soapOperationPanel.add(soapOperation, c);
++
+ 		mainPanel.add(soapActionPanel, BorderLayout.NORTH);
+ 		mainPanel.add(soapXml, BorderLayout.CENTER);
+         mainPanel.add(soapXmlFile, BorderLayout.SOUTH);
+@@ -121,6 +167,50 @@
+ 		    }
+             });
+ 
++        retrieveSoapOperations.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent e) {
++                try {
++                    String url = soapWsdl.getText();
++                    if(url != null && url.length() > 0) {
++                        WSDLOperation[] operations = WSDLRequestGenerator.generateRequests(url);
++                        soapOperation.removeAllItems();
++                        for(int i = 0; i < operations.length; i++) {
++                            soapOperation.addItem(operations[i]);
++                        }
++                    }
++                } catch (Exception ex) {
++                    ex.printStackTrace();
++                }
++            }
++        });
++
++        generateSoapOperationTemplate.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent e) {
++                try {
++                    if(soapOperation.getItemCount() > 0) {
++                        WSDLOperation operation = (WSDLOperation)soapOperation.getSelectedItem();
++                        boolean fillInTemplate = true;
++
++                        if(soapXml.getText().length() > 0) {
++                            fillInTemplate = false;
++                            
++                            int result = JOptionPane.showConfirmDialog(SoapSamplerGui.this, JMeterUtils.getResString("soap_soapxml_overwrite"), // $NON-NLS-1$
++                                    "Warning", JOptionPane.OK_CANCEL_OPTION, JOptionPane.ERROR_MESSAGE);
++                            if(result == 0) {
++                                fillInTemplate = true;
++                            }
++                        }
++
++                        if(fillInTemplate) {
++                            soapXml.setText(operation.getRequestTemplate());
++                        }
++                    }
++                } catch (Exception ex) {
++                    ex.printStackTrace();
++                }
++            }
++        });
++
+ 		add(mainPanel, BorderLayout.CENTER);
+ 	}
+ 

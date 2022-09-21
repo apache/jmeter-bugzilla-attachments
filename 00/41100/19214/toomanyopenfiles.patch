@@ -1,0 +1,107 @@
+Index: C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java
+===================================================================
+--- C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(revision 479800)
++++ C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(working copy)
+@@ -45,6 +45,7 @@
+ import org.apache.commons.httpclient.UsernamePasswordCredentials;
+ import org.apache.commons.httpclient.auth.AuthScope;
+ import org.apache.commons.httpclient.cookie.CookiePolicy;
++import org.apache.commons.httpclient.methods.ByteArrayRequestEntity;
+ import org.apache.commons.httpclient.methods.DeleteMethod;
+ import org.apache.commons.httpclient.methods.GetMethod;
+ import org.apache.commons.httpclient.methods.HeadMethod;
+@@ -647,6 +648,11 @@
+ 			HTTPSampleResult err = errorResult(e, res);
+ 			err.setSampleLabel("Error: " + url.toString());
+ 			return err;
++		} catch (Exception e) {
++			res.sampleEnd();
++			HTTPSampleResult err = errorResult(e, res);
++			err.setSampleLabel("Error: " + url.toString());
++			return err;
+ 		} finally {
+             JOrphanUtils.closeQuietly(instream);
+ 			if (httpMethod != null)
+@@ -654,21 +660,69 @@
+ 		}
+ 	}
+ 
+-    /**
+-     * Set up the PUT data (if present)
+-     */
++	/**
++	 * Set up the PUT data (if present)
++	 */
+ 	private void setPutHeaders(PutMethod put) 
+-         throws IOException
+-     {
+-         String filename = getFilename();
+-         if ((filename != null) && (filename.trim().length() > 0))
+-         {
+-             RequestEntity requestEntity = new InputStreamRequestEntity(
+-                     new FileInputStream(filename),getMimetype());
+-             put.setRequestEntity(requestEntity);
+-         }
+-     }
++	throws IOException
++	{
++		String filename = getFilename();
++		if ((filename != null) && (filename.trim().length() > 0))
++		{
++			final File theFile = new File(filename);
++			if (!theFile.exists()) {
++				final RuntimeException runtimeException = new RuntimeException("Cannot find the specified file: " + filename);
++				log.error("Exception: ", runtimeException);
++				throw runtimeException;
++			}
++//			final FileInputStream fileInputStream = new FileInputStream(filename);
++//			InterceptorInputStream inputStream = new InterceptorInputStream(fileInputStream);
++//			
++//			RequestEntity requestEntity = new InputStreamRequestEntity(inputStream,getMimetype());
+ 
++			ByteArrayRequestEntity requestEntity = new ByteArrayRequestEntity(getBytesFromFile(theFile),getMimetype());
++		
++			put.setRequestEntity(requestEntity);
++		}
++	}
++	
++    // Returns the contents of the file in a byte array. taken from http://www.exampledepot.com/egs/java.io/File2ByteArray.html 
++    public static byte[] getBytesFromFile(File file) throws IOException {
++        InputStream is = new FileInputStream(file);
++    
++        // Get the size of the file
++        long length = file.length();
++    
++        // You cannot create an array using a long type.
++        // It needs to be an int type.
++        // Before converting to an int type, check
++        // to ensure that file is not larger than Integer.MAX_VALUE.
++        if (length > Integer.MAX_VALUE) {
++            // File is too large
++        	throw new RuntimeException("file too large");
++        }
++    
++        // Create the byte array to hold the data
++        byte[] bytes = new byte[(int)length];
++    
++        // Read in the bytes
++        int offset = 0;
++        int numRead = 0;
++        while (offset < bytes.length
++               && (numRead=is.read(bytes, offset, bytes.length-offset)) >= 0) {
++            offset += numRead;
++        }
++    
++        // Ensure all the bytes have been read in
++        if (offset < bytes.length) {
++            throw new IOException("Could not completely read file "+file.getName());
++        }
++    
++        // Close the input stream and return bytes
++        is.close();
++        return bytes;
++    }
++
+     /**
+ 	 * From the <code>HttpMethod</code>, store all the "set-cookie" key-pair
+ 	 * values in the cookieManager of the <code>UrlConfig</code>.

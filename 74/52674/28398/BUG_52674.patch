@@ -1,0 +1,1075 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/DefaultSamplerCreator.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/DefaultSamplerCreator.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/DefaultSamplerCreator.java	(revision 0)
+@@ -0,0 +1,349 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.proxy;
++
++import java.io.File;
++import java.io.IOException;
++import java.net.MalformedURLException;
++import java.net.URL;
++import java.util.Map;
++
++import org.apache.commons.io.FileUtils;
++import org.apache.commons.lang.StringUtils;
++import org.apache.jmeter.protocol.http.config.MultipartUrlConfig;
++import org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
++import org.apache.jmeter.protocol.http.sampler.PostWriter;
++import org.apache.jmeter.protocol.http.util.ConversionUtils;
++import org.apache.jmeter.protocol.http.util.HTTPConstants;
++import org.apache.jmeter.protocol.http.util.HTTPFileArg;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Default implementation that handles classical HTTP textual + Multipart requests
++ */
++public class DefaultSamplerCreator extends AbstractSamplerCreator {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++ 
++    /**
++     * 
++     */
++    public DefaultSamplerCreator() {
++    }
++
++    /**
++     * @see org.apache.jmeter.protocol.http.proxy.SamplerCreator#getManagedContentTypes()
++     */
++    public String[] getManagedContentTypes() {
++        return new String[0];
++    }
++
++    /**
++     * 
++     * @see org.apache.jmeter.protocol.http.proxy.SamplerCreator#createSampler(org.apache.jmeter.protocol.http.proxy.HttpRequestHdr, java.util.Map, java.util.Map)
++     */
++    public HTTPSamplerBase createSampler(HttpRequestHdr request,
++            Map<String, String> pageEncodings, Map<String, String> formEncodings) {
++        // Instantiate the sampler
++        HTTPSamplerBase sampler = HTTPSamplerFactory.newInstance(request.getHttpSamplerName());
++
++        sampler.setProperty(TestElement.GUI_CLASS, HttpTestSampleGui.class.getName());
++
++        // Defaults
++        sampler.setFollowRedirects(false);
++        sampler.setUseKeepAlive(true);
++
++        if (log.isDebugEnabled()) {
++            log.debug("getSampler: sampler path = " + sampler.getPath());
++        }
++        return sampler;
++    }
++
++    /**
++     * @see org.apache.jmeter.protocol.http.proxy.SamplerCreator#populateSampler(org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase, org.apache.jmeter.protocol.http.proxy.HttpRequestHdr, java.util.Map, java.util.Map)
++     */
++    public final void populateSampler(HTTPSamplerBase sampler,
++            HttpRequestHdr request, Map<String, String> pageEncodings,
++            Map<String, String> formEncodings) throws Exception{
++        computeFromHeader(sampler, request, pageEncodings, formEncodings);
++
++        computeFromPostBody(sampler, request);
++        if (log.isDebugEnabled()) {
++            log.debug("sampler path = " + sampler.getPath());
++        }
++    }
++
++    /**
++     * Compute sampler informations from Request Header
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     * @param pageEncodings Map<String, String>
++     * @param formEncodings Map<String, String>
++     * @throws Exception
++     */
++    protected void computeFromHeader(HTTPSamplerBase sampler,
++            HttpRequestHdr request, Map<String, String> pageEncodings,
++            Map<String, String> formEncodings) throws Exception {
++        computeDomain(sampler, request);
++        
++        computeMethod(sampler, request);
++        
++        computePort(sampler, request);
++        
++        computeProtocol(sampler, request);
++
++        computeContentEncoding(sampler, request,
++                pageEncodings, formEncodings);
++
++        computePath(sampler, request);
++        
++        computeSamplerName(sampler, request);
++    }
++
++    /**
++     * Compute sampler informations from Request Header
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     * @throws Exception
++     */
++    protected void computeFromPostBody(HTTPSamplerBase sampler,
++            HttpRequestHdr request) throws Exception {
++        // If it was a HTTP GET request, then all parameters in the URL
++        // has been handled by the sampler.setPath above, so we just need
++        // to do parse the rest of the request if it is not a GET request
++        if((!HTTPConstants.CONNECT.equals(request.getMethod())) && (!HTTPConstants.GET.equals(request.getMethod()))) {
++            // Check if it was a multipart http post request
++            final String contentType = request.getContentType();
++            MultipartUrlConfig urlConfig = request.getMultipartConfig(contentType);
++            String contentEncoding = sampler.getContentEncoding();
++            // Get the post data using the content encoding of the request
++            String postData = null;
++            if (log.isDebugEnabled()) {
++                if(!StringUtils.isEmpty(contentEncoding)) {
++                    log.debug("Using encoding " + contentEncoding + " for request body");
++                }
++                else {
++                    log.debug("No encoding found, using JRE default encoding for request body");
++                }
++            }
++            
++            
++            if (!StringUtils.isEmpty(contentEncoding)) {
++                postData = new String(request.getRawPostData(), contentEncoding);
++            } else {
++                // Use default encoding
++                postData = new String(request.getRawPostData(), PostWriter.ENCODING);
++            }
++            
++            if (urlConfig != null) {
++                urlConfig.parseArguments(postData);
++                // Tell the sampler to do a multipart post
++                sampler.setDoMultipartPost(true);
++                // Remove the header for content-type and content-length, since
++                // those values will most likely be incorrect when the sampler
++                // performs the multipart request, because the boundary string
++                // will change
++                request.getHeaderManager().removeHeaderNamed(HttpRequestHdr.CONTENT_TYPE);
++                request.getHeaderManager().removeHeaderNamed(HttpRequestHdr.CONTENT_LENGTH);
++
++                // Set the form data
++                sampler.setArguments(urlConfig.getArguments());
++                // Set the file uploads
++                sampler.setHTTPFiles(urlConfig.getHTTPFileArgs().asArray());
++            // used when postData is pure xml (eg. an xml-rpc call) or for PUT
++            } else if (postData.trim().startsWith("<?") || "PUT".equals(sampler.getMethod())) {
++                sampler.addNonEncodedArgument("", postData, "");
++            } else if (contentType == null || contentType.startsWith(HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED) ){
++                // It is the most common post request, with parameter name and values
++                // We also assume this if no content type is present, to be most backwards compatible,
++                // but maybe we should only parse arguments if the content type is as expected
++                sampler.parseArguments(postData.trim(), contentEncoding); //standard name=value postData
++            } else if (postData.length() > 0) {
++                if (isBinaryContent(contentType)) {
++                    try {
++                        File tempDir = new File(getBinaryDirectory());
++                        File out = File.createTempFile(request.getMethod(), getBinaryFileSuffix(), tempDir);
++                        FileUtils.writeByteArrayToFile(out,request.getRawPostData());
++                        HTTPFileArg [] files = {new HTTPFileArg(out.getPath(),"",contentType)};
++                        sampler.setHTTPFiles(files);
++                    } catch (IOException e) {
++                        log.warn("Could not create binary file: "+e);
++                    }
++                } else {
++                    // Just put the whole postbody as the value of a parameter
++                    sampler.addNonEncodedArgument("", postData, ""); //used when postData is pure xml (ex. an xml-rpc call)
++                }
++            }
++        }
++    }
++
++    /**
++     * Compute sampler name
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     */
++    protected void computeSamplerName(HTTPSamplerBase sampler,
++            HttpRequestHdr request) {
++        if (!HTTPConstants.CONNECT.equals(request.getMethod()) && isNumberRequests()) {
++            incrementRequestNumber();
++            sampler.setName(getRequestNumber() + " " + sampler.getPath());
++        } else {
++            sampler.setName(sampler.getPath());
++        }
++    }
++
++    /**
++     * Set path on sampler
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     */
++    protected void computePath(HTTPSamplerBase sampler, HttpRequestHdr request) {
++        if(sampler.getContentEncoding() != null) {
++            sampler.setPath(request.getPath(), sampler.getContentEncoding());
++        }
++        else {
++            // Although the spec says UTF-8 should be used for encoding URL parameters,
++            // most browser use ISO-8859-1 for default if encoding is not known.
++            // We use null for contentEncoding, then the url parameters will be added
++            // with the value in the URL, and the "encode?" flag set to false
++            sampler.setPath(request.getPath(), null);
++        }
++        if (log.isDebugEnabled()) {
++            log.debug("Proxy: setting path: " + sampler.getPath());
++        }
++    }
++
++    /**
++     * Compute content encoding
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     * @param pageEncodings Map<String, String>
++     * @param formEncodings Map<String, String>
++     * @throws MalformedURLException
++     */
++    protected void computeContentEncoding(HTTPSamplerBase sampler,
++            HttpRequestHdr request, Map<String, String> pageEncodings,
++            Map<String, String> formEncodings) throws MalformedURLException {
++        URL pageUrl = null;
++        if(sampler.isProtocolDefaultPort()) {
++            pageUrl = new URL(sampler.getProtocol(), sampler.getDomain(), request.getPath());
++        }
++        else {
++            pageUrl = new URL(sampler.getProtocol(), sampler.getDomain(), 
++                    sampler.getPort(), request.getPath());
++        }
++        String urlWithoutQuery = request.getUrlWithoutQuery(pageUrl);
++
++
++        String contentEncoding = computeContentEncoding(request, pageEncodings,
++                formEncodings, urlWithoutQuery);
++        
++        // Set the content encoding
++        if(!StringUtils.isEmpty(contentEncoding)) {
++            sampler.setContentEncoding(contentEncoding);
++        } 
++    }
++    
++    /**
++     * Computes content encoding from request and if not found uses pageEncoding 
++     * and formEncoding to see if URL was previously computed with a content type
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     * @param pageEncodings Map<String, String>
++     * @param formEncodings Map<String, String>
++     * @return String content encoding
++     */
++    protected String computeContentEncoding(HttpRequestHdr request,
++            Map<String, String> pageEncodings,
++            Map<String, String> formEncodings, String urlWithoutQuery) {
++        // Check if the request itself tells us what the encoding is
++        String contentEncoding = null;
++        String requestContentEncoding = ConversionUtils.getEncodingFromContentType(
++                request.getContentType());
++        if(requestContentEncoding != null) {
++            contentEncoding = requestContentEncoding;
++        }
++        else {
++            // Check if we know the encoding of the page
++            if (pageEncodings != null) {
++                synchronized (pageEncodings) {
++                    contentEncoding = pageEncodings.get(urlWithoutQuery);
++                }
++            }
++            // Check if we know the encoding of the form
++            if (formEncodings != null) {
++                synchronized (formEncodings) {
++                    String formEncoding = formEncodings.get(urlWithoutQuery);
++                    // Form encoding has priority over page encoding
++                    if (formEncoding != null) {
++                        contentEncoding = formEncoding;
++                    }
++                }
++            }
++        }
++        return contentEncoding;
++    }
++
++    /**
++     * Set protocol on sampler
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     */
++    protected void computeProtocol(HTTPSamplerBase sampler,
++            HttpRequestHdr request) {
++        sampler.setProtocol(request.getProtocol(sampler));
++    }
++
++    /**
++     * Set Port on sampler
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     */
++    protected void computePort(HTTPSamplerBase sampler, HttpRequestHdr request) {
++        sampler.setPort(request.serverPort());
++        if (log.isDebugEnabled()) {
++            log.debug("Proxy: setting port: " + sampler.getPort());
++        }
++    }
++
++    /**
++     * Set method on sampler
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     */
++    protected void computeMethod(HTTPSamplerBase sampler, HttpRequestHdr request) {
++        sampler.setMethod(request.getMethod());
++        log.debug("Proxy: setting method: " + sampler.getMethod());
++    }
++
++    /**
++     * Set domain on sampler
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     */
++    protected void computeDomain(HTTPSamplerBase sampler, HttpRequestHdr request) {
++        sampler.setDomain(request.serverName());
++        if (log.isDebugEnabled()) {
++            log.debug("Proxy: setting server: " + sampler.getDomain());
++        }
++    }
++}
+\ No newline at end of file
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/SamplerCreator.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/SamplerCreator.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/SamplerCreator.java	(revision 0)
+@@ -0,0 +1,57 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.proxy;
++
++import java.util.Map;
++
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++
++/**
++ * Factory of sampler
++ */
++public interface SamplerCreator {
++    
++    /**
++     * @return String[] array of Content types managed by Factory
++     */
++    public String[] getManagedContentTypes();
++
++    /**
++     * Create HTTPSamplerBase
++     * @param request {@link HttpRequestHdr}
++     * @param pageEncodings Map<String, String>
++     * @param formEncodings Map<String, String>
++     * @return {@link HTTPSamplerBase}
++     */
++    public HTTPSamplerBase createSampler(HttpRequestHdr request,
++            Map<String, String> pageEncodings, Map<String, String> formEncodings);
++
++    /**
++     * Populate sampler from request
++     * @param sampler {@link HTTPSamplerBase}
++     * @param request {@link HttpRequestHdr}
++     * @param pageEncodings Map<String, String>
++     * @param formEncodings Map<String, String>
++     * @throws Exception
++     */
++    public void populateSampler(HTTPSamplerBase sampler,
++            HttpRequestHdr request, Map<String, String> pageEncodings,
++            Map<String, String> formEncodings)
++                    throws Exception;
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/AbstractSamplerCreator.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/AbstractSamplerCreator.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/AbstractSamplerCreator.java	(revision 0)
+@@ -0,0 +1,123 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.proxy;
++
++import java.util.HashSet;
++import java.util.Set;
++import java.util.StringTokenizer;
++
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Base class for SamplerCreator
++ */
++public abstract class AbstractSamplerCreator implements SamplerCreator {
++
++    protected static final String HTTP = "http"; // $NON-NLS-1$
++    protected static final String HTTPS = "https"; // $NON-NLS-1$
++
++    /** Filetype to be used for the temporary binary files*/
++    private static final String binaryFileSuffix =
++        JMeterUtils.getPropDefault("proxy.binary.filesuffix",// $NON-NLS-1$
++                                   ".binary"); // $NON-NLS-1$
++
++    /** Which content-types will be treated as binary (exact match) */
++    private static final Set<String> binaryContentTypes = new HashSet<String>();
++
++    /** Where to store the temporary binary files */
++    private static final String binaryDirectory =
++        JMeterUtils.getPropDefault("proxy.binary.directory",// $NON-NLS-1$
++                System.getProperty("user.dir")); // $NON-NLS-1$ proxy.binary.filetype=binary
++
++    static {
++        String binaries = JMeterUtils.getPropDefault("proxy.binary.types", // $NON-NLS-1$
++                "application/x-amf,application/x-java-serialized-object"); // $NON-NLS-1$
++        if (binaries.length() > 0){
++            StringTokenizer s = new StringTokenizer(binaries,"|, ");// $NON-NLS-1$
++            while (s.hasMoreTokens()){
++               binaryContentTypes.add(s.nextToken());
++            }
++        }
++    }
++    
++    /*
++     * Optionally number the requests
++     */
++    private static final boolean numberRequests =
++        JMeterUtils.getPropDefault("proxy.number.requests", false); // $NON-NLS-1$
++
++    private static volatile int requestNumber = 0;// running number
++    
++
++    /**
++     * 
++     */
++    /**
++     * 
++     */
++    public AbstractSamplerCreator() {
++        super();
++    }
++
++    /**
++     * @return int request number
++     */
++    protected static int getRequestNumber() {
++        return requestNumber;
++    }
++
++    /**
++     * Increment request number
++     */
++    protected static void incrementRequestNumber() {
++        requestNumber++;
++    }
++
++    /**
++     * @return boolean is numbering requests is required
++     */
++    protected static boolean isNumberRequests() {
++        return numberRequests;
++    }
++
++    /**
++     * @param contentType String content type
++     * @return true if contentType is part of binary declared types
++     */
++    protected boolean isBinaryContent(String contentType) {
++        if (contentType == null) {
++            return false;
++        }
++        return binaryContentTypes.contains(contentType);
++    }
++    
++    /**
++     * @return String binary file suffix
++     */
++    protected String getBinaryFileSuffix() {
++        return binaryFileSuffix;
++    }
++
++    /**
++     * @return String binary directory
++     */
++    protected String getBinaryDirectory() {
++        return binaryDirectory;
++    }
++}
+\ No newline at end of file
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 1294708)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -19,30 +19,20 @@
+ package org.apache.jmeter.protocol.http.proxy;
+ 
+ import java.io.ByteArrayOutputStream;
+-import java.io.File;
+ import java.io.IOException;
+ import java.io.InputStream;
+-import java.io.UnsupportedEncodingException;
+-import java.net.MalformedURLException;
+ import java.net.URL;
+ import java.util.HashMap;
+-import java.util.HashSet;
+ import java.util.Map;
+-import java.util.Set;
+ import java.util.StringTokenizer;
+ 
+-import org.apache.commons.io.FileUtils;
+ import org.apache.commons.lang.CharUtils;
+ import org.apache.jmeter.protocol.http.config.MultipartUrlConfig;
+ import org.apache.jmeter.protocol.http.control.Header;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+-import org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui;
+ import org.apache.jmeter.protocol.http.gui.HeaderPanel;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+-import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
+-import org.apache.jmeter.protocol.http.util.ConversionUtils;
+ import org.apache.jmeter.protocol.http.util.HTTPConstants;
+-import org.apache.jmeter.protocol.http.util.HTTPFileArg;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -60,32 +50,9 @@
+     private static final String HTTP = "http"; // $NON-NLS-1$
+     private static final String HTTPS = "https"; // $NON-NLS-1$
+     private static final String PROXY_CONNECTION = "proxy-connection"; // $NON-NLS-1$
+-    private static final String CONTENT_TYPE = "content-type"; // $NON-NLS-1$
+-    private static final String CONTENT_LENGTH = "content-length"; // $NON-NLS-1$
+-
+-    /** Filetype to be used for the temporary binary files*/
+-    private static final String binaryFileSuffix =
+-        JMeterUtils.getPropDefault("proxy.binary.filesuffix",// $NON-NLS-1$
+-                                   ".binary"); // $NON-NLS-1$
+-
+-    /** Which content-types will be treated as binary (exact match) */
+-    private static final Set<String> binaryContentTypes = new HashSet<String>();
++    public static final String CONTENT_TYPE = "content-type"; // $NON-NLS-1$
++    public static final String CONTENT_LENGTH = "content-length"; // $NON-NLS-1$
+ 
+-    /** Where to store the temporary binary files */
+-    private static final String binaryDirectory =
+-        JMeterUtils.getPropDefault("proxy.binary.directory",// $NON-NLS-1$
+-                System.getProperty("user.dir")); // $NON-NLS-1$ proxy.binary.filetype=binary
+-
+-    static {
+-        String binaries = JMeterUtils.getPropDefault("proxy.binary.types", // $NON-NLS-1$
+-                "application/x-amf,application/x-java-serialized-object"); // $NON-NLS-1$
+-        if (binaries.length() > 0){
+-            StringTokenizer s = new StringTokenizer(binaries,"|, ");// $NON-NLS-1$
+-            while (s.hasMoreTokens()){
+-               binaryContentTypes.add(s.nextToken());
+-            }
+-        }
+-    }
+ 
+     /**
+      * Http Request method, uppercased, e.g. GET or POST.
+@@ -114,14 +81,6 @@
+ 
+     private HeaderManager headerManager;
+ 
+-    /*
+-     * Optionally number the requests
+-     */
+-    private static final boolean numberRequests =
+-        JMeterUtils.getPropDefault("proxy.number.requests", false); // $NON-NLS-1$
+-
+-    private static volatile int requestNumber = 0;// running number
+-
+     public HttpRequestHdr() {
+         this.httpSamplerName = ""; // $NON-NLS-1$
+     }
+@@ -251,26 +210,7 @@
+         return headerManager;
+     }
+ 
+-    public HTTPSamplerBase getSampler(Map<String, String> pageEncodings, Map<String, String> formEncodings)
+-            throws MalformedURLException, IOException {
+-        // Instantiate the sampler
+-        HTTPSamplerBase sampler = HTTPSamplerFactory.newInstance(httpSamplerName);
+-        sampler.setProperty(TestElement.GUI_CLASS, HttpTestSampleGui.class.getName());
+-
+-        // Populate the sampler
+-        populateSampler(sampler, pageEncodings, formEncodings);
+-
+-        // Defaults
+-        sampler.setFollowRedirects(false);
+-        sampler.setUseKeepAlive(true);
+-
+-        if (log.isDebugEnabled()) {
+-            log.debug("getSampler: sampler path = " + sampler.getPath());
+-        }
+-        return sampler;
+-    }
+-
+-    private String getContentType() {
++    public String getContentType() {
+         Header contentTypeHeader = headers.get(CONTENT_TYPE);
+         if (contentTypeHeader != null) {
+             return contentTypeHeader.getValue();
+@@ -285,7 +225,7 @@
+         return false;
+     }
+ 
+-    private MultipartUrlConfig getMultipartConfig(String contentType) {
++    public MultipartUrlConfig getMultipartConfig(String contentType) {
+         if(isMultipart(contentType)) {
+             // Get the boundary string for the multiparts from the content type
+             String boundaryString = contentType.substring(contentType.toLowerCase(java.util.Locale.ENGLISH).indexOf("boundary=") + "boundary=".length());
+@@ -294,172 +234,6 @@
+         return null;
+     }
+ 
+-    private void populateSampler(
+-            HTTPSamplerBase sampler,
+-            Map<String, String> pageEncodings, Map<String, String> formEncodings)
+-            throws MalformedURLException, UnsupportedEncodingException {
+-        sampler.setDomain(serverName());
+-        if (log.isDebugEnabled()) {
+-            log.debug("Proxy: setting server: " + sampler.getDomain());
+-        }
+-        sampler.setMethod(method);
+-        log.debug("Proxy: setting method: " + sampler.getMethod());
+-        sampler.setPort(serverPort());
+-        if (log.isDebugEnabled()) {
+-            log.debug("Proxy: setting port: " + sampler.getPort());
+-        }
+-        if (url.indexOf("//") > -1) {
+-            String protocol = url.substring(0, url.indexOf(":"));
+-            if (log.isDebugEnabled()) {
+-                log.debug("Proxy: setting protocol to : " + protocol);
+-            }
+-            sampler.setProtocol(protocol);
+-        } else if (sampler.getPort() == HTTPConstants.DEFAULT_HTTPS_PORT) {
+-            sampler.setProtocol(HTTPS);
+-            if (log.isDebugEnabled()) {
+-                log.debug("Proxy: setting protocol to https");
+-            }
+-        } else {
+-            if (log.isDebugEnabled()) {
+-                log.debug("Proxy setting default protocol to: http");
+-            }
+-            sampler.setProtocol(HTTP);
+-        }
+-
+-        URL pageUrl = null;
+-        if(sampler.isProtocolDefaultPort()) {
+-            pageUrl = new URL(sampler.getProtocol(), sampler.getDomain(), getPath());
+-        }
+-        else {
+-            pageUrl = new URL(sampler.getProtocol(), sampler.getDomain(), sampler.getPort(), getPath());
+-        }
+-        String urlWithoutQuery = getUrlWithoutQuery(pageUrl);
+-
+-
+-        // Check if the request itself tells us what the encoding is
+-        String contentEncoding = null;
+-        String requestContentEncoding = ConversionUtils.getEncodingFromContentType(getContentType());
+-        if(requestContentEncoding != null) {
+-            contentEncoding = requestContentEncoding;
+-        }
+-        else {
+-            // Check if we know the encoding of the page
+-            if (pageEncodings != null) {
+-                synchronized (pageEncodings) {
+-                    contentEncoding = pageEncodings.get(urlWithoutQuery);
+-                }
+-            }
+-            // Check if we know the encoding of the form
+-            if (formEncodings != null) {
+-                synchronized (formEncodings) {
+-                    String formEncoding = formEncodings.get(urlWithoutQuery);
+-                    // Form encoding has priority over page encoding
+-                    if (formEncoding != null) {
+-                        contentEncoding = formEncoding;
+-                    }
+-                }
+-            }
+-        }
+-
+-        // Get the post data using the content encoding of the request
+-        String postData = null;
+-        if (log.isDebugEnabled()) {
+-            if(contentEncoding != null) {
+-                log.debug("Using encoding " + contentEncoding + " for request body");
+-            }
+-            else {
+-                log.debug("No encoding found, using JRE default encoding for request body");
+-            }
+-        }
+-        if (contentEncoding != null) {
+-            postData = new String(rawPostData, contentEncoding);
+-        } else {
+-            // Use default encoding
+-            postData = new String(rawPostData);
+-        }
+-
+-        if(contentEncoding != null) {
+-            sampler.setPath(getPath(), contentEncoding);
+-        }
+-        else {
+-            // Although the spec says UTF-8 should be used for encoding URL parameters,
+-            // most browser use ISO-8859-1 for default if encoding is not known.
+-            // We use null for contentEncoding, then the url parameters will be added
+-            // with the value in the URL, and the "encode?" flag set to false
+-            sampler.setPath(getPath(), null);
+-        }
+-        if (log.isDebugEnabled()) {
+-            log.debug("Proxy: setting path: " + sampler.getPath());
+-        }
+-        if (!HTTPConstants.CONNECT.equals(getMethod()) && numberRequests) {
+-            requestNumber++;
+-            sampler.setName(requestNumber + " " + sampler.getPath());
+-        } else {
+-            sampler.setName(sampler.getPath());
+-        }
+-
+-        // Set the content encoding
+-        if(contentEncoding != null) {
+-            sampler.setContentEncoding(contentEncoding);
+-        }
+-
+-        // If it was a HTTP GET request, then all parameters in the URL
+-        // has been handled by the sampler.setPath above, so we just need
+-        // to do parse the rest of the request if it is not a GET request
+-        if((!HTTPConstants.CONNECT.equals(getMethod())) && (!HTTPConstants.GET.equals(method))) {
+-            // Check if it was a multipart http post request
+-            final String contentType = getContentType();
+-            MultipartUrlConfig urlConfig = getMultipartConfig(contentType);
+-            if (urlConfig != null) {
+-                urlConfig.parseArguments(postData);
+-                // Tell the sampler to do a multipart post
+-                sampler.setDoMultipartPost(true);
+-                // Remove the header for content-type and content-length, since
+-                // those values will most likely be incorrect when the sampler
+-                // performs the multipart request, because the boundary string
+-                // will change
+-                getHeaderManager().removeHeaderNamed(CONTENT_TYPE);
+-                getHeaderManager().removeHeaderNamed(CONTENT_LENGTH);
+-
+-                // Set the form data
+-                sampler.setArguments(urlConfig.getArguments());
+-                // Set the file uploads
+-                sampler.setHTTPFiles(urlConfig.getHTTPFileArgs().asArray());
+-            // used when postData is pure xml (eg. an xml-rpc call) or for PUT
+-            } else if (postData.trim().startsWith("<?") || "PUT".equals(sampler.getMethod())) {
+-                sampler.addNonEncodedArgument("", postData, "");
+-            } else if (contentType == null || contentType.startsWith(HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED) ){
+-                // It is the most common post request, with parameter name and values
+-                // We also assume this if no content type is present, to be most backwards compatible,
+-                // but maybe we should only parse arguments if the content type is as expected
+-                sampler.parseArguments(postData.trim(), contentEncoding); //standard name=value postData
+-            } else if (postData.length() > 0) {
+-                if (isBinaryContent(contentType)) {
+-                    try {
+-                        File tempDir = new File(binaryDirectory);
+-                        File out = File.createTempFile(method, binaryFileSuffix, tempDir);
+-                        FileUtils.writeByteArrayToFile(out,rawPostData);
+-                        HTTPFileArg [] files = {new HTTPFileArg(out.getPath(),"",contentType)};
+-                        sampler.setHTTPFiles(files);
+-                    } catch (IOException e) {
+-                        log.warn("Could not create binary file: "+e);
+-                    }
+-                } else {
+-                    // Just put the whole postbody as the value of a parameter
+-                    sampler.addNonEncodedArgument("", postData, ""); //used when postData is pure xml (ex. an xml-rpc call)
+-                }
+-            }
+-        }
+-        if (log.isDebugEnabled()) {
+-            log.debug("sampler path = " + sampler.getPath());
+-        }
+-    }
+-
+-    private boolean isBinaryContent(String contentType) {
+-        if (contentType == null) return false;
+-        return binaryContentTypes.contains(contentType);
+-    }
+-
+     //
+     // Parsing Methods
+     //
+@@ -469,7 +243,7 @@
+      *
+      * @return server's internet name
+      */
+-    private String serverName() {
++    public String serverName() {
+         // chop to "server.name:x/thing"
+         String str = url;
+         int i = str.indexOf("//"); // $NON-NLS-1$
+@@ -500,7 +274,7 @@
+      *
+      * @return server's port (or UNSPECIFIED if not found)
+      */
+-    private int serverPort() {
++    public int serverPort() {
+         String str = url;
+         // chop to "server.name:x/thing"
+         int i = str.indexOf("//");
+@@ -525,7 +299,7 @@
+      *
+      * @return the path
+      */
+-    private String getPath() {
++    public String getPath() {
+         String str = url;
+         int i = str.indexOf("//");
+         if (i > 0) {
+@@ -589,7 +363,7 @@
+ //        return strBuff.toString();
+ //    }
+ 
+-    private String getUrlWithoutQuery(URL _url) {
++    public String getUrlWithoutQuery(URL _url) {
+         String fullUrl = _url.toString();
+         String urlWithoutQuery = fullUrl;
+         String query = _url.getQuery();
+@@ -599,4 +373,42 @@
+         }
+         return urlWithoutQuery;
+     }
++
++    /**
++     * @return the httpSamplerName
++     */
++    public String getHttpSamplerName() {
++        return httpSamplerName;
++    }
++
++    /**
++     * @return byte[] Raw post data
++     */
++    public byte[] getRawPostData() {
++        return rawPostData;
++    }
++
++    /**
++     * @param sampler {@link HTTPSamplerBase}
++     * @return String Protocol (http or https)
++     */
++    public String getProtocol(HTTPSamplerBase sampler) {
++        if (url.indexOf("//") > -1) {
++            String protocol = url.substring(0, url.indexOf(":"));
++            if (log.isDebugEnabled()) {
++                log.debug("Proxy: setting protocol to : " + protocol);
++            }
++            return protocol;
++        } else if (sampler.getPort() == HTTPConstants.DEFAULT_HTTPS_PORT) {
++            if (log.isDebugEnabled()) {
++                log.debug("Proxy: setting protocol to https");
++            }
++            return HTTPS;
++        } else {
++            if (log.isDebugEnabled()) {
++                log.debug("Proxy setting default protocol to: http");
++            }
++            return HTTP;
++        }
++    }
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 1293635)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -109,6 +109,8 @@
+     private static final char[] KEY_PASSWORD =
+         JMeterUtils.getPropDefault("proxy.cert.keypassword","password").toCharArray(); // $NON-NLS-1$ $NON-NLS-2$
+ 
++    private static final SamplerCreatorFactory factory = new SamplerCreatorFactory();
++
+     // Use with SSL connection
+     private OutputStream outStreamClient = null;
+ 
+@@ -202,10 +204,10 @@
+                 request.parse(new BufferedInputStream(clientSocket.getInputStream()));
+             }
+ 
+-            // Populate the sampler. It is the same sampler as we sent into
+-            // the constructor of the HttpRequestHdr instance above
+-            sampler = request.getSampler(pageEncodings, formEncodings);
+-
++            SamplerCreator samplerCreator = factory.getSamplerCreator(request, pageEncodings, formEncodings);
++            sampler = samplerCreator.createSampler(request, pageEncodings, formEncodings);
++            samplerCreator.populateSampler(sampler, request, pageEncodings, formEncodings);
++            
+             /*
+              * Create a Header Manager to ensure that the browsers headers are
+              * captured and sent to the server
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/SamplerCreatorFactory.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/SamplerCreatorFactory.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/SamplerCreatorFactory.java	(revision 0)
+@@ -0,0 +1,95 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.proxy;
++
++import java.lang.reflect.Modifier;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.reflect.ClassFinder;
++import org.apache.log.Logger;
++
++/**
++ * {@link SamplerCreator} factory
++ */
++public class SamplerCreatorFactory {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final SamplerCreator DEFAULT_SAMPLER_CREATOR = new DefaultSamplerCreator();
++
++    private Map<String, SamplerCreator> samplerCreatorMap = new HashMap<String, SamplerCreator>();
++
++    /**
++     * 
++     */
++    public SamplerCreatorFactory() {
++        init();
++    }
++    
++    /**
++     * Initialize factory from classpath
++     */
++    private void init() {
++        try {
++            List<String> listClasses = ClassFinder.findClassesThatExtend(
++                    JMeterUtils.getSearchPaths(), 
++                    new Class[] {SamplerCreator.class }); 
++            for (String strClassName : listClasses) {
++                try {
++                    log.info("Loading class:"+ strClassName);
++                    Class<?> commandClass = Class.forName(strClassName);
++                    if (!Modifier.isAbstract(commandClass.getModifiers())) {
++                            log.info("Instantiating :"+ commandClass.getName());
++                            SamplerCreator creator = (SamplerCreator) commandClass.newInstance();
++                            String[] contentTypes = creator.getManagedContentTypes();
++                            for (String contentType : contentTypes) {
++                                if(log.isInfoEnabled()) {
++                                    log.info("Registering samplerCreator "+commandClass.getName()+" for content type:"+contentType);
++                                }
++                                samplerCreatorMap.put(contentType, creator);
++                            }                        
++                    }
++                } catch (Exception e) {
++                    log.error("Exception registering "+SamplerCreator.class.getName() + " with implementation:"+strClassName, e);
++                }
++            }
++        } catch (Exception e) {
++            log.error("Exception finding implementations of "+SamplerCreator.class, e);
++        }
++    }
++
++    /**
++     * Gets {@link SamplerCreator} for content type, if none is found returns {@link DefaultSamplerCreator}
++     * @param request {@link HttpRequestHdr}
++     * @param pageEncodings Map<String, String> pageEncodings
++     * @param formEncodings  Map<String, String> formEncodings
++     * @return SamplerCreator
++     */
++    public SamplerCreator getSamplerCreator(HttpRequestHdr request,
++            Map<String, String> pageEncodings, Map<String, String> formEncodings) {
++        SamplerCreator creator = samplerCreatorMap.get(request.getContentType());
++        if(creator == null) {
++            return DEFAULT_SAMPLER_CREATOR;
++        }
++        return creator;
++    }
++}
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	(revision 1293635)
++++ test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	(working copy)
+@@ -569,7 +569,7 @@
+     }
+ 
+     private HTTPSamplerBase getSamplerForRequest(String url, String request, String contentEncoding)
+-            throws IOException {
++            throws Exception {
+         HttpRequestHdr req = new HttpRequestHdr();
+         ByteArrayInputStream bis = null;
+         if(contentEncoding != null) {
+@@ -587,7 +587,11 @@
+         if(url != null && contentEncoding != null) {
+             pageEncodings.put(url, contentEncoding);
+         }
+-        return req.getSampler(pageEncodings, formEncodings);
++        SamplerCreatorFactory creatorFactory = new SamplerCreatorFactory();
++        SamplerCreator creator = creatorFactory.getSamplerCreator(req, pageEncodings, formEncodings);
++        HTTPSamplerBase sampler = creator.createSampler(req, pageEncodings, formEncodings);
++        creator.populateSampler(sampler, req, pageEncodings, formEncodings);
++        return sampler;
+     }
+     
+     private void checkArgument(

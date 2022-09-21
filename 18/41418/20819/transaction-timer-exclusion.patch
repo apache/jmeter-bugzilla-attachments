@@ -1,0 +1,153 @@
+Index: src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java
+===================================================================
+--- src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java	(revision 575246)
++++ src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java	(working copy)
+@@ -32,6 +32,8 @@
+ public class TransactionControllerGui extends AbstractControllerGui {
+ 
+ 	private JCheckBox parent; // If selected, then generate parent sample, otherwise as per original controller
++	
++	private JCheckBox includeTimers; // if selected, add duration of timers to total runtime
+ 
+ 	/**
+ 	 * Create a new TransactionControllerGui instance.
+@@ -50,12 +52,15 @@
+ 	public void configure(TestElement el) {
+ 		super.configure(el);
+ 		parent.setSelected(((TransactionController) el).isParent());
++		includeTimers.setSelected(((TransactionController) el).isIncludeTimers());
+ 	}
+ 
+ 	/* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+ 	public void modifyTestElement(TestElement el) {
+ 		configureTestElement(el);
+-		((TransactionController) el).setParent(parent.isSelected());
++		TransactionController tc = ((TransactionController) el);
++		tc.setParent(parent.isSelected());
++		tc.setIncludeTimers(includeTimers.isSelected());
+ 	}
+ 
+ 	public String getLabelResource() {
+@@ -71,5 +76,7 @@
+ 		add(makeTitlePanel());
+ 		parent = new JCheckBox(JMeterUtils.getResString("transaction_controller_parent")); // $NON-NLS-1$
+ 		add(parent);
+-	}
++		includeTimers = new JCheckBox(JMeterUtils.getResString("transaction_controller_include_timers"), true); // $NON-NLS-1$
++		add(includeTimers);
++	}	
+ }
+Index: src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/TransactionController.java	(revision 575251)
++++ src/core/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -52,10 +52,14 @@
+     
+     transient private int calls;
+ 
+-    transient private int noFailingSamples;
++	transient private int noFailingSamples;
++	
++	transient private long pauseTime, prevEndTime;
+     
+ 	private static final String PARENT = "TransactionController.parent";// $NON-NLS-1$
+-
++	
++	private final static String INCLUDE_TIMERS = "TransactionController.includeTimers";
++	
+ 	/**
+ 	 * Creates a Transaction Controller
+ 	 */
+@@ -76,6 +80,14 @@
+ 		return getPropertyAsBoolean(PARENT);
+ 	}
+ 
++	public void setIncludeTimers(boolean b) {
++		setProperty(new BooleanProperty(INCLUDE_TIMERS, b));
++	}
++	
++	public boolean isIncludeTimers() {
++		return getPropertyAsBoolean(INCLUDE_TIMERS, false);
++	}
++	
+ 	public Sampler next(){
+ 		if (isParent()){
+ 			return next1();
+@@ -149,6 +161,8 @@
+             // Assume success
+             res.setSuccessful(true);
+ 			res.sampleStart();
++			prevEndTime = res.getStartTime();
++			pauseTime = 0;
+ 		}
+ 
+         Sampler returnValue = super.next();
+@@ -156,6 +170,7 @@
+ 		if (returnValue == null) // Must be the end of the controller
+ 		{
+ 			if (res != null) {
++				res.incIdleTime(pauseTime);
+ 				res.sampleEnd();
+                 res.setResponseMessage("Number of samples in transaction : " + calls + ", number of failing samples : " + noFailingSamples);
+                 if(res.isSuccessful()) {
+@@ -190,7 +205,11 @@
+     	if (!isParent()) {
+ 	        // Check if we are still sampling our children
+ 	        if(res != null) {
+-	            SampleResult sampleResult = se.getResult(); 
++	            SampleResult sampleResult = se.getResult();
++	            if (!isIncludeTimers()) {
++		           	pauseTime += sampleResult.getEndTime() - sampleResult.getTime() - prevEndTime;
++					prevEndTime = sampleResult.getEndTime();
++				}
+ 	            res.setThreadName(sampleResult.getThreadName());
+ 	            res.setBytes(res.getBytes() + sampleResult.getBytes());
+ 	            if(!sampleResult.isSuccessful()) {
+Index: src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	(revision 575246)
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	(working copy)
+@@ -742,6 +742,10 @@
+ 		setEndTime(end);
+ 	}
+ 
++	public void incIdleTime(long pause) {
++		idleTime += pause;
++	}
++	
+ 	/**
+ 	 * Record the start time of a sample
+ 	 * 
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 575280)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -702,6 +702,7 @@
+ string_from_file_seq_start=Start file sequence number
+ summariser_title=Generate Summary Results
+ summary_report=Summary Report
++summary_report_include_transactions_only=Include Transactions Controllers only.
+ switch_controller_label=Switch Value
+ switch_controller_title=Switch Controller
+ table_visualizer_bytes=Bytes
+@@ -748,6 +749,7 @@
+ timelim=Time limit
+ transaction_controller_parent=Generate parent sample
+ transaction_controller_title=Transaction Controller
++transaction_controller_include_timers=Include timer duration in runtime summary.
+ unbind=Thread Unbind
+ uniform_timer_delay=Constant Delay Offset (in milliseconds)\:
+ uniform_timer_memo=Adds a random delay with a uniform distribution
+Index: src/core/org/apache/jmeter/resources/messages_de.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_de.properties	(revision 575280)
++++ src/core/org/apache/jmeter/resources/messages_de.properties	(working copy)
+@@ -151,6 +151,8 @@
+ stopping_test_title=Stoppe den Test
+ threadgroup=Thread Gruppe
+ thread_group_title=Thread Gruppe
++transaction_controller_parent=Untergeordnete Samplers im Ergebnis ausblenden.
++transaction_controller_include_timers=Pausenzeiten zu Gesamtzeit addieren.
+ upload=Datei hochladen
+ upper_bound=obere Grenze
+ url_config_title=HTTP Request Default Einstellungen

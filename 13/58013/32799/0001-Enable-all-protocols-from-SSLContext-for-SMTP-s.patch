@@ -1,0 +1,45 @@
+From 8c9370646f1b8ade52bac4acdee839c029bd2205 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Mon, 8 Jun 2015 19:03:54 +0200
+Subject: [PATCH] Enable all protocols from SSLContext for SMTP(s)
+
+---
+ .../protocol/smtp/sampler/protocol/SendMailCommand.java     | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java b/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java
+index 012153d..78270ca 100644
+--- a/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java
++++ b/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java
+@@ -39,8 +39,10 @@ import javax.mail.internet.InternetAddress;
+ import javax.mail.internet.MimeBodyPart;
+ import javax.mail.internet.MimeMessage;
+ import javax.mail.internet.MimeMultipart;
++import javax.net.ssl.SSLContext;
+ 
+ import org.apache.commons.io.IOUtils;
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.testelement.property.CollectionProperty;
+@@ -137,6 +139,17 @@ public class SendMailCommand {
+         props.setProperty("mail." + protocol + ".timeout", getTimeout());
+         props.setProperty("mail." + protocol + ".connectiontimeout", getConnectionTimeout());
+ 
++        if (useStartTLS || useSSL) {
++            try {
++                String allProtocols = StringUtils.join(
++                    SSLContext.getDefault().getSupportedSSLParameters().getProtocols(), " ");
++                logger.info("Use ssl/tls protocols for mail: " + allProtocols);
++                props.setProperty("mail.smtp.ssl.protocols", allProtocols);
++            } catch (Exception e) {
++                logger.error("Problem setting ssl/tls protocols for mail", e);
++            }
++        }
++
+         if (enableDebug) {
+             props.setProperty("mail.debug","true");
+         }
+-- 
+1.9.1
+

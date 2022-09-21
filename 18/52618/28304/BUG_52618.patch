@@ -1,0 +1,22 @@
+Index: src/core/org/apache/jmeter/control/GenericController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/GenericController.java	(revision 1240617)
++++ src/core/org/apache/jmeter/control/GenericController.java	(working copy)
+@@ -376,13 +376,15 @@
+ 
+     protected void fireIterEvents() {
+         if (isFirst()) {
+-            fireIterationStart();
++            if (!getThreadContext().isReinitializingSubControllers()) {   
++                fireIterationStart();
++            }
+             first = false; // TODO - should this use setFirst() ?
+         }
+     }
+ 
+     protected void fireIterationStart() {
+-        LoopIterationEvent event = new LoopIterationEvent(this, getIterCount());
++        LoopIterationEvent event = new LoopIterationEvent(this, getIterCount());    
+         for (LoopIterationListener item : iterationListeners) {
+             item.iterationStart(event);
+         }

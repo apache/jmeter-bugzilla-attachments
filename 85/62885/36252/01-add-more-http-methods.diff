@@ -1,0 +1,225 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java	(Revision 1846059)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java	(Arbeitskopie)
+@@ -28,12 +28,17 @@
+ import java.net.URLDecoder;
+ import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.Collections;
+ import java.util.List;
+ import java.util.StringTokenizer;
+ import java.util.zip.GZIPInputStream;
+ 
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++import org.apache.jmeter.protocol.http.util.HTTPConstants;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -75,21 +80,57 @@
+ public class TCLogParser implements LogParser {
+     protected static final Logger log = LoggerFactory.getLogger(TCLogParser.class);
+ 
+-    /*
+-     * TODO should these fields be public?
+-     * They don't appear to be used externally.
+-     * 
+-     * Also, are they any different from HTTPConstants.GET etc. ?
+-     * In some cases they seem to be used as the method name from the Tomcat log.
+-     * However the RMETHOD field is used as the value for HTTPSamplerBase.METHOD,
+-     * for which HTTPConstants is most appropriate.
++    /**
++     * @deprecated since 5.1
++     * Use {@link HTTPConstants#GET} instead
+      */
++    @Deprecated
+     public static final String GET = "GET";
+ 
++    /**
++     * @deprecated since 5.1
++     * Use {@link HTTPConstants#POST} instead
++     */
++    @Deprecated
+     public static final String POST = "POST";
+ 
++    /**
++     * @deprecated since 5.1
++     * Use {@link HTTPConstants#HEAD} instead
++     */
++    @Deprecated
+     public static final String HEAD = "HEAD";
+ 
++    private static final List<String> HTTP_METHODS;
++    static {
++        List<String> defaultMethods = new ArrayList<>(Arrays.asList(
++            HTTPConstants.GET,
++            HTTPConstants.POST,
++            HTTPConstants.HEAD,
++            HTTPConstants.PUT,
++            HTTPConstants.OPTIONS,
++            HTTPConstants.TRACE,
++            HTTPConstants.DELETE,
++            HTTPConstants.PATCH,
++            HTTPConstants.PROPFIND,
++            HTTPConstants.PROPPATCH,
++            HTTPConstants.MKCOL,
++            HTTPConstants.COPY,
++            HTTPConstants.MOVE,
++            HTTPConstants.LOCK,
++            HTTPConstants.UNLOCK,
++            HTTPConstants.REPORT,
++            HTTPConstants.MKCALENDAR,
++            HTTPConstants.SEARCH
++        ));
++        String userDefinedMethods = JMeterUtils.getPropDefault(
++                "httpsampler.user_defined_methods", "");
++        if (StringUtils.isNotBlank(userDefinedMethods)) {
++            defaultMethods.addAll(Arrays.asList(userDefinedMethods.split("\\s*,\\s*")));
++        }
++        HTTP_METHODS = Collections.unmodifiableList(defaultMethods);
++    }
++
+     /** protected members * */
+     protected String RMETHOD = null;
+ 
+@@ -278,7 +319,7 @@
+         // we clean the line to get
+         // rid of extra stuff
+         String cleanedLine = this.cleanURL(line);
+-        log.debug("parsing line: " + line);
++        log.debug("parsing line: {}", line);
+         // now we set request method
+         el.setProperty(HTTPSamplerBase.METHOD, RMETHOD);
+         if (FILTER != null) {
+@@ -353,26 +394,7 @@
+             while (tokens.hasMoreTokens()) {
+                 String token = tokens.nextToken();
+                 if (checkMethod(token)) {
+-                    // we tokenzie it using space and escape
+-                    // the while loop. Only the first matching
+-                    // token will be used
+-                    StringTokenizer token2 = this.tokenize(token, " ");
+-                    while (token2.hasMoreTokens()) {
+-                        String t = (String) token2.nextElement();
+-                        if (t.equalsIgnoreCase(GET)) {
+-                            RMETHOD = GET;
+-                        } else if (t.equalsIgnoreCase(POST)) {
+-                            RMETHOD = POST;
+-                        } else if (t.equalsIgnoreCase(HEAD)) {
+-                            RMETHOD = HEAD;
+-                        }
+-                        // there should only be one token
+-                        // that starts with slash character
+-                        if (t.startsWith("/")) {
+-                            url = t;
+-                            break;
+-                        }
+-                    }
++                    url = extractURL(url, token);
+                     break;
+                 }
+             }
+@@ -382,6 +404,28 @@
+         return url;
+     }
+ 
++    private String extractURL(String url, String token) {
++        // we tokenize it using space and escape
++        // the while loop. Only the first matching
++        // token will be used
++        StringTokenizer token2 = this.tokenize(token, " ");
++        while (token2.hasMoreTokens()) {
++            String t = token2.nextToken();
++            for (String httpMethod: HTTP_METHODS) {
++                if (t.equalsIgnoreCase(httpMethod)) {
++                    RMETHOD = httpMethod;
++                    break;
++                }
++            }
++            // there should only be one token
++            // that starts with slash character
++            if (t.startsWith("/")) {
++                return t;
++            }
++        }
++        return url;
++    }
++
+     /**
+      * The method checks for <code>POST</code>, <code>GET</code> and <code>HEAD</code> methods currently.
+      * The other methods aren't supported yet.
+@@ -390,18 +434,13 @@
+      * @return <code>true</code> if method is supported, <code>false</code> otherwise
+      */
+     public boolean checkMethod(String text) {
+-        if (text.contains("GET")) {
+-            this.RMETHOD = GET;
+-            return true;
+-        } else if (text.contains("POST")) {
+-            this.RMETHOD = POST;
+-            return true;
+-        } else if (text.contains("HEAD")) {
+-            this.RMETHOD = HEAD;
+-            return true;
+-        } else {
+-            return false;
++        for (String httpMethod: HTTP_METHODS) {
++            if (text.contains(httpMethod)) {
++                this.RMETHOD = httpMethod;
++                return true;
++            }
+         }
++        return false;
+     }
+ 
+     /**
+Index: test/src/org/apache/jmeter/protocol/http/util/accesslog/TestTCLogParser.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/util/accesslog/TestTCLogParser.java	(Revision 1846059)
++++ test/src/org/apache/jmeter/protocol/http/util/accesslog/TestTCLogParser.java	(Arbeitskopie)
+@@ -25,6 +25,8 @@
+ 
+ import org.apache.jmeter.junit.JMeterTestCase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPNullSampler;
++import org.hamcrest.CoreMatchers;
++import org.junit.Assert;
+ import org.junit.Test;
+ 
+ // TODO - more tests needed
+@@ -69,4 +71,32 @@
+             assertNull(tclp.stripFile(res, new HTTPNullSampler()));
+         }
+ 
++        @Test
++        public void testAWSLogsOPTIONSNoQueryParameter() throws Exception {
++            String awsLog = "https 2018-11-05T12:55:39.303736Z app/prod-WebTierLoadBalancer/abf54370cbaedbc3 109.147.85.126:55054"
++                    + " 10.248.3.69:8443 0.000 0.001 0.000 200 200 286 485 \"OPTIONS /free/api/1/virtual-portfolio HTTP/2.0\""
++                    + " \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100"
++                    + " Safari/537.36 OPR/56.0.3051.52\" ECDHE-RSA-AES128-GCM-SHA256 TLSv1.2 arn:aws:elasticloadbalancing:eu-west-1:"
++                    + "544611607123:targetgroup/prod-FreeuserGatewayTargetGroup/b930521f9e6c192d \"Root=1-5be03dcb-a99d15f81d0716bcf502eb63\""
++                    + " \"api-prod.ii.co.uk\" \"arn:aws:acm:eu-west-1:544611607123:certificate/989815d5-8e0b-474b-a93f-6ac0c0780b6a\""
++                    + " 1 2018-11-05T12:55:39.302000Z \"forward\" \"-\"";
++            String res = tclp.cleanURL(awsLog);
++            Assert.assertThat(res, CoreMatchers.is("/free/api/1/virtual-portfolio"));
++            Assert.assertThat(tclp.stripFile(res, new HTTPNullSampler()), CoreMatchers.nullValue());
++        }
++
++        @Test
++        public void testAWSLogsOPTIONSWithQueryParameter() throws Exception {
++            String awsLog = "https 2018-11-05T12:55:19.717286Z app/prod-WebTierLoadBalancer/abf54370cbaedbc3 83.100.225.10:50054"
++                    + " 10.248.130.234:8443 0.000 0.002 0.000 200 200 53 485 \"OPTIONS /free/api/1/virtual-portfolio/258226/item?pageNo=1 HTTP/2.0\""
++                    + " \"Mozilla/5.0 (iPad; CPU OS 11_0_3 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A432 Safari/604.1\""
++                    + " ECDHE-RSA-AES128-GCM-SHA256 TLSv1.2 arn:aws:elasticloadbalancing:eu-west-1:544611607123:"
++                    + "targetgroup/prod-FreeuserGatewayTargetGroup/b930521f9e6c192d \"Root=1-5be03db7-2e5563ecd086f154e5f7195c\""
++                    + " \"api-prod.ii.co.uk\" \"arn:aws:acm:eu-west-1:544611607123:certificate/989815d5-8e0b-474b-a93f-6ac0c0780b6a\""
++                    + " 1 2018-11-05T12:55:19.715000Z \"forward\" \"-\"";
++            String res = tclp.cleanURL(awsLog);
++            Assert.assertThat(res, CoreMatchers.is("/free/api/1/virtual-portfolio/258226/item?pageNo=1"));
++            Assert.assertThat(tclp.stripFile(res, new HTTPNullSampler()), CoreMatchers.is("pageNo=1"));
++            Assert.assertThat(tclp.URL_PATH, CoreMatchers.is("/free/api/1/virtual-portfolio/258226/item"));
++        }
+ }

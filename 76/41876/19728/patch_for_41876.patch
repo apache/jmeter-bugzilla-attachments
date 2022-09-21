@@ -1,0 +1,517 @@
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -98,15 +98,28 @@
+ 	 * Main processing method for the Proxy object
+ 	 */
+ 	public void run() {
+-		HttpRequestHdr request = new HttpRequestHdr();
++		// Check which HTTPSampler class we should use
++		String httpSamplerName = HTTPSamplerFactory.DEFAULT_CLASSNAME;
++		if(target.getSamplerTypeName() == ProxyControl.SAMPLER_TYPE_HTTP_SAMPLER) {
++			httpSamplerName = HTTPSamplerFactory.HTTP_SAMPLER_JAVA;
++		}
++		else if(target.getSamplerTypeName() == ProxyControl.SAMPLER_TYPE_HTTP_SAMPLER2) {
++			httpSamplerName = HTTPSamplerFactory.HTTP_SAMPLER_APACHE;
++		}
++		// Instantiate the sampler
++		HTTPSamplerBase sampler = HTTPSamplerFactory.newInstance(httpSamplerName);
++		sampler.threadStarted();
++		
++		HttpRequestHdr request = new HttpRequestHdr(sampler);
+ 		SampleResult result = null;
+ 		HeaderManager headers = null;
+ 
+-		HTTPSamplerBase sampler = null;
+ 		try {
+ 			request.parse(new BufferedInputStream(clientSocket.getInputStream()));
+ 
+-			sampler = request.getSampler();
++			// Populate the sampler. It is the same sampler as we sent into
++			// the constructor of the HttpRequestHdr instance above 
++			request.getSampler();
+ 
+ 			/*
+ 			 * Create a Header Manager to ensure that the browsers headers are
+@@ -145,10 +158,9 @@
+ 			log.error("", e);
+ 			writeErrorToClient(HttpReplyHdr.formTimeout());
+ 		} finally {
+-            if (sampler == null){
+-                sampler = HTTPSamplerFactory.newInstance();
+-            }
++			if (log.isDebugEnabled()) {
++				log.debug("Will deliver sample " + sampler.getName());
++			}
+ 			target.deliverSampler(sampler, new TestElement[] { captureHttpHeaders ? headers : null }, result);
++			sampler.threadFinished();
+ 			try {
+ 				clientSocket.close();
+ 			} catch (Exception e) {
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -41,6 +41,7 @@
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+ import org.apache.jmeter.protocol.http.control.RecordingController;
+ import org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui;
++import org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui2;
+ import org.apache.jmeter.protocol.http.gui.HeaderPanel;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.samplers.SampleEvent;
+@@ -76,9 +77,6 @@
+     /*
+      * Use class names so the complier can detect if a class is renamed/deleted
+      */
+-    //  TODO - allow for HttpClient sampler ...
+-	private static final String HTTP_TEST_SAMPLE_GUI = HttpTestSampleGui.class.getName();
+-
+     private static final String ASSERTION_GUI = AssertionGui.class.getName();
+ 
+     private static final String LOGIC_CONTROLLER_GUI = LogicControllerGui.class.getName(); 
+@@ -105,8 +103,16 @@
+ 
+ 	public static final String GROUPING_MODE = "ProxyControlGui.grouping_mode"; // $NON-NLS-1$
+ 
++	public static final String SAMPLER_TYPE_NAME = "ProxyControlGui.sampler_type_name"; // $NON-NLS-1$
++
++	public static final String SAMPLER_REDIRECT_AUTOMATICALLY = "ProxyControlGui.sampler_redirect_automatically"; // $NON-NLS-1$
++
++	public static final String SAMPLER_FOLLOW_REDIRECTS = "ProxyControlGui.sampler_follow_redirects"; // $NON-NLS-1$
++
+ 	public static final String USE_KEEPALIVE = "ProxyControlGui.use_keepalive"; // $NON-NLS-1$
+ 
++	public static final String SAMPLER_DOWNLOAD_IMAGES = "ProxyControlGui.sampler_download_images"; // $NON-NLS-1$
++
+ 	public static final String REGEX_MATCH = "ProxyControlGui.regex_match"; // $NON-NLS-1$
+ 
+ 	public static final String HTTPS_SPOOF = "ProxyControlGui.https_spoof";
+@@ -118,7 +124,11 @@
+ 	public static final int GROUPING_IN_CONTROLLERS = 2;
+ 
+ 	public static final int GROUPING_STORE_FIRST_ONLY = 3;
++	
++	public static final int SAMPLER_TYPE_HTTP_SAMPLER = 0;
+ 
++	public static final int SAMPLER_TYPE_HTTP_SAMPLER2 = 1;
++
+ 	private long lastTime = 0;// When was the last sample seen?
+ 
+ 	private static final long sampleGap =
+@@ -128,9 +138,17 @@
+ 	private boolean addAssertions;
+ 
+ 	private int groupingMode;
++	
++	private int samplerTypeName;
+ 
++	private boolean samplerRedirectAutomatically;
++
++	private boolean samplerFollowRedirects;
++	
+ 	private boolean useKeepAlive;
+ 
++	private boolean samplerDownloadImages;
++
+ 	private boolean regexMatch = false;// Should we match using regexes?
+ 	
+ 	/**
+@@ -169,6 +187,21 @@
+ 		setProperty(new BooleanProperty(ADD_ASSERTIONS, b));
+ 	}
+ 
++	public void setSamplerTypeName(int samplerTypeName) {
++		this.samplerTypeName = samplerTypeName;
++		setProperty(new IntegerProperty(SAMPLER_TYPE_NAME, samplerTypeName));
++	}
++
++	public void setSamplerRedirectAutomatically(boolean b) {
++		samplerRedirectAutomatically = b;
++		setProperty(new BooleanProperty(SAMPLER_REDIRECT_AUTOMATICALLY, b));
++	}
++
++	public void setSamplerFollowRedirects(boolean b) {
++		samplerFollowRedirects = b;
++		setProperty(new BooleanProperty(SAMPLER_FOLLOW_REDIRECTS, b));
++	}
++
+ 	/**
+ 	 * @param b
+ 	 */
+@@ -177,6 +210,11 @@
+ 		setProperty(new BooleanProperty(USE_KEEPALIVE, b));
+ 	}
+ 
++	public void setSamplerDownloadImages(boolean b) {
++		samplerDownloadImages = b;
++		setProperty(new BooleanProperty(SAMPLER_DOWNLOAD_IMAGES, b));
++	}
++
+ 	public void setIncludeList(Collection list) {
+ 		setProperty(new CollectionProperty(INCLUDE_LIST, new HashSet(list)));
+ 	}
+@@ -228,9 +266,25 @@
+ 		return getPropertyAsBoolean(CAPTURE_HTTP_HEADERS);
+ 	}
+ 
++	public int getSamplerTypeName() {
++		return getPropertyAsInt(SAMPLER_TYPE_NAME);
++	}
++	
++	public boolean getSamplerRedirectAutomatically() {
++		return getPropertyAsBoolean(SAMPLER_REDIRECT_AUTOMATICALLY, false);
++	}
++
++	public boolean getSamplerFollowRedirects() {
++		return getPropertyAsBoolean(SAMPLER_FOLLOW_REDIRECTS, true);
++	}
++	
+ 	public boolean getUseKeepalive() {
+ 		return getPropertyAsBoolean(USE_KEEPALIVE, true);
+ 	}
++	
++	public boolean getSamplerDownloadImages() {
++		return getPropertyAsBoolean(SAMPLER_DOWNLOAD_IMAGES, false);
++	}
+ 
+ 	public boolean getRegexMatch() {
+ 		return getPropertyAsBoolean(REGEX_MATCH, false);
+@@ -307,8 +361,10 @@
+ 
+ 			removeValuesFromSampler(sampler, defaultConfigurations);
+ 			replaceValues(sampler, subConfigs, userDefinedVariables);
++			sampler.setAutoRedirects(samplerRedirectAutomatically);
++			sampler.setFollowRedirects(samplerFollowRedirects);
+ 			sampler.setUseKeepAlive(useKeepAlive);
+-			sampler.setProperty(TestElement.GUI_CLASS, HTTP_TEST_SAMPLE_GUI);
++			sampler.setImageParser(samplerDownloadImages);
+ 
+ 			placeSampler(sampler, subConfigs, myTarget);
+ 
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -93,15 +93,36 @@
+ 	 */
+ 	private JCheckBox addAssertions;
+ 
++	/*
++	 * Use regexes to match the source data
++	 */
++	private JCheckBox regexMatch;
++
+ 	/**
++	 * The list of sampler type names to choose from
++	 */
++	private JComboBox samplerTypeName;
++
++	private DefaultComboBoxModel samplerTypeNameModel;
++	
++	/**
++	 * Set/clear the Redirect automatically box on the samplers (default is false)
++	 */
++	private JCheckBox samplerRedirectAutomatically;
++	/**
++	 * Set/clear the Follow-redirects box on the samplers (default is true)
++	 */
++	private JCheckBox samplerFollowRedirects;
++
++	/**
+ 	 * Set/clear the Use Keep-Alive box on the samplers (default is true)
+ 	 */
+ 	private JCheckBox useKeepAlive;
+ 
+-	/*
+-	 * Use regexes to match the source data
++	/**
++	 * Set/clear the Download images box on the samplers (default is false)
+ 	 */
+-	private JCheckBox regexMatch;
++	private JCheckBox samplerDownloadImages;
+ 
+ 	/*
+ 	 * Spoof the client into thinking that it is communicating with http
+@@ -181,7 +202,11 @@
+ 			model.setCaptureHttpHeaders(httpHeaders.isSelected());
+ 			model.setGroupingMode(groupingMode.getSelectedIndex());
+ 			model.setAssertions(addAssertions.isSelected());
++			model.setSamplerTypeName(samplerTypeName.getSelectedIndex());
++			model.setSamplerRedirectAutomatically(samplerRedirectAutomatically.isSelected());
++			model.setSamplerFollowRedirects(samplerFollowRedirects.isSelected());
+ 			model.setUseKeepAlive(useKeepAlive.isSelected());
++			model.setSamplerDownloadImages(samplerDownloadImages.isSelected());
+ 			model.setRegexMatch(regexMatch.isSelected());
+ 			model.setHttpsSpoof(httpsSpoof.isSelected());			
+ 			TreeNodeWrapper nw = (TreeNodeWrapper) targetNodes.getSelectedItem();
+@@ -228,7 +253,11 @@
+ 		httpHeaders.setSelected(model.getCaptureHttpHeaders());
+ 		groupingMode.setSelectedIndex(model.getGroupingMode());
+ 		addAssertions.setSelected(model.getAssertions());
++		samplerTypeName.setSelectedIndex(model.getSamplerTypeName());
++		samplerRedirectAutomatically.setSelected(model.getSamplerRedirectAutomatically());
++		samplerFollowRedirects.setSelected(model.getSamplerFollowRedirects());
+ 		useKeepAlive.setSelected(model.getUseKeepalive());
++		samplerDownloadImages.setSelected(model.getSamplerDownloadImages());
+ 		regexMatch.setSelected(model.getRegexMatch());
+ 		httpsSpoof.setSelected(model.getHttpsSpoof());
+ 
+@@ -290,8 +319,10 @@
+ 			model.stopProxy();
+ 			startProxy();
+ 		} else if (command.equals(ProxyControl.CAPTURE_HTTP_HEADERS) || command.equals(ProxyControl.ADD_ASSERTIONS)
+-				|| command.equals(ProxyControl.USE_KEEPALIVE) || command.equals(ProxyControl.REGEX_MATCH)
+-				|| command.equals(ProxyControl.HTTPS_SPOOF)) {
++				|| command.equals(ProxyControl.SAMPLER_REDIRECT_AUTOMATICALLY)  
++				|| command.equals(ProxyControl.SAMPLER_FOLLOW_REDIRECTS) 
++				|| command.equals(ProxyControl.USE_KEEPALIVE) || command.equals(ProxyControl.SAMPLER_DOWNLOAD_IMAGES) 
++				|| command.equals(ProxyControl.REGEX_MATCH) || command.equals(ProxyControl.HTTPS_SPOOF)) {
+ 			enableRestart();
+ 		} else if (command.equals(ADD_EXCLUDE)) {
+ 			excludeModel.addNewRow();
+@@ -400,6 +431,10 @@
+ 		Box myBox = Box.createVerticalBox();
+ 		myBox.add(createPortPanel());
+ 		myBox.add(Box.createVerticalStrut(5));
++		myBox.add(createTestPlanContentPanel());
++		myBox.add(Box.createVerticalStrut(5));
++		myBox.add(createHTTPSamplerPanel());
++		myBox.add(Box.createVerticalStrut(5));
+ 		myBox.add(createTargetPanel());
+ 		myBox.add(Box.createVerticalStrut(5));
+ 		myBox.add(createGroupingPanel());
+@@ -447,6 +482,25 @@
+ 		JLabel label = new JLabel(JMeterUtils.getResString("port"));
+ 		label.setLabelFor(portField);
+ 
++		httpsSpoof = new JCheckBox(JMeterUtils.getResString("proxy_httpsspoofing"));
++		httpsSpoof.setName(ProxyControl.HTTPS_SPOOF);
++		httpsSpoof.setSelected(false);
++		httpsSpoof.addActionListener(this);
++		httpsSpoof.setActionCommand(ProxyControl.HTTPS_SPOOF);		
++		
++		HorizontalPanel panel = new HorizontalPanel();
++		panel.add(label);
++		panel.add(portField);
++
++		panel.add(Box.createHorizontalStrut(10));
++		panel.add(httpsSpoof);
++
++		return panel;
++	}
++
++	private JPanel createTestPlanContentPanel() {
++		JLabel label = new JLabel("Test plan content:");
++
+ 		httpHeaders = new JCheckBox(JMeterUtils.getResString("proxy_headers"));
+ 		httpHeaders.setName(ProxyControl.CAPTURE_HTTP_HEADERS);
+ 		httpHeaders.setSelected(true); // maintain original default
+@@ -459,39 +513,73 @@
+ 		addAssertions.addActionListener(this);
+ 		addAssertions.setActionCommand(ProxyControl.ADD_ASSERTIONS);
+ 
+-		useKeepAlive = new JCheckBox(JMeterUtils.getResString("proxy_usekeepalive"));
+-		useKeepAlive.setName(ProxyControl.USE_KEEPALIVE);
+-		useKeepAlive.setSelected(true);
+-		useKeepAlive.addActionListener(this);
+-		useKeepAlive.setActionCommand(ProxyControl.USE_KEEPALIVE);
+-
+ 		regexMatch = new JCheckBox(JMeterUtils.getResString("proxy_regex"));
+ 		regexMatch.setName(ProxyControl.REGEX_MATCH);
+ 		regexMatch.setSelected(false);
+ 		regexMatch.addActionListener(this);
+ 		regexMatch.setActionCommand(ProxyControl.REGEX_MATCH);
+ 
+-		httpsSpoof = new JCheckBox(JMeterUtils.getResString("proxy_httpsspoofing"));
+-		httpsSpoof.setName(ProxyControl.HTTPS_SPOOF);
+-		httpsSpoof.setSelected(false);
+-		httpsSpoof.addActionListener(this);
+-		httpsSpoof.setActionCommand(ProxyControl.HTTPS_SPOOF);		
+-		
+ 		HorizontalPanel panel = new HorizontalPanel();
+ 		panel.add(label);
+-		panel.add(portField);
+ 
+-		panel.add(Box.createHorizontalStrut(10));
+ 		panel.add(httpHeaders);
+-
+-		panel.add(useKeepAlive);
+ 		panel.add(addAssertions);
+ 		panel.add(regexMatch);
+-		panel.add(httpsSpoof);
+ 
+ 		return panel;
+ 	}
+ 
++	private JPanel createHTTPSamplerPanel() {
++		JLabel label = new JLabel("HTTP Sampler settings:");
++		
++		DefaultComboBoxModel m = new DefaultComboBoxModel();
++		// Note: position of these elements in the menu *must* match the
++		// corresponding ProxyControl.SAMPLER_TYPE_* values.
++		m.addElement(JMeterUtils.getResString("web_request"));
++		m.addElement(JMeterUtils.getResString("web_request") + " HTTPClient");
++		samplerTypeName = new JComboBox(m);
++		samplerTypeName.setName(ProxyControl.SAMPLER_TYPE_NAME);
++		samplerTypeName.setSelectedIndex(0);
++		samplerTypeName.addItemListener(this);
++		JLabel label2 = new JLabel("Type:");
++		label2.setLabelFor(samplerTypeName);
++
++		samplerRedirectAutomatically = new JCheckBox("Redirect automatically");
++		samplerRedirectAutomatically.setName(ProxyControl.SAMPLER_REDIRECT_AUTOMATICALLY);
++		samplerRedirectAutomatically.setSelected(false);
++		samplerRedirectAutomatically.addActionListener(this);
++		samplerRedirectAutomatically.setActionCommand(ProxyControl.SAMPLER_REDIRECT_AUTOMATICALLY);
++		
++		samplerFollowRedirects = new JCheckBox("Follow redirects");
++		samplerFollowRedirects.setName(ProxyControl.SAMPLER_FOLLOW_REDIRECTS);
++		samplerFollowRedirects.setSelected(true);
++		samplerFollowRedirects.addActionListener(this);
++		samplerFollowRedirects.setActionCommand(ProxyControl.SAMPLER_FOLLOW_REDIRECTS);
++		
++		useKeepAlive = new JCheckBox(JMeterUtils.getResString("proxy_usekeepalive"));
++		useKeepAlive.setName(ProxyControl.USE_KEEPALIVE);
++		useKeepAlive.setSelected(true);
++		useKeepAlive.addActionListener(this);
++		useKeepAlive.setActionCommand(ProxyControl.USE_KEEPALIVE);
++
++		samplerDownloadImages = new JCheckBox("Download images");
++		samplerDownloadImages.setName(ProxyControl.SAMPLER_DOWNLOAD_IMAGES);
++		samplerDownloadImages.setSelected(false);
++		samplerDownloadImages.addActionListener(this);
++		samplerDownloadImages.setActionCommand(ProxyControl.SAMPLER_DOWNLOAD_IMAGES);
++		
++		HorizontalPanel panel = new HorizontalPanel();
++		panel.add(label);
++		panel.add(label2);
++		panel.add(samplerTypeName);
++		panel.add(samplerRedirectAutomatically);
++		panel.add(samplerFollowRedirects);
++		panel.add(useKeepAlive);
++		panel.add(samplerDownloadImages);
++
++		return panel;
++	}
++	
+ 	private JPanel createTargetPanel() {
+ 		targetNodesModel = new DefaultComboBoxModel();
+ 		targetNodes = new JComboBox(targetNodesModel);
+@@ -560,7 +648,7 @@
+ 	private JPanel createIncludePanel() {
+ 		includeModel = new PowerTableModel(new String[] { INCLUDE_COL }, new Class[] { String.class });
+ 		includeTable = new JTable(includeModel);
+-		includeTable.setPreferredScrollableViewportSize(new Dimension(100, 50));
++		includeTable.setPreferredScrollableViewportSize(new Dimension(100, 30));
+ 		includeTable.addFocusListener(this);
+ 
+ 		JPanel panel = new JPanel(new BorderLayout());
+@@ -576,7 +664,7 @@
+ 	private JPanel createExcludePanel() {
+ 		excludeModel = new PowerTableModel(new String[] { EXCLUDE_COL }, new Class[] { String.class });
+ 		excludeTable = new JTable(excludeModel);
+-		excludeTable.setPreferredScrollableViewportSize(new Dimension(100, 50));
++		excludeTable.setPreferredScrollableViewportSize(new Dimension(100, 30));
+ 		excludeTable.addFocusListener(this);
+ 
+ 		JPanel panel = new JPanel(new BorderLayout());
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -32,7 +32,10 @@
+ import org.apache.jmeter.protocol.http.control.Header;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+ import org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui;
++import org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui2;
+ import org.apache.jmeter.protocol.http.gui.HeaderPanel;
++import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.sampler.HTTPSampler2;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -75,6 +78,8 @@
+ 
+ 	private Map headers = new HashMap();
+ 
++	private HTTPSamplerBase sampler;
++
+ 	/*
+ 	 * Optionally number the requests
+ 	 */
+@@ -83,7 +88,18 @@
+ 
+ 	private static int requestNumber = 0;// running number
+ 
++	public HttpRequestHdr() {
++		this.sampler = HTTPSamplerFactory.newInstance();
++	}
++	
+ 	/**
++	 * @param samplerTypeName the name of the http sampler to instantiate, as defined in HTTPSamplerFactory
++	 */
++	public HttpRequestHdr(HTTPSamplerBase sampler) {
++		this.sampler = sampler;
++	}
++	
++	/**
+ 	 * Parses a http header from a stream.
+ 	 * 
+ 	 * @param in
+@@ -179,15 +195,26 @@
+ 	public HTTPSamplerBase getSampler() throws MalformedURLException, IOException, ProtocolException {
+ 		// Damn! A whole new GUI just to instantiate a test element?
+ 		// Isn't there a beter way?
+-		HttpTestSampleGui tempGui = new HttpTestSampleGui();
+-		HTTPSamplerBase result = createSampler();
+-		tempGui.configure(result);
+-		tempGui.modifyTestElement(result);
+-		result.setFollowRedirects(false);
+-		result.setUseKeepAlive(true);
++		HttpTestSampleGui tempGui = null;
++		// Create the corresponding gui for the sampler class
++		if(sampler instanceof HTTPSampler2) {
++			tempGui = new HttpTestSampleGui2();
++		}
++		else {
++			tempGui = new HttpTestSampleGui();
++		}
++		sampler.setProperty(TestElement.GUI_CLASS, tempGui.getClass().getName());
++		populateSampler();
++		
++		tempGui.configure(sampler);
++		tempGui.modifyTestElement(sampler);
++		// Defaults
++		sampler.setFollowRedirects(false);
++		sampler.setUseKeepAlive(true);
++		
+         if (log.isDebugEnabled())
+-    		log.debug("getSampler: sampler path = " + result.getPath());
+-		return result;
++    		log.debug("getSampler: sampler path = " + sampler.getPath());
++		return sampler;
+ 	}
+ 
+ 	private String getContentType() {
+@@ -206,9 +233,9 @@
+ 		}
+ 	}
+ 
+-	private HTTPSamplerBase createSampler() {
++	private void populateSampler() {
+ 		MultipartUrlConfig urlConfig = null;
+-		HTTPSamplerBase sampler = HTTPSamplerFactory.newInstance();
++		
+ 		sampler.setDomain(serverName());
+         if (log.isDebugEnabled())
+     		log.debug("Proxy: setting server: " + sampler.getDomain());
+@@ -253,7 +280,6 @@
+ 		}
+         if (log.isDebugEnabled())
+     		log.debug("sampler path = " + sampler.getPath());
+-		return sampler;
+ 	}
+ 
+ 	//

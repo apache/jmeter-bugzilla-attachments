@@ -1,0 +1,45 @@
+Index: /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/control/LoopController.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/control/LoopController.java	(revision 773337)
++++ /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/control/LoopController.java	(working copy)
+@@ -49,7 +49,7 @@
+      */
+     private final static String CONTINUE_FOREVER = "LoopController.continue_forever"; // $NON-NLS-1$
+ 
+-    private transient int loopCount = 0;
++    private transient int loopCount = -1;
+ 
+     public LoopController() {
+         setContinueForever_private(true);
+@@ -110,7 +110,7 @@
+     }
+ 
+     private boolean endOfLoop() {
+-        final int loops = getLoops();
++        final int loops = (getLoops() - 1);
+         return (loops > -1) && (loopCount >= loops);
+     }
+ 
+@@ -137,7 +137,7 @@
+     }
+ 
+     protected void resetLoopCount() {
+-        loopCount = 0;
++        loopCount = -1;
+     }
+ 
+     /*
+Index: /Workspaces-JMeter/Jmeter/src/components/org/apache/jmeter/control/OnceOnlyController.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/components/org/apache/jmeter/control/OnceOnlyController.java	(revision 773361)
++++ /Workspaces-JMeter/Jmeter/src/components/org/apache/jmeter/control/OnceOnlyController.java	(working copy)
+@@ -39,7 +39,7 @@
+      * @see LoopIterationListener#iterationStart(LoopIterationEvent)
+      */
+     public void iterationStart(LoopIterationEvent event) {
+-        if (event.getIteration() == 1) {
++        if (event.getIteration() == 0) {
+             reInitialize();
+         }
+     }
+

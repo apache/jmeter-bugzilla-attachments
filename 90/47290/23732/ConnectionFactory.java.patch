@@ -1,0 +1,123 @@
+### Eclipse Workspace Patch 1.0
+#P jmeter-svn
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/ConnectionFactory.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/ConnectionFactory.java	(revision 780322)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/ConnectionFactory.java	(working copy)
+@@ -44,6 +44,16 @@
+
+     private static final Logger log = LoggingManager.getLoggerForClass();
+
++    /**
++     * Maximum number of times we will attempt to obtain a connection factory.
++     */
++    private static final int MAX_RETRY = 50;
++
++    /**
++     * Amount of time to pause between connection factory lookup attempts.
++     */
++    private static final int PAUSE_MILLIS = 100;
++
+     //@GuardedBy("this")
+     private static TopicConnectionFactory factory = null;
+
+@@ -85,29 +95,93 @@
+     public void testIterationStart(LoopIterationEvent event) {
+     }
+
+-    public static synchronized TopicConnectionFactory getTopicConnectionFactory(Context ctx, String fac) {
+-        while (factory == null) {
++    /**
++     * Gets the topic connection factory. Looks it up in JNDI if necessary.
++     * <p>
++     * The original code looped indefinitely until the connection factory was
++     * found. Unfortunately, whoever wrote the code left no clue as to why the
++     * code looped indefinitely. Perhaps, for the messaging system used by the
++     * coder, there was the possibility of some time delay, so that the factory
++     * might not be available on the first lookup, but would be available later.
++     * Note that I am giving the initial coder the benefit of the doubt, and
++     * am assuming there was a legitimate reason for the infinite loop.
++     * </p><p>
++     * However, the indefinite lookup has problems. Consider if the JMeter user
++     * provided incorrect JNDI information, such as the jndi.properties file
++     * was not added to user.classpath, or the factory name was misspelled. The
++     * result is an infinite loop that generates bucket-loads of logging. Ask me
++     * how I know this - I got a 1GB log file in a little over a minute.
++     * </p><p>
++     * Asuming there was a reason to try the lookup more than once I changed the
++     * code to:
++     * </p><ul>
++     * <li>Wait 100 milliseconds between lookups</li>
++     * <li>Loop only 50 times (5 seconds) before giving up (this was a wild
++     * guess, because like I said the original coder left no clues as to why
++     * there was a loop here)</li>
++     * <li>Only log an error on the first and last time through the loop,
++     * uniquely identifying each entry</li>
++     * </ul><p>
++     * That presented another issue - what to do if the lookup failed. This
++     * method is called from two locations, both of which are in a try/catch
++     * block, with JMSException being caught. Therefore I imagined that the best
++     * solution, which involved the fewest changes, would be to throw a
++     * JMSException. Unfortunately, in my testing the tester threads hung. But
++     * if I let this method return null, the testing threads did not hang.
++     * Rather that trying to determine why throwing a JMSException causes the
++     * testing threads to hang, and thus expanding the scope of this patch I
++     * decided to just return null.
++     */
++    public static synchronized TopicConnectionFactory getTopicConnectionFactory(Context ctx, String fac) {
++        int counter = MAX_RETRY;
++        while (factory == null && counter > 0) {
+             try {
+                 Object objfac = ctx.lookup(fac);
+                 if (objfac instanceof TopicConnectionFactory) {
+                     factory = (TopicConnectionFactory) objfac;
+                 }
+             } catch (NamingException e) {
+-                log.error(e.toString());
++                if (counter == MAX_RETRY) {
++                    log.error("Unable to find connection factory " + fac + ", will retry. Error: " + e.toString());
++                } else if (counter == 1) {
++                    log.error("Unable to find connection factory " + fac + ", giving up. Error: " + e.toString());
++                }
++                counter--;
++                try {
++                    Thread.currentThread().sleep(PAUSE_MILLIS);
++                } catch (InterruptedException ie) {
++                    // do nothing, getting interrupted is acceptable
++                }
+             }
+         }
+         return factory;
+     }
+
+-    public static synchronized QueueConnectionFactory getQueueConnectionFactory(Context ctx, String fac) {
+-        while (qfactory == null) {
++    /**
++     * Gets the topic connection factory. Looks it up in JNDI if necessary.
++     * </p><p>
++     * See getTopicConnectionFactory for design details.
++     */
++    public static synchronized QueueConnectionFactory getQueueConnectionFactory(Context ctx, String fac) {
++        int counter = MAX_RETRY;
++        while (qfactory == null && counter > 0) {
+             try {
+                 Object objfac = ctx.lookup(fac);
+                 if (objfac instanceof QueueConnectionFactory) {
+                     qfactory = (QueueConnectionFactory) objfac;
+                 }
+             } catch (NamingException e) {
+-                log.error(e.getMessage());
++                if (counter == MAX_RETRY) {
++                    log.error("Unable to find connection factory " + fac + ", will retry. Error: " + e.toString());
++                } else if (counter == 1) {
++                    log.error("Unable to find connection factory " + fac + ", giving up. Error: " + e.toString());
++                }
++                counter--;
++                try {
++                    Thread.currentThread().sleep(PAUSE_MILLIS);
++                } catch (InterruptedException ie) {
++                  // do nothing, getting interrupted is acceptable
++                }
+             }
+         }
+         return qfactory;

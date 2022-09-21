@@ -1,0 +1,32 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1418369)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -231,7 +231,14 @@
+         
+         HttpRequestBase httpRequest = null;
+         try {
+-            URI uri = url.toURI();
++            URI uri = new URI(url.getProtocol(), 
++                              null /*userInfo*/,
++                              url.getHost(), 
++                              url.getPort(), 
++                              url.getPath(), 
++                              url.getQuery(), 
++                              null /*fragment*/);
++
+             if (method.equals(HTTPConstants.POST)) {
+                 httpRequest = new HttpPost(uri);
+             } else if (method.equals(HTTPConstants.PUT)) {
+@@ -249,7 +256,10 @@
+             } else if (method.equals(HTTPConstants.PATCH)) {
+                 httpRequest = new HttpPatch(uri);
+             } else {
+-                throw new IllegalArgumentException("Unexpected method: "+method);
++                throw new IllegalArgumentException(String.format("Unexpected method: \"%s\" for url: \"%s\" frameDepth=%d", 
++                                                                 method,
++                                                                 url.toString(),
++                                                                 frameDepth));
+             }
+             setupRequest(url, httpRequest, res); // can throw IOException
+         } catch (Exception e) {

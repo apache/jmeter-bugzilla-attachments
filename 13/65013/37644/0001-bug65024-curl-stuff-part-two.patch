@@ -1,0 +1,390 @@
+From 78d80079a86b6916b4b33684d085cdf1792bc907 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Wed, 23 Dec 2020 10:45:44 +0100
+Subject: [PATCH] bug65024-curl-stuff-part-two
+
+---
+ src/protocol/build.gradle.kts                 |  8 ++++
+ .../protocol/http/curl/BasicCurlParser.java   | 43 +++++++++++-------
+ .../gui/action/ParseCurlCommandAction.java    | 27 ++++++++---
+ .../jmeter/curl/BasicCurlParserTest.java      | 45 +++++++++++--------
+ 4 files changed, 84 insertions(+), 39 deletions(-)
+
+diff --git a/src/protocol/build.gradle.kts b/src/protocol/build.gradle.kts
+index d0855cff4a..263eec8df1 100644
+--- a/src/protocol/build.gradle.kts
++++ b/src/protocol/build.gradle.kts
+@@ -89,6 +89,14 @@ project("http") {
+         implementation("com.fasterxml.jackson.core:jackson-databind")
+         testImplementation(testFixtures(project(":src:testkit-wiremock")))
+         testImplementation("com.github.tomakehurst:wiremock-jre8")
++        // For some reason JMeter bundles just tika-core and tika-parsers without transitive
++        // dependencies. So we exclude those
++        implementation("org.apache.tika:tika-core") {
++            isTransitive = false
++        }
++        runtimeOnly("org.apache.tika:tika-parsers") {
++            isTransitive = false
++        }
+     }
+ }
+ 
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java
+index 9471130243..a278468881 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java
+@@ -32,6 +32,7 @@ import java.util.Collections;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.Set;
+@@ -43,6 +44,8 @@ import org.apache.commons.cli.avalon.CLArgsParser;
+ import org.apache.commons.cli.avalon.CLOption;
+ import org.apache.commons.cli.avalon.CLOptionDescriptor;
+ import org.apache.commons.io.FileUtils;
++import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.lang3.tuple.Pair;
+ import org.apache.jmeter.protocol.http.control.AuthManager.Mechanism;
+ import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.Cookie;
+@@ -123,7 +126,7 @@ public class BasicCurlParser {
+     public static final class Request {
+         private boolean compressed;
+         private String url;
+-        private Map<String, String> headers = new LinkedHashMap<>();
++        private List<Pair<String, String>> headers = new ArrayList<>();
+         private String method = "GET";
+         private String postData;
+         private String interfaceName;
+@@ -133,8 +136,8 @@ public class BasicCurlParser {
+         private String filepathCookie="";
+         private Authorization authorization = new Authorization();
+         private String caCert = "";
+-        private Map<String, String> formData = new LinkedHashMap<>();
+-        private Map<String, String> formStringData = new LinkedHashMap<>();
++        private List<Pair<String, String>> formData = new ArrayList<>();
++        private List<Pair<String, String>> formStringData = new ArrayList<>();
+         private Set<String> dnsServers = new HashSet<>();
+         private boolean isKeepAlive = true;
+         private double maxTime = -1;
+@@ -146,6 +149,7 @@ public class BasicCurlParser {
+         private int limitRate = 0;
+         private String noproxy;
+         private static final List<String> HEADERS_TO_IGNORE = Arrays.asList("Connection", "Host");// $NON-NLS-1$
++        private static final List<String> UNIQUE_HEADERS = Arrays.asList("user-agent"); // $NON-NLS-1$
+         private static final int ONE_KILOBYTE_IN_CPS = 1024;
+         public Request() {
+             super();
+@@ -169,7 +173,11 @@ public class BasicCurlParser {
+          * @param value the post data
+          */
+         public void setPostData(String value) {
+-            this.postData = value;
++            if (StringUtils.isBlank(this.postData)) {
++                this.postData = value;
++            } else {
++                this.postData = this.postData + "&" + value;
++            }
+         }
+ 
+         /**
+@@ -200,8 +208,13 @@ public class BasicCurlParser {
+         public void addHeader(String name, String value) {
+             if ("COOKIE".equalsIgnoreCase(name)) {
+                 this.cookieInHeaders = value;
+-            } else if (!HEADERS_TO_IGNORE.contains(name)) {
+-                headers.put(name, value);
++            } else if (HEADERS_TO_IGNORE.contains(name)) {
++                return;
++            } else {
++                if (UNIQUE_HEADERS.contains(name.toLowerCase(Locale.US))) {
++                    headers.removeIf(p -> p.getLeft().equalsIgnoreCase(name));
++                }
++                headers.add(Pair.of(name, value));
+             }
+         }
+ 
+@@ -239,8 +252,8 @@ public class BasicCurlParser {
+         /**
+          * @return the headers
+          */
+-        public Map<String, String> getHeaders() {
+-            return Collections.unmodifiableMap(this.headers);
++        public List<Pair<String, String>> getHeaders() {
++            return Collections.unmodifiableList(this.headers);
+         }
+ 
+         /**
+@@ -406,8 +419,8 @@ public class BasicCurlParser {
+         /**
+          * @return the map of form data
+          */
+-        public Map<String, String> getFormStringData() {
+-            return Collections.unmodifiableMap(this.formStringData);
++        public List<Pair<String,String>> getFormStringData() {
++            return Collections.unmodifiableList(this.formStringData);
+         }
+ 
+         /**
+@@ -415,14 +428,14 @@ public class BasicCurlParser {
+          * @param value the value of form data
+          */
+         public void addFormStringData(String key, String value) {
+-            formStringData.put(key, value);
++            formStringData.add(Pair.of(key, value));
+         }
+ 
+         /**
+          * @return the map of form data
+          */
+-        public Map<String, String> getFormData() {
+-            return Collections.unmodifiableMap(this.formData);
++        public List<Pair<String,String>> getFormData() {
++            return Collections.unmodifiableList(this.formData);
+         }
+ 
+         /**
+@@ -430,7 +443,7 @@ public class BasicCurlParser {
+          * @param value the value of form data
+          */
+         public void addFormData(String key, String value) {
+-            formData.put(key, value);
++            formData.add(Pair.of(key, value));
+         }
+ 
+         /**
+@@ -541,7 +554,7 @@ public class BasicCurlParser {
+             new CLOptionDescriptor("request", CLOptionDescriptor.ARGUMENT_REQUIRED, METHOD_OPT,
+                     "Pass custom header LINE to server");
+     private static final CLOptionDescriptor D_DATA_OPT =
+-            new CLOptionDescriptor("data", CLOptionDescriptor.ARGUMENT_REQUIRED, DATA_OPT,
++            new CLOptionDescriptor("data", CLOptionDescriptor.ARGUMENT_REQUIRED | CLOptionDescriptor.DUPLICATES_ALLOWED, DATA_OPT,
+                     "HTTP POST data");
+     private static final CLOptionDescriptor D_DATA_ASCII_OPT = new CLOptionDescriptor("data-ascii",
+             CLOptionDescriptor.ARGUMENT_REQUIRED, DATA_ASCII_OPT, "HTTP POST ascii data ");
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/action/ParseCurlCommandAction.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/action/ParseCurlCommandAction.java
+index e03ae17066..0c076fc82a 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/action/ParseCurlCommandAction.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/action/ParseCurlCommandAction.java
+@@ -38,7 +38,6 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ 
+-import javax.activation.MimetypesFileTypeMap;
+ import javax.swing.JButton;
+ import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
+@@ -52,6 +51,7 @@ import javax.swing.tree.TreePath;
+ 
+ import org.apache.commons.io.FileUtils;
+ import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.lang3.tuple.Pair;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.config.KeystoreConfig;
+ import org.apache.jmeter.control.Controller;
+@@ -101,6 +101,7 @@ import org.apache.jmeter.visualizers.ViewResultsFullVisualizer;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.gui.ComponentUtil;
+ import org.apache.jorphan.gui.JMeterUIDefaults;
++import org.apache.tika.Tika;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -118,6 +119,7 @@ public class ParseCurlCommandAction extends AbstractAction implements MenuCreato
+     private static final String CREATE_REQUEST = "CREATE_REQUEST";
+     private static final String TYPE_FORM = ";type=";
+     private static final String CERT = "cert";
++    private Logger log = LoggerFactory.getLogger(getClass());
+     /** A panel allowing results to be saved. */
+     private FilePanel filePanel = null;
+     static {
+@@ -126,6 +128,7 @@ public class ParseCurlCommandAction extends AbstractAction implements MenuCreato
+     private JSyntaxTextArea cURLCommandTA;
+     private JLabel statusText;
+     private JCheckBox uploadCookiesCheckBox;
++    private final Tika tika = new Tika();
+     public ParseCurlCommandAction() {
+         super();
+     }
+@@ -344,9 +347,8 @@ public class ParseCurlCommandAction extends AbstractAction implements MenuCreato
+         headerManager.setProperty(TestElement.GUI_CLASS, HeaderPanel.class.getName());
+         headerManager.setProperty(TestElement.NAME, "HTTP HeaderManager");
+         headerManager.setProperty(TestElement.COMMENTS, getDefaultComment());
+-        Map<String, String> map = request.getHeaders();
+         boolean hasAcceptEncoding = false;
+-        for (Map.Entry<String, String> header : map.entrySet()) {
++        for (Pair<String, String> header : request.getHeaders()) {
+             String key = header.getKey();
+             hasAcceptEncoding = hasAcceptEncoding || key.equalsIgnoreCase(ACCEPT_ENCODING);
+             headerManager.getHeaders().addItem(new Header(key, header.getValue()));
+@@ -515,12 +517,12 @@ public class ParseCurlCommandAction extends AbstractAction implements MenuCreato
+             throw new IllegalArgumentException("--form and --data can't appear in the same command");
+         }
+         List<HTTPFileArg> httpFileArgs = new ArrayList<>();
+-        for (Map.Entry<String, String> entry : request.getFormStringData().entrySet()) {
++        for (Pair<String, String> entry : request.getFormStringData()) {
+             String formName = entry.getKey();
+             String formValue = entry.getValue();
+             httpSampler.addNonEncodedArgument(formName, formValue, "");
+         }
+-        for (Map.Entry<String, String> entry : request.getFormData().entrySet()) {
++        for (Pair<String, String> entry : request.getFormData()) {
+             String formName = entry.getKey();
+             String formValue = entry.getValue();
+             boolean isContainsFile = "@".equals(formValue.substring(0, 1));
+@@ -533,7 +535,20 @@ public class ParseCurlCommandAction extends AbstractAction implements MenuCreato
+                     formValue = formValueWithType[0];
+                     contentType = formValueWithType[1];
+                 } else {
+-                    contentType = new MimetypesFileTypeMap().getContentType(formValue);
++                    try {
++                        final File contentFile = new File(formValue);
++                        if (contentFile.canRead()) {
++                            contentType = tika.detect(contentFile);
++                        } else {
++                            log.info("Can not read file {}, so guessing contentType by extension.", formValue);
++                            contentType = tika.detect(formValue);
++                        }
++                    } catch (IOException e) {
++                        log.info(
++                                "Could not detect contentType for file {} by content, so falling back to detection by filename",
++                                formValue);
++                        contentType = tika.detect(formValue);
++                    }
+                 }
+                 httpFileArgs.add(new HTTPFileArg(formValue, formName, contentType));
+             } else {
+diff --git a/src/protocol/http/src/test/java/org/apache/jmeter/curl/BasicCurlParserTest.java b/src/protocol/http/src/test/java/org/apache/jmeter/curl/BasicCurlParserTest.java
+index adfa95436f..8a65a40a07 100644
+--- a/src/protocol/http/src/test/java/org/apache/jmeter/curl/BasicCurlParserTest.java
++++ b/src/protocol/http/src/test/java/org/apache/jmeter/curl/BasicCurlParserTest.java
+@@ -27,9 +27,9 @@ import java.io.IOException;
+ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Path;
+ import java.util.List;
+-import java.util.Map;
+ 
+ import org.apache.commons.io.FileUtils;
++import org.apache.commons.lang3.tuple.Pair;
+ import org.apache.jmeter.protocol.http.control.Cookie;
+ import org.apache.jmeter.protocol.http.curl.BasicCurlParser;
+ import org.junit.jupiter.api.BeforeEach;
+@@ -57,10 +57,10 @@ public class BasicCurlParserTest {
+         assertEquals(5, request.getHeaders().size());
+         assertTrue(request.isCompressed());
+         assertEquals("GET", request.getMethod());
+-        String resParser = "Request [compressed=true, url=http://jmeter.apache.org/, method=GET, headers={User-Agent=Mozilla/5.0 "
+-                + "(Macintosh; Intel Mac OS X 10.11; rv:63.0) Gecko/20100101 Firefox/63.0, Accept=text/html,application/xhtml+xml,"
+-                + "application/xml;q=0.9,*/*;q=0.8, Accept-Language=en-US,en;q=0.5, DNT=1, "
+-                + "Upgrade-Insecure-Requests=1}]";
++        String resParser = "Request [compressed=true, url=http://jmeter.apache.org/, method=GET, headers=[(User-Agent,Mozilla/5.0 "
++                +"(Macintosh; Intel Mac OS X 10.11; rv:63.0) Gecko/20100101 Firefox/63.0), (Accept,text/html,application/xhtml+xml,"
++                + "application/xml;q=0.9,*/*;q=0.8), (Accept-Language,en-US,en;q=0.5), (DNT,1), "
++                + "(Upgrade-Insecure-Requests,1)]]";
+         assertEquals(resParser, request.toString(),
+                 "The method 'toString' should get all parameters correctly");
+     }
+@@ -139,7 +139,7 @@ public class BasicCurlParserTest {
+         String cmdLine = "";
+         BasicCurlParser basicCurlParser = new BasicCurlParser();
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+-        assertEquals("Request [compressed=false, url=null, method=GET, headers={}]", request.toString(),
++        assertEquals("Request [compressed=false, url=null, method=GET, headers=[]]", request.toString(),
+                 "The method 'translateCommandline' should return 'null' when command is empty, ");
+     }
+ 
+@@ -208,7 +208,7 @@ public class BasicCurlParserTest {
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+         assertEquals(5, request.getHeaders().size(),
+                 "With method 'parser', the quantity of Headers should be 5'");
+-        assertEquals("Mozilla/5.0", request.getHeaders().get("User-Agent"),
++        assertTrue(request.getHeaders().contains(Pair.of("User-Agent", "Mozilla/5.0")),
+                 "With method 'parser', Headers need to add 'user-agent' with value 'Mozilla/5.0' ");
+     }
+ 
+@@ -318,6 +318,15 @@ public class BasicCurlParserTest {
+         assertEquals("name=test", request.getPostData());
+     }
+ 
++    @Test
++    public void testDuplicatedKeyInData() {
++        String cmdLine = "curl 'https://example.invalid' "
++                + "-H 'cache-control: no-cache' --data 'name=one' --data 'name=two' ";
++        BasicCurlParser basicCurlParser = new BasicCurlParser();
++        BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
++        assertEquals("name=one&name=two", request.getPostData());
++    }
++
+     @Test
+     public void testDataReadFromFile() throws IOException {
+         String encoding = StandardCharsets.UTF_8.name();
+@@ -417,8 +426,8 @@ public class BasicCurlParserTest {
+                 + "-H 'cache-control: no-cache' -F 'test=name' -F 'test1=name1' ";
+         BasicCurlParser basicCurlParser = new BasicCurlParser();
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+-        Map<String, String> res = request.getFormData();
+-        assertEquals("name1", res.get("test1"),
++        List<Pair<String, String>> res = request.getFormData();
++        assertTrue(res.contains(Pair.of("test1", "name1")),
+                 "With method 'parser', we should post form data");
+     }
+ 
+@@ -428,8 +437,8 @@ public class BasicCurlParserTest {
+                 + "--form 'test=\"something quoted\"'";
+         BasicCurlParser basicCurlParser = new BasicCurlParser();
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+-        Map<String, String> res = request.getFormData();
+-        assertEquals("something quoted", res.get("test"),
++        List<Pair<String, String>> res = request.getFormData();
++        assertTrue(res.contains(Pair.of("test", "something quoted")),
+                 "With method 'form', we should post form data");
+     }
+ 
+@@ -439,8 +448,8 @@ public class BasicCurlParserTest {
+                 + "--form 'test=\"something \\\"quoted\\\"\"'";
+         BasicCurlParser basicCurlParser = new BasicCurlParser();
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+-        Map<String, String> res = request.getFormData();
+-        assertEquals("something \"quoted\"", res.get("test"),
++        List<Pair<String, String>> res = request.getFormData();
++        assertTrue(res.contains(Pair.of("test", "something \"quoted\"")),
+                 "With method 'form', we should post form data");
+     }
+ 
+@@ -451,8 +460,8 @@ public class BasicCurlParserTest {
+                 + "--form 'image=@\"/some/file.jpg\"'";
+         BasicCurlParser basicCurlParser = new BasicCurlParser();
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+-        Map<String, String> res = request.getFormData();
+-        assertEquals("@\"/some/file.jpg\"", res.get("image"),
++        List<Pair<String,String>> res = request.getFormData();
++        assertTrue(res.contains(Pair.of("image", "@\"/some/file.jpg\"")),
+                 "With method 'form', we should post form data");
+     }
+ 
+@@ -462,8 +471,8 @@ public class BasicCurlParserTest {
+                 + "-H 'cache-control: no-cache' --form-string 'image=@C:\\Test\\test.jpg' ";
+         BasicCurlParser basicCurlParser = new BasicCurlParser();
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+-        Map<String, String> res = request.getFormStringData();
+-        assertEquals("@C:\\Test\\test.jpg", res.get("image"),
++        List<Pair<String,String>> res = request.getFormStringData();
++        assertTrue(res.contains(Pair.of("image", "@C:\\Test\\test.jpg")),
+                 "With method 'parser', we should post form data");
+     }
+ 
+@@ -556,7 +565,7 @@ public class BasicCurlParserTest {
+         String cmdLine = "curl 'http://jmeter.apache.org/' --referer 'www.baidu.com'";
+         BasicCurlParser basicCurlParser = new BasicCurlParser();
+         BasicCurlParser.Request request = basicCurlParser.parse(cmdLine);
+-        assertEquals("www.baidu.com", request.getHeaders().get("Referer"));
++        assertTrue(request.getHeaders().contains(Pair.of("Referer", "www.baidu.com")));
+     }
+ 
+     @Test
+-- 
+2.25.1
+

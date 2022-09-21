@@ -1,0 +1,111 @@
+Index: docs/usermanual/properties_reference.html
+===================================================================
+--- docs/usermanual/properties_reference.html	(revision 1818057)
++++ docs/usermanual/properties_reference.html	(working copy)
+@@ -470,8 +470,9 @@
+ <div class="clear"></div>
+ <div class="note">SSL (Java) System properties are now in <span class="code">system.properties</span>
+ <br> 
+-JMeter no longer converts <span class="code">javax.<em>xxx</em></span> property entries in this file into System properties.<br>
+-These must now be defined in the <span class="code">system.properties</span> file or on the command-line.<br>
++JMeter no longer converts <span class="code">javax.<em>xxx</em></span> property entries in
++<span class="code">jmeter.properties</span> into System properties.
++These must now be defined in the <span class="code">system.properties</span> file or on the command-line.
+ The <span class="code">system.properties</span> file gives more flexibility.</div>
+ <div class="clear"></div>
+ 
+@@ -532,6 +533,23 @@
+ </div>
+ 
+ <div class="property">
++<div class="name req-true">https.cipherSuites</div>
++<div class="description req-true">
++    Comma-separated list of SSL cipher suites that may be used in HTTPS connections.  It may be desirable to
++    use a subset of cipher suites in order to match expected client behavior or to reduce encryption overhead
++    in JMeter when running with large numbers of users.  Errors may occur if the JVM does not support the
++    specified cipher suites, or if the cipher suites supported by the HTTPS server do not overlap this list.  
++    See the <a href="https://docs.oracle.com/javase/7/docs/technotes/guides/security/jsse/JSSERefGuide.html#Customization">JSSE
++    Reference Guide</a>.<br>
++    For example: <pre class="source">https.cipherSuites=TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256</pre>
++    If not specified, JMeter will use the default list of cipher suites supported by the JVM.
++</div>
++<div class="required req-true">
++            No
++          </div>
++</div>
++
++<div class="property">
+ <div class="name req-true">https.use.cached.ssl.context</div>
+ <div class="description req-true">
+     Control if we allow reuse of cached SSL context between iterations.<br>
+Index: src/core/org/apache/jmeter/util/HttpSSLProtocolSocketFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/util/HttpSSLProtocolSocketFactory.java	(revision 1818057)
++++ src/core/org/apache/jmeter/util/HttpSSLProtocolSocketFactory.java	(working copy)
+@@ -51,6 +51,17 @@
+         }
+     }
+ 
++    private static final String CIPHER_LIST =
++            JMeterUtils.getPropDefault("https.cipherSuites", ""); // $NON-NLS-1$ $NON-NLS-2$
++    
++    private static final String[] ciphers = CIPHER_LIST.split(", *"); // $NON-NLS-1$
++    
++    static {
++        if (!CIPHER_LIST.isEmpty()) {
++            log.info("Using cipher list: {}", CIPHER_LIST);
++        }
++    }
++    
+     private final JsseSSLManager sslManager;
+ 
+     private final int CPS; // Characters per second to emulate
+@@ -81,6 +92,10 @@
+                 }
+             }
+         }
++
++        if (!CIPHER_LIST.isEmpty()) {
++        	    sock.setEnabledCipherSuites(ciphers);
++        }
+     }
+ 
+     private String join(String[] strings) {
+Index: xdocs/usermanual/properties_reference.xml
+===================================================================
+--- xdocs/usermanual/properties_reference.xml	(revision 1818057)
++++ xdocs/usermanual/properties_reference.xml	(working copy)
+@@ -83,9 +83,10 @@
+ </section>
+ <section name="&sect-num;.3 SSL configuration" anchor="ssl_config">
+ <note>SSL (Java) System properties are now in <code>system.properties</code><br/> 
+-JMeter no longer converts <code>javax.<em>xxx</em></code> property entries in this file into System properties.<br/>
+-These must now be defined in the <code>system.properties</code> file or on the command-line.<br/>
+-The <code>system.properties</code> file gives more flexibility.</note>
++JMeter no longer converts <code>javax.<em>xxx</em></code> property entries in
++<code>jmeter.properties</code> into System properties. These must now be
++defined in the <code>system.properties</code> file or on the command-line. The
++<code>system.properties</code> file gives more flexibility.</note>
+ <properties>
+ <property name="https.sessioncontext.shared">
+     By default, SSL session contexts are now created per-thread, rather than being shared.<br/>
+@@ -105,6 +106,19 @@
+     or <code>java.net.SocketException: Connection reset</code>.<br/>
+     See <bugzilla>54759</bugzilla>, example: <source>https.socket.protocols=SSLv2Hello SSLv3 TLSv1</source>
+ </property>
++<property name="https.cipherSuites">
++    Comma-separated list of SSL cipher suites that may be used in HTTPS
++    connections.  It may be desirable to use a subset of cipher suites in order
++    to match expected client behavior or to reduce encryption overhead in
++    JMeter when running with large numbers of users. Errors may occur if the
++    JVM does not support the specified cipher suites, or if the cipher suites
++    supported by the HTTPS server do not overlap this list.  See the
++    <a href="https://docs.oracle.com/javase/7/docs/technotes/guides/security/jsse/JSSERefGuide.html#Customization">JSSE
++	    Reference Guide.</a><br/>
++    For example: <source>https.cipherSuites=TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256</source>
++    If not specified, JMeter will use the default list of cipher suites
++    supported by the JVM.
++</property>
+ <property name="https.use.cached.ssl.context">
+     Control if we allow reuse of cached SSL context between iterations.<br/>
+     Set the value to <code>false</code> to reset the SSL context each iteration.<br/>

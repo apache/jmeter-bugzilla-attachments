@@ -1,0 +1,58 @@
+### Eclipse Workspace Patch 1.0
+#P jmeterSVN
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(revision 992261)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(working copy)
+@@ -35,6 +35,8 @@
+ import javax.swing.JPanel;
+ import javax.swing.JTextArea;
+ import javax.swing.JTextField;
++import javax.swing.event.ChangeEvent;
++import javax.swing.event.ChangeListener;
+ 
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.protocol.smtp.sampler.SmtpSampler;
+@@ -519,10 +521,16 @@
+         taMessage = new JTextArea(5, 20);
+ 
+         cbPlainBody = new JCheckBox(JMeterUtils.getResString("smtp_plainbody")); // $NON-NLS-1$
++        cbPlainBody.addChangeListener(new ChangeListener() {			
++			@Override
++			public void stateChanged(ChangeEvent e) {
++				plainBodyActionPerformed(e);
++			}
++		});
+         
+         cbSuppressSubject = new JCheckBox(JMeterUtils.getResString("smtp_suppresssubj")); // $NON-NLS-1$
+-        cbSuppressSubject.addActionListener(new ActionListener() {
+-            public void actionPerformed(ActionEvent evt) {
++        cbSuppressSubject.addChangeListener(new ChangeListener() {
++            public void stateChanged(ChangeEvent evt) {
+                 emptySubjectActionPerformed(evt);
+             }
+         });
+@@ -1084,7 +1092,7 @@
+             validate();
+         }
+     }
+-    private void emptySubjectActionPerformed(ActionEvent evt) {
++    private void emptySubjectActionPerformed(ChangeEvent evt) {
+         final Object source = evt.getSource();
+         if(source != null && source instanceof JCheckBox){
+             if(cbSuppressSubject.isSelected()){
+@@ -1096,5 +1104,12 @@
+             }
+         }
+     }
+-
++    
++    private void plainBodyActionPerformed(ChangeEvent e) {
++        final Object source = e.getSource();
++        if(source != null && source instanceof JCheckBox){
++            boolean isPlainBody = cbPlainBody.isSelected();
++            taMessage.setEnabled(!isPlainBody);
++        }
++    }
+ }
+\ No newline at end of file

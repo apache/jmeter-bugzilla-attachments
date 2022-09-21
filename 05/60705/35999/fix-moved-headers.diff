@@ -1,0 +1,158 @@
+Index: src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(Revision 1834530)
++++ src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(Arbeitskopie)
+@@ -343,7 +343,7 @@
+      * @return ObjectTableModel
+      */
+     static ObjectTableModel createObjectTableModel() {
+-        return new ObjectTableModel(COLUMNS,
++        return new ObjectTableModel(getLabels(COLUMNS),
+                 SamplingStatCalculator.class,
+                 new Functor[] {
+                 new Functor("getLabel"),                    //$NON-NLS-1$
+@@ -513,7 +513,7 @@
+         myJTable.setRowSorter(new ObjectTableSorter(model).fixLastRow());
+         JMeterUtils.applyHiDPI(myJTable);
+         // Fix centering of titles
+-        HeaderAsPropertyRendererWrapper.setupDefaultRenderer(myJTable, getColumnsMsgParameters());
++        HeaderAsPropertyRendererWrapper.setupDefaultRenderer(myJTable);
+         myJTable.setPreferredScrollableViewportSize(new Dimension(500, 70));
+         RendererUtils.applyRenderers(myJTable, getRenderers());
+         myScrollPane = new JScrollPane(myJTable);
+Index: src/core/org/apache/jmeter/gui/util/HeaderAsPropertyRenderer.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/HeaderAsPropertyRenderer.java	(Revision 1834525)
++++ src/core/org/apache/jmeter/gui/util/HeaderAsPropertyRenderer.java	(Arbeitskopie)
+@@ -19,7 +19,6 @@
+ package org.apache.jmeter.gui.util;
+ 
+ import java.awt.Component;
+-import java.text.MessageFormat;
+ 
+ import javax.swing.JTable;
+ import javax.swing.SwingConstants;
+@@ -34,8 +33,7 @@
+  */
+ public class HeaderAsPropertyRenderer extends DefaultTableCellRenderer {
+ 
+-    private static final long serialVersionUID = 240L;
+-    private Object[][] columnsMsgParameters;
++    private static final long serialVersionUID = 241L;
+ 
+     /**
+      * 
+@@ -45,11 +43,14 @@
+     }
+     
+     /**
+-     * @param columnsMsgParameters Optional parameters of i18n keys
++     * @param columnsMsgParameters ignored
++     * @deprecated don't use {@code columnsMgsParameters} as they are
++     * not moved around when rows of the corresponding table object model
++     * are moved.
+      */
++    @Deprecated
+     public HeaderAsPropertyRenderer(Object[][] columnsMsgParameters) {
+         super();
+-        this.columnsMsgParameters = columnsMsgParameters;
+     }
+ 
+     @Override
+@@ -78,7 +79,7 @@
+      * @return the text
+      */
+     protected String getText(Object value, int row, int column) {
+-        return getText(value, row, column, columnsMsgParameters);
++        return getText(value, row, column, null);
+     }
+     
+     /**
+@@ -87,7 +88,7 @@
+      * @param value value for which to get the translation
+      * @param column index which column message parameters should be used
+      * @param row not used
+-     * @param columnsMsgParameters
++     * @param columnsMsgParameters ignored
+      * @return the text
+      */
+     static String getText(Object value, int row, int column, Object[][] columnsMsgParameters) {
+@@ -94,10 +95,7 @@
+         if (value == null){
+             return "";
+         }
+-        if(columnsMsgParameters != null && columnsMsgParameters[column] != null) {
+-            return MessageFormat.format(JMeterUtils.getResString(value.toString()), columnsMsgParameters[column]);
+-        } else {
+-            return JMeterUtils.getResString(value.toString());
+-        }
++        String label = value.toString();
++        return JMeterUtils.getResString(label, label);
+     }
+ }
+Index: src/core/org/apache/jmeter/gui/util/HeaderAsPropertyRendererWrapper.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/HeaderAsPropertyRendererWrapper.java	(Revision 1834525)
++++ src/core/org/apache/jmeter/gui/util/HeaderAsPropertyRendererWrapper.java	(Arbeitskopie)
+@@ -33,17 +33,22 @@
+  */
+ public class HeaderAsPropertyRendererWrapper implements TableCellRenderer {
+ 
+-    private Object[][] columnsMsgParameters;
+-
+     private TableCellRenderer delegate;
+ 
+     /**
+      * @param renderer {@link TableCellRenderer} to delegate to
+-     * @param columnsMsgParameters Optional parameters of i18n keys
++     * @param columnsMsgParameters ignored
++     * @deprecated don't use {@code columnsMsgParameters} as they are not moved, when
++     * the corresponding columns in the tables object model are moved
+      */
++    @Deprecated
+     public HeaderAsPropertyRendererWrapper(TableCellRenderer renderer, Object[][] columnsMsgParameters) {
++        this(renderer);
++        
++    }
++    
++    public HeaderAsPropertyRendererWrapper(TableCellRenderer renderer) {
+         this.delegate = renderer;
+-        this.columnsMsgParameters = columnsMsgParameters;
+     }
+ 
+     @Override
+@@ -63,7 +68,7 @@
+             tr.setHorizontalAlignment(SwingConstants.CENTER);
+         }
+         return delegate.getTableCellRendererComponent(table, 
+-                HeaderAsPropertyRenderer.getText(value, row, column, columnsMsgParameters), 
++                HeaderAsPropertyRenderer.getText(value, row, column, null), 
+                 isSelected, hasFocus, row, column);
+     }
+     
+@@ -72,17 +77,20 @@
+      * @param table {@link JTable}
+      */
+     public static void setupDefaultRenderer(JTable table) {
+-        setupDefaultRenderer(table, null);
++        TableCellRenderer defaultRenderer = table.getTableHeader().getDefaultRenderer();
++        HeaderAsPropertyRendererWrapper newRenderer = new HeaderAsPropertyRendererWrapper(defaultRenderer);
++        table.getTableHeader().setDefaultRenderer(newRenderer);
+     }
+ 
+     /**
+      * @param table  {@link JTable}
+-     * @param columnsMsgParameters Double dimension array of column message parameters
++     * @param columnsMsgParameters ignored
++     * @deprecated don't use {@columnsMsgParameters} as they are not moved when the columns
++     * of the corresponding tables object model are moved
+      */
++    @Deprecated
+     public static void setupDefaultRenderer(JTable table, Object[][] columnsMsgParameters) {
+-        TableCellRenderer defaultRenderer = table.getTableHeader().getDefaultRenderer();
+-        HeaderAsPropertyRendererWrapper newRenderer = new HeaderAsPropertyRendererWrapper(defaultRenderer, columnsMsgParameters);
+-        table.getTableHeader().setDefaultRenderer(newRenderer);
++        setupDefaultRenderer(table);
+     }
+ 
+ }

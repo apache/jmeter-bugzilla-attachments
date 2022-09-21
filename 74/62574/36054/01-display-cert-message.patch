@@ -1,0 +1,43 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(Revision 1836855)
++++ src/core/org/apache/jmeter/resources/messages.properties	(Arbeitskopie)
+@@ -803,7 +803,7 @@
+ proxy_daemon_error_read_args=Could not add read arguments from clipboard\:
+ proxy_daemon_msg_check_details=Please check the details below when installing the certificate in the browser
+ proxy_daemon_msg_created_in_bin=created in JMeter bin directory
+-proxy_daemon_msg_check_expiration=Certificate has a duration validity of {0} days, <br>if the created one (see below) is newer than the last one you installed, <br>ensure you remove the old one and install the new one.
++proxy_daemon_msg_check_expiration=<p>Certificate has a duration validity of {0} days, <br>if the created one (see below) is newer than the last one you installed, <br>ensure you remove the old one and install the new one.</p><p>The duration can be configured by setting the property <tt>proxy.cert.validity</tt>.</p>
+ proxy_daemon_msg_install_as_in_doc=You can install it following instructions in <i>Component Reference</i> documentation <br>See <i>Installing the JMeter CA certificate for HTTPS recording</i> paragraph.
+ proxy_daemon_msg_rootca_cert=Root CA certificate
+ proxy_domains=HTTPS Domains\:
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(Revision 1836855)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(Arbeitskopie)
+@@ -614,7 +614,7 @@
+ 
+                 // Make dialog disappear after 7 seconds
+                 JLabel messageLabel = new JLabel(sb.toString());
+-                Timer timer = new Timer(7000, evt -> {
++                Timer timer = new Timer(60000, evt -> {
+                     Window window = SwingUtilities.getWindowAncestor(messageLabel);
+                     // Window may be closed by user
+                     if(window != null) {
+@@ -623,12 +623,14 @@
+                 });
+                 timer.setRepeats(false);
+                 timer.start();
+-                JOptionPane.showMessageDialog(this,
++                Object[] options = {"Understood"};
++                JOptionPane.showOptionDialog(this,
+                         messageLabel,
+                     JMeterUtils.getResString("proxy_daemon_msg_rootca_cert") + SPACE // $NON-NLS-1$
+                     + KeyToolUtils.ROOT_CACERT_CRT_PFX + SPACE
+                     + JMeterUtils.getResString("proxy_daemon_msg_created_in_bin"), // $NON-NLS-1$
+-                    JOptionPane.INFORMATION_MESSAGE);
++                    JOptionPane.INFORMATION_MESSAGE,
++                    JOptionPane.DEFAULT_OPTION, null, options, options[0]);
+             }
+             return true;
+         } catch (InvalidVariableException e) {

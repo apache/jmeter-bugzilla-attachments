@@ -1,0 +1,54 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 1177932)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -1548,7 +1548,7 @@
+      */
+     public byte[] readResponse(SampleResult sampleResult, InputStream in, int length) throws IOException {
+ 
+-        byte[] readBuffer = getThreadContext().getReadBuffer();
++        byte[] readBuffer = new byte[8192];
+         int bufferSize=32;// Enough for MD5
+ 
+         MessageDigest md=null;
+Index: src/core/org/apache/jmeter/threads/JMeterContext.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterContext.java	(revision 1177932)
++++ src/core/org/apache/jmeter/threads/JMeterContext.java	(working copy)
+@@ -47,8 +47,6 @@
+ 
+     private int threadNum;
+ 
+-    private byte[] readBuffer = null;
+-
+     private boolean isReinitSubControllers = false;
+ 
+     JMeterContext() {
+@@ -66,7 +64,6 @@
+         previousSampler = null;
+         samplingStarted = false;
+         threadNum = 0;
+-        readBuffer = null;
+         thread = null;
+         isReinitSubControllers = false;
+     }
+@@ -80,18 +77,6 @@
+         return variables;
+     }
+ 
+-    /**
+-     * A temporary buffer that can be shared between samplers in a thread.
+-     * 
+-     * @return the shared read buffer
+-     */
+-    public byte[] getReadBuffer() {
+-        if (readBuffer == null) {
+-            readBuffer = new byte[8192];
+-        }
+-        return readBuffer;
+-    }
+-
+     public void setVariables(JMeterVariables vars) {
+         this.variables = vars;
+     }
+

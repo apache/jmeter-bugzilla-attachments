@@ -1,0 +1,1208 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySamplerResources.properties
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySamplerResources.properties	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySamplerResources.properties	(revision 0)
+@@ -0,0 +1,24 @@
++# Licensed to the Apache Software Foundation (ASF) under one or more
++# contributor license agreements.  See the NOTICE file distributed with
++# this work for additional information regarding copyright ownership.
++# The ASF licenses this file to You under the Apache License, Version 2.0
++# (the "License"); you may not use this file except in compliance with
++# the License.  You may obtain a copy of the License at
++#
++#   http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++displayName=Replay Sampler
++server.displayName=Server
++host.displayName=Host
++host.shortDescription=Host name or IP of the server to receive replayed requests
++port.displayName=Port
++port.shortDescription=Port number
++requestFiles.displayName=Replay Logs
++files.displayName=Files
++files.shortDescription=Files containing recorded requests to be replayed
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySampler.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySampler.java	(revision 0)
+@@ -0,0 +1,594 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.http.sampler;
++
++import org.apache.jmeter.samplers.AbstractSampler;
++import org.apache.jmeter.samplers.Entry;
++import org.apache.jmeter.samplers.SampleResult;
++
++import org.apache.jmeter.protocol.http.util.RequestFileParser;
++import org.apache.jmeter.protocol.http.util.ReplayRequestRecord;
++import org.apache.jmeter.protocol.http.util.ByteArraySessionInputBuffer;
++
++import org.apache.jmeter.engine.event.LoopIterationListener;
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++
++import org.apache.jmeter.testbeans.TestBean;
++import org.apache.jmeter.testelement.ThreadListener;
++import org.apache.jmeter.testelement.TestListener;
++
++import org.apache.jmeter.threads.JMeterContextService;
++
++import org.apache.http.HttpResponse;
++import org.apache.http.HttpRequest;
++import org.apache.http.HttpEntity;
++import org.apache.http.HttpException;
++import org.apache.http.HttpEntityEnclosingRequest;
++import org.apache.http.ConnectionReuseStrategy;
++import org.apache.http.impl.DefaultConnectionReuseStrategy;
++import org.apache.http.impl.DefaultHttpClientConnection;
++import org.apache.http.impl.DefaultHttpRequestFactory;
++import org.apache.http.impl.io.HttpRequestParser;
++import org.apache.http.params.BasicHttpParams;
++import org.apache.http.protocol.HttpContext;
++import org.apache.http.protocol.BasicHttpContext;
++import org.apache.http.protocol.ExecutionContext;
++import org.apache.http.util.EntityUtils;
++import org.apache.http.message.BasicLineParser;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++import org.apache.commons.lang.StringUtils;
++
++import java.util.List;
++import java.util.Collections;
++import java.util.Queue;
++import java.util.concurrent.ConcurrentLinkedQueue;
++import java.util.concurrent.locks.ReentrantLock;
++
++import java.net.Socket;
++import java.net.InetSocketAddress;
++import java.net.URL;
++
++import java.io.File;
++import java.io.OutputStream;
++import java.io.ByteArrayOutputStream;
++import java.io.PrintStream;
++import java.io.IOException;
++
++/**
++ * <p>A sampler that reads recorded HTTP requests from log files to replay the
++ * request traffic back to a server. The log files are assumed to contain the
++ * entire contents of requests received by an Apache httpd server, including all
++ * headers and bodies (such as POST data), as well as the time offsets at which
++ * the requests were received, relative to the beginning of the recording. Each
++ * log represents the Apache connection ID over which the request was received;
++ * thus the collection of log files represents the concurrency of incoming
++ * traffic.</p>
++ * 
++ * <p>This sampler is a part of the Replay and Record suite of tools, which also
++ * includes:</p>
++ * 
++ * <ul>
++ * <li>a modified version of the Apache module
++ * <a href="http://httpd.apache.org/docs/2.2/mod/mod_dumpio.html">mod_dumpio</a>
++ * to record incoming requests</li>
++ * 
++ * <li>a Perl script that parses the output of mod_dumpio and produces the log
++ * files read by the sampler</li>
++ * </ul>
++ * 
++ * <h3>Configuration</h3>
++ * 
++ * <p>The sampler is configured with:</p>
++ * 
++ * <ul>
++ * <li><strong>Host</strong>: Host name (or IP) of the server to receive replayed
++ * traffic</li>
++ * 
++ * <li><strong>Port</strong>: Port number for the server</li>
++ * 
++ * <li><strong>Log files</strong>: List of log files containing request traffic
++ * </ul>
++ * 
++ * <p>JMeter variables may be used in any of these configuration elements.
++ * <strong>(XXX: That needs to be tested.)</strong>
++ * 
++ * <p>The log files are assumed to contain requests (all headers and bodies) in
++ * sequence, each of which is preceded by a line containing the time offset of
++ * the request -- the time in milliseconds at which the request is to be
++ * replayed, relative to the beginning of the test. The format of the time 
++ * offset is:</p>
++ * 
++ * <pre>\002NNN\003\r\n</pre>
++ * 
++ * <p>where <code>NNN</code> is a sequence of ASCII digits representing the offset.
++ * That is, byte value 2 (the ASCII control character STX or Start Of Text),
++ * followed by digits, followed by byte value 3 (ASCII ETX or End Of Text),
++ * followed by a carriage return and linefeed (byte values 13 and 10).</p>
++ * 
++ * <p>Each instance of the Replay Sampler reads requests from one of the logs in
++ * the list. In order to accurately reproduce the traffic, <strong>set the
++ * number of threads in the enclosing ThreadGroup equal to the number of files
++ * in the list</strong>. If there are fewer threads than files, then not all of
++ * the log files will be replayed. If there are more threads, then threads for
++ * which there is no file will be stopped immediately.</p>
++ * 
++ * <p>Also, set the ThreadGroup to "Run Forever". The Replay Sampler will stop
++ * its thread when it reaches the end of its file.</p>
++ * 
++ * <p>It is possible to use the ThreadGroup scheduler to start the sampler at a
++ * later time. The sampler may read through all of its log file and stop its
++ * thread before the scheduled end time.</p>
++ * 
++ * <p>If it is necessary to distribute the load generation to several JMeter
++ * clients, just start each client with a different set of log files (ensuring
++ * that all of the log files are covered by the various clients). The clients
++ * should all be scheduled to start at the same time (on machines with
++ * synchronized clocks).</p>
++ * 
++ * <h3>Execution</h3>
++ * 
++ * <p>On each iteration of the test plan, an instance of the Replay Sampler does
++ * the following:</p>
++ * 
++ * <ol>
++ * <li>Read the next request and time offset from the log (or stop the thread
++ * if there are none left).</li>
++ * 
++ * <li>Delay, if necessary, so that the next request is sent at the time
++ * indicated by the offset.</li>
++ * 
++ * <li>Open the connection to the server, if necessary (the sampler supports
++ * persistent connections)</li>
++ * 
++ * <li>Send the request to the server. If the connection fails, the sampler makes
++ * one attempt to re-open the connection and send the request again; if the
++ * second attempt fails, then the sampler returns failure.</li>
++ * 
++ * <li>Read the server response and populate the sampler result. The label
++ * set for the result includes the path of the log file that the current
++ * instance is reading. Latency is measured as the time from the just before
++ * sending the request until just after receiving the response headers.
++ * Elapsed time is measured as the time from just before sending the request
++ * until just after receiving the response body.</li>
++ * 
++ * <li>Interpret the Keep-Alive/Connection headers in the response and close the
++ * connection if so indicated; otherwise, the connection is left open for the
++ * next iteration</li>
++ * </ol>
++ * 
++ * <p>The sampler returns success if the response was received correctly and the
++ * status code is less than 500; otherwise it returns failure. Note that a status
++ * of 5xx may be the appropriate response to the request as recorded in the
++ * log. If the sampler result is failure, then the sampler closes the connection
++ * to the server (a new connection may be opened on the next iteration).</p>
++ * 
++ * <p>Note that the sampler submits requests one at a time, exactly as recorded
++ * in the logs. In particular, it does not initiate any of the following
++ * actions:</p>
++ * 
++ * <ul>
++ * <li>Follow redirects</li>
++ * 
++ * <li>Set cookies or execute HTTP authentication as directed by the server</li>
++ * 
++ * <li>Participate in an Expect/Continue handshake</li>
++ * </ul>
++ * 
++ * <p>However, if a client performed these interactions while the traffic was
++ * recorded, then presumably the sampler will play them back.</p>
++ * 
++ * <p>Note that other test elements in a test plan, such as the managers for
++ * Cookies and HTTP authentication, have no effect on the Replay Sampler; it
++ * just plays back requests exactly as found in the log. Test elements such as
++ * other samplers, logic controllers and timers may interfere with the Replay
++ * Sampler's ability to reproduce the timings of requests.</p>
++ * 
++ * <h3>Limitations</h3>
++ * 
++ * <ul>
++ * <li>The sampler does not support SSL.</li>
++ * 
++ * <li>If the Apache server was listening at more than one port during the
++ * recording session, then no information about which port is available to the
++ * sampler. It only connects to the server/port given in the configuration.</li>
++ * 
++ * <li>Memory usage increases with the number of log files being processed. If
++ * one JMeter client is used to process a large number of files, it
++ * may be necessary to increase the Java heap size to larger than the JMeter
++ * defaults.</li>
++ * </ul>
++ * 
++ */
++
++public class ReplaySampler extends AbstractSampler
++        implements TestBean, ThreadListener, LoopIterationListener, TestListener {
++
++    private static final long serialVersionUID = 0x71d10eea425d28d2L;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    // XXX make this configurable
++    private static final int CONN_TIMEOUT = 300;
++    
++    private static final String NON_HTTP_RESPONSE_CODE = "599";
++
++    private static final String NON_HTTP_RESPONSE_MESSAGE = "ReplaySampler Failure";
++    
++    // XXX Kludge! Where can I put data shared by the thread in this Thread
++    // Group? getContext().getThreadGroup() is null at the constructor
++    private static Queue<String> fileQ = null;
++    
++    private DefaultHttpClientConnection client = new DefaultHttpClientConnection();
++    
++    // XXX set all fields as transient except host, port and files
++    
++    private byte[] requestBytes;
++    
++    private HttpRequest request;
++
++    private Socket sock;
++    
++    private InetSocketAddress addr;
++    
++    private String host;
++    
++    private int port;
++    
++    private OutputStream out;
++    
++    private ConnectionReuseStrategy reuse = new DefaultConnectionReuseStrategy();
++    
++    private HttpContext ctx = new BasicHttpContext();
++        
++    private long testStart;
++    
++    private long time;
++    
++    private List<String> files;
++    
++    private RequestFileParser parser;
++    
++    private final ReentrantLock lock = new ReentrantLock();
++    
++    private String filename;
++    
++    private BasicHttpParams params = new BasicHttpParams();
++    
++    private DefaultHttpRequestFactory reqFactory = new DefaultHttpRequestFactory();
++    
++    private BasicLineParser lineParser = new BasicLineParser();
++    
++    private String label;
++    
++    public ReplaySampler() {
++        super();
++        List<String> empty = Collections.emptyList();
++        files = empty;
++    }
++    
++    /**
++     * 
++     * @param host The host name from the configuration
++     */
++    public void setHost(String host) {
++        this.host = host;
++    }
++    
++    /**
++     * 
++     * @return the host name from the configuration
++     */
++    public String getHost() {
++        return this.host;
++    }
++
++    /**
++     * 
++     * @param port The port number from the configuration
++     */
++    public void setPort(int port) {
++        this.port = port;
++    }
++    
++    /**
++     * 
++     * @return the port number from the configuration
++     */
++    public int getPort() {
++        return this.port;
++    }
++    
++    /**
++     * 
++     * @param files The list of file names from the configuration
++     */
++    public void setFiles(List<String> files) {
++        this.files = files;
++    }
++    
++    /**
++     * 
++     * @return the list of file names from the configuration
++     */
++    public List<String> getFiles() {
++        return this.files;
++    }
++    
++    /**
++     * At thread start, the sampler instance obtains a file name from the
++     * configured list and starts the parser with that file. If the parser fails,
++     * an error message is emitted to the JMeter log, and the thread is stopped.
++     */
++    public void threadStarted() {
++        
++        this.testStart = JMeterContextService.getTestStartTime();
++        
++        log.debug("Thread " + getThreadName() + ", file queue = " + fileQ);
++        filename = fileQ.poll();
++        
++        if (filename == null) {
++            getThreadContext().getThread().stop();
++            return;
++        }
++        
++        this.label = "Replay Sampler: " + filename;
++        
++        try {
++            parser = new RequestFileParser(new File(filename));
++            log.info("Initialized parser for " + filename);
++        } catch (Exception ex) {
++            log.error("Cannot initialize parser for " + filename, ex);
++            getThreadContext().getThread().stop();
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void threadFinished() {
++    }
++
++    /**
++     * At the start of a test iteration, the sampler checks if the parser has
++     * reached the end of the log file, and stops the thread if so. Otherwise,
++     * it reads the next record (request and time offset) from the parser.
++     */
++    public void iterationStart(LoopIterationEvent iterEvent) {
++        if (parser.isEof()) {
++            getThreadContext().getThread().stop();
++            return;
++        }
++        
++        try {
++            ReplayRequestRecord record = parser.getNextRecord();
++            time = record.getTime();
++            requestBytes = record.getRequest();
++            ByteArraySessionInputBuffer in
++                    = new ByteArraySessionInputBuffer(requestBytes, params);
++            HttpRequestParser reqParser
++                    = new HttpRequestParser(in, lineParser, reqFactory, params);
++            request = (HttpRequest) reqParser.parse();
++        } catch (IOException iox) {
++            log.error("Cannot read the next request record from " + filename, iox);
++            // XXX now what?
++        }
++        catch (HttpException htx) {
++            log.error("Cannot parse request from " + filename, htx);
++            // XXX now what?
++        }
++    }
++
++    /**
++     * Perform an iteration of the sampler as documented in "Execution" above.
++     */
++    public SampleResult sample(Entry e) {
++        HTTPSampleResult result = new HTTPSampleResult();
++        HttpResponse response = null;
++        boolean hasBody = false;
++        long start, end;
++        
++        result.setSampleLabel(this.label);
++        long delay = time - (System.currentTimeMillis() - testStart);
++        if (delay < 0) {
++            log.warn("Replay lagging " + -delay + " ms");
++            delay = 0;
++        }
++        try {
++            // XXX get this to work with a DelayedQueue returned by the parser
++            Thread.sleep(delay);
++        } catch (InterruptedException ex) {
++        }
++        try {
++            // XXX check isStale()?
++            if (sock == null || !client.isOpen())
++                open();
++        }
++        catch (IOException iox) {
++            return errorResult(iox, result, response);
++        }
++        start = System.currentTimeMillis();
++        try {
++            try {
++                out.write(requestBytes);
++                response = client.receiveResponseHeader();
++            }
++            catch (IOException iox) {
++                // One attempt to open a new connection
++                log.warn("Failed to send request/receive response headers, retrying:", iox);
++                open();
++                start = System.currentTimeMillis();
++                out.write(requestBytes);
++                response = client.receiveResponseHeader();
++            }
++            if (hasBody(this.request, response)) {
++                client.receiveResponseEntity(response);
++                end = System.currentTimeMillis();
++                result.setResponseData(EntityUtils.toByteArray(response.getEntity()));
++                hasBody = true;
++            }
++            else
++                end = System.currentTimeMillis();
++
++            result.setStampAndTime(start, end - start);
++            int status = response.getStatusLine().getStatusCode();
++            result.setResponseCode(Integer.toString(status));
++            result.setResponseHeaders(StringUtils.join(response.getAllHeaders(), "\r\n"));
++            result.setResponseMessage(response.getStatusLine().getReasonPhrase());
++            if (hasBody) {
++                String contentType = response.getEntity().getContentType().getValue();
++                result.setContentType(contentType);
++                result.setEncodingAndType(contentType);
++            }
++            result.setHTTPMethod(request.getRequestLine().getMethod());
++            result.setRequestHeaders(StringUtils.join(request.getAllHeaders(), "\r\n"));
++            result.setURL(new URL("http", host, port, request.getRequestLine().getUri()));
++            if (request instanceof HttpEntityEnclosingRequest) {
++                HttpEntity ent = ((HttpEntityEnclosingRequest) request).getEntity();
++                // XXX this apparently always returns null, even if there is a request body
++                if (ent != null)
++                    result.setQueryString(EntityUtils.toString(ent));
++            }
++            else
++                // XXX this apparently does not parse the URL for a query string
++                result.setQueryString(result.getURL().getQuery());
++                        
++            // XXX success?
++            result.setSuccessful(status < 500);
++
++            if (!reuse.keepAlive(response, ctx)) {
++                client.close();
++            }
++        }
++        catch (Exception ex) {
++            result.setStampAndTime(start, System.currentTimeMillis() - start);
++            log.error("ReplaySampler failure", ex);
++            result = errorResult(ex, result, response);
++            client.close();
++        }
++        finally {
++            return result;
++        }
++    }
++    
++    private void open() throws IOException {
++            if (sock != null && !sock.isClosed())
++                sock.close();
++            if (client != null && client.isOpen())
++                client.close();
++            sock = new Socket();
++            // XXX check if host & port == null or set default localhost:80
++            if (addr == null)
++                addr = new InetSocketAddress(host, port);
++            // XXX connection timeout and HttpParams as JMeter properties
++            sock.connect(addr, CONN_TIMEOUT);
++            client.bind(sock, new BasicHttpParams());
++            out = sock.getOutputStream();
++            ctx.setAttribute(ExecutionContext.HTTP_CONNECTION, client);
++    }
++    
++    // s. RFC 2616 section 4.4
++    // XXX is this complete?
++    private boolean hasBody(HttpRequest request, HttpResponse response) {
++        if ("HEAD".equals(request.getRequestLine().getMethod()))
++            return false;
++        if (response.containsHeader("Content-Length"))
++            return !"0".equals(response.getFirstHeader("Content-Length").getValue());
++        int status = response.getStatusLine().getStatusCode();
++        if (status == 204 || status == 304 || (status >= 100 && status < 200))
++            return false;
++        if (response.containsHeader("Transfer-Encoding"))
++            return !"identity".equalsIgnoreCase(response.getFirstHeader("Transfer-Encoding").getValue());
++        if ("multipart/byteranges".equalsIgnoreCase(response.getFirstHeader("Content-Type").getValue()))
++            return true;
++        throw new IllegalStateException("Cannot determine whether response has body");
++    }
++    
++    /**
++     * Obtain a result that will help inform the user that an error has occured
++     * during sampling, and how long it took to detect the error.
++     * 
++     * Adapted from org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase
++     *
++     * @param e
++     *            Exception representing the error.
++     * @param result
++     *            SampleResult
++     * @return a sampling result useful to inform the user about the exception.
++     */
++    private HTTPSampleResult errorResult(Throwable e, HTTPSampleResult result,
++                                         HttpResponse response) {
++        result.setDataType(SampleResult.TEXT);
++        ByteArrayOutputStream text = new ByteArrayOutputStream(200);
++        PrintStream stream = new PrintStream(text);
++        if (response != null)
++            stream.print(StringUtils.join(response.getAllHeaders(), "\r\n"));
++        stream.println("\n**********");
++        e.printStackTrace(stream);
++        result.setResponseData(text.toByteArray());
++        result.setResponseCode(NON_HTTP_RESPONSE_CODE + ": " + e.getClass().getName());
++        result.setResponseMessage(NON_HTTP_RESPONSE_MESSAGE + ": " + e.getMessage());
++        result.setSuccessful(false);
++        return result;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testStarted() {
++        lock.lock();
++        try {
++            if (fileQ == null)
++                fileQ = new ConcurrentLinkedQueue<String>(files);
++        }
++        finally {
++            lock.unlock();
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testStarted(String host) {
++        testStarted();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testEnded() {
++        fileQ = null;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testEnded(String host) {
++        testEnded();
++    }
++
++    /**
++     * {@inheritDoc}
++     * @param event 
++     */
++    public void testIterationStart(LoopIterationEvent event) {
++    }
++
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySamplerBeanInfo.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySamplerBeanInfo.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/ReplaySamplerBeanInfo.java	(revision 0)
+@@ -0,0 +1,64 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.http.sampler;
++
++import org.apache.jmeter.testbeans.BeanInfoSupport;
++import org.apache.jmeter.testbeans.gui.FileListEditor;
++import org.apache.jmeter.testbeans.gui.TableEditor;
++
++import org.apache.jmeter.testelement.property.StringProperty;
++
++import java.beans.PropertyDescriptor;
++
++import java.util.ArrayList;
++
++/**
++ * BeanInfoSupport for the {@link ReplaySampler}.
++ * 
++ */
++public class ReplaySamplerBeanInfo extends BeanInfoSupport {
++    
++    public ReplaySamplerBeanInfo() {
++        super(ReplaySampler.class);
++        
++        createPropertyGroup("server",
++                new String[] {"host", "port"});
++        createPropertyGroup("requestFiles", new String[] {"files"});
++        
++        PropertyDescriptor p;
++        
++        p = property("host");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "localhost");
++        p.setValue(NOT_EXPRESSION, Boolean.FALSE);
++        
++        p = property("port");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "80");
++        p.setValue(NOT_EXPRESSION, Boolean.FALSE);
++        
++        p = property("files");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, new ArrayList<StringProperty>());
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setPropertyEditorClass(FileListEditor.class);
++        // Monstrous kludge! org.apache.jmeter.testbeans.TestBeanHelper has
++        // TableEditor.CLASSNAME hard-wired in!
++        p.setValue(TableEditor.CLASSNAME, StringProperty.class.getName());
++    }
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/RequestFileParseException.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/RequestFileParseException.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/RequestFileParseException.java	(revision 0)
+@@ -0,0 +1,33 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.http.util;
++
++/**
++ * An error returned by the {@link RequestFileParser}
++ * 
++ */
++
++public class RequestFileParseException extends Exception {
++
++    public RequestFileParseException() {
++    }
++
++    public RequestFileParseException(String msg) {
++        super(msg);
++    }
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/ReplayRequestRecord.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/ReplayRequestRecord.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/ReplayRequestRecord.java	(revision 0)
+@@ -0,0 +1,54 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.http.util;
++
++/**
++ * A record returned by the {@link RequestFileParser}, containing the next
++ * request and time offset.
++ * 
++ * @see RequestFileParser
++ */
++
++public class ReplayRequestRecord {
++
++    private long time;
++
++    private byte[] request;
++
++    public ReplayRequestRecord(long time, byte[] request) {
++        this.time = time;
++        this.request = request;
++    }
++
++    /**
++     *
++     * @return the time offset
++     */
++    public long getTime() {
++        return time;
++    }
++
++    /**
++     *
++     * @return the request
++     */
++    public byte[] getRequest() {
++        return request;
++    }
++
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/RequestFileParser.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/RequestFileParser.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/RequestFileParser.java	(revision 0)
+@@ -0,0 +1,233 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.http.util;
++
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.IOException;
++
++import java.util.Arrays;
++
++/**
++ * <p>A parser that reads request log files for the
++ * {@link org.apache.jmeter.protocol.http.sampler.ReplaySampler}. For each
++ * time offset and request found in the file, a {@link ReplayRequestRecord} is
++ * emitted.</p>
++ * 
++ * <p>The parser uses an internal buffer for requests that is set to an initial
++ * capacity (which may be supplied in the constructor). If necessary, the
++ * buffer is resized to fit larger requests.</p>
++ * 
++ * @see org.apache.jmeter.protocol.http.sampler.ReplaySampler
++ * @see ReplayRequestRecord
++ */
++
++// XXX close the file when the end is reached
++public class RequestFileParser {
++
++    private static final int DEFAULT_BUFSIZ = 8192;
++    
++    private static final byte STX   = 0x02; // ASCII Start of Text
++    private static final byte ETX   = 0x03; // ASCII End of Text
++    private static final byte CR    = 0x0d; // '\r'
++    private static final byte LF    = 0x0a; // '\n'
++    private static final byte ZERO  = 0x30; // '0'
++    private static final byte NINE  = 0x39; // '9'
++
++    private FileInputStream in;
++    
++    private String path;
++    
++    private byte[] buf;
++    
++    private long time = -1;
++    
++    private int bufsiz, off, len, startPos, timeStartPos;
++    
++    private boolean eof = false;
++
++    /**
++     * Create a parser for the given file with a default initial capacity for
++     * the request buffer.
++     * 
++     * @param file the request log file
++     * @throws IOException if the file cannot be read
++     * @throws RequestFileParseException if there is an error parsing the contents
++     */
++    public RequestFileParser(File file)
++            throws IOException, RequestFileParseException {
++        this(file, DEFAULT_BUFSIZ);
++    }
++
++    /**
++     * Create a parser for the given file with the given initial capacity for the
++     * request buffer.
++     * 
++     * @param file the request log file
++     * @param bufsiz an initial capacity for the request buffer
++     * @throws IOException if the file cannot be read
++     * @throws RequestFileParseException if there is an error parsing the contents
++     */
++    public RequestFileParser(File file, int bufsiz)
++            throws IOException, RequestFileParseException {
++        
++        this.in = new FileInputStream(file);
++        this.path = file.getAbsolutePath();
++        this.bufsiz = bufsiz;
++        this.buf = new byte[bufsiz];
++        
++        readFirstLine();
++    }
++    
++    /**
++     * 
++     * @return true if the parser is at the end of the request log file
++     */
++    public boolean isEof() {
++        return this.eof;
++    }
++    
++    /**
++     * 
++     * @return the next record (request and time offset) in the file
++     * @throws IOException if there is an error reading the file
++     */
++    public ReplayRequestRecord getNextRecord() throws IOException {
++        if (this.isEof())
++            return null;
++        long t = time;
++        time = -1;
++        // Corner case: off is right at the end of buf
++        if (off == len)
++            refill();
++        startPos = off++;
++        while (time == -1 && !eof) {
++           while (off < len && buf[off] != STX)
++                off++;
++           if (off == len) {
++               refill();
++               continue;
++           }
++           timeStartPos = ++off;
++           while (off < len && isDigit(buf[off]))
++               off++;
++           if (off == len || off + 2 > len) {
++               refill();
++           }
++           if (buf[off] == ETX && buf[off+1] == CR && buf[off+2] == LF) {
++               time = getTime();
++               off += 3;
++               break;
++           }
++        }
++        return new ReplayRequestRecord(t, Arrays.copyOfRange(buf, startPos, timeStartPos - 1));
++    }
++    
++    /**
++     * Refills the request buffer
++     * @throws IOException 
++     */
++    private void refill() throws IOException {
++        // If the buffer is already full, reallocate a larger one
++        if (startPos == 0 && len == bufsiz) {
++            byte[] newbuf = new byte[bufsiz << 1];
++            System.arraycopy(buf, 0, newbuf, 0, len);
++            buf = newbuf;
++            bufsiz <<= 1;
++            off++;
++        }
++        else {
++            System.arraycopy(buf, startPos, buf, 0, off - startPos);
++            off -= startPos;
++            timeStartPos -= startPos;
++            startPos = 0;
++        }
++        int n = in.read(buf, off, bufsiz - off);
++        if (n == -1) {
++            in.close();
++            eof = true;
++            // this trick just lets the final copyOfRange() read to the end of buf
++            timeStartPos = off + 1;
++            return;
++        }
++        len = off + n;
++    }
++    
++    /**
++     * Reads the first line of the log (the first time offset)
++     * 
++     * @throws IOException
++     * @throws RequestFileParseException 
++     */
++    private void readFirstLine()
++            throws IOException, RequestFileParseException {
++        String msg = path + " does not begin with \"\\002N\\003\\r\\n\"";
++        len = in.read(buf, off, bufsiz);
++        if (len == -1) {
++            in.close();
++            eof = true;
++            return;
++        }
++        if (buf[0] != STX)
++            throw new RequestFileParseException(msg);
++        off = timeStartPos = 1;
++        while (time == -1) {
++            while (off < len && isDigit(buf[off]))
++                off++;
++            if (off < len && buf[off] != ETX)
++                throw new RequestFileParseException(msg);
++            if (off == len || off + 2 > len) {
++                System.arraycopy(buf, timeStartPos, buf, 0, off - timeStartPos + 1);
++                off = off - timeStartPos + 1;
++                timeStartPos = 0;
++                int n = in.read(buf, off, bufsiz - off);
++                if (n == -1) {
++                    in.close();
++                    eof = true;
++                    throw new RequestFileParseException(msg + " (unexpected EOF)");
++                }
++                len = off + n;
++                continue;
++            }
++            if (buf[off] == ETX && buf[off+1] == CR && buf[off+2] == LF) {
++                time = getTime();
++                off += 3;
++                break;
++            }
++            else
++                throw new RequestFileParseException(msg);
++        }            
++    }
++
++    /**
++     * @return true iff b is the ASCII value for a digit
++     */
++    private boolean isDigit(byte b) {
++        return b >= ZERO && b <= NINE;
++    }
++
++    /**
++     * @return the long represented in the buffer from timeStartPos to off-1
++     */
++    private long getTime() {
++        long t = 0;
++        for (int i = timeStartPos; i < off; i++)
++            t = t * 10 + (buf[i] - ZERO);
++        return t;
++    }
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/ByteArraySessionInputBuffer.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/ByteArraySessionInputBuffer.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/ByteArraySessionInputBuffer.java	(revision 0)
+@@ -0,0 +1,48 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.http.util;
++
++import org.apache.http.impl.io.AbstractSessionInputBuffer;
++import org.apache.http.params.HttpParams;
++
++import java.io.ByteArrayInputStream;
++import java.io.IOException;
++
++/**
++ * <p>A <a href="http://hc.apache.org/httpcomponents-core-ga/httpcore/apidocs/org/apache/http/io/SessionInputBuffer.html">SessionInputBuffer</a>
++ * based on an array of bytes, to be used with
++ * <a href="http://hc.apache.org/httpcomponents-core-ga/">HttpCore's</a>
++ * <a href="http://hc.apache.org/httpcomponents-core-ga/httpcore/apidocs/org/apache/http/impl/io/AbstractMessageParser.html">message
++ * parser</a>.
++ * 
++ */
++
++public class ByteArraySessionInputBuffer extends AbstractSessionInputBuffer {
++
++    private ByteArrayInputStream in;
++    
++    public ByteArraySessionInputBuffer(byte[] buf, HttpParams params) {
++        this.in = new ByteArrayInputStream(buf);
++        super.init(in, buf.length, params);
++    }
++    
++    public boolean isDataAvailable(int i) throws IOException {
++        return super.hasBufferedData();
++    }
++    
++}
+Index: src/core/org/apache/jmeter/testbeans/gui/FileListEditor.java
+===================================================================
+--- src/core/org/apache/jmeter/testbeans/gui/FileListEditor.java	(revision 0)
++++ src/core/org/apache/jmeter/testbeans/gui/FileListEditor.java	(revision 0)
+@@ -0,0 +1,118 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.testbeans.gui;
++
++import org.apache.jmeter.gui.util.FileListPanel;
++
++import org.apache.jmeter.testelement.property.StringProperty;
++
++import java.awt.Component;
++
++import java.beans.PropertyEditorSupport;
++
++import java.util.List;
++import java.util.ArrayList;
++
++/**
++ * PropertyEditorSupport for a list of files, using the
++ * {@link org.apache.jmeter.gui.util.FileListPanel} as the GUI.
++ * 
++ */
++
++public class FileListEditor extends PropertyEditorSupport {
++    
++    private FileListPanel panel;
++    
++    public FileListEditor() {
++        panel = new FileListPanel();        
++    }
++    
++    /**
++     * Interprets value as a list of file names, and passes these along to
++     * {@link org.apache.jmeter.gui.util.FileListPanel#setFiles(java.lang.String[])}
++     * 
++     * @param value the list of file names
++     */
++    @Override
++    public void setValue(Object value) {
++        @SuppressWarnings("unchecked")
++        List<StringProperty> list = (List<StringProperty>) value;
++        String[] files = new String[list.size()];
++        for (int i = 0; i < files.length; i++)
++            files[i] = list.get(i).getStringValue();
++        panel.setFiles(files);
++    }
++    
++    /**
++     * 
++     * @return the list of file names obtained from
++     * {@link org.apache.jmeter.gui.util.FileListPanel#getFiles()}
++     */
++    @Override
++    public Object getValue() {
++        String[] files = panel.getFiles();
++        List<StringProperty> list = new ArrayList<StringProperty>(files.length);
++        for (int i = 0; i < files.length; i++) {
++            StringProperty prop = new StringProperty();
++            prop.setValue(files[i]);
++            list.add(prop);
++        }
++        return list;
++    }
++    
++    /**
++     * {@inheritDoc}
++     * 
++     * @param text ignored
++     * @throws IllegalArgumentException never
++     */
++    @Override
++    public void setAsText(String text) throws IllegalArgumentException {
++        // no text
++    }
++    
++    /**
++     * {@inheritDoc}
++     * 
++     * @return null
++     */
++    @Override
++    public String getAsText() {
++        return null;
++    }
++
++    /**
++     * 
++     * @return the underlying {@link org.apache.jmeter.gui.util.FileListPanel}
++     */
++    @Override
++    public Component getCustomEditor() {
++        return panel;
++    }
++    
++    /**
++     * {@inheritDoc}
++     * 
++     * @return true
++     */
++    @Override
++    public boolean supportsCustomEditor() {
++        return true;
++    }
++
++}

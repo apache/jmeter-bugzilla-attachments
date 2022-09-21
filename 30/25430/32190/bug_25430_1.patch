@@ -1,0 +1,308 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 230b4c667d625d307e715c4bd9ba0d3152a3e8fb)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision )
+@@ -267,7 +267,12 @@
+              */
+             if (headers != null) {
+                 headers.removeHeaderNamed(HTTPConstants.HEADER_COOKIE);// Always remove cookies
++                /*
++                See https://issues.apache.org/bugzilla/show_bug.cgi?id=25430
++                HEADER_AUTHORIZATION won't be removed, it will be used
++                for creating Authorization Manager
+                 headers.removeHeaderNamed(HTTPConstants.HEADER_AUTHORIZATION);// Always remove authorization
++                 */
+                 // Remove additional headers
+                 for(String hdr : HEADERS_TO_REMOVE){
+                     headers.removeHeaderNamed(hdr);
+Index: xdocs/usermanual/component_reference.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 230b4c667d625d307e715c4bd9ba0d3152a3e8fb)
++++ xdocs/usermanual/component_reference.xml	(revision )
+@@ -6259,8 +6259,9 @@
+ </p>
+ <h4>Authorization Manager</h4>
+ <p>
+-The Proxy server passes on any Authorization headers sent by the browser, but does not save them in the test plan.
+-If the site requires Authorization, you will need to add an Authorization Manager and fill it in with the necessary entries.
++The HTTP(S) Test Script Recorder grabs "Authentication" header, decodes it from base64. If Authorization Manager was added to target
++    controller manually, HTTP(S) Test Script Recorder will find it and add authorization(matching ones will be removed). Otherwise
++    Authorization Manager will be added to target controller with authorization object.
+ </p>
+ <h4>Uploading files</h4>
+ <p>
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 230b4c667d625d307e715c4bd9ba0d3152a3e8fb)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision )
+@@ -36,8 +36,10 @@
+ import java.util.LinkedList;
+ import java.util.List;
+ import java.util.Map;
++import java.util.ArrayList;
+ import java.util.prefs.Preferences;
+ 
++import org.apache.commons.codec.binary.Base64;
+ import org.apache.commons.codec.digest.DigestUtils;
+ import org.apache.commons.io.IOUtils;
+ import org.apache.commons.lang3.RandomStringUtils;
+@@ -58,12 +60,17 @@
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.tree.JMeterTreeModel;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.protocol.http.control.Header;
++import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.RecordingController;
+ import org.apache.jmeter.protocol.http.gui.HeaderPanel;
++import org.apache.jmeter.protocol.http.gui.AuthPanel;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
++import org.apache.jmeter.protocol.http.util.HTTPConstants;
+ import org.apache.jmeter.samplers.SampleEvent;
+ import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -77,6 +84,7 @@
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.testelement.property.StringProperty;
++import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jmeter.timers.Timer;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -108,6 +116,10 @@
+ 
+     private static final String HEADER_PANEL = HeaderPanel.class.getName();
+ 
++    private static final String AUTH_PANEL = AuthPanel.class.getName();
++
++    private static final String AUTH_MANAGER = AuthManager.class.getName();
++
+     public static final int DEFAULT_PORT = 8080;
+ 
+     // and as a string
+@@ -340,7 +352,7 @@
+         samplerDownloadImages = b;
+         setProperty(new BooleanProperty(SAMPLER_DOWNLOAD_IMAGES, b));
+     }
+-    
++
+     public void setNotifyChildSamplerListenerOfFilteredSamplers(boolean b) {
+         notifyChildSamplerListenersOfFilteredSamples = b;
+         setProperty(new BooleanProperty(NOTIFY_CHILD_SAMPLER_LISTENERS_FILTERED, b));
+@@ -426,7 +438,7 @@
+     public boolean getNotifyChildSamplerListenerOfFilteredSamplers() {
+         return getPropertyAsBoolean(NOTIFY_CHILD_SAMPLER_LISTENERS_FILTERED, true);
+     }
+-    
++
+     public boolean getRegexMatch() {
+         return getPropertyAsBoolean(REGEX_MATCH, false);
+     }
+@@ -551,6 +563,10 @@
+                 sampler.setUseKeepAlive(useKeepAlive);
+                 sampler.setImageParser(samplerDownloadImages);
+ 
++                Authorization authorization = getAuthorization(subConfigs, sampler);
++                if (authorization != null) {
++                    setAuthorization(authorization, myTarget);
++                }
+                 placeSampler(sampler, subConfigs, myTarget);
+             } else {
+                 if(log.isDebugEnabled()) {
+@@ -559,7 +575,7 @@
+                 notifySampleListeners = notifyChildSamplerListenersOfFilteredSamples;
+                 result.setSampleLabel("["+result.getSampleLabel()+"]");
+             }
+-        } 
++        }
+         if(notifySampleListeners) {
+             // SampleEvent is not passed JMeterVariables, because they don't make sense for Proxy Recording
+             notifySampleListeners(new SampleEvent(result, "WorkBench")); // TODO - is this the correct threadgroup name?
+@@ -568,6 +584,57 @@
+         }
+     }
+ 
++    /**
++     * Detect Header manager in subConfigs,
++     * Find(if any) Authentication header
++     * Construct Authentication object
++     *
++     * @param subConfigs
++     * @param sampler
++     * @return
++     */
++    private Authorization getAuthorization(final TestElement[] subConfigs, HTTPSamplerBase sampler) {
++        Header authHeader = null;
++        Authorization authorization = null;
++        /*
++        Iterate over subconfig elements searching for HeaderManager
++         */
++        for (TestElement te : subConfigs) {
++            if (te instanceof HeaderManager) {
++                ArrayList<TestElementProperty> headers = (ArrayList<TestElementProperty>) ((HeaderManager) te).getHeaders().getObjectValue();
++                for (TestElementProperty tep : headers) {
++                    if (tep.getName().equals(HTTPConstants.HEADER_AUTHORIZATION)) {
++                        /*
++                        Construct Authorization object from HEADER_AUTHORIZATION
++                         */
++                        authHeader = (Header) tep.getObjectValue();
++                        String authType=(authHeader.getValue().split(" "))[0];
++                        String authCredentialsBase64=(authHeader.getValue().split(" "))[1];
++                        String authCred= new String(Base64.decodeBase64(authCredentialsBase64));
++                        authorization=new Authorization();
++                        authorization.setURL(sampler.getDomain());
++                        authorization.setUser(authCred.split(":")[0]);
++                        authorization.setPass(authCred.split(":")[1]);
++                        /*
++                        if HEADER_AUTHORIZATION contains "Basic", than set Mechanism.BASIC_DIGEST,
++                        otherwise Mechanism.KERBEROS
++                         */
++                        authorization.setMechanism(authType.equals("Basic")|authType.equals("Digest")?
++                                AuthManager.Mechanism.BASIC_DIGEST:
++                                AuthManager.Mechanism.KERBEROS);
++                        /*
++                        remove HEADER_AUTHORIZATION from HeaderManager
++                        because it's useless after creating Authorization
++                        object
++                        */
++                        headers.remove(HTTPConstants.HEADER_AUTHORIZATION);
++                    }
++                }
++            }
++        }
++        return authorization;
++    }
++
+     public void stopProxy() {
+         if (server != null) {
+             server.stopServer();
+@@ -698,7 +765,32 @@
+         }
+         return true;
+     }
++
+     /**
++     * Find if there is any AuthManager in JMeterTreeModel
++     * If there is no one, create and add it to tree
++     * Add authorization object to AuthManager
++     * @param authorization
++     * @param target
++     */
++    private void setAuthorization(Authorization authorization, JMeterTreeNode target) {
++        JMeterTreeModel jmeterTreeModel = GuiPackage.getInstance().getTreeModel();
++        List<JMeterTreeNode> authManagerNodes = jmeterTreeModel.getNodesOfType(AuthManager.class);
++        if (authManagerNodes.size() == 0) {
++            try {
++                log.debug("Created HTTP Authentication manager...");
++                AuthManager authManager=createAuthorizationManager(authorization);
++                jmeterTreeModel.addComponent(authManager, target);
++            } catch (IllegalUserActionException e) {
++                log.error("Failed to add Authorization Manager to target node=" + target.getName(), e);
++            }
++        }else{
++            AuthManager authManager=(AuthManager)authManagerNodes.get(0).getTestElement();
++            authManager.addAuth(authorization);
++        }
++    }
++
++    /**
+      * Helper method to add a Response Assertion
+      * Called from AWT Event thread
+      */
+@@ -709,6 +801,22 @@
+         ra.setTestFieldResponseData();
+         model.addComponent(ra, node);
+     }
++
++    /**
++     * Construct AuthManager
++     * @param authorization
++     * @return
++     * @throws IllegalUserActionException
++     */
++    private AuthManager createAuthorizationManager(Authorization authorization) throws IllegalUserActionException {
++        AuthManager authManager = new AuthManager();
++        authManager.setProperty(TestElement.GUI_CLASS, AUTH_PANEL);
++        authManager.setProperty(TestElement.TEST_CLASS, AUTH_MANAGER);
++        authManager.setName("HTTP Authorization Manager");
++        authManager.addAuth(authorization);
++        return authManager;
++    }
++
+ 
+     /**
+      * Helper method to add a Divider
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/AuthManager.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/AuthManager.java	(revision 230b4c667d625d307e715c4bd9ba0d3152a3e8fb)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/AuthManager.java	(revision )
+@@ -256,9 +256,28 @@
+     public void addConfigElement(ConfigElement config) {
+     }
+ 
+-    public void addAuth(Authorization auth) {
+-        getAuthObjects().addItem(auth);
++    public void addAuth(Authorization newAuthorization) {
++        boolean alreadyExists=false;
++        PropertyIterator iter = getAuthObjects().iterator();
++        //iterate over authentication objects in manager
++        while (iter.hasNext()) {
++            Authorization authorization = (Authorization) iter.next().getObjectValue();
++            if (authorization == null) {
++                continue;
+-    }
++            }
++            if (match(authorization,newAuthorization)) {
++                if (log.isDebugEnabled()) {
++                    log.debug("Found the same Authorization object = " + newAuthorization.toString());
++                }
++                //set true, if found the same one
++                alreadyExists=true;
++            }
++        }
++        if(!alreadyExists){
++            // if there was no such auth object, add.
++            getAuthObjects().addItem(newAuthorization);
++        }
++    }
+ 
+     public void addAuth() {
+         getAuthObjects().addItem(new Authorization());
+@@ -419,8 +438,21 @@
+         if (STRIP_PORT) {
+             return true;
+         }
+-        return (url.getPort() == HTTPConstants.DEFAULT_HTTP_PORT || 
++        return (url.getPort() == HTTPConstants.DEFAULT_HTTP_PORT ||
+                 url.getPort() == HTTPConstants.DEFAULT_HTTPS_PORT);
++    }
++
++    /**
++    Check if two authorization objects are equal
++    */
++    private boolean match(Authorization a, Authorization b){
++        return
++                a.getURL().equals(b.getURL())&&
++                a.getName().equals(b.getName())&&
++                a.getPass().equals(b.getPass())&&
++                a.getDomain().equals(b.getDomain())&&
++                a.getRealm().equals(b.getRealm())&&
++                a.getMechanism().equals(b.getMechanism());
+     }
+ 
+     /** {@inheritDoc} */

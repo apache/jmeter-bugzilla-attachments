@@ -1,0 +1,58 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1175704)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -85,7 +85,6 @@
+ import org.apache.http.protocol.BasicHttpContext;
+ import org.apache.http.protocol.ExecutionContext;
+ import org.apache.http.protocol.HttpContext;
+-
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+@@ -144,6 +143,9 @@
+      * This allows the defaults to be overridden if necessary from the properties file.
+      */
+     private static final HttpParams DEFAULT_HTTP_PARAMS;
++
++    // TODO Hack to fix https://issues.apache.org/jira/browse/HTTPCLIENT-1127
++    private static final Byte SHUTDOWN_LOCK = new Byte("0");
+     
+     static {
+         log.info("HTTP request retry count = "+RETRY_COUNT);
+@@ -1065,13 +1067,16 @@
+      * 
+      */
+     private void closeThreadLocalConnections() {
+-        // Does not need to be synchronised, as all access is from same thread
+-        Map<HttpClientKey, HttpClient> map = HTTPCLIENTS.get();
+-        if ( map != null ) {
+-            for ( HttpClient cl : map.values() ) {
+-                cl.getConnectionManager().shutdown();
+-            }
+-            map.clear();
++        // TODO HACK to fix https://issues.apache.org/jira/browse/HTTPCLIENT-1127
++        synchronized (SHUTDOWN_LOCK) {
++            // Does not need to be synchronised, as all access is from same thread
++            Map<HttpClientKey, HttpClient> map = HTTPCLIENTS.get();
++            if ( map != null ) {
++                for ( HttpClient cl : map.values() ) {
++                    cl.getConnectionManager().shutdown();
++                }
++                map.clear();   
++            }        
+         }
+     }
+ 
+@@ -1084,7 +1089,10 @@
+         if (request != null) {
+             currentRequest = null;
+             try {
+-                request.abort();
++                // TODO HACK to fix https://issues.apache.org/jira/browse/HTTPCLIENT-1127
++                synchronized (SHUTDOWN_LOCK) {
++                    request.abort();
++                } 
+             } catch (UnsupportedOperationException e) {
+                 log.warn("Could not abort pending request", e);
+             }

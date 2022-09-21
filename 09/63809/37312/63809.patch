@@ -1,0 +1,270 @@
+diff --git a/gradle.properties b/gradle.properties
+index 94ac714c0..e2490746d 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -55,7 +55,7 @@ bsh.version=2.0b6
+ caffeine.version=2.8.0
+ cglib-nodep.version=3.2.12
+ commons-codec.version=1.14
+-commons-collections.version=3.2.2
++commons-collections4.version=4.4
+ commons-dbcp2.version=2.7.0
+ commons-io.version=2.6
+ commons-jexl.version=2.1.1
+diff --git a/src/bom/build.gradle.kts b/src/bom/build.gradle.kts
+index 8b5695b48..f4f0c47e8 100644
+--- a/src/bom/build.gradle.kts
++++ b/src/bom/build.gradle.kts
+@@ -82,7 +82,7 @@ dependencies {
+         apiv("com.sun.activation:javax.activation", "javax.activation")
+         apiv("com.thoughtworks.xstream:xstream")
+         apiv("commons-codec:commons-codec")
+-        apiv("commons-collections:commons-collections")
++        apiv("org.apache.commons:commons-collections4")
+         apiv("commons-io:commons-io")
+         apiv("commons-lang:commons-lang")
+         apiv("commons-net:commons-net")
+diff --git a/src/components/build.gradle.kts b/src/components/build.gradle.kts
+index be2ed3629..51a8b127a 100644
+--- a/src/components/build.gradle.kts
++++ b/src/components/build.gradle.kts
+@@ -53,7 +53,7 @@ dependencies {
+     implementation("org.jsoup:jsoup")
+     implementation("org.apache.commons:commons-lang3")
+     implementation("net.sf.jtidy:jtidy")
+-    implementation("commons-collections:commons-collections")
++    implementation("org.apache.commons:commons-collections4")
+     implementation("org.apache.commons:commons-math3")
+     implementation("commons-io:commons-io") {
+         because("IOUtils")
+diff --git a/src/components/src/main/java/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java b/src/components/src/main/java/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+index 8df5e1c8b..52f8ca223 100644
+--- a/src/components/src/main/java/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
++++ b/src/components/src/main/java/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+@@ -35,6 +35,7 @@ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.concurrent.ArrayBlockingQueue;
+ import java.util.stream.Collectors;
+ 
+ import javax.swing.BorderFactory;
+@@ -59,10 +60,7 @@ import javax.swing.tree.TreeNode;
+ import javax.swing.tree.TreePath;
+ import javax.swing.tree.TreeSelectionModel;
+ 
+-import org.apache.commons.collections.Buffer;
+-import org.apache.commons.collections.EnumerationUtils;
+-import org.apache.commons.collections.buffer.CircularFifoBuffer;
+-import org.apache.commons.collections.buffer.UnboundedFifoBuffer;
++import org.apache.commons.collections4.EnumerationUtils;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.JMeter;
+ import org.apache.jmeter.assertions.AssertionResult;
+@@ -129,7 +127,7 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+     private Object resultsObject = null;
+     private TreeSelectionEvent lastSelectionEvent;
+     private JCheckBox autoScrollCB;
+-    private Buffer buffer;
++    private ArrayBlockingQueue buffer;
+     private boolean dataChanged;
+ 
+     /**
+@@ -139,9 +137,9 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+         super();
+         final int maxResults = JMeterUtils.getPropDefault("view.results.tree.max_results", 500);
+         if (maxResults > 0) {
+-            buffer = new CircularFifoBuffer(maxResults);
++            buffer = new ArrayBlockingQueue(maxResults);
+         } else {
+-            buffer = new UnboundedFifoBuffer();
++            buffer = new ArrayBlockingQueue(0);
+         }
+         init();
+         new Timer(REFRESH_PERIOD, e -> updateGui()).start();
+diff --git a/src/core/build.gradle.kts b/src/core/build.gradle.kts
+index 0ea301f03..8b90c0c05 100644
+--- a/src/core/build.gradle.kts
++++ b/src/core/build.gradle.kts
+@@ -78,7 +78,7 @@ dependencies {
+     implementation("commons-codec:commons-codec") {
+         because("DigestUtils")
+     }
+-    implementation("commons-collections:commons-collections")
++    implementation("org.apache.commons:commons-collections4")
+     implementation("org.apache.commons:commons-math3") {
+         because("Mean, DescriptiveStatistics")
+     }
+diff --git a/src/core/src/main/java/org/apache/jmeter/gui/LoggerPanel.java b/src/core/src/main/java/org/apache/jmeter/gui/LoggerPanel.java
+index 824ecc2f3..7d650217c 100644
+--- a/src/core/src/main/java/org/apache/jmeter/gui/LoggerPanel.java
++++ b/src/core/src/main/java/org/apache/jmeter/gui/LoggerPanel.java
+@@ -19,6 +19,7 @@ package org.apache.jmeter.gui;
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Insets;
++import java.util.concurrent.ArrayBlockingQueue;
+ 
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+@@ -26,9 +27,6 @@ import javax.swing.JTextArea;
+ import javax.swing.ScrollPaneConstants;
+ import javax.swing.Timer;
+ 
+-import org.apache.commons.collections.Buffer;
+-import org.apache.commons.collections.buffer.CircularFifoBuffer;
+-import org.apache.commons.collections.buffer.UnboundedFifoBuffer;
+ import org.apache.jmeter.gui.logging.GuiLogEventListener;
+ import org.apache.jmeter.gui.logging.LogEventObject;
+ import org.apache.jmeter.gui.util.JSyntaxTextArea;
+@@ -57,7 +55,7 @@ public class LoggerPanel extends JPanel implements GuiLogEventListener {
+     private static final int LOGGER_PANEL_REFRESH_PERIOD =
+             JMeterUtils.getPropDefault("jmeter.gui.refresh_period", 500); // $NON-NLS-1$
+ 
+-    private final Buffer events;
++    private final ArrayBlockingQueue events;
+ 
+     private volatile boolean logChanged = false;
+ 
+@@ -66,9 +64,9 @@ public class LoggerPanel extends JPanel implements GuiLogEventListener {
+      */
+     public LoggerPanel() {
+         if (LOGGER_PANEL_MAX_LINES > 0) {
+-            events = new CircularFifoBuffer(LOGGER_PANEL_MAX_LINES);
++            events = new ArrayBlockingQueue(LOGGER_PANEL_MAX_LINES);
+         } else {
+-            events = new UnboundedFifoBuffer();
++            events = new ArrayBlockingQueue(0);
+         }
+         textArea = init();
+     }
+diff --git a/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java b/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java
+index f8667ddb7..28a35ba02 100644
+--- a/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java
++++ b/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java
+@@ -38,7 +38,7 @@ import java.util.List;
+ 
+ import javax.swing.table.DefaultTableModel;
+ 
+-import org.apache.commons.collections.map.LinkedMap;
++import org.apache.commons.collections4.map.LinkedMap;
+ import org.apache.commons.lang3.CharUtils;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.reporters.ResultCollector;
+diff --git a/src/core/src/main/java/org/apache/jmeter/services/FileServer.java b/src/core/src/main/java/org/apache/jmeter/services/FileServer.java
+index 350916629..7cabd68e2 100644
+--- a/src/core/src/main/java/org/apache/jmeter/services/FileServer.java
++++ b/src/core/src/main/java/org/apache/jmeter/services/FileServer.java
+@@ -33,7 +33,7 @@ import java.util.HashMap;
+ import java.util.Map;
+ import java.util.concurrent.ThreadLocalRandom;
+ 
+-import org.apache.commons.collections.ArrayStack;
++import org.apache.commons.collections4.ArrayStack;
+ import org.apache.commons.io.input.BOMInputStream;
+ import org.apache.jmeter.gui.JMeterFileFilter;
+ import org.apache.jmeter.save.CSVSaveService;
+diff --git a/src/core/src/main/java/org/apache/jmeter/testbeans/gui/TestBeanGUI.java b/src/core/src/main/java/org/apache/jmeter/testbeans/gui/TestBeanGUI.java
+index 7016849eb..aac014ae3 100644
+--- a/src/core/src/main/java/org/apache/jmeter/testbeans/gui/TestBeanGUI.java
++++ b/src/core/src/main/java/org/apache/jmeter/testbeans/gui/TestBeanGUI.java
+@@ -38,7 +38,7 @@ import java.util.ResourceBundle;
+ 
+ import javax.swing.JPopupMenu;
+ 
+-import org.apache.commons.collections.map.LRUMap;
++import org.apache.commons.collections4.map.LRUMap;
+ import org.apache.jmeter.assertions.Assertion;
+ import org.apache.jmeter.assertions.gui.AbstractAssertionGui;
+ import org.apache.jmeter.config.ConfigElement;
+diff --git a/src/core/src/main/java/org/apache/jmeter/util/JSR223TestElement.java b/src/core/src/main/java/org/apache/jmeter/util/JSR223TestElement.java
+index b4859873a..20a8074a8 100644
+--- a/src/core/src/main/java/org/apache/jmeter/util/JSR223TestElement.java
++++ b/src/core/src/main/java/org/apache/jmeter/util/JSR223TestElement.java
+@@ -34,7 +34,7 @@ import javax.script.ScriptEngineManager;
+ import javax.script.ScriptException;
+ 
+ import org.apache.commons.codec.digest.DigestUtils;
+-import org.apache.commons.collections.map.LRUMap;
++import org.apache.commons.collections4.map.LRUMap;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+diff --git a/src/dist/build.gradle.kts b/src/dist/build.gradle.kts
+index ee77f9d01..0966ad3db 100644
+--- a/src/dist/build.gradle.kts
++++ b/src/dist/build.gradle.kts
+@@ -80,7 +80,7 @@ dependencies {
+     buildDocs(platform(project(":src:bom")))
+     buildDocs("org.apache.velocity:velocity")
+     buildDocs("commons-lang:commons-lang")
+-    buildDocs("commons-collections:commons-collections")
++    buildDocs("org.apache.commons:commons-collections4")
+     buildDocs("org.jdom:jdom")
+ }
+ 
+diff --git a/src/jorphan/build.gradle.kts b/src/jorphan/build.gradle.kts
+index 1c9524612..39a99a4e8 100644
+--- a/src/jorphan/build.gradle.kts
++++ b/src/jorphan/build.gradle.kts
+@@ -22,7 +22,7 @@ dependencies {
+     api("org.slf4j:slf4j-api")
+ 
+     implementation("commons-io:commons-io")
+-    implementation("commons-collections:commons-collections")
++    implementation("org.apache.commons:commons-collections4")
+     implementation("org.apache.commons:commons-lang3")
+     implementation("org.apache.commons:commons-math3")
+     implementation("org.apache.commons:commons-text")
+diff --git a/src/jorphan/src/main/java/org/apache/jorphan/util/XMLBuffer.java b/src/jorphan/src/main/java/org/apache/jorphan/util/XMLBuffer.java
+index 3bef5e674..30a6c7b53 100644
+--- a/src/jorphan/src/main/java/org/apache/jorphan/util/XMLBuffer.java
++++ b/src/jorphan/src/main/java/org/apache/jorphan/util/XMLBuffer.java
+@@ -17,7 +17,7 @@
+ 
+ package org.apache.jorphan.util;
+ 
+-import org.apache.commons.collections.ArrayStack;
++import org.apache.commons.collections4.ArrayStack;
+ 
+ // @see org.apache.jorphan.util.TestXMLBuffer for unit tests
+ 
+diff --git a/src/protocol/build.gradle.kts b/src/protocol/build.gradle.kts
+index 2a1e2abbe..81678287d 100644
+--- a/src/protocol/build.gradle.kts
++++ b/src/protocol/build.gradle.kts
+@@ -70,7 +70,7 @@ project("http") {
+         implementation("org.jodd:jodd-lagarto")
+         implementation("org.jsoup:jsoup")
+         implementation("oro:oro")
+-        implementation("commons-collections:commons-collections")
++        implementation("org.apache.commons:commons-collections4")
+         implementation("commons-net:commons-net")
+         implementation("com.helger:ph-commons") {
+             // We don't really need to use/distribute jsr305
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/control/CacheManager.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/control/CacheManager.java
+index 79d276598..3b1e05fde 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/control/CacheManager.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/control/CacheManager.java
+@@ -31,7 +31,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ 
+-import org.apache.commons.collections.map.LRUMap;
++import org.apache.commons.collections4.map.LRUMap;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.commons.lang3.tuple.ImmutablePair;
+ import org.apache.commons.lang3.tuple.Pair;
+diff --git a/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/parser/TestCssParser.java b/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/parser/TestCssParser.java
+index 194f36a7f..e595d077e 100644
+--- a/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/parser/TestCssParser.java
++++ b/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/parser/TestCssParser.java
+@@ -27,7 +27,7 @@ import java.net.URL;
+ import java.nio.charset.StandardCharsets;
+ import java.util.List;
+ 
+-import org.apache.commons.collections.IteratorUtils;
++import org.apache.commons.collections4.IteratorUtils;
+ import org.apache.jmeter.junit.JMeterTestCase;
+ import org.hamcrest.CoreMatchers;
+ import org.junit.jupiter.api.Test;

@@ -1,0 +1,275 @@
+Index: src/core/org/apache/jmeter/testbeans/gui/WrapperEditor.java
+===================================================================
+--- src/core/org/apache/jmeter/testbeans/gui/WrapperEditor.java	(revision 1496951)
++++ src/core/org/apache/jmeter/testbeans/gui/WrapperEditor.java	(working copy)
+@@ -445,4 +445,8 @@
+             guiEditor.setAsText(lastValidValue);
+         }
+     }
++    
++    public void addChangeListener(PropertyChangeListener listener){
++    	guiEditor.addPropertyChangeListener(listener);
++    }
+ }
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java
+===================================================================
+--- src/core/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java	(revision 1496951)
++++ src/core/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java	(working copy)
+@@ -21,6 +21,7 @@
+ import java.awt.GridBagLayout;
+ import java.awt.Insets;
+ import java.beans.BeanInfo;
++import java.beans.PropertyChangeListener;
+ import java.beans.PropertyDescriptor;
+ import java.beans.PropertyEditor;
+ import java.beans.PropertyEditorManager;
+@@ -203,6 +204,8 @@
+ 
+         // Obtain the propertyEditors:
+         editors = new PropertyEditor[descriptors.length];
++        int scriptLanguageIndex=0;
++        int textAreaEditorIndex=0;
+         for (int i = 0; i < descriptors.length; i++) { // Index is also used for accessing editors array
+             PropertyDescriptor descriptor = descriptors[i];
+             String name = descriptor.getName();
+@@ -218,7 +221,7 @@
+             PropertyEditor propertyEditor;
+             Object guiType = descriptor.getValue(GUITYPE);
+             if (guiType instanceof TypeEditor) {
+-                propertyEditor = ((TypeEditor) guiType).getInstance(descriptor);            
++                propertyEditor = ((TypeEditor) guiType).getInstance(descriptor); 
+             } else {
+                 Class<?> editorClass = descriptor.getPropertyEditorClass();
+                 if (log.isDebugEnabled()) {
+@@ -267,6 +270,11 @@
+             {
+                 ((TestBeanPropertyEditor)propertyEditor).setDescriptor(descriptor);
+             }
++            
++            if (propertyEditor instanceof TextAreaEditor)
++            {
++            	textAreaEditorIndex = i;
++            }
+             if (propertyEditor.getCustomEditor() instanceof JScrollPane) {
+                 scrollerCount++;
+             }
+@@ -275,9 +283,19 @@
+ 
+             // Initialize the editor with the provided default value or null:
+             setEditorValue(i, descriptor.getValue(DEFAULT));
++            
++            if (name.equals("scriptLanguage")){
++            	scriptLanguageIndex=i;
++            }
+ 
+         }
+-
++        // In case of BSF and JSR elements i want to add textAreaEditor as a listener to scriptLanguage ComboBox.
++        String beanName = this.beanInfo.getBeanDescriptor().getName();
++        if (beanName.startsWith("BSF") || beanName.startsWith("JSR223")){
++        		WrapperEditor we = (WrapperEditor) editors[scriptLanguageIndex];
++        		TextAreaEditor tae = (TextAreaEditor) editors[textAreaEditorIndex];
++        		we.addChangeListener(tae);
++    	}
+         // Obtain message formats:
+         propertyFieldLabelMessage = new MessageFormat(JMeterUtils.getResString("property_as_field_label")); //$NON-NLS-1$
+         propertyToolTipMessage = new MessageFormat(JMeterUtils.getResString("property_tool_tip")); //$NON-NLS-1$
+@@ -350,7 +368,7 @@
+                 tags[j++] = additionalTag;
+             }
+         }
+-
++        
+         boolean notNull = notNull(descriptor);
+         boolean notExpression = notExpression(descriptor);
+         boolean notOther = notOther(descriptor);
+@@ -363,7 +381,7 @@
+             e.setNoUndefined(notNull);
+             e.setNoEdit(notExpression && notOther);
+             e.setTags(tags);
+-
++            
+             guiEditor = e;
+         }
+ 
+@@ -372,7 +390,6 @@
+                 !notExpression, // acceptsExpressions
+                 !notOther, // acceptsOther
+                 descriptor.getValue(DEFAULT));
+-
+         return wrapper;
+     }
+ 
+Index: src/core/org/apache/jmeter/testbeans/gui/TextAreaEditor.java
+===================================================================
+--- src/core/org/apache/jmeter/testbeans/gui/TextAreaEditor.java	(revision 1496951)
++++ src/core/org/apache/jmeter/testbeans/gui/TextAreaEditor.java	(working copy)
+@@ -24,17 +24,26 @@
+ import java.awt.Component;
+ import java.awt.event.FocusEvent;
+ import java.awt.event.FocusListener;
++import java.beans.PropertyChangeEvent;
++import java.beans.PropertyChangeListener;
+ import java.beans.PropertyEditorSupport;
+ 
+-import javax.swing.JScrollPane;
+-import javax.swing.JTextArea;
+-import javax.swing.ScrollPaneConstants;
++
++import org.apache.jmeter.util.JMeterUtils;
++import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
++import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
++import org.fife.ui.rtextarea.RTextScrollPane;
+ 
+-public class TextAreaEditor extends PropertyEditorSupport implements FocusListener {
++import java.util.Locale;
++import java.util.Properties;;
+ 
+-    private JTextArea textUI;
++public class TextAreaEditor extends PropertyEditorSupport implements FocusListener, PropertyChangeListener {
+ 
+-    private JScrollPane scroller;
++    private RSyntaxTextArea textUI;
++
++    private RTextScrollPane scroller;
++    
++    private Properties languageProperties;
+ 
+     /** {@inheritDoc} */
+     @Override
+@@ -45,15 +54,20 @@
+     @Override
+     public void focusLost(FocusEvent e) {
+         firePropertyChange();
+-    }
++    } 
+ 
+     private final void init() {// called from ctor, so must not be overridable
+-        textUI = new JTextArea();
++        textUI = new RSyntaxTextArea(20,20);
++        textUI.discardAllEdits();
++        textUI.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
++		textUI.setCodeFoldingEnabled(true);
++		textUI.setAntiAliasingEnabled(true);
+         textUI.addFocusListener(this);
+         textUI.setWrapStyleWord(true);
+         textUI.setLineWrap(true);
+-        scroller = new JScrollPane(textUI, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
++		scroller = new RTextScrollPane(textUI);
++		scroller.setFoldIndicatorEnabled(true);
++		languageProperties = JMeterUtils.loadProperties("org/apache/jmeter/testbeans/gui/textarea.properties");
+     }
+ 
+     /**
+@@ -112,4 +126,20 @@
+     public boolean supportsCustomEditor() {
+         return true;
+     }
++    
++    @Override
++	public void propertyChange(PropertyChangeEvent evt){
++    	Object source = evt.getSource();
++    	if (source instanceof ComboStringEditor && source !=null){
++    		ComboStringEditor cse = (ComboStringEditor)source;
++    		String lang = cse.getAsText().toLowerCase();
++    		if (languageProperties.containsKey(lang)){
++    			textUI.setSyntaxEditingStyle(languageProperties.getProperty(lang));
++    		}
++    		else{
++    			textUI.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
++    		}
++    		
++    	}
++    }
+ }
+Index: src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java	(revision 1496951)
++++ src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java	(working copy)
+@@ -32,6 +32,9 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
++import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
++import org.fife.ui.rtextarea.RTextScrollPane;
+ 
+ public class BeanShellAssertionGui extends AbstractAssertionGui {
+ 
+@@ -43,7 +46,7 @@
+ 
+     private JTextField parameters;// parameters to pass to script file (or script)
+ 
+-    private JTextArea scriptField;// script area
++    private RSyntaxTextArea scriptField;// script area
+ 
+     public BeanShellAssertionGui() {
+         init();
+@@ -139,8 +142,10 @@
+     }
+ 
+     private JPanel createScriptPanel() {
+-        scriptField = new JTextArea();
+-        scriptField.setRows(4);
++        scriptField = new RSyntaxTextArea(20,20);
++        scriptField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
++        scriptField.setCodeFoldingEnabled(true);
++		scriptField.setAntiAliasingEnabled(true);
+         scriptField.setLineWrap(true);
+         scriptField.setWrapStyleWord(true);
+ 
+@@ -149,7 +154,7 @@
+ 
+         JPanel panel = new JPanel(new BorderLayout());
+         panel.add(label, BorderLayout.NORTH);
+-        panel.add(new JScrollPane(scriptField), BorderLayout.CENTER);
++        panel.add(new RTextScrollPane(scriptField), BorderLayout.CENTER);
+ 
+         JTextArea explain = new JTextArea(JMeterUtils.getResString("bsh_assertion_script_variables")); //$NON-NLS-1$
+         explain.setLineWrap(true);
+Index: src/protocol/java/org/apache/jmeter/protocol/java/control/gui/BeanShellSamplerGui.java
+===================================================================
+--- src/protocol/java/org/apache/jmeter/protocol/java/control/gui/BeanShellSamplerGui.java	(revision 1496951)
++++ src/protocol/java/org/apache/jmeter/protocol/java/control/gui/BeanShellSamplerGui.java	(working copy)
+@@ -33,6 +33,9 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
++import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
++import org.fife.ui.rtextarea.RTextScrollPane;
+ 
+ public class BeanShellSamplerGui extends AbstractSamplerGui {
+ 
+@@ -44,7 +47,7 @@
+ 
+     private JTextField parameters;// parameters to pass to script file (or script)
+ 
+-    private JTextArea scriptField;// script area
++    private RSyntaxTextArea scriptField;// script area
+ 
+     public BeanShellSamplerGui() {
+         init();
+@@ -153,8 +156,9 @@
+     }
+ 
+     private JPanel createScriptPanel() {
+-        scriptField = new JTextArea();
+-        scriptField.setRows(4);
++        scriptField = new RSyntaxTextArea(20,20);
++        scriptField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JAVA);
++        scriptField.setCodeFoldingEnabled(true);
+         scriptField.setLineWrap(true);
+         scriptField.setWrapStyleWord(true);
+ 
+@@ -163,7 +167,7 @@
+ 
+         JPanel panel = new JPanel(new BorderLayout());
+         panel.add(label, BorderLayout.NORTH);
+-        panel.add(new JScrollPane(scriptField), BorderLayout.CENTER);
++        panel.add(new RTextScrollPane(scriptField), BorderLayout.CENTER);
+ 
+         JTextArea explain = new JTextArea(JMeterUtils.getResString("bsh_script_variables")); //$NON-NLS-1$
+         explain.setLineWrap(true);

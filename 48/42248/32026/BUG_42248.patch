@@ -1,0 +1,57 @@
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1624847)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -137,7 +137,9 @@
+      */
+     private GuiPackage(JMeterTreeModel treeModel, JMeterTreeListener treeListener) {
+         this.treeModel = treeModel;
+-        this.treeModel.addTreeModelListener(undoHistory);
++        if(undoHistory.isEnabled()) {
++            this.treeModel.addTreeModelListener(undoHistory);
++        }
+         this.treeListener = treeListener;
+     }
+ 
+@@ -156,7 +158,9 @@
+      * - Locale Changes
+      */
+     public void registerAsListener() {
+-        this.undoHistory.registerHistoryListener(this);
++        if(undoHistory.isEnabled()) {
++            this.undoHistory.registerHistoryListener(this);
++        }
+         JMeterUtils.addLocaleChangeListener(this);
+     }
+ 
+Index: src/core/org/apache/jmeter/gui/UndoHistory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/UndoHistory.java	(revision 1624847)
++++ src/core/org/apache/jmeter/gui/UndoHistory.java	(working copy)
+@@ -133,6 +133,11 @@
+      * @param comment   String
+      */
+     public void add(JMeterTreeModel treeModel, String comment) {
++        if(!isEnabled()) {
++            log.debug("undo.history.size is set to 0, undo/redo feature is disabled");
++            return;
++        }
++
+         // don't add element if we are in the middle of undo/redo or a big loading
+         if (working) {
+             log.debug("Not adding history because of noop");
+@@ -338,6 +343,14 @@
+     }
+     
+     /**
++     * 
++     * @return true if history is enabled
++     */
++    boolean isEnabled() {
++        return HISTORY_SIZE > 0;
++    }
++    
++    /**
+      * Register HistoryListener 
+      * @param listener
+      */

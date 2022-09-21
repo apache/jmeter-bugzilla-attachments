@@ -1,0 +1,317 @@
+Index: /bin/jmeter.properties
+===================================================================
+--- /bin/jmeter.properties	(revision 800132)
++++ /bin/jmeter.properties	(working copy)
+@@ -419,6 +419,12 @@
+ # use command-line flags for user-name and password
+ #http.proxyDomain=NTLM domain, if required by HTTPClient sampler
+ 
++# SSL configuration
++#proxy.cert.directory=./
++#proxy.cert.file=server.p12
++#proxy.cert.keystorepass=password
++#proxy.cert.keypassword=password
++
+ #---------------------------------------------------------------------------
+ # HTTPSampleResponse Parser configuration
+ #---------------------------------------------------------------------------
+Index: /build.xml
+===================================================================
+--- /build.xml	(revision 800132)
++++ /build.xml	(working copy)
+@@ -995,6 +995,8 @@
+     <include name="${dest.jar.jmeter}/mirror-server.*"/>
+     <include name="${dest.jar.jmeter}/shutdown.*"/>
+     <include name="${dest.jar.jmeter}/stoptest.*"/>
++  	<!-- Fake SSL cert for JMeter proxy recorder in https -->
++  	<include name="${dest.jar.jmeter}/server.p12"/>
+     <!-- Exclude any files that might be present from testing the release -->
+     <exclude name="${dest.jar.jmeter}/*.log"/>
+     <include name="${dest.jar}/"/>
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 800132)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -95,6 +95,8 @@
+      * Http Request method. Such as get or post.
+      */
+     private String method = ""; // $NON-NLS-1$
++    
++    private String paramHttps = ""; // $NON-NLS-1$
+ 
+     /**
+      * The requested url. The universal resource locator that hopefully uniquely
+@@ -192,15 +194,9 @@
+         if (log.isDebugEnabled()) {
+             log.debug("browser request: " + firstLine);
+         }
+-        if (!CharUtils.isAsciiAlphanumeric(firstLine.charAt(0))) {
+-            throw new IllegalArgumentException("Unrecognised header line (probably used HTTPS)");
+-        }
+         StringTokenizer tz = new StringTokenizer(firstLine);
+         method = getToken(tz).toUpperCase(java.util.Locale.ENGLISH);
+         url = getToken(tz);
+-        if (url.toLowerCase(java.util.Locale.ENGLISH).startsWith(HTTPConstants.PROTOCOL_HTTPS)) {
+-            throw new IllegalArgumentException("Cannot handle https URLS: " + url);
+-        }
+         version = getToken(tz);
+         if (log.isDebugEnabled()) {
+             log.debug("parser input:  " + firstLine);
+@@ -208,9 +204,14 @@
+             log.debug("parsed url:    " + url);
+             log.debug("parsed version:" + version);
+         }
+-        if ("CONNECT".equalsIgnoreCase(method)){
+-            throw new IllegalArgumentException("Cannot handle CONNECT - probably used HTTPS");
++        // SSL connection
++        if (getMethod().startsWith(HTTPConstants.CONNECT)) {
++            paramHttps = url;
++        } 
++        if (url.startsWith("/")) {
++            url = HTTPS + "://" + paramHttps + url; // $NON-NLS-1$
+         }
++        log.debug("First Line: " + url);
+     }
+ 
+     /*
+@@ -414,7 +415,7 @@
+         if (log.isDebugEnabled()) {
+             log.debug("Proxy: setting path: " + sampler.getPath());
+         }
+-        if (numberRequests) {
++        if (!HTTPConstants.CONNECT.equals(getMethod()) && numberRequests) {
+             requestNumber++;
+             sampler.setName(requestNumber + " " + sampler.getPath());
+         } else {
+@@ -429,7 +430,7 @@
+         // If it was a HTTP GET request, then all parameters in the URL
+         // has been handled by the sampler.setPath above, so we just need
+         // to do parse the rest of the request if it is not a GET request
+-        if(!HTTPConstants.GET.equals(method)) {
++        if((!HTTPConstants.CONNECT.equals(getMethod())) && (!HTTPConstants.GET.equals(method))) {
+             // Check if it was a multipart http post request
+             final String contentType = getContentType();
+             MultipartUrlConfig urlConfig = getMultipartConfig(contentType);
+@@ -567,6 +568,15 @@
+     public String getUrl(){
+         return url;
+     }
++    
++    /**
++     * Returns the method string extracted from the first line of the client request.
++     *
++     * @return the url
++     */
++    public String getMethod(){
++        return method.toUpperCase();
++    }
+ 
+     /**
+      * Returns the next token in a string.
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 800132)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -21,13 +21,24 @@
+ import java.io.BufferedInputStream;
+ import java.io.BufferedOutputStream;
+ import java.io.DataOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileNotFoundException;
+ import java.io.IOException;
++import java.io.InputStream;
+ import java.io.OutputStream;
+ import java.net.Socket;
++import java.net.URL;
+ import java.net.UnknownHostException;
+-import java.net.URL;
++import java.security.KeyStore;
++import java.util.HashMap;
+ import java.util.Map;
+ 
++import javax.net.ssl.KeyManagerFactory;
++import javax.net.ssl.SSLContext;
++import javax.net.ssl.SSLSocket;
++import javax.net.ssl.SSLSocketFactory;
++
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+ import org.apache.jmeter.protocol.http.parser.HTMLParseException;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+@@ -64,7 +75,29 @@
+     private static final String PROXY_HEADERS_REMOVE_DEFAULT = "If-Modified-Since,If-None-Match,Host"; // $NON-NLS-1$
+ 
+     private static final String PROXY_HEADERS_REMOVE_SEPARATOR = ","; // $NON-NLS-1$
++    
++    // for ssl connection
++    private static final String KEYSTORE_INSTANCE = "PKCS12"; // $NON-NLS-1$
++    
++    private static final String KEYMANAGERFACTORY_INSTANCE = "SunX509"; // $NON-NLS-1$
++    
++    private static final String SSLCONTEXT_INSTANCE = "SSLv3"; // $NON-NLS-1$
++    
++    // Haspmap to save ssl connection between Jmeter proxy and browser
++    private static HashMap hashHost = new HashMap();
++    
++    // Proxy configuration SSL
++    private static String CERT_DIRECTORY = JMeterUtils.getPropDefault("proxy.cert.directory", "./"); // $NON-NLS-1$ $NON-NLS-2$
++    
++    private static String CERT_FILE = JMeterUtils.getPropDefault("proxy.cert.file", "server.p12"); // $NON-NLS-1$ $NON-NLS-2$
++    
++    private static char[] KEYSTORE_PASSWORD = JMeterUtils.getPropDefault("proxy.cert.keystorepass", "password").toCharArray(); // $NON-NLS-1$ $NON-NLS-2$
++
++    private static char[] KEY_PASSWORD = JMeterUtils.getPropDefault("proxy.cert.keypassword","password").toCharArray(); // $NON-NLS-1$ $NON-NLS-2$
+ 
++    // Use with SSL connection
++    private OutputStream outStreamClient = null;
++    
+     static {
+         String removeList = JMeterUtils.getPropDefault(PROXY_HEADERS_REMOVE,PROXY_HEADERS_REMOVE_DEFAULT);
+         headersToRemove = JOrphanUtils.split(removeList,PROXY_HEADERS_REMOVE_SEPARATOR);
+@@ -161,9 +194,28 @@
+         SampleResult result = null;
+         HeaderManager headers = null;
+ 
+-        try {
++        try {   
++            // Now, parse only first line
+             request.parse(new BufferedInputStream(clientSocket.getInputStream()));
+-
++            outStreamClient = clientSocket.getOutputStream();
++            
++            if ((request.getMethod().startsWith(HTTPConstants.CONNECT)) && (outStreamClient != null)) {
++                log.debug("Method CONNECT => SSL");
++                // write a OK reponse to browser, to engage SSL exchange
++                outStreamClient.write(("HTTP/1.0 200 OK\r\n\r\n").getBytes()); // $NON-NLS-1$
++                outStreamClient.flush();
++               // With ssl request, url is host:port (without https:// or path)
++                String[] param = request.getUrl().split(":");  // $NON-NLS-1$
++                if (param.length == 2) {
++                    log.debug("Start to negociate SSL connection, host: " + param[0]);
++                    clientSocket = startSSL(clientSocket, param[0]);
++                } else {
++                    log.warn("In SSL request, unable to find host and port in CONNECT request");
++                }
++                // Re-parse (now it's the http request over SSL)
++                request.parse(new BufferedInputStream(clientSocket.getInputStream()));
++            }
++            
+             // Populate the sampler. It is the same sampler as we sent into
+             // the constructor of the HttpRequestHdr instance above
+             request.getSampler(pageEncodings, formEncodings);
+@@ -225,6 +277,9 @@
+                     "To record https requests, see " +
+                     "<a href=\"http://jakarta.apache.org/jmeter/usermanual/component_reference.html#HTTP_Proxy_Server\">HTTP Proxy Server documentation</a>"));
+             result = generateErrorResult(result, e); // Generate result (if nec.) and populate it
++        } catch (IOException ioe) {
++            log.warn("IOE, certainly during response OK to CONNECT: anti-phishing method browser (request canceled by browser)."
++                    + " Please accept fake JMeter SSL cert", ioe);
+         } catch (Exception e) {
+             log.error("Exception when processing sample", e);
+             writeErrorToClient(HttpReplyHdr.formTimeout());
+@@ -253,7 +308,92 @@
+             sampler.threadFinished(); // Needed for HTTPSampler2
+         }
+     }
++    
++    /**
++     * SSL connection hashmap
++     * @param host
++     * @return a ssl socket factory
++     */
++    private SSLSocketFactory getSSLSocketFactory(String host) {
++        synchronized (hashHost) {
++            if (hashHost.containsKey(host)) {
++                log.debug("Good, already in map, host=" + host);
++                return (SSLSocketFactory) hashHost.get(host);
++            }
++            InputStream in = getCertificat();
++            if (in != null) {
++                KeyStore ks = null;
++                KeyManagerFactory kmf = null;
++                SSLContext sslcontext = null;
++                try {
++                    ks = KeyStore.getInstance(KEYSTORE_INSTANCE);
++                    ks.load(in, KEYSTORE_PASSWORD);
++                    kmf = KeyManagerFactory
++                            .getInstance(KEYMANAGERFACTORY_INSTANCE);
++                    kmf.init(ks, KEY_PASSWORD);
++                    sslcontext = SSLContext.getInstance(SSLCONTEXT_INSTANCE);
++                    sslcontext.init(kmf.getKeyManagers(), null, null);
++                    SSLSocketFactory sslFactory = sslcontext.getSocketFactory();
++                    hashHost.put(host, sslFactory);
++                    log.info("KeyStore for SSL load OK and put host in map ("+host+")");
++                    return sslFactory;
++                } catch (Exception e) {
++                    log.error("Exception with keystore: " + e);
++                }
++            } else {
++                throw new NullPointerException("Unable to read keystore");
++            }
++            return null;
++        }
++    }
+ 
++    /**
++     * Negociate a SSL connection
++     * @param sock socket in
++     * @param host
++     * @return a new client socket over ssl
++     * @throws Exception if negociation failed
++     */
++    private Socket startSSL(Socket sock, String host) throws Exception {
++        SSLSocketFactory sslFactory = getSSLSocketFactory(host);
++        SSLSocket secureSocket;
++        if (sslFactory != null) {
++        try {
++            secureSocket = (SSLSocket) sslFactory.createSocket(sock, sock
++                    .getInetAddress().getHostName(), sock.getPort(), true);
++            secureSocket.setUseClientMode(false);
++            log.debug("SSL transaction ok with cipher: " + secureSocket.getSession().getCipherSuite());
++            return secureSocket;
++        } catch (Exception e) {
++            log.error("Error in SSL socket negociation: ", e);
++            throw e;
++        }
++        } else {
++            log.warn("Unable to negociate SSL transaction, no keystore");
++            throw new Exception("Unable to negociate SSL transaction, no keystore");
++        }
++    }
++    
++    /**
++     * Load (fake) cert file 
++     * @return stream to key cert
++     */
++    private InputStream getCertificat() {
++        File certFile = new File(CERT_DIRECTORY + CERT_FILE);
++        InputStream in = null;
++        if (certFile.exists() && certFile.canRead()) {
++            try {
++                log.info("Keystore file: "+CERT_DIRECTORY+CERT_FILE);
++                in = new FileInputStream(certFile);
++            } catch (FileNotFoundException e) {
++                log.error("No server cert file found", e);
++            }
++        } else {
++            throw new NullPointerException("No keystore found");
++        }
++        return in;
++    }
++
+     private SampleResult generateErrorResult(SampleResult result, Exception e) {
+         if (result == null) {
+             result = new SampleResult();
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	(revision 800132)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	(working copy)
+@@ -38,6 +38,7 @@
+     public static final String OPTIONS = "OPTIONS"; // $NON-NLS-1$
+     public static final String TRACE = "TRACE"; // $NON-NLS-1$
+     public static final String DELETE = "DELETE"; // $NON-NLS-1$
++    public static final String CONNECT = "CONNECT"; // $NON-NLS-1$
+     public static final String HEADER_AUTHORIZATION = "Authorization"; // $NON-NLS-1$
+     public static final String HEADER_COOKIE = "Cookie"; // $NON-NLS-1$
+     public static final String HEADER_CONNECTION = "Connection"; // $NON-NLS-1$
+

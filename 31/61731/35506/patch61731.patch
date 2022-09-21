@@ -1,0 +1,313 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1814557)
++++ bin/jmeter.properties	(working copy)
+@@ -208,6 +208,13 @@
+ 
+ 
+ #---------------------------------------------------------------------------
++# JMX Save automatically before run
++#---------------------------------------------------------------------------
++#Enable auto saving of the .jmx file before start run a test plan
++#When enabled, before the run the .jmx will be saved and also backed up to the directory pointed
++save_automatically_before_run=false
++
++#---------------------------------------------------------------------------
+ # JMX Backup configuration
+ #---------------------------------------------------------------------------
+ #Enable auto backups of the .jmx file when a test plan is saved.
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1814557)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -115,7 +115,7 @@
+ 
+     /** The main JMeter toolbar. */
+     private JToolBar toolbar;
+-
++    
+     /**
+      * The LoggerPanel menu item
+      */
+@@ -122,6 +122,11 @@
+     private JCheckBoxMenuItem menuItemLoggerPanel;
+ 
+     /**
++     * The LoggerPanel menu item
++     */
++    private JCheckBoxMenuItem menuItemSaveBeforeRunPanel;
++
++    /**
+      * Logger Panel reference
+      */
+     private LoggerPanel loggerPanel;
+@@ -783,9 +788,9 @@
+      * @param menuItemLoggerPanel The menu item LoggerPanel
+      */
+     public void setMenuItemLoggerPanel(JCheckBoxMenuItem menuItemLoggerPanel) {
+-        this.menuItemLoggerPanel = menuItemLoggerPanel;
++    	this.menuItemLoggerPanel = menuItemLoggerPanel;
+     }
+-
++        
+     /**
+      * Get the menu item LoggerPanel.
+      *
+@@ -792,10 +797,27 @@
+      * @return the menu item LoggerPanel
+      */
+     public JCheckBoxMenuItem getMenuItemLoggerPanel() {
+-        return menuItemLoggerPanel;
++    	return menuItemLoggerPanel;
+     }
++    
++    /**
++     * Set the menu item SaveBeforeRunPanel.
++     * @param menuItemSaveBeforeRunPanel The menu item SaveBeforeRunPanel
++     */
++    public void setMenuItemSaveBeforeRunPanel(JCheckBoxMenuItem menuItemSaveBeforeRunPanel) {
++        this.menuItemSaveBeforeRunPanel = menuItemSaveBeforeRunPanel;
++    }
+ 
+     /**
++     * Get the menu item SaveBeforeRunPanel.
++     *
++     * @return the menu item SaveBeforeRunPanel
++     */
++    public JCheckBoxMenuItem getMenuItemSaveBeforeRunPanel() {
++        return menuItemSaveBeforeRunPanel;
++    }
++
++    /**
+      * @param loggerPanel LoggerPanel
+      */
+     public void setLoggerPanel(LoggerPanel loggerPanel) {
+Index: src/core/org/apache/jmeter/gui/action/AbstractAction.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/AbstractAction.java	(revision 1814557)
++++ src/core/org/apache/jmeter/gui/action/AbstractAction.java	(working copy)
+@@ -22,8 +22,6 @@
+ import java.io.File;
+ import java.text.MessageFormat;
+ import java.util.Iterator;
+-import java.util.Set;
+-
+ import javax.swing.JOptionPane;
+ 
+ import org.apache.jmeter.exceptions.IllegalUserActionException;
+@@ -58,20 +56,21 @@
+     }
+ 
+     /**
++     * check if should save before run
+      * @param e the event that led to the call of this method
+      */
+-    protected void popupShouldSave(ActionEvent e) {
+-        log.debug("popupShouldSave");
+-        if (GuiPackage.getInstance().getTestPlanFile() == null) {
+-            if (JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(),
+-                    JMeterUtils.getResString("should_save"),  //$NON-NLS-1$
+-                    JMeterUtils.getResString("warning"),  //$NON-NLS-1$
+-                    JOptionPane.YES_NO_OPTION,
+-                    JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION) {
+-                ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(),ActionNames.SAVE));
+-            }
+-        }
+-    }
++	protected void popupShouldSave(ActionEvent e) {
++		log.debug("popupShouldSave");
++		if (GuiPackage.getInstance().getTestPlanFile() == null) {
++			if (JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(), JMeterUtils.getResString("should_save"), //$NON-NLS-1$
++					JMeterUtils.getResString("warning"), //$NON-NLS-1$
++					JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION) {
++				ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.SAVE));
++			}
++		} else if (JMeterUtils.shouldSaveBeforeRun()) {
++			ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.SAVE));
++		}
++	}
+     
+     /**
+      * @param tree where check if listener has existing file
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1814557)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -108,6 +108,7 @@
+     public static final String VALIDATE_TG      = "validate_tg"; //$NON-NLS-1$
+     public static final String ZOOM_IN          = "zoom_in"; //$NON-NLS-1$
+     public static final String ZOOM_OUT         = "zoom_out"; //$NON-NLS-1$
++    public static final String SAVE_BEFORE_RUN         = "save_before_run"; //$NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames() {}
+Index: src/core/org/apache/jmeter/gui/action/SaveBeforeRun.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/SaveBeforeRun.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/SaveBeforeRun.java	(working copy)
+@@ -0,0 +1,58 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.util.JMeterUtils;
++/**
++ * 
++ * Save Before Run Action
++ * 
++ * To save test plan before GUI execution
++ * 
++ * @author orim
++ *
++ */
++public class SaveBeforeRun extends AbstractAction {
++	private static final Set<String> commands = new HashSet<>();
++		
++	static {
++		commands.add(ActionNames.SAVE_BEFORE_RUN);
++	}
++
++	@Override
++	public Set<String> getActionNames() {
++		return commands;
++	}
++
++	@Override
++	public void doAction(ActionEvent e) {
++		if (ActionNames.SAVE_BEFORE_RUN.equals(e.getActionCommand())) {
++			// toggle boolean preference value
++			boolean togglePreferenceValue = !JMeterUtils.shouldSaveBeforeRunByPreference();
++			JMeterUtils.setSaveBeforeRunByPreference(togglePreferenceValue);
++			GuiPackage guiInstance = GuiPackage.getInstance();
++			// toggle check box
++            guiInstance.getMenuItemSaveBeforeRunPanel().getModel().setSelected(togglePreferenceValue);
++		}
++	}		
++}
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(revision 1814557)
++++ src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(working copy)
+@@ -151,7 +151,7 @@
+     public static final String DARCULA_LAF = "Darcula"; // $NON-NLS-1$
+ 
+     public static final String DARCULA_LAF_CLASS = "com.bulenkov.darcula.DarculaLaf"; // $NON-NLS-1$
+-
++    
+     public JMeterMenuBar() {
+         // List for recent files menu items
+         fileLoadRecentFiles = new LinkedList<>();
+@@ -369,7 +369,13 @@
+         JMenuItem zoomIn = makeMenuItemRes("menu_zoom_in", ActionNames.ZOOM_IN); //$NON-NLS-1$
+         optionsMenu.add(zoomIn);
+         JMenuItem zoomOut = makeMenuItemRes("menu_zoom_out", ActionNames.ZOOM_OUT); //$NON-NLS-1$
+-        optionsMenu.add(zoomOut);
++        optionsMenu.add(zoomOut);        
++        JCheckBoxMenuItem saveBeforeRun = makeCheckBoxMenuItemRes("menu_save_before_run", ActionNames.SAVE_BEFORE_RUN); //$NON-NLS-1$
++        saveBeforeRun.setSelected(JMeterUtils.shouldSaveBeforeRunByPreference());
++        if (guiInstance != null) {        	
++            guiInstance.setMenuItemSaveBeforeRunPanel(saveBeforeRun);
++        }
++        optionsMenu.add(saveBeforeRun);
+ 
+         addPluginsMenuItems(optionsMenu, menuCreators, MENU_LOCATION.OPTIONS);
+     }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1814557)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -689,6 +689,7 @@
+ menu_pre_processors=Pre Processors
+ menu_recent=Open Recent
+ menu_response_based_modifiers=Response Based Modifiers
++menu_save_before_run=Save Automatically Before Run
+ menu_search=Search
+ menu_search_reset=Reset Search
+ menu_tables=Table
+Index: src/core/org/apache/jmeter/util/JMeterUtils.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterUtils.java	(revision 1814557)
++++ src/core/org/apache/jmeter/util/JMeterUtils.java	(working copy)
+@@ -45,6 +45,7 @@
+ import java.util.ResourceBundle;
+ import java.util.Vector;
+ import java.util.concurrent.ThreadLocalRandom;
++import java.util.prefs.Preferences;
+ 
+ import javax.swing.ImageIcon;
+ import javax.swing.JOptionPane;
+@@ -56,6 +57,7 @@
+ 
+ import org.apache.commons.io.IOUtils;
+ import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.action.AbstractAction;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jorphan.reflect.ClassFinder;
+ import org.apache.jorphan.test.UnitTestManager;
+@@ -126,6 +128,12 @@
+             return new Perl5Matcher();
+         }
+     };
++        
++    private static final Preferences PREFS = Preferences.userNodeForPackage(AbstractAction.class);
++    
++    private static final String SBR_PREFS_KEY = "sbr";
++    
++    protected static final String SAVE_BEFORE_RUN = "save_automatically_before_run"; // $NON-NLS-1$
+ 
+     /**
+      * Gets Perl5Matcher for this thread.
+@@ -1265,4 +1273,33 @@
+         // TODO : How much are we concerned by CVE-2013-7285 
+         xstream.addPermission(AnyTypePermission.ANY);
+     }
++    
++    /*
++     * Should Save Before Run by Preference Only
++     */
++    public static boolean shouldSaveBeforeRunByPreference() {
++    	String sbr = PREFS.get(SBR_PREFS_KEY, null);
++    	// toggle boolean preference value
++    	return "true".equalsIgnoreCase(sbr);		
++    }
++    /*
++     * Should Save Before Run by Preference Only
++     */
++	public static void setSaveBeforeRunByPreference(boolean saveBeforeRun) {
++		PREFS.put(SBR_PREFS_KEY, saveBeforeRun ? "true" : "false");	
++	}
++	
++	/*
++	 * Should Save Before Run 
++	 * Decide by Preference and if not exists by Property
++	 */
++	public static boolean shouldSaveBeforeRun() {
++		String sbr = PREFS.get(SBR_PREFS_KEY, null);
++        if (sbr == null) {
++        	// set property if no preference
++            return JMeterUtils.getPropDefault(SAVE_BEFORE_RUN, false);         
++        } else {
++        	return shouldSaveBeforeRunByPreference();
++        }
++	}
+ }

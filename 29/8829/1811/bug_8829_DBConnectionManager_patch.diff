@@ -1,0 +1,197 @@
+Only in new/jakarta-jmeter: .Go to Awaiting.jmx.swp
+Only in new/jakarta-jmeter: .Test Plan.jmx.swp
+Only in new/jakarta-jmeter: build
+Only in new/jakarta-jmeter/lib: classes12.zip
+diff -ur old/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java new/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
+--- old/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	Mon Mar  4 07:52:02 2002
++++ new/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	Tue May  7 22:56:18 2002
+@@ -81,7 +81,7 @@
+ 	// end method
+ 
+ 	public final static String QUERY = "JDBCSampler.query";
+-	private static Map keyMap = new HashMap();
++	// private Map keyMap = new HashMap();
+ 
+ 	/************************************************************
+ 	 *  !ToDo (Constructor description)
+@@ -109,7 +109,8 @@
+ 		SampleResult res = new SampleResult();
+ 		Connection con = null;
+ 		ResultSet rs = null;
+-		Statement stmt = null;
++		// Statement stmt = null;
++    PreparedStatement stmt = null;
+ 		Data data = new Data();
+ 		res.putValue(SampleResult.SAMPLE_LABEL, sql.getQuery());
+ 		start = System.currentTimeMillis();
+@@ -125,50 +126,41 @@
+ 				{
+ 				}
+ 			}
+-			stmt = con.createStatement();
++			// stmt = con.createStatement();
++      stmt = con.prepareStatement(sql.getQuery());
++      stmt.setFetchSize(50);
++
+ 			// Execute database query
+-			boolean retVal = stmt.execute(sql.getQuery());
++			boolean retVal = stmt.execute();
++
++
+ 			// Based on query return value, get results
+ 			if (retVal)
+ 			{
+ 				rs = stmt.getResultSet();
+ 				data = getDataFromResultSet(rs);
+-				rs.close();
++				// rs.close();
+ 			}
+ 			else
+ 			{
+ 				int updateCount = stmt.getUpdateCount();
+ 			}
+-			stmt.close();
+-			manager.releaseConnection(con);
++			// stmt.close();
++			// manager.releaseConnection(con);
+ 		}
+ 		catch (Exception ex)
+ 		{
+-			if (rs != null)
+-			{
+-				try
+-				{
+-					rs.close();
+-				}
+-				catch (SQLException err)
+-				{
+-					rs = null;
+-				}
+-			}
+-			if (stmt != null)
+-			{
+-				try
+-				{
+-					stmt.close();
+-				}
+-				catch (SQLException err)
+-				{
+-					stmt = null;
+-				}
+-			}
+-			manager.releaseConnection(con);
+ 			ex.printStackTrace();
+ 		}
++    finally
++    {
++      if (rs != null) { try { rs.close();	} catch (SQLException err) {} };
++      rs = null;
++			if (stmt != null) { try { stmt.close(); } catch (SQLException err) {} };
++			stmt = null;
++      manager.releaseConnection(con);
++    }
++
+ 		// Calculate response time
+ 		end = System.currentTimeMillis();
+ 		time += end - start;
+@@ -179,14 +171,14 @@
+ 
+ 	private DBKey getKey(DbConfig db, PoolConfig pool)
+ 	{
+-		DBKey key = (DBKey)keyMap.get(db.getUrl());
+-		if (key == null)
+-		{
+-			key = manager.getKey(db.getUrl(), db.getUsername(), db.getPassword(),
++		//DBKey key = (DBKey)keyMap.get(db.getUrl());
++		//if (key == null)
++		//{
++			return manager.getKey(db.getUrl(), db.getUsername(), db.getPassword(),
+ 					db.getDriver(), pool.getMaxUse(), pool.getNumConnections());
+-			keyMap.put(db.getUrl(), key);
+-		}
+-		return key;
++		//	keyMap.put(db.getUrl(), key);
++		//}
++		//return key;
+ 	}
+ 
+ 	/************************************************************
+Only in new/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/sampler: JDBCSampler.java~
+diff -ur old/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/util/DBConnectionManager.java new/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/util/DBConnectionManager.java
+--- old/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/util/DBConnectionManager.java	Mon Mar  4 07:52:02 2002
++++ new/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/util/DBConnectionManager.java	Wed May  8 09:10:24 2002
+@@ -72,7 +72,8 @@
+   int absoluteMaxConnections=100;
+   long accessInterval=1800000;
+   Hashtable connections;
+-  Hashtable rentedConnections;
++  Hashtable rentedConnections;
++  boolean shuttingDown = false;
+ 
+   static DBConnectionManager manager;
+ 
+@@ -139,7 +140,10 @@
+ 	 try{
+ 	 java.io.PrintWriter jdbcLog=new java.io.PrintWriter(new java.io.FileWriter(jdbcLogFile));
+ 	 DriverManager.setLogWriter(jdbcLog);
+-	 }catch(Exception e){}*/
++	 }catch(Exception e){}*/
++
++   System.out.println("Connection manager " + this + " is setting up");
++
+ 	 String url=key.getUrl();
+ 	 String username=key.getUsername();
+ 	 String password=key.getPassword();
+@@ -172,11 +176,29 @@
+   } // End Method
+ 
+ 	public void shutdown()
+-	{
+-		Iterator iter = connections.keySet().iterator();
+-		while (iter.hasNext()) {
+-			close((DBKey)iter.next());
+-		}
++	{
++    System.out.println("Connection manager " + this + " is shutting down");
++
++    try {
++      // Wait until all leases are returned - do not hand out any more
++      this.shuttingDown = true;
++      int waitCount = 0;
++      while(rentedConnections.size() > 0 && waitCount++ < 100) {
++        try { Thread.sleep(100); } catch (Exception ex) { };
++      }
++
++      if(waitCount >= 100)
++        System.err.println("Warning: timeout while waiting for databases to be returned!");
++
++      Iterator iter = connections.keySet().iterator();
++      while (iter.hasNext()) {
++        close((DBKey)iter.next());
++      }
++      this.connections.clear();
++    }
++    finally {
++      this.shuttingDown = false;
++    }
+ 	}
+ 
+ 
+@@ -186,7 +208,12 @@
+ @return Connection object.
+   ******************************************************/
+   public Connection getConnection(DBKey key)      //deleted synchronized
+-  {
++  {
++   if(shuttingDown == true) {
++     // caller may nullpointer - too bad, just don't give connections while we're shutting down
++     return null;
++   }
++
+ 	 ConnectionObject[] connectionArray=(ConnectionObject[])connections.get(key);
+ 	 int maxConnections=key.getMaxConnections();
+ 	 Connection c=null;
+Only in new/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/util: DBConnectionManager.java.diff
+Only in new/jakarta-jmeter/src/org/apache/jmeter/protocol/jdbc/util: DBConnectionManager.java~
+Only in new/jakarta-jmeter/src/org/apache/jmeter/resources: messages.properties~
+Only in old/jakarta-jmeter: testresults.txt

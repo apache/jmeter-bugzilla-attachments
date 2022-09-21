@@ -1,0 +1,367 @@
+diff -ruN /Users/schizophrenia/Documents/workspace/jmeter-CriticalSectionController/src/components/org/apache/jmeter/control/CriticalSectionController.java /Users/schizophrenia/tmp/jmeter/src/components/org/apache/jmeter/control/CriticalSectionController.java
+--- /Users/schizophrenia/Documents/workspace/jmeter-CriticalSectionController/src/components/org/apache/jmeter/control/CriticalSectionController.java	2014-07-18 08:19:02.000000000 +0400
++++ /Users/schizophrenia/tmp/jmeter/src/components/org/apache/jmeter/control/CriticalSectionController.java	1970-01-01 03:00:00.000000000 +0300
+@@ -1,169 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-
+-package org.apache.jmeter.control;
+-
+-import java.io.Serializable;
+-import java.util.concurrent.ConcurrentHashMap;
+-import java.util.concurrent.atomic.AtomicBoolean;
+-import java.util.concurrent.locks.Lock;
+-import java.util.concurrent.locks.ReentrantLock;
+-
+-import org.apache.jmeter.samplers.Sampler;
+-import org.apache.jmeter.testelement.TestElement;
+-import org.apache.jmeter.testelement.ThreadListener;
+-import org.apache.jmeter.testelement.property.StringProperty;
+-import org.apache.jorphan.logging.LoggingManager;
+-import org.apache.log.Logger;
+-
+-/**
+- *
+- *
+- * This is a Critical Section Controller; it will execute the set of statements
+- * (samplers/controllers, etc) under named lock.
+- * <p>
+- * In a programming world - this is equivalant of :
+- * <pre>
+- * try {
+- *          named_lock.lock();
+- *          statements ....
+- * } finally {
+- *          named_lock.unlock();
+- * }
+- * </pre>
+- * In JMeter you may have :
+- * <pre> 
+- * Thread-Group (set to loop a number of times or indefinitely,
+- *    ... Samplers ... (e.g. Counter )
+- *    ... Other Controllers ....
+- *    ... CriticalSectionController ( lock name like "foobar" )
+- *       ... statements to perform when lock acquired
+- *       ...
+- *    ... Other Controllers /Samplers }
+- * </pre>
+- */
+-
+-// TODO: write unit test
+-
+-public class CriticalSectionController extends GenericController implements Serializable, TestElement, ThreadListener {
+-
+-    private static final Logger logger = LoggingManager.getLoggerForClass();
+-
+-    private static final long serialVersionUID = 240L;
+-
+-    private static final String LOCK_NAME = "CriticalSectionController.lockName"; //$NON-NLS-1$
+-
+-    protected static final ConcurrentHashMap<String, ReentrantLock> lockMap =
+-    		new ConcurrentHashMap<String, ReentrantLock>();
+-    
+-    protected ReentrantLock currentLock;
+-    
+-    /**
+-     * constructor
+-     */
+-    public CriticalSectionController() {
+-        super();
+-    }
+-
+-    /**
+-     * constructor
+-     */
+-    public CriticalSectionController(String name) {
+-        super();
+-        this.setName(name);
+-    }
+-    
+-    /**
+-     * Condition Accessor - this is gonna be any string value
+-     */
+-    public void setLockName(String name) {
+-        setProperty(new StringProperty(LOCK_NAME, name));
+-    }
+-    
+-    /**
+-     * Function for autocreate and get lock
+-     * @return named lock
+-     */
+-    public ReentrantLock getLock() {
+-    	ReentrantLock lock = lockMap.get(getLockName()), prev = null;
+-    	if(lock != null)	return lock;
+-    	lock = new ReentrantLock();
+-    	prev = lockMap.putIfAbsent(getLockName(), lock);
+-    	return prev == null ? lock : prev; 
+-    }
+-    
+-    protected static void clearLockMap() {
+-    	if(lockMap == null) return;
+-    	if(!lockMap.isEmpty()) {
+-			synchronized(lockMap) {
+-				if(!lockMap.isEmpty()) {
+-					lockMap.clear();
+-				}
+-			}
+-		}
+-    }
+-
+-    /**
+-     * Lock name
+-     */
+-    public String getLockName() {
+-        return getPropertyAsString(LOCK_NAME);
+-    }
+-
+-    /**
+-     * @see org.apache.jmeter.control.Controller#next()
+-     */
+-    @Override
+-    public Sampler next() {
+-    	if(getLockName() == null) return super.next();
+-    	if(getLockName().isEmpty()) return super.next();
+-    	long startTime = System.currentTimeMillis(), endTime;
+-    	if(this.currentLock == null) {
+-    		this.currentLock = getLock();
+-    		this.currentLock.lock();
+-        }    	
+-    	endTime = System.currentTimeMillis();
+-    	logger.debug("acquire time for named lock \"" + getLockName() +
+-    			"\" in Critical Section Controller is " + (endTime - startTime) + "ms");
+-    	return super.next();
+-    }
+-    
+-    @Override
+-    public void setDone(boolean done) {
+-    	if(done && this.currentLock != null) {
+-    		// TODO create policy for remove unused locks
+-    		if(this.currentLock.isHeldByCurrentThread()) {
+-    			this.currentLock.unlock();
+-    		}
+-    		this.currentLock = null;
+-    	}
+-    	super.setDone(done);
+-    }
+-
+-	public void threadStarted() {
+-		this.currentLock = null;
+-	}
+-	
+-	public void threadFinished() {
+-		if(this.currentLock.isHeldByCurrentThread()) {
+-			this.currentLock.unlock();
+-		}
+-		this.currentLock = null;
+-		clearLockMap();
+-	}
+-}
+diff -ruN /Users/schizophrenia/Documents/workspace/jmeter-CriticalSectionController/src/components/org/apache/jmeter/control/gui/CriticalSectionControllerGui.java /Users/schizophrenia/tmp/jmeter/src/components/org/apache/jmeter/control/gui/CriticalSectionControllerGui.java
+--- /Users/schizophrenia/Documents/workspace/jmeter-CriticalSectionController/src/components/org/apache/jmeter/control/gui/CriticalSectionControllerGui.java	2014-07-16 14:28:11.000000000 +0400
++++ /Users/schizophrenia/tmp/jmeter/src/components/org/apache/jmeter/control/gui/CriticalSectionControllerGui.java	1970-01-01 03:00:00.000000000 +0300
+@@ -1,178 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-
+-package org.apache.jmeter.control.gui;
+-
+-import java.awt.BorderLayout;
+-
+-import javax.swing.Box;
+-import javax.swing.JCheckBox;
+-import javax.swing.JLabel;
+-import javax.swing.JPanel;
+-import javax.swing.JTextField;
+-
+-import org.apache.jmeter.control.CriticalSectionController;
+-import org.apache.jmeter.control.IfController;
+-import org.apache.jmeter.testelement.TestElement;
+-import org.apache.jmeter.util.JMeterUtils;
+-
+-/**
+- * The user interface for a controller which specifies that its subcomponents
+- * should be executed while a condition holds. This component can be used
+- * standalone or embedded into some other component.
+- *
+- */
+-
+-public class CriticalSectionControllerGui extends AbstractControllerGui {
+-
+-    private static final long serialVersionUID = 240L;
+-
+-    /**
+-     * A field allowing the user to specify the number of times the controller
+-     * should loop.
+-     */
+-    private JTextField tfLockName;
+-
+-    /**
+-     * Boolean indicating whether or not this component should display its name.
+-     * If true, this is a standalone component. If false, this component is
+-     * intended to be used as a subpanel for another component.
+-     */
+-    private boolean displayName = true;
+-
+-    /**
+-     * Create a new LoopControlPanel as a standalone component.
+-     */
+-    public CriticalSectionControllerGui() {
+-        this(true);
+-    }
+-
+-    /**
+-     * Create a new IfControllerPanel as either a standalone or an embedded
+-     * component.
+-     *
+-     * @param displayName
+-     *            indicates whether or not this component should display its
+-     *            name. If true, this is a standalone component. If false, this
+-     *            component is intended to be used as a subpanel for another
+-     *            component.
+-     */
+-    public CriticalSectionControllerGui(boolean displayName) {
+-        this.displayName = displayName;
+-        init();
+-    }
+-
+-    /**
+-     * A newly created component can be initialized with the contents of a Test
+-     * Element object by calling this method. The component is responsible for
+-     * querying the Test Element object for the relevant information to display
+-     * in its GUI.
+-     *
+-     * @param element
+-     *            the TestElement to configure
+-     */
+-    @Override
+-    public void configure(TestElement element) {
+-        super.configure(element);
+-        if (element instanceof CriticalSectionController) {
+-        	CriticalSectionController controller = (CriticalSectionController) element;
+-        	tfLockName.setText(controller.getLockName());
+-        }
+-
+-    }
+-
+-    /**
+-     * Implements JMeterGUIComponent.createTestElement()
+-     */
+-    @Override
+-    public TestElement createTestElement() {
+-    	CriticalSectionController controller = new CriticalSectionController();
+-        modifyTestElement(controller);
+-        return controller;
+-    }
+-
+-    /**
+-     * Implements JMeterGUIComponent.modifyTestElement(TestElement)
+-     */
+-    @Override
+-    public void modifyTestElement(TestElement controller) {
+-        configureTestElement(controller);
+-        if (controller instanceof CriticalSectionController) {
+-        	CriticalSectionController csController = (CriticalSectionController) controller;
+-        	csController.setLockName(tfLockName.getText());
+-        }
+-    }
+-
+-    /**
+-     * Implements JMeterGUIComponent.clearGui
+-     */
+-    @Override
+-    public void clearGui() {
+-        super.clearGui();
+-        tfLockName.setText("global_lock"); // $NON-NLS-1$
+-    }
+-
+-    @Override
+-    public String getLabelResource() {
+-        return "critical_section_controller_title"; // $NON-NLS-1$
+-    }
+-
+-    /**
+-     * Initialize the GUI components and layout for this component.
+-     */
+-    private void init() {
+-        // Standalone
+-        if (displayName) {
+-            setLayout(new BorderLayout(0, 5));
+-            setBorder(makeBorder());
+-            add(makeTitlePanel(), BorderLayout.NORTH);
+-
+-            JPanel mainPanel = new JPanel(new BorderLayout());
+-            mainPanel.add(createConditionPanel(), BorderLayout.NORTH);
+-            add(mainPanel, BorderLayout.CENTER);
+-
+-        } else {
+-            // Embedded
+-            setLayout(new BorderLayout());
+-            add(createConditionPanel(), BorderLayout.NORTH);
+-        }
+-    }
+-
+-    /**
+-     * Create a GUI panel containing the condition.
+-     *
+-     * @return a GUI panel containing the condition components
+-     */
+-    private JPanel createConditionPanel() {
+-        JPanel conditionPanel = new JPanel(new BorderLayout(5, 0));
+-
+-        // Condition LABEL
+-        JLabel conditionLabel = new JLabel(JMeterUtils.getResString("critical_section_controller_label")); // $NON-NLS-1$
+-        conditionPanel.add(conditionLabel, BorderLayout.WEST);
+-
+-        // TEXT FIELD
+-        tfLockName = new JTextField(""); // $NON-NLS-1$
+-        conditionLabel.setLabelFor(tfLockName);
+-        conditionPanel.add(tfLockName, BorderLayout.CENTER);
+-       
+-        conditionPanel.add(Box.createHorizontalStrut(conditionLabel.getPreferredSize().width
+-                + tfLockName.getPreferredSize().width), BorderLayout.NORTH);
+-
+-        return conditionPanel;
+-    }
+-}
+diff -ruN /Users/schizophrenia/Documents/workspace/jmeter-CriticalSectionController/src/core/org/apache/jmeter/resources/messages.properties /Users/schizophrenia/tmp/jmeter/src/core/org/apache/jmeter/resources/messages.properties
+--- /Users/schizophrenia/Documents/workspace/jmeter-CriticalSectionController/src/core/org/apache/jmeter/resources/messages.properties	2014-07-16 14:09:10.000000000 +0400
++++ /Users/schizophrenia/tmp/jmeter/src/core/org/apache/jmeter/resources/messages.properties	2014-07-16 12:39:32.000000000 +0400
+@@ -398,8 +398,6 @@
+ if_controller_expression=Interpret Condition as Variable Expression?
+ if_controller_label=Condition (default Javascript)
+ if_controller_title=If Controller
+-critical_section_controller_label=Lock name
+-critical_section_controller_title=Critical Section Controller
+ ignore_subcontrollers=Ignore sub-controller blocks
+ include_controller=Include Controller
+ include_equals=Include Equals?

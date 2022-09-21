@@ -1,0 +1,208 @@
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/resources/messages.properties	(revision 0)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -85,6 +85,8 @@
+ cancel=Cancel
+ cancel_exit_to_save=There are test items that have not been saved.  Do you wish to save before exiting?
+ cancel_new_to_save=There are test items that have not been saved.  Do you wish to save before clearing the test plan?
++case_controller_label=Case Value
++case_controller_title=Case Controller
+ choose_function=Choose a function
+ choose_language=Choose Language
+ clear=Clear
+
+Index: jakarta-jmeter-2.3/src/components/org/apache/jmeter/control/gui/CaseControllerGui.java
+===================================================================
+--- jakarta-jmeter-2.3/src/components/org/apache/jmeter/control/gui/CaseControllerGui.java	(revision 0)
++++ jakarta-jmeter-2.3/src/components/org/apache/jmeter/control/gui/CaseControllerGui.java	(working copy)
+@@ -0,0 +1,88 @@
++// $Header$
++/*
++ * Copyright 2001-2004 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.control.gui;
++
++import java.awt.BorderLayout;
++
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++import javax.swing.JTextField;
++
++import org.apache.jmeter.control.CaseController;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++
++public class CaseControllerGui extends AbstractControllerGui {
++	private static final String CASE_LABEL = "case_controller_label";
++
++	private JTextField caseValue;
++
++	public CaseControllerGui() {
++		init();
++	}
++
++	public TestElement createTestElement() {
++		CaseController ic = new CaseController();
++		modifyTestElement(ic);
++		return ic;
++	}
++
++	/**
++	 * Modifies a given TestElement to mirror the data in the gui components.
++	 * 
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++	 */
++	public void modifyTestElement(TestElement ic) {
++		configureTestElement(ic);
++		((CaseController) ic).setSelection(caseValue.getText());
++	}
++
++	public void configure(TestElement el) {
++		super.configure(el);
++		caseValue.setText(((CaseController) el).getSelection());
++	}
++
++	public String getLabelResource() {
++		return "case_controller_title";
++	}
++
++	private void init() {
++		setLayout(new BorderLayout(0, 5));
++		setBorder(makeBorder());
++		add(makeTitlePanel(), BorderLayout.NORTH);
++
++		JPanel mainPanel = new JPanel(new BorderLayout());
++		mainPanel.add(createCasePanel(), BorderLayout.NORTH);
++		add(mainPanel, BorderLayout.CENTER);
++	}
++
++	private JPanel createCasePanel() {
++		JPanel casePanel = new JPanel(new BorderLayout(5, 0));
++		JLabel selectionLabel = new JLabel(JMeterUtils.getResString(CASE_LABEL));
++		caseValue = new JTextField("");
++		selectionLabel.setLabelFor(caseValue);
++		casePanel.add(selectionLabel, BorderLayout.WEST);
++		casePanel.add(caseValue, BorderLayout.CENTER);
++		return casePanel;
++	}
++
++}
+
+Index: jakarta-jmeter-2.3/src/components/org/apache/jmeter/control/CaseController.java
+===================================================================
+--- jakarta-jmeter-2.3/src/components/org/apache/jmeter/control/CaseController.java	(revision 0)
++++ jakarta-jmeter-2.3/src/components/org/apache/jmeter/control/CaseController.java	(working copy)
+@@ -0,0 +1,98 @@
++/*
++ * Copyright 2001-2004 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.control;
++
++import java.io.Serializable;
++import java.util.List;
++import java.util.Iterator;
++import org.apache.jmeter.testelement.TestElement; 
++import org.apache.jmeter.samplers.AbstractSampler;
++import org.apache.jmeter.control.GenericController;
++
++import org.apache.jmeter.testelement.property.StringProperty;
++
++public class CaseController extends InterleaveControl implements Serializable {
++	private final static String CASE_VALUE = "CaseController.value";
++
++	public CaseController() {
++		super();
++		this.setStyle(USE_SUB_CONTROLLERS);
++	}
++
++	public void reInitialize() {
++		super.reInitialize();
++		current = getSelectionAsInt();
++	}
++
++	/**
++	 * @see org.apache.jmeter.control.GenericController#resetCurrent()
++	 */
++	protected void resetCurrent() {
++		int c = getSubControllers().size();
++		if (c > 0) {
++			current = getSelectionAsInt();
++		} else {
++			current = 0;
++		}
++	}
++
++	/**
++	 * @see org.apache.jmeter.control.GenericController#incrementCurrent()
++	 */
++	protected void incrementCurrent() {
++		super.incrementCurrent();
++		current = getSelectionAsInt();
++	}
++
++	public void setSelection(String inputValue) {
++		setProperty(new StringProperty(CASE_VALUE, inputValue));
++	}
++
++	private int getSelectionAsInt() {
++		int ret;
++		getProperty(CASE_VALUE).recoverRunningVersion(null);
++		String sel = getSelection();
++		Iterator iter = getSubControllers().iterator();
++		int i = 0;
++		int default_pos = -1;
++		while(iter.hasNext()) {
++				String name;
++		    TestElement el = (TestElement)iter.next();
++		    if (el instanceof AbstractSampler) {
++						AbstractSampler s = (AbstractSampler) el;
++						name = s.getName();
++				} else {
++						GenericController c = (GenericController) el;
++						name = c.getName();
++				}
++				if (name.equals(sel)) return i;
++				if (name.toLowerCase().equals("default")) default_pos = i;
++				i++;
++		}
++		// if selection not found -> return default element if found
++		if (default_pos != -1) return default_pos;
++		// no element found -> return non-existing element
++		setDone(true);
++		return getSubControllers().size();
++	}
++	
++
++	public String getSelection() {
++		return getPropertyAsString(CASE_VALUE);
++	}
++}

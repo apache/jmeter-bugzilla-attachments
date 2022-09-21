@@ -1,0 +1,393 @@
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 693448)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -3460,6 +3460,41 @@
+ <p>For details of all the methods available on each of the above variables, please check the Javadoc</p>
+ </component>
+ 
++<component name="RegEx User Parameters" index="&sect-num;.7.9"  width="638" height="274" screenshot="regex_user_params.png">
++	<description><p>Allows the user to specify dynamic values for HTTP parameters extracted from another HTTP Request using regular expressions.
++			RegEx User Parameters are specific to individual threads.</p>
++		<p>User Variables can also be specified in the Test Plan but not specific to individual threads. This panel allows
++			you to specify reference name of a regular expression that extracts names and values of HTTP request parameters. 
++			Regular expression group numbers must be specified for parameter's name and also for parameter's value.</p>
++	</description>
++	
++	<properties>
++		<property name="Name" required="">Descriptive name for this element that is shown in the tree.</property>
++		<property name="Regular Expression Reference Name" required="Yes">Name of a reference to a regular expression</property>
++		<property name="Parameter names group nr" required="Yes">Group nr of regular expression used to extract parameter names</property>
++		<property name="Parameter values group nr" required="Yes">Group nr of regular expression used to extract parameter values</property>
++	</properties>
++	
++	<p>Example:</p>
++	<p>1. - Create Post Processor Regular Expression for first HTTP Request</p>
++	<ul>
++		<li>refName - set name of a regular expression Ex. (listParams)</li>
++		<li>regular expression - expression that will etract input names and input values attributes
++			<br/>
++			Ex: input((\s+((name(\s*=\s*(?:["']*(.*?)["']*|[^'">\s]+)))|(value(\s*=\s*(?:"(.*?)"|'(.*?)'|[^'">\s]+)))|(\w+))(\s*=\s*(?:".*?"|'.*?'|[^'">\s]+))?)+\s*|\s*)</li>
++		<li>match nr - -1 (in order to iterate through all the possible matches)</li>
++	</ul>
++	
++	<p>2. - Create Pre Processor Reg Exp User Parameters for second HTTP Request</p>
++	<ul>
++		<li>refName - set the same reference name of a regular expression Ex. (listParams - in our example)</li>
++		<li>parameter names group nr - groups nr of regular expression for parameter names Ex.(6 - in our example)</li>
++		<li>parameter values group nr - groups nr of regular expression for parameter values Ex.(9 - in our example)</li>
++	</ul>
++	
++	<p>See also the <complink name="Regular Expression Extractor"/> element, which is used to extract parametes names and values</p>
++</component>
++
+ <a href="#">^</a>
+ 
+ </section>
+Index: xdocs/images/screenshots/regex_user_params.png
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = application/octet-stream
+
+Property changes on: xdocs/images/screenshots/regex_user_params.png
+___________________________________________________________________
+Name: svn:mime-type
+   + application/octet-stream
+
+Index: src/protocol/http/org/apache/jmeter/protocol/http/modifier/gui/RegExUserParametersGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/modifier/gui/RegExUserParametersGui.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/modifier/gui/RegExUserParametersGui.java	(revision 0)
+@@ -0,0 +1,159 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.protocol.http.modifier.gui;
++
++import java.awt.BorderLayout;
++import java.awt.Component;
++import java.awt.GridBagConstraints;
++import java.awt.GridBagLayout;
++import java.util.List;
++
++import javax.swing.Box;
++import javax.swing.JPanel;
++
++import org.apache.jmeter.processor.gui.AbstractPreProcessorGui;
++import org.apache.jmeter.protocol.http.modifier.RegExUserParameters;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class RegExUserParametersGui extends AbstractPreProcessorGui {
++	
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++	private JLabeledTextField refRegExRefNameField;
++	
++	private JLabeledTextField paramNamesGrNrField;
++
++	private JLabeledTextField paramValuesGrNrField;
++
++	public RegExUserParametersGui() {
++		super();
++		init();
++	}
++
++	public String getLabelResource() {
++		return "regex_user_parameters_title"; //$NON-NLS-1$
++	}
++
++	public void configure(TestElement el) {
++		super.configure(el);
++		if (el instanceof RegExUserParameters){
++			RegExUserParameters re = (RegExUserParameters) el;
++			paramNamesGrNrField.setText(re.getRegParamNamesGrNr());
++			paramValuesGrNrField.setText(re.getRegExParamValuesGrNr());
++			refRegExRefNameField.setText(re.getRegExRefName());
++		}
++	}
++
++	/**
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()
++	 */
++	public TestElement createTestElement() {
++		RegExUserParameters regExUserParams = new RegExUserParameters();
++		modifyTestElement(regExUserParams);
++		return regExUserParams;
++	}
++
++	/**
++	 * Modifies a given TestElement to mirror the data in the gui components.
++	 * 
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++	 */
++	public void modifyTestElement(TestElement extractor) {
++		super.configureTestElement(extractor);
++		if (extractor instanceof RegExUserParameters) {
++			RegExUserParameters regExUserParams = (RegExUserParameters) extractor;		
++			regExUserParams.setRegExRefName(refRegExRefNameField.getText());
++			regExUserParams.setRegExParamNamesGrNr(paramNamesGrNrField.getText());
++			regExUserParams.setRegExParamValuesGrNr(paramValuesGrNrField.getText());
++		}
++	}
++    
++    /**
++     * Implements JMeterGUIComponent.clearGui
++     */
++    public void clearGui() {
++        super.clearGui();
++        
++        paramNamesGrNrField.setText(""); //$NON-NLS-1$
++        paramValuesGrNrField.setText(""); //$NON-NLS-1$
++        refRegExRefNameField.setText(""); //$NON-NLS-1$
++    }    
++
++	private void init() {
++		setLayout(new BorderLayout());
++		setBorder(makeBorder());
++
++		Box box = Box.createVerticalBox();
++		box.add(makeTitlePanel());
++		add(box, BorderLayout.NORTH);
++		add(makeParameterPanel(), BorderLayout.CENTER);
++	}
++
++	private JPanel makeParameterPanel() {
++		refRegExRefNameField = new JLabeledTextField(JMeterUtils.getResString("regex_ref_name_field")); //$NON-NLS-1$
++		paramNamesGrNrField = new JLabeledTextField(JMeterUtils.getResString("regex_params_names_field")); //$NON-NLS-1$
++		paramValuesGrNrField = new JLabeledTextField(JMeterUtils.getResString("regex_params_values_field")); //$NON-NLS-1$
++
++		JPanel panel = new JPanel(new GridBagLayout());
++		GridBagConstraints gbc = new GridBagConstraints();
++		initConstraints(gbc);
++		addField(panel, refRegExRefNameField, gbc);
++		resetContraints(gbc);
++		addField(panel, paramNamesGrNrField, gbc);
++		resetContraints(gbc);
++		gbc.weighty = 1;
++		addField(panel, paramValuesGrNrField, gbc);
++//		resetContraints(gbc);
++//		gbc.weighty = 1;
++//		addField(panel, defaultField, gbc);
++		return panel;
++	}
++
++	private void addField(JPanel panel, JLabeledTextField field, GridBagConstraints gbc) {
++		List item = field.getComponentList();
++		panel.add((Component) item.get(0), gbc.clone());
++		gbc.gridx++;
++		gbc.weightx = 1;
++		gbc.fill=GridBagConstraints.HORIZONTAL;
++		panel.add((Component) item.get(1), gbc.clone());
++	}
++
++	// Next line
++	private void resetContraints(GridBagConstraints gbc) {
++		gbc.gridx = 0;
++		gbc.gridy++;
++		gbc.weightx = 0;
++        gbc.fill=GridBagConstraints.NONE;
++	}
++
++	private void initConstraints(GridBagConstraints gbc) {
++		gbc.anchor = GridBagConstraints.NORTHWEST;
++		gbc.fill = GridBagConstraints.NONE;
++		gbc.gridheight = 1;
++		gbc.gridwidth = 1;
++		gbc.gridx = 0;
++		gbc.gridy = 0;
++		gbc.weightx = 0;
++		gbc.weighty = 0;
++	}
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/modifier/RegExUserParameters.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/modifier/RegExUserParameters.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/modifier/RegExUserParameters.java	(revision 0)
+@@ -0,0 +1,168 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.protocol.http.modifier;
++
++import java.io.Serializable;
++import java.util.HashMap;
++import java.util.Map;
++
++import org.apache.jmeter.config.Argument;
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++import org.apache.jmeter.engine.event.LoopIterationListener;
++import org.apache.jmeter.processor.PreProcessor;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class RegExUserParameters extends AbstractTestElement implements Serializable, PreProcessor, LoopIterationListener {
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++	public static final String REG_EX_REF_NAME = "RegExUserParameters.regex_ref_name";// $NON-NLS-1$
++
++	public static final String REG_EX_PARAM_NAMES_GR_NR = "RegExUserParameters.param_names_gr_nr";// $NON-NLS-1$
++
++	public static final String REG_EX_PARAM_VALUES_GR_NR = "RegExUserParameters.param_values_gr_nr";// $NON-NLS-1$
++
++	/*
++	 * Although the lock appears to be an instance lock, in fact the lock is
++	 * shared between all threads in a thread group, but different thread groups
++	 * have different locks - see the clone() method below
++	 * 
++	 * The lock ensures that all the variables are processed together.
++	 */
++	private Integer lock = new Integer(0);
++
++	public void setRegExRefName(String str) {
++		setProperty(REG_EX_REF_NAME, str);
++	}
++
++	public String getRegExRefName() {
++		return getPropertyAsString(REG_EX_REF_NAME);
++	}
++
++	public void setRegExParamNamesGrNr(String str) {
++		setProperty(REG_EX_PARAM_NAMES_GR_NR, str);
++	}
++
++	public String getRegParamNamesGrNr() {
++		return getPropertyAsString(REG_EX_PARAM_NAMES_GR_NR);
++	}
++
++	public void setRegExParamValuesGrNr(String str) {
++		setProperty(REG_EX_PARAM_VALUES_GR_NR, str);
++	}
++
++	public String getRegExParamValuesGrNr() {
++		return getPropertyAsString(REG_EX_PARAM_VALUES_GR_NR);
++	}
++
++	public void process() {
++		if (log.isDebugEnabled()) {
++			log.debug(Thread.currentThread().getName());//$NON-NLS-1$
++		}
++		setValues();
++	}
++
++	private void setValues() {
++		synchronized (lock) {
++			if (log.isDebugEnabled()) {
++				log.debug(Thread.currentThread().getName() + " Running up named: " + getName());//$NON-NLS-1$
++			}
++			Sampler entry = getThreadContext().getCurrentSampler();
++			if (!(entry instanceof HTTPSamplerBase)) {
++				return;
++			}
++
++			Map paramMap = buildParamsMap();
++			if(paramMap == null){
++				return;
++			}
++
++			HTTPSamplerBase sampler = (HTTPSamplerBase) entry;
++			PropertyIterator iter = sampler.getArguments().iterator();
++			while (iter.hasNext()) {
++				Argument arg = (Argument) iter.next().getObjectValue();
++				if (log.isDebugEnabled()) {log.debug("param before: "+arg.getName() +" = "+ arg.getValue());}
++				// if parameter name exists in http request
++				// then change its value with value obtained with regular expression
++				if (paramMap.containsKey(arg.getName())) {
++					String val = (String) paramMap.get(arg.getName());
++					arg.setValue(val);
++				}	
++				if (log.isDebugEnabled()){log.debug("param after: "+arg.getName() +" = "+ arg.getValue());}
++			}
++		}
++	}
++	
++	private Map buildParamsMap(){		
++		String regExRefName = getRegExRefName()+"_";
++		String grNames = getRegParamNamesGrNr();
++		String grValues = getRegExParamValuesGrNr();
++		JMeterVariables jmvars = getThreadContext().getVariables();	
++		// verify if regex groups exists
++		if(jmvars.get(regExRefName + "matchNr") == null
++				|| jmvars.get(regExRefName + 1 + "_g" + grNames) == null 
++				|| jmvars.get(regExRefName + 1 + "_g" + grValues) == null){
++			return null;
++		}
++		int n = Integer.parseInt(jmvars.get(regExRefName + "matchNr"));	
++		Map map = new HashMap(n);
++		for(int i=1; i<n; i++){
++			map.put(jmvars.get(regExRefName + i + "_g" + grNames), 
++					jmvars.get(regExRefName + i + "_g" + grValues));
++		}
++		return map;
++	}
++
++	/**
++	 * @see LoopIterationListener#iterationStart(LoopIterationEvent)
++	 */
++	public void iterationStart(LoopIterationEvent event) {
++//		setValues();
++	}
++
++	/*
++	 * (non-Javadoc) A new instance is created for each thread group, and the
++	 * clone() method is then called to create copies for each thread in a
++	 * thread group. This means that the lock object is common to a thread
++	 * group; separate thread groups have separate locks. If this is not
++	 * intended, the lock object could be made static.
++	 * 
++	 * @see java.lang.Object#clone()
++	 */
++	public Object clone() {
++		RegExUserParameters up = (RegExUserParameters) super.clone();
++		up.lock = lock; // ensure that clones share the same lock object
++		return up;
++	}
++
++	/*
++	 * (non-Javadoc)
++	 * 
++	 * @see AbstractTestElement#mergeIn(TestElement)
++	 */
++	protected void mergeIn(TestElement element) {
++		// super.mergeIn(element);
++	}
++}

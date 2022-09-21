@@ -1,0 +1,119 @@
+Index: src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(Revision 1802019)
++++ src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(Arbeitskopie)
+@@ -31,7 +31,10 @@
+ import java.awt.event.ItemEvent;
+ import java.awt.event.ItemListener;
+ import java.io.IOException;
++import java.util.ArrayList;
++import java.util.Arrays;
+ import java.util.Collections;
++import java.util.Enumeration;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -53,6 +56,7 @@
+ import javax.swing.tree.DefaultMutableTreeNode;
+ import javax.swing.tree.DefaultTreeCellRenderer;
+ import javax.swing.tree.DefaultTreeModel;
++import javax.swing.tree.TreeNode;
+ import javax.swing.tree.TreePath;
+ import javax.swing.tree.TreeSelectionModel;
+ 
+@@ -169,10 +173,14 @@
+      * Update the visualizer with new data.
+      */
+     private void updateGui() {
++        TreePath selectedPath = null;
+         synchronized (buffer) {
+             if (!dataChanged) {
+                 return;
+             }
++            DefaultMutableTreeNode oldSelectedNode = (DefaultMutableTreeNode) jTree.getLastSelectedPathComponent();
++            Object selectedSample = oldSelectedNode == null ? null : oldSelectedNode.getUserObject();
++            final int selectedSampleHash = System.identityHashCode(selectedSample);
+             root.removeAllChildren();
+             for (Object sampler: buffer) {
+                 SampleResult res = (SampleResult) sampler;
+@@ -179,7 +187,15 @@
+                 // Add sample
+                 DefaultMutableTreeNode currNode = new SearchableTreeNode(res, treeModel);
+                 treeModel.insertNodeInto(currNode, root, root.getChildCount());
+-                addSubResults(currNode, res);
++                List<TreeNode> path = new ArrayList<>(Arrays.asList(root, currNode));
++                if (selectedSample != null && System.identityHashCode(res) == selectedSampleHash) {
++                    selectedPath = new TreePath(path.toArray(new TreeNode[path.size()]));
++                }
++                
++                TreeNode[] potentialSelection = addSubResults(currNode, res, path, selectedSampleHash, selectedSample);
++                if (potentialSelection != null) {
++                    selectedPath = new TreePath(potentialSelection);
++                }
+                 // Add any assertion that failed as children of the sample node
+                 AssertionResult[] assertionResults = res.getAssertionResults();
+                 int assertionIndex = currNode.getChildCount();
+@@ -187,6 +203,11 @@
+                     if (assertionResult.isFailure() || assertionResult.isError()) {
+                         DefaultMutableTreeNode assertionNode = new SearchableTreeNode(assertionResult, treeModel);
+                         treeModel.insertNodeInto(assertionNode, currNode, assertionIndex++);
++                        if (selectedSample != null && System.identityHashCode(assertionResult) == selectedSampleHash) {
++                            TreeNode[] selected = path.toArray(new TreeNode[path.size() + 1]);
++                            selected[selected.length - 1] = assertionNode; 
++                            selectedPath = new TreePath(selected);
++                        }
+                     }
+                 }
+             }
+@@ -197,6 +218,9 @@
+         if (root.getChildCount() == 1) {
+             jTree.expandPath(new TreePath(root));
+         }
++        if (selectedPath != null) {
++            jTree.setSelectionPath(selectedPath);
++        }
+         if (autoScrollCB.isSelected() && root.getChildCount() > 1) {
+             jTree.scrollPathToVisible(new TreePath(new Object[] { root,
+                     treeModel.getChild(root, root.getChildCount() - 1) }));
+@@ -203,10 +227,11 @@
+         }
+     }
+ 
+-    private void addSubResults(DefaultMutableTreeNode currNode, SampleResult res) {
++    private TreeNode[] addSubResults(DefaultMutableTreeNode currNode, SampleResult res, List<TreeNode> path, int selectedHash, Object selectedObject) {
+         SampleResult[] subResults = res.getSubResults();
+ 
+         int leafIndex = 0;
++        TreeNode[] result = null;
+ 
+         for (SampleResult child : subResults) {
+             log.debug("updateGui1 : child sample result - {}", child);
+@@ -213,7 +238,12 @@
+             DefaultMutableTreeNode leafNode = new SearchableTreeNode(child, treeModel);
+ 
+             treeModel.insertNodeInto(leafNode, currNode, leafIndex++);
+-            addSubResults(leafNode, child);
++            List<TreeNode> newPath = new ArrayList<>(path);
++            newPath.add(leafNode);
++            if (selectedObject != null && System.identityHashCode(child) == selectedHash) {
++                result = newPath.toArray(new TreeNode[newPath.size()]);
++            }
++            addSubResults(leafNode, child, newPath, selectedHash, selectedObject);
+             // Add any assertion that failed as children of the sample node
+             AssertionResult[] assertionResults = child.getAssertionResults();
+             int assertionIndex = leafNode.getChildCount();
+@@ -221,9 +251,14 @@
+                 if (item.isFailure() || item.isError()) {
+                     DefaultMutableTreeNode assertionNode = new SearchableTreeNode(item, treeModel);
+                     treeModel.insertNodeInto(assertionNode, leafNode, assertionIndex++);
++                    if (selectedObject != null && System.identityHashCode(item) == selectedHash) {
++                        result = path.toArray(new TreeNode[path.size() + 1]);
++                        result[result.length - 1] = assertionNode; 
++                    }
+                 }
+             }
+         }
++        return result;
+     }
+ 
+     /** {@inheritDoc} */

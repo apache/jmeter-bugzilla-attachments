@@ -1,0 +1,131 @@
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveSubscriber.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveSubscriber.java	(revision 1166194)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveSubscriber.java	(working copy)
+@@ -84,14 +84,22 @@
+             String initialContextFactory, String providerUrl, String connfactory, String destinationName,
+             String durableSubscriptionId, boolean useAuth, 
+             String securityPrincipal, String securityCredentials) throws NamingException, JMSException {
+-        Context ctx = InitialContextFactory.getContext(useProps, 
+-                initialContextFactory, providerUrl, useAuth, securityPrincipal, securityCredentials);
+-        CONN = Utils.getConnection(ctx, connfactory);
+-        SESSION = CONN.createSession(false, Session.AUTO_ACKNOWLEDGE);
+-        Destination dest = Utils.lookupDestination(ctx, destinationName);
+-       	SUBSCRIBER = createSubscriber(SESSION, dest, durableSubscriptionId);
+-        queue = null;
+-        log.debug("<init> complete");
++        boolean initSuccess = false;
++        try{
++            Context ctx = InitialContextFactory.getContext(useProps, 
++                    initialContextFactory, providerUrl, useAuth, securityPrincipal, securityCredentials);
++            CONN = Utils.getConnection(ctx, connfactory);
++            SESSION = CONN.createSession(false, Session.AUTO_ACKNOWLEDGE);
++            Destination dest = Utils.lookupDestination(ctx, destinationName);
++           	SUBSCRIBER = createSubscriber(SESSION, dest, durableSubscriptionId);
++            queue = null;
++            log.debug("<init> complete");
++            initSuccess = true;
++        } finally {
++            if(!initSuccess) {
++                close();
++            }
++        }
+     }
+ 
+     /**
+@@ -117,19 +125,28 @@
+             String initialContextFactory, String providerUrl, String connfactory, String destinationName,
+             String durableSubscriptionId, boolean useAuth, 
+             String securityPrincipal, String securityCredentials) throws NamingException, JMSException {
+-        Context ctx = InitialContextFactory.getContext(useProps, 
+-                initialContextFactory, providerUrl, useAuth, securityPrincipal, securityCredentials);
+-        CONN = Utils.getConnection(ctx, connfactory);
+-        SESSION = CONN.createSession(false, Session.AUTO_ACKNOWLEDGE);
+-        Destination dest = Utils.lookupDestination(ctx, destinationName);
+-        SUBSCRIBER = createSubscriber(SESSION, dest, durableSubscriptionId);
+-        if (queueSize <=0) {
+-            queue = new LinkedBlockingQueue<Message>();
+-        } else {
+-            queue = new LinkedBlockingQueue<Message>(queueSize);            
++        boolean initSuccess = false;
++        try{
++            Context ctx = InitialContextFactory.getContext(useProps, 
++                    initialContextFactory, providerUrl, useAuth, securityPrincipal, securityCredentials);
++            CONN = Utils.getConnection(ctx, connfactory);
++            SESSION = CONN.createSession(false, Session.AUTO_ACKNOWLEDGE);
++            Destination dest = Utils.lookupDestination(ctx, destinationName);
++            SUBSCRIBER = createSubscriber(SESSION, dest, durableSubscriptionId);
++            if (queueSize <=0) {
++                queue = new LinkedBlockingQueue<Message>();
++            } else {
++                queue = new LinkedBlockingQueue<Message>(queueSize);            
++            }
++            SUBSCRIBER.setMessageListener(this);
++            log.debug("<init> complete");
++            initSuccess = true;
++        }
++        finally {
++            if(!initSuccess) {
++                close();
++            }
+         }
+-        SUBSCRIBER.setMessageListener(this);
+-        log.debug("<init> complete");
+     }
+     
+     /**
+@@ -208,11 +225,14 @@
+     public void close() { // called from threadFinished() thread
+         log.debug("close()");
+         try {
+-            CONN.stop();
++            if(CONN != null) {
++                CONN.stop();
++            }
+         } catch (JMSException e) {
+             log.error(e.getMessage());
+         }
+         Utils.close(SUBSCRIBER, log);
++        Utils.close(SUBSCRIBER, log);
+         Utils.close(SESSION, log);
+         Utils.close(CONN, log);
+     }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java	(revision 1166194)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java	(working copy)
+@@ -94,16 +94,24 @@
+             String securityPrincipal, String securityCredentials,
+             boolean staticDestination) throws JMSException, NamingException {
+         super();
+-        ctx = InitialContextFactory.getContext(useProps, initialContextFactory, 
+-                providerUrl, useAuth, securityPrincipal, securityCredentials);
+-        connection = Utils.getConnection(ctx, connfactory);
+-        session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+-        staticDest = staticDestination;
+-        if (staticDest) {
+-            Destination dest = Utils.lookupDestination(ctx, destinationName);
+-            producer = session.createProducer(dest);
+-        } else {
+-            producer = session.createProducer(null);
++        boolean initSuccess = false;
++        try{
++            ctx = InitialContextFactory.getContext(useProps, initialContextFactory, 
++                    providerUrl, useAuth, securityPrincipal, securityCredentials);
++            connection = Utils.getConnection(ctx, connfactory);
++            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
++            staticDest = staticDestination;
++            if (staticDest) {
++                Destination dest = Utils.lookupDestination(ctx, destinationName);
++                producer = session.createProducer(dest);
++            } else {
++                producer = session.createProducer(null);
++            }
++            initSuccess = true;
++        } finally {
++            if(!initSuccess) {
++                close();
++            }
+         }
+     }
+ 

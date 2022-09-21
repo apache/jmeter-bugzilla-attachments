@@ -1,0 +1,555 @@
+Index: src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java,v
+retrieving revision 1.7
+diff -u -r1.7 AssertionVisualizer.java
+--- src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	11 Mar 2003 19:04:18 -0000	1.7
++++ src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	30 Mar 2003 21:44:26 -0000
+@@ -57,10 +57,8 @@
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Font;
+-import java.util.Arrays;
+-import java.util.Iterator;
+-import java.util.List;
+ 
++import javax.swing.BoxLayout;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+@@ -73,7 +71,6 @@
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+-import org.apache.jorphan.gui.layout.VerticalLayout;
+ 
+ 
+ /****************************************
+@@ -163,8 +160,8 @@
+         Border margin = new EmptyBorder(10, 10, 5, 10);
+ 
+         mainPanel.setBorder(margin);
+-        mainPanel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
+-
++        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
++        
+         // TITLE
+         JLabel panelTitleLabel = new JLabel(JMeterUtils.getResString("assertion_visualizer_title"));
+         Font curFont = panelTitleLabel.getFont();
+@@ -184,16 +181,15 @@
+         mainPanel.add(textAreaLabel);
+ 
+         // TEXTAREA
+-        textArea = new JTextArea(10, 40);
++        textArea = new JTextArea();
+         textArea.setEditable(false);
+         textArea.setLineWrap(false);
+         JScrollPane areaScrollPane = new JScrollPane(textArea);
+ 
+         areaScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+         areaScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+-        // areaScrollPane.setPreferredSize(new Dimension(250, 250));
+ 
+-        this.add(mainPanel, BorderLayout.NORTH);
+-        this.add(areaScrollPane, BorderLayout.CENTER);
++        mainPanel.add (areaScrollPane);
++        this.add(mainPanel, BorderLayout.CENTER);
+     }
+ }
+Index: src/components/org/apache/jmeter/visualizers/Graph.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/Graph.java,v
+retrieving revision 1.4
+diff -u -r1.4 Graph.java
+--- src/components/org/apache/jmeter/visualizers/Graph.java	7 Feb 2003 04:18:53 -0000	1.4
++++ src/components/org/apache/jmeter/visualizers/Graph.java	30 Mar 2003 21:44:26 -0000
+@@ -2,7 +2,7 @@
+  *  ====================================================================
+  *  The Apache Software License, Version 1.1
+  *
+- *  Copyright (c) 2001 The Apache Software Foundation.  All rights
++ *  Copyright (c) 2001,2003 The Apache Software Foundation.  All rights
+  *  reserved.
+  *
+  *  Redistribution and use in source and binary forms, with or without
+@@ -93,7 +93,6 @@
+      */
+     public Graph()
+     {
+-        this.setPreferredSize(new Dimension(width, 800));
+     }
+ 
+     /**
+Index: src/components/org/apache/jmeter/visualizers/GraphAccum.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/GraphAccum.java,v
+retrieving revision 1.4
+diff -u -r1.4 GraphAccum.java
+--- src/components/org/apache/jmeter/visualizers/GraphAccum.java	3 Feb 2003 14:29:01 -0000	1.4
++++ src/components/org/apache/jmeter/visualizers/GraphAccum.java	30 Mar 2003 21:44:27 -0000
+@@ -2,7 +2,7 @@
+  *  ====================================================================
+  *  The Apache Software License, Version 1.1
+  *
+- *  Copyright (c) 2001 The Apache Software Foundation.  All rights
++ *  Copyright (c) 2001,2003 The Apache Software Foundation.  All rights
+  *  reserved.
+  *
+  *  Redistribution and use in source and binary forms, with or without
+@@ -143,7 +143,6 @@
+     public GraphAccum()
+     {
+         log.debug("Start : GraphAnnum1");
+-        this.setPreferredSize(new Dimension(width, 800));
+         log.debug("End : GraphAnnum1");
+     }
+ 
+Index: src/components/org/apache/jmeter/visualizers/GraphAccumVisualizer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/GraphAccumVisualizer.java,v
+retrieving revision 1.8
+diff -u -r1.8 GraphAccumVisualizer.java
+--- src/components/org/apache/jmeter/visualizers/GraphAccumVisualizer.java	5 Feb 2003 05:12:03 -0000	1.8
++++ src/components/org/apache/jmeter/visualizers/GraphAccumVisualizer.java	30 Mar 2003 21:44:27 -0000
+@@ -2,7 +2,7 @@
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+  *
+- * Copyright (c) 2001 The Apache Software Foundation.  All rights
++ * Copyright (c) 2001,2003 The Apache Software Foundation.  All rights
+  * reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -60,6 +60,7 @@
+ import java.awt.Image;
+ 
+ import javax.swing.BorderFactory;
++import javax.swing.BoxLayout;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+@@ -71,7 +72,6 @@
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+-import org.apache.jorphan.gui.layout.VerticalLayout;
+ import org.apache.log.Hierarchy;
+ import org.apache.log.Logger;
+ 
+@@ -226,7 +226,7 @@
+         Border margin = new EmptyBorder(10, 10, 5, 10);
+ 
+         mainPanel.setBorder(margin);
+-        mainPanel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
++        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
+ 
+         // TITLE
+         JLabel panelTitleLabel = new JLabel(JMeterUtils.getResString("graph_full_results_title"));
+@@ -237,7 +237,7 @@
+         panelTitleLabel.setFont(new Font(curFont.getFontName(), curFont.getStyle(), curFontSize));
+         mainPanel.add(panelTitleLabel);
+ 
+-        mainPanel.add(this.getNamePanel());
++        mainPanel.add(getNamePanel());
+         mainPanel.add(getFilePanel());
+ 
+         JScrollPane graphScrollPanel = new
+Index: src/components/org/apache/jmeter/visualizers/GraphVisualizer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/GraphVisualizer.java,v
+retrieving revision 1.8
+diff -u -r1.8 GraphVisualizer.java
+--- src/components/org/apache/jmeter/visualizers/GraphVisualizer.java	26 Mar 2003 15:19:23 -0000	1.8
++++ src/components/org/apache/jmeter/visualizers/GraphVisualizer.java	30 Mar 2003 21:44:27 -0000
+@@ -80,7 +80,6 @@
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+-import org.apache.jorphan.gui.layout.VerticalLayout;
+ 
+ 
+ /****************************************
+@@ -269,7 +268,7 @@
+         Border margin = new EmptyBorder(10, 10, 5, 10);
+ 
+         mainPanel.setBorder(margin);
+-        mainPanel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
++        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
+ 
+         // TITLE
+         JLabel panelTitleLabel = new JLabel(JMeterUtils.getResString("graph_results_title"));
+Index: src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/StatVisualizer.java,v
+retrieving revision 1.10
+diff -u -r1.10 StatVisualizer.java
+--- src/components/org/apache/jmeter/visualizers/StatVisualizer.java	26 Mar 2003 15:19:23 -0000	1.10
++++ src/components/org/apache/jmeter/visualizers/StatVisualizer.java	30 Mar 2003 21:44:28 -0000
+@@ -2,7 +2,7 @@
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+  *
+- * Copyright (c) 2001 The Apache Software Foundation.  All rights
++ * Copyright (c) 2001,2003 The Apache Software Foundation.  All rights
+  * reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -58,16 +58,15 @@
+ import java.awt.BorderLayout;
+ import java.awt.Dimension;
+ import java.awt.Font;
+-import java.awt.Rectangle;
+ import java.awt.event.MouseAdapter;
+ import java.awt.event.MouseEvent;
+ import java.util.Arrays;
+ 
++import javax.swing.BoxLayout;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+ import javax.swing.JTable;
+-import javax.swing.Scrollable;
+ import javax.swing.border.Border;
+ import javax.swing.border.EmptyBorder;
+ import javax.swing.event.TableModelEvent;
+@@ -79,7 +78,6 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+-import org.apache.jorphan.gui.layout.VerticalLayout;
+ 
+ 
+ /****************************************
+@@ -94,11 +92,8 @@
+  *@version   1.0
+  ***************************************/
+ public class StatVisualizer extends AbstractVisualizer
+-        implements Scrollable, AccumListener, Clearable
++        implements AccumListener, Clearable
+ {
+-    // protected NamePanel namePanel;
+-    // protected GraphAccum graph;
+-    // protected JPanel legendPanel;
+     /****************************************
+      * !ToDo (Field description)
+      ***************************************/
+@@ -111,10 +106,6 @@
+     private final static String VISUALIZER_NAME =
+             JMeterUtils.getResString("aggregate_report");
+     private long sleepTill = 0;
+-    private static int width = 2000;
+-    // private boolean data = true;
+-    // private boolean average = true;
+-    // private boolean deviation = true;
+     transient private StatVisualizerModel model;
+     transient private StatTableModel myStatTableModel;
+ 
+@@ -126,7 +117,6 @@
+         super();
+         model = new StatVisualizerModel();
+         model.addAccumListener(this);
+-        this.setPreferredSize(new Dimension(width, 800));
+         init();
+     }
+ 
+@@ -151,69 +141,6 @@
+     }
+ 
+     /****************************************
+-     * Gets the PreferredScrollableViewportSize attribute of this Visualizer
+-     *
+-     *@return   The PreferredScrollableViewportSize value
+-     ***************************************/
+-    public Dimension getPreferredScrollableViewportSize()
+-    {
+-        return this.getPreferredSize();
+-    }
+-
+-    /****************************************
+-     * Gets the ScrollableUnitIncrement attribute of the Visualizer
+-     *
+-     *@param visibleRect  Description of Parameter
+-     *@param orientation  Description of Parameter
+-     *@param direction    Description of Parameter
+-     *@return             The ScrollableUnitIncrement value
+-     ***************************************/
+-    public int getScrollableUnitIncrement(
+-            Rectangle visibleRect,
+-            int orientation,
+-            int direction)
+-    {
+-        // yanked this from some other visualizer - along with most of the core GUI stuff. not my bag.
+-        return 5;
+-    }
+-
+-    /****************************************
+-     * Gets the ScrollableBlockIncrement attribute of the Visualizer
+-     *
+-     *@param visibleRect  Description of Parameter
+-     *@param orientation  Description of Parameter
+-     *@param direction    Description of Parameter
+-     *@return             The ScrollableBlockIncrement value
+-     ***************************************/
+-    public int getScrollableBlockIncrement(
+-            Rectangle visibleRect,
+-            int orientation,
+-            int direction)
+-    {
+-        return (int) (visibleRect.width * .9);
+-    }
+-
+-    /****************************************
+-     * Gets the ScrollableTracksViewportWidth attribute of the Visualizer
+-     *
+-     *@return   The ScrollableTracksViewportWidth value
+-     ***************************************/
+-    public boolean getScrollableTracksViewportWidth()
+-    {
+-        return false;
+-    }
+-
+-    /****************************************
+-     * Gets the ScrollableTracksViewportHeight attribute of the Visualizer
+-     *
+-     *@return   The ScrollableTracksViewportHeight value
+-     ***************************************/
+-    public boolean getScrollableTracksViewportHeight()
+-    {
+-        return true;
+-    }
+-
+-    /****************************************
+      * Clears this visualizer, it model, and forces a repaint of the table
+      ***************************************/
+     public void clear()
+@@ -248,12 +175,14 @@
+     private void init()
+     {
+         this.setLayout(new BorderLayout());
++
+         // MAIN PANEL
+         JPanel mainPanel = new JPanel();
+         Border margin = new EmptyBorder(10, 10, 5, 10);
+ 
+         mainPanel.setBorder(margin);
+-        mainPanel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
++        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
++
+         // TITLE
+         JLabel panelTitleLabel = new JLabel(VISUALIZER_NAME);
+         Font curFont = panelTitleLabel.getFont();
+Index: src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java,v
+retrieving revision 1.16
+diff -u -r1.16 ViewResultsFullVisualizer.java
+--- src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	5 Feb 2003 05:12:04 -0000	1.16
++++ src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	30 Mar 2003 21:44:28 -0000
+@@ -2,7 +2,7 @@
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+  *
+- * Copyright (c) 2002 The Apache Software Foundation.  All rights
++ * Copyright (c) 2002,2003 The Apache Software Foundation.  All rights
+  * reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -58,6 +58,7 @@
+ import java.awt.BorderLayout;
+ import java.awt.Color;
+ import java.awt.Component;
++import java.awt.Dimension;
+ import java.awt.GridBagConstraints;
+ import java.awt.GridBagLayout;
+ import java.awt.Insets;
+@@ -378,7 +379,6 @@
+     protected void initTextArea()
+     {
+         textArea = new JTextArea();
+-        textArea.setColumns(70);
+         textArea.setLineWrap(true);
+         textArea.setWrapStyleWord(true);
+         textArea.setTabSize(4);
+@@ -488,7 +488,10 @@
+         jTree.getSelectionModel().setSelectionMode(
+                 TreeSelectionModel.SINGLE_TREE_SELECTION);
+         jTree.addTreeSelectionListener(this);
++        jTree.setShowsRootHandles(true);
+         treePane = new JScrollPane(jTree);
++        treePane.setPreferredSize(new Dimension(100, 100));
++
+         gridBag = new GridBagLayout();
+         gbc = new GridBagConstraints();
+         resultPanel = new JPanel(gridBag);
+@@ -496,9 +499,11 @@
+         initHtmlOrTextButton();
+         initTextArea();
+         initHtmlEditPane();
++
+         treeSplitPane =
+                 new JSplitPane(JSplitPane.VERTICAL_SPLIT, treePane, resultPane);
+-        getFilePanel().add(getErrorLoggingCheckbox());
++
++        getFilePanel().add(getErrorLoggingCheckbox(), BorderLayout.SOUTH);
+         add(getFilePanel(), BorderLayout.NORTH);
+         add(treeSplitPane, BorderLayout.CENTER);
+     }
+Index: src/core/org/apache/jmeter/control/gui/TestPlanGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/control/gui/TestPlanGui.java,v
+retrieving revision 1.4
+diff -u -r1.4 TestPlanGui.java
+--- src/core/org/apache/jmeter/control/gui/TestPlanGui.java	25 Mar 2003 17:24:32 -0000	1.4
++++ src/core/org/apache/jmeter/control/gui/TestPlanGui.java	30 Mar 2003 21:44:28 -0000
+@@ -144,8 +144,7 @@
+         functionalMode = new JCheckBox(JMeterUtils.getResString("functional_mode"));
+         southPanel.add(functionalMode, BorderLayout.NORTH);
+         JTextArea explain = new JTextArea(JMeterUtils.getResString("functional_mode_explanation"));
+-        explain.setColumns(30);
+-        explain.setRows(10);
++        explain.setEditable(false);
+         explain.setBackground(this.getBackground());
+         southPanel.add(explain, BorderLayout.CENTER);
+         add(getVariablePanel(), BorderLayout.CENTER);
+Index: src/core/org/apache/jmeter/gui/MainFrame.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/MainFrame.java,v
+retrieving revision 1.8
+diff -u -r1.8 MainFrame.java
+--- src/core/org/apache/jmeter/gui/MainFrame.java	31 Jan 2003 18:25:09 -0000	1.8
++++ src/core/org/apache/jmeter/gui/MainFrame.java	30 Mar 2003 21:44:29 -0000
+@@ -2,7 +2,7 @@
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+  *
+- * Copyright (c) 2002 The Apache Software Foundation.  All rights
++ * Copyright (c) 2002,2003 The Apache Software Foundation.  All rights
+  * reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -60,7 +60,6 @@
+ import java.awt.GridBagLayout;
+ import java.awt.GridLayout;
+ import java.awt.Insets;
+-import java.awt.Rectangle;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.awt.event.WindowAdapter;
+@@ -273,23 +272,9 @@
+ 	public void setMainPanel(JComponent comp)
+ 	{
+ 		mainPanel.removeAll();
+-		Rectangle rect = mainPanel.getVisibleRect();
+-		Insets in = mainPanel.getInsets();
+-		Dimension dim = new Dimension(((int)rect.getWidth()) - (in.right + in.left) * 2,
+-				((int)rect.getHeight()) - (in.top + in.bottom) * 2);
+-		Dimension min = comp.getMinimumSize();
+-		if(dim.width < min.width)
+-		{
+-			dim.width = min.width;
+-		}
+-		if(dim.height < min.height)
+-		{
+-			dim.height = min.height;
+-		}
+-		comp.setPreferredSize(dim);
+ 		comp.validate();
+ 		mainPanel.add(comp);
+-		mainPanel.validate();
++		mainPanel.revalidate();
+ 		mainPanel.repaint();
+ 	}
+ 
+@@ -371,7 +356,7 @@
+ 			gbc.gridy = 0;
+ 			gbc.gridheight = 1;
+ 			gbc.gridwidth = 1;
+-			gbc.fill = gbc.BOTH;
++			gbc.fill = GridBagConstraints.BOTH;
+ 			gbc.weightx = 1;
+ 			gbc.weighty = 0;
+ 			all.add(toolPanel, gbc.clone());
+Index: src/core/org/apache/jmeter/gui/NamePanel.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/NamePanel.java,v
+retrieving revision 1.4
+diff -u -r1.4 NamePanel.java
+--- src/core/org/apache/jmeter/gui/NamePanel.java	28 Feb 2003 14:21:47 -0000	1.4
++++ src/core/org/apache/jmeter/gui/NamePanel.java	30 Mar 2003 21:44:29 -0000
+@@ -2,7 +2,7 @@
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+  *
+- * Copyright (c) 2002 The Apache Software Foundation.  All rights
++ * Copyright (c) 2002,2003 The Apache Software Foundation.  All rights
+  * reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -53,6 +53,7 @@
+  * <http://www.apache.org/>.
+  */
+ package org.apache.jmeter.gui;
++import java.awt.Dimension;
+ import java.awt.FlowLayout;
+ import java.util.Collection;
+ 
+@@ -202,6 +203,10 @@
+                 // not for text fields
+             }
+         });
++        
++        // Allow this component to expand horizontally but not vertically
++        setMaximumSize(new Dimension(getMaximumSize().width,
++                getPreferredSize().height));
+     }
+ 
+ 
+Index: src/core/org/apache/jmeter/gui/util/FilePanel.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/util/FilePanel.java,v
+retrieving revision 1.2
+diff -u -r1.2 FilePanel.java
+--- src/core/org/apache/jmeter/gui/util/FilePanel.java	30 Aug 2002 15:51:21 -0000	1.2
++++ src/core/org/apache/jmeter/gui/util/FilePanel.java	30 Mar 2003 21:44:30 -0000
+@@ -2,7 +2,7 @@
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+  *
+- * Copyright (c) 2001 The Apache Software Foundation.  All rights
++ * Copyright (c) 2001,2003 The Apache Software Foundation.  All rights
+  * reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -52,7 +52,8 @@
+  * information on the Apache Software Foundation, please see
+  * <http://www.apache.org/>.
+  */package org.apache.jmeter.gui.util;
+-import java.awt.FlowLayout;
++import java.awt.BorderLayout;
++import java.awt.Dimension;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.util.Iterator;
+@@ -123,14 +124,18 @@
+ 	 */
+ 	private void init()
+ 	{
+-		this.setLayout(new FlowLayout(FlowLayout.LEFT));
++        setLayout(new BorderLayout());
+ 		setBorder(BorderFactory.createTitledBorder(title));
+-		add(label);
+-		add(filename);
++		add(label, BorderLayout.WEST);
++		add(filename, BorderLayout.CENTER);
+ 		filename.addActionListener(this);
+-		add(browse);
++		add(browse, BorderLayout.EAST);
+ 		browse.setActionCommand("browse");
+ 		browse.addActionListener(this);
++
++        // Allow this component to expand horizontally but not vertically
++        setMaximumSize(new Dimension(getMaximumSize().width,
++                getPreferredSize().height));
+ 	}
+ 
+ 	/**

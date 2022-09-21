@@ -1,0 +1,55 @@
+From 4ae2399b2fdfdd1bd014788f2a5aa391dfc4fabe Mon Sep 17 00:00:00 2001
+From: benoit <b.wiart@ubik-ingenierie.com>
+Date: Mon, 15 Apr 2013 14:24:51 +0200
+Subject: [PATCH] multi-selection cut
+
+
+diff --git src/core/org/apache/jmeter/gui/action/Cut.java src/core/org/apache/jmeter/gui/action/Cut.java
+index ddcff5c..d5a0b31 100644
+--- src/core/org/apache/jmeter/gui/action/Cut.java
++++ src/core/org/apache/jmeter/gui/action/Cut.java
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.gui.action;
+ 
+ import java.awt.event.ActionEvent;
++import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.Set;
+ 
+@@ -51,10 +52,32 @@ public class Cut extends AbstractAction {
+         GuiPackage guiPack = GuiPackage.getInstance();
+         JMeterTreeNode[] currentNodes = guiPack.getTreeListener().getSelectedNodes();
+ 
++        // if a child and one of its ancestors are selected : only keep the ancestor
++        currentNodes = filterNodes(currentNodes);
++        
+         Copy.setCopiedNodes(currentNodes);
+         for (int i = 0; i < currentNodes.length; i++) {
+             guiPack.getTreeModel().removeNodeFromParent(currentNodes[i]);
+         }
+         guiPack.getMainFrame().repaint();
+     }
++
++    private JMeterTreeNode[] filterNodes(JMeterTreeNode[] currentNodes) {
++        ArrayList<JMeterTreeNode> nodes = new ArrayList<JMeterTreeNode>();
++        for (int i = 0; i < currentNodes.length; i++) {
++            boolean exclude = false;
++            for (int j = 0; j < currentNodes.length; j++) {
++                if(i!=j && currentNodes[i].isNodeAncestor(currentNodes[j])) {
++                    exclude = true;
++                    break;
++                }
++            }
++            
++            if(!exclude) {
++                nodes.add(currentNodes[i]);
++            }
++        }
++        
++        return nodes.toArray(new JMeterTreeNode[nodes.size()]);
++    }
+ }
+\ No newline at end of file
+-- 
+1.7.12
+

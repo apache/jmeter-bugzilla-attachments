@@ -1,0 +1,153 @@
+From caddad914543b5981b3aaffdc56d091c9c483fb4 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 2 Jan 2021 14:07:00 +0100
+Subject: [PATCH] Log debug information about loaded certs from keystore
+
+Bugzilla Id: 64831
+---
+ .../jmeter/util/keystore/JmeterKeyStore.java  | 105 ++++++++++++++++++
+ 1 file changed, 105 insertions(+)
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/util/keystore/JmeterKeyStore.java b/src/core/src/main/java/org/apache/jmeter/util/keystore/JmeterKeyStore.java
+index 5a3afdf8a1..7a5938825b 100644
+--- a/src/core/src/main/java/org/apache/jmeter/util/keystore/JmeterKeyStore.java
++++ b/src/core/src/main/java/org/apache/jmeter/util/keystore/JmeterKeyStore.java
+@@ -27,16 +27,21 @@ import java.security.PrivateKey;
+ import java.security.UnrecoverableKeyException;
+ import java.security.cert.Certificate;
+ import java.security.cert.CertificateException;
++import java.security.cert.CertificateParsingException;
+ import java.security.cert.X509Certificate;
+ import java.util.ArrayList;
+ import java.util.Arrays;
++import java.util.Collection;
+ import java.util.Enumeration;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
++import java.util.stream.Collectors;
+ 
++import org.apache.commons.codec.binary.Hex;
+ import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.lang3.tuple.Pair;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -113,6 +118,9 @@ public final class JmeterKeyStore {
+         this.certsByAlias = new HashMap<>();
+ 
+         PrivateKey privateKey = null;
++        if (log.isDebugEnabled()) {
++            logDetailsOnKeystore(store);
++        }
+         int index = 0;
+         Enumeration<String> aliases = store.aliases();
+         while (aliases.hasMoreElements()) {
+@@ -148,6 +156,103 @@ public final class JmeterKeyStore {
+         this.names = aliasesList.toArray(new String[aliasesList.size()]);
+     }
+ 
++    private static final Map<String, String> EXTENDED_KEY_USAGES = new HashMap<>();
++    static {
++        EXTENDED_KEY_USAGES.put("1.3.6.1.5.5.7.3.9", "Signing Online Certificate Status Protocol (OCSP) responses");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.4.1.311.20.2.2", "Smartcard logon to Microsoft Windows");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.4.1.311.10.3.4", "Can use encrypted file systems (EFS) (EFS_CRYPTO)");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.4.1.311.10.3.4.1", "Can use encrypted file systems (EFS) (EFS_RECOVERY)");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.5.5.7.3.1",
++                "Transport Layer Security (TLS) World Wide Web (WWW) server authentication");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.5.5.7.3.2",
++                "Transport Layer Security (TLS) World Wide Web (WWW) client authentication");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.5.5.7.3.3", "Signing of downloadable executable code");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.5.5.7.3.4", "Email protection");
++        EXTENDED_KEY_USAGES.put("1.3.6.1.5.5.7.3.8", "Time stamping");
++    }
++
++    private static final List<String> SAN_OIDS = Arrays.asList("otherName", "rfc822Name", "dNSName", "x400Address",
++            "directoryName", "ediPartyName", "uniformResourceIdentifier", "iPAddress", "registeredID");
++
++    private void logDetailsOnKeystore(KeyStore keystore) {
++        Enumeration<String> aliases;
++        try {
++            aliases = keystore.aliases();
++        } catch (KeyStoreException e) {
++            log.debug("Problem reading the aliases from the store {}", keystore, e);
++            return;
++        }
++        int i = 1;
++        while(aliases.hasMoreElements()) {
++            String alias = aliases.nextElement();
++            log.debug("certificate at index {} with alias {}:", i++, alias);
++            X509Certificate cert;
++            try {
++                cert = (X509Certificate) keystore.getCertificate(alias);
++            } catch (KeyStoreException e) {
++                log.debug("Can't read certificate for alias {}", alias, e);
++                continue;
++            }
++            log.debug("Subject DN: {}", cert.getSubjectDN());
++            log.debug("issuer DN: {}", cert.getIssuerDN());
++            log.debug("not valid before: {}", cert.getNotBefore().toInstant());
++            log.debug("not valid after: {}", cert.getNotAfter().toInstant());
++            try {
++                final Collection<List<?>> subjectAlternativeNames = cert.getSubjectAlternativeNames();
++                if (!(subjectAlternativeNames == null || subjectAlternativeNames.isEmpty())) {
++                    log.debug("SAN: {}", decodeSanList(subjectAlternativeNames));
++                }
++            } catch (CertificateParsingException e) {
++                log.debug("Problem parsing SAN for {}", alias, e);
++            }
++            List<String> extendedKeyUsage;
++            try {
++                extendedKeyUsage = cert.getExtendedKeyUsage();
++                if (extendedKeyUsage != null) {
++                    for (String keyUsage : extendedKeyUsage) {
++                        log.debug("Extended Key Usage {} ({})", EXTENDED_KEY_USAGES.getOrDefault(keyUsage, keyUsage), keyUsage);
++                    }
++                }
++            } catch (CertificateParsingException e) {
++                log.debug("Can't get extendedKeyUsage for alias {}", alias, e);
++            }
++        }
++    }
++
++    private String decodeSanList(Collection<List<?>> subjectAlternativeNames) {
++        List<Pair<String, String>> decodedEntries = new ArrayList<>();
++        for (List<?> entry : subjectAlternativeNames) {
++            Object oidData = entry.get(0);
++            Object data = entry.get(1);
++            if (oidData instanceof Integer) {
++                Integer oid = (Integer) oidData;
++                String description = sanOidToName(oid);
++                String valueString = sanDataToString(data);
++                decodedEntries.add(Pair.of(description, valueString));
++            }
++        }
++        return decodedEntries.stream()
++                .map(e -> e.getKey() + ": " + e.getValue())
++                .collect(Collectors.joining(", "));
++    }
++
++    private String sanDataToString(Object data) {
++        if (data instanceof String) {
++            return (String) data;
++        }
++        return Hex.encodeHexString((byte[]) data);
++    }
++
++    private String sanOidToName(Integer oid) {
++        String description;
++        if (oid < SAN_OIDS.size()) {
++            description = SAN_OIDS.get(oid);
++        } else {
++            description = "UNKNOWN_SAN_OID";
++        }
++        return description;
++    }
++
+     private X509Certificate[] toX509Certificates(Certificate[] chain) {
+         X509Certificate[] x509certs = new X509Certificate[chain.length];
+         for (int i = 0; i < x509certs.length; i++) {
+-- 
+2.25.1
+

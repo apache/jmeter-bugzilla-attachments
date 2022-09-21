@@ -1,0 +1,120 @@
+
+/***************************************************************************************************************************/
+
+/*
+	This is the GUI class for the SkipErrorsController 
+*/
+
+
+
+package org.apache.jmeter.control.gui;
+
+import org.apache.jmeter.control.SkipErrorsController;
+import org.apache.jmeter.testelement.TestElement;
+import org.apache.jorphan.gui.layout.VerticalLayout;
+
+public class SkipErrorsControllerGui extends AbstractControllerGui {
+
+    public SkipErrorsControllerGui() {
+        init();
+    }
+
+    public TestElement createTestElement() {
+        SkipErrorsController sec = new SkipErrorsController();
+        modifyTestElement(sec);
+        return sec;
+    }
+
+    /**
+     * Modifies a given TestElement to mirror the data in the gui components.
+     *
+     * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
+     */
+    public void modifyTestElement(TestElement sec) {
+        configureTestElement(sec);
+    }
+
+    public String getStaticLabel() {
+        return "Skip Errors Controller";
+    }
+
+    public String getLabelResource() {
+        return "skip_errors_controller_title"; // $NON-NLS-1$
+    }
+
+    private void init() {
+        setLayout(new VerticalLayout(5, VerticalLayout.BOTH, VerticalLayout.TOP));
+        setBorder(makeBorder());
+        add(makeTitlePanel());
+    }
+}
+
+
+
+
+
+
+/***************************************************************************************************************************/
+
+/*
+	This the class with the functionality for the SkipErrorsController
+*/
+
+
+
+package org.apache.jmeter.control;
+
+/***************************************************************************
+This controller skips every sampler after one that fails, for example, if the test tree is like this:
+
+Sampler1(PASS)
+Sampler2(PASS)
+Sampler3(FAIL)
+Sampler4(PASS)
+Sampler5(PASS)
+
+then after Sampler3 is executed and fails, Sampler4 and Sampler5 won't be executed, intead the next sampler to test will be 
+Sampler1 (or the test will finish if the number of iterations is completed). 
+**************************************************************************/
+
+import java.io.Serializable;
+import org.apache.jmeter.samplers.Sampler;
+import org.apache.jmeter.testelement.TestElement;
+import org.apache.jmeter.threads.JMeterContext;
+
+public class SkipErrorsController extends GenericController implements Serializable {
+
+    /***************************************************************************
+     * Constructor for the SkipErrorsController object
+     **************************************************************************/
+    public SkipErrorsController() {
+	super();
+    }
+
+    /**
+     * If it's the first sample of the tree, or the last sample's result was successful then call the father's next() method,
+     * if not, then re-initialize this controller, and initialize the controller containing the sampler (if any)
+     *  
+     * @see org.apache.jmeter.control.Controller#next()
+     */
+     public Sampler next() {
+	Sampler returnValue = null;
+	
+	try {
+	   TestElement currentElement = getCurrentElement();
+
+           if ((!isFirst()) && (currentElement != null) && 
+	      (!currentElement.getThreadContext().getPreviousResult().isSuccessful())) { 
+	       if (currentElement instanceof Controller) {
+		   ((Controller)currentElement).initialize();
+	       }
+	       returnValue = nextIsNull();
+           }
+	   else {
+	       returnValue = super.next();
+	   }   
+	} catch (NextIsNullException e) { }
+
+        return returnValue;
+    }
+}

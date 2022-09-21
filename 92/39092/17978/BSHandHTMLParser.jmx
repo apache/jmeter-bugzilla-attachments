@@ -1,0 +1,213 @@
+<jmeterTestPlan version="1.1" properties="1.7">
+  <hashTree>
+    <TestPlan>
+      <elementProp name="TestPlan.user_defined_variables" elementType="org.apache.jmeter.config.Arguments">
+        <stringProp name="TestElement.gui_class">org.apache.jmeter.config.gui.ArgumentsPanel</stringProp>
+        <stringProp name="TestElement.test_class">org.apache.jmeter.config.Arguments</stringProp>
+        <collectionProp name="Arguments.arguments"/>
+        <stringProp name="TestElement.name">ユーザー定義変数</stringProp>
+        <boolProp name="TestElement.enabled">true</boolProp>
+      </elementProp>
+      <stringProp name="TestElement.gui_class">org.apache.jmeter.control.gui.TestPlanGui</stringProp>
+      <stringProp name="TestPlan.user_define_classpath"></stringProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <stringProp name="TestElement.test_class">org.apache.jmeter.testelement.TestPlan</stringProp>
+      <stringProp name="TestElement.name">Test Plan</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestElement.enabled">true</boolProp>
+      <stringProp name="TestPlan.comments"></stringProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup>
+        <longProp name="ThreadGroup.start_time">1143288357000</longProp>
+        <stringProp name="TestElement.test_class">org.apache.jmeter.threads.ThreadGroup</stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <boolProp name="TestElement.enabled">true</boolProp>
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="TestElement.gui_class">org.apache.jmeter.threads.gui.ThreadGroupGui</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="org.apache.jmeter.control.LoopController">
+          <stringProp name="TestElement.gui_class">org.apache.jmeter.control.gui.LoopControlPanel</stringProp>
+          <stringProp name="LoopController.loops">1</stringProp>
+          <stringProp name="TestElement.test_class">org.apache.jmeter.control.LoopController</stringProp>
+          <stringProp name="TestElement.name">ループコントローラ</stringProp>
+          <boolProp name="TestElement.enabled">true</boolProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+        <stringProp name="TestElement.name">Thread Group</stringProp>
+        <longProp name="ThreadGroup.end_time">1143288357000</longProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <HTTPSampler>
+          <stringProp name="HTTPSampler.path">/</stringProp>
+          <stringProp name="TestElement.test_class">org.apache.jmeter.protocol.http.sampler.HTTPSampler</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <stringProp name="HTTPSampler.protocol">HTTP</stringProp>
+          <boolProp name="TestElement.enabled">true</boolProp>
+          <boolProp name="HTTPSampler.image_parser">true</boolProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <stringProp name="HTTPSampler.port">80</stringProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="org.apache.jmeter.config.Arguments">
+            <stringProp name="TestElement.gui_class">org.apache.jmeter.protocol.http.gui.HTTPArgumentsPanel</stringProp>
+            <stringProp name="TestElement.test_class">org.apache.jmeter.config.Arguments</stringProp>
+            <collectionProp name="Arguments.arguments"/>
+            <stringProp name="TestElement.name">ユーザー定義変数</stringProp>
+            <boolProp name="TestElement.enabled">true</boolProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.mimetype"></stringProp>
+          <stringProp name="TestElement.gui_class">org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui</stringProp>
+          <stringProp name="HTTPSampler.FILE_FIELD"></stringProp>
+          <stringProp name="TestElement.name">apache</stringProp>
+          <stringProp name="HTTPSampler.monitor">false</stringProp>
+          <stringProp name="HTTPSampler.domain">www.apache.org</stringProp>
+          <stringProp name="HTTPSampler.FILE_NAME"></stringProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+        </HTTPSampler>
+        <hashTree/>
+        <BeanShellSampler>
+          <stringProp name="BeanShellSampler.filename"></stringProp>
+          <stringProp name="TestElement.gui_class">org.apache.jmeter.protocol.java.control.gui.BeanShellSamplerGui</stringProp>
+          <stringProp name="TestElement.test_class">org.apache.jmeter.protocol.java.sampler.BeanShellSampler</stringProp>
+          <stringProp name="TestElement.name">pick all apache sites up</stringProp>
+          <stringProp name="BeanShellSampler.query">import org.htmlparser.*;
+import org.htmlparser.filters.*;
+
+parser = new Parser();
+parser.setInputHTML(new String(ctx.getPreviousResult().getResponseData(), &quot;iso-8859-1&quot;));
+
+// pickup apache sites shown on the left.
+aTags = parser.parse(new AndFilter(new TagNameFilter(&quot;td&quot;), new HasAttributeFilter(&quot;class&quot;, &quot;navleft&quot;)))
+  .extractAllNodesThatMatch(new LinkRegexFilter(&quot;http://.*/&quot;), true);
+
+log.info(&quot;The number of found sites is : &quot; + aTags.size());
+for(i = 0; i &lt; aTags.size() &amp;&amp; i &lt; 10; ++i) {
+  href =  aTags.elementAt(i).getAttribute(&quot;href&quot;);
+  server = href.substring(&quot;http://&quot;.length(), href.length() - 1);
+  log.info(&quot;The server of found site is : &quot; + server);
+  vars.put(&quot;SITES_SERVER_&quot; + (i + 1), server);
+}
+return &quot;ended&quot;;</stringProp>
+          <boolProp name="TestElement.enabled">true</boolProp>
+          <stringProp name="BeanShellSampler.parameters"></stringProp>
+        </BeanShellSampler>
+        <hashTree/>
+        <org.apache.jmeter.control.ForeachController>
+          <stringProp name="ForeachController.inputVal">SITES_SERVER</stringProp>
+          <stringProp name="TestElement.gui_class">org.apache.jmeter.control.gui.ForeachControlPanel</stringProp>
+          <stringProp name="ForeachController.returnVal">SITES_SERVER</stringProp>
+          <stringProp name="TestElement.test_class">org.apache.jmeter.control.ForeachController</stringProp>
+          <stringProp name="TestElement.name">ForEach Sites</stringProp>
+          <boolProp name="TestElement.enabled">true</boolProp>
+          <boolProp name="ForeachController.useSeparator">true</boolProp>
+        </org.apache.jmeter.control.ForeachController>
+        <hashTree>
+          <HTTPSampler>
+            <stringProp name="HTTPSampler.path">/</stringProp>
+            <stringProp name="TestElement.test_class">org.apache.jmeter.protocol.http.sampler.HTTPSampler</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <stringProp name="HTTPSampler.protocol">HTTP</stringProp>
+            <boolProp name="TestElement.enabled">true</boolProp>
+            <boolProp name="HTTPSampler.image_parser">true</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <stringProp name="HTTPSampler.port">80</stringProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="org.apache.jmeter.config.Arguments">
+              <stringProp name="TestElement.gui_class">org.apache.jmeter.protocol.http.gui.HTTPArgumentsPanel</stringProp>
+              <stringProp name="TestElement.test_class">org.apache.jmeter.config.Arguments</stringProp>
+              <collectionProp name="Arguments.arguments"/>
+              <stringProp name="TestElement.name">ユーザー定義変数</stringProp>
+              <boolProp name="TestElement.enabled">true</boolProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.mimetype"></stringProp>
+            <stringProp name="TestElement.gui_class">org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui</stringProp>
+            <stringProp name="HTTPSampler.FILE_FIELD"></stringProp>
+            <stringProp name="TestElement.name">Visit Apache Site</stringProp>
+            <stringProp name="HTTPSampler.monitor">false</stringProp>
+            <stringProp name="HTTPSampler.domain">${SITES_SERVER}</stringProp>
+            <stringProp name="HTTPSampler.FILE_NAME"></stringProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          </HTTPSampler>
+          <hashTree/>
+        </hashTree>
+        <ResultCollector>
+          <stringProp name="TestElement.gui_class">org.apache.jmeter.visualizers.TableVisualizer</stringProp>
+          <stringProp name="TestElement.test_class">org.apache.jmeter.reporters.ResultCollector</stringProp>
+          <stringProp name="TestElement.name">Table</stringProp>
+          <objProp>
+            <value class="org.apache.jmeter.samplers.SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>true</xml>
+              <fieldNames>false</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <delimiter>,</delimiter>
+              <printMilliseconds>true</printMilliseconds>
+            </value>
+            <name>saveConfig</name>
+          </objProp>
+          <boolProp name="TestElement.enabled">true</boolProp>
+          <stringProp name="filename"></stringProp>
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+        </ResultCollector>
+        <hashTree/>
+        <ResultCollector>
+          <stringProp name="TestElement.gui_class">org.apache.jmeter.visualizers.ViewResultsFullVisualizer</stringProp>
+          <stringProp name="TestElement.test_class">org.apache.jmeter.reporters.ResultCollector</stringProp>
+          <stringProp name="TestElement.name">Tree</stringProp>
+          <objProp>
+            <value class="org.apache.jmeter.samplers.SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>true</xml>
+              <fieldNames>false</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <delimiter>,</delimiter>
+              <printMilliseconds>true</printMilliseconds>
+            </value>
+            <name>saveConfig</name>
+          </objProp>
+          <boolProp name="TestElement.enabled">true</boolProp>
+          <stringProp name="filename"></stringProp>
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+        </ResultCollector>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

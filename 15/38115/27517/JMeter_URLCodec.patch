@@ -1,0 +1,612 @@
+# HG changeset patch
+# User Tetsuya Takatsuru <takatsuru.tetsuya@nttcom.co.jp>
+# Date 1314676281 -32400
+# Branch 2.5-cw
+# Node ID ae372bd84bf38d2b3beeed21781efb7b0e24ef12
+# Parent  d7888572428c6a9aa2b91bf029c691fc0ef1374a
+Java標準のエンコーダ/デコーダではSJISがうまく扱えないため、ApacheのURLCodecを使うようにした。
+
+diff -r d7888572428c -r ae372bd84bf3 src/core/org/apache/jmeter/save/converters/ConversionHelp.java
+--- a/src/core/org/apache/jmeter/save/converters/ConversionHelp.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/core/org/apache/jmeter/save/converters/ConversionHelp.java	火  8月 30 12:51:21 2011 +0900
+@@ -22,11 +22,12 @@
+ package org.apache.jmeter.save.converters;
+ 
+ import java.io.UnsupportedEncodingException;
+-import java.net.URLDecoder;
+-import java.net.URLEncoder;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.EncoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.jmeter.save.SaveService;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -91,9 +92,9 @@
+             return p;
+         }
+         try {
+-            String p1 = URLEncoder.encode(p, CHAR_SET);
++            String p1 = new URLCodec(CHAR_SET).encode(p);
+             return p1;
+-        } catch (UnsupportedEncodingException e) {
++        } catch (EncoderException e) {
+             log.warn("System doesn't support " + CHAR_SET, e);
+             return p;
+         }
+@@ -108,8 +109,8 @@
+             return null;
+         }
+         try {
+-            return URLDecoder.decode(p, CHAR_SET);
+-        } catch (UnsupportedEncodingException e) {
++            return new URLCodec(CHAR_SET).decode(p);
++        } catch (DecoderException e) {
+             log.warn("System doesn't support " + CHAR_SET, e);
+             return p;
+         }
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java	火  8月 30 12:51:21 2011 +0900
+@@ -22,10 +22,11 @@
+ import java.io.UnsupportedEncodingException;
+ import java.net.MalformedURLException;
+ import java.net.URL;
+-import java.net.URLDecoder;
+ import java.util.LinkedList;
+ import java.util.List;
+ 
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+@@ -74,8 +75,8 @@
+     {
+         String query = null;
+         try {
+-            query = URLDecoder.decode(newLink.getQueryString(), "UTF-8"); // $NON-NLS-1$
+-        } catch (UnsupportedEncodingException e) {
++            query = new URLCodec("UTF-8").decode(newLink.getQueryString()); // $NON-NLS-1$
++        } catch (DecoderException e) {
+             // UTF-8 unsupported? You must be joking!
+             log.error("UTF-8 encoding not supported!");
+             throw new Error("Should not happen: " + e.toString());
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	火  8月 30 12:51:21 2011 +0900
+@@ -24,12 +24,14 @@
+ import java.io.OutputStream;
+ import java.net.InetAddress;
+ import java.net.URL;
+-import java.net.URLDecoder;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.Map;
+ import java.util.zip.GZIPInputStream;
+ 
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.EncoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.commons.httpclient.Header;
+ import org.apache.commons.httpclient.HostConfiguration;
+ import org.apache.commons.httpclient.HttpClient;
+@@ -336,6 +338,16 @@
+             HTTPSampleResult err = errorResult(e, res);
+             err.setSampleLabel("Error: " + url.toString());
+             return err;
++        } catch (DecoderException e) {
++            res.sampleEnd();
++            HTTPSampleResult err = errorResult(e, res);
++            err.setSampleLabel("Error: " + url.toString());
++            return err;
++        } catch (EncoderException e) {
++            res.sampleEnd();
++            HTTPSampleResult err = errorResult(e, res);
++            err.setSampleLabel("Error: " + url.toString());
++            return err;
+         } finally {
+             savedClient = null;
+             if (httpMethod != null) {
+@@ -693,7 +705,7 @@
+      * @exception IOException
+      *                if an I/O exception occurs
+      */
+-    private String sendPostData(PostMethod post) throws IOException {
++    private String sendPostData(PostMethod post) throws IOException, DecoderException, EncoderException {
+         // Buffer to hold the post body, except file content
+         StringBuilder postedBody = new StringBuilder(1000);
+         HTTPFileArg files[] = getHTTPFiles();
+@@ -883,8 +895,8 @@
+                                 // Use the default encoding for urls
+                                 urlContentEncoding = EncoderCache.URL_ARGUMENT_ENCODING;
+                             }
+-                            parameterName = URLDecoder.decode(parameterName, urlContentEncoding);
+-                            parameterValue = URLDecoder.decode(parameterValue, urlContentEncoding);
++                            parameterName = new URLCodec(urlContentEncoding).decode(parameterName);
++                            parameterValue = new URLCodec(urlContentEncoding).decode(parameterValue);
+                         }
+                         // Add the parameter, httpclient will urlencode it
+                         post.addParameter(parameterName, parameterValue);
+@@ -928,8 +940,9 @@
+ 
+     /**
+      * Set up the PUT data
++     * @throws EncoderException 
+      */
+-    private String sendPutData(PutMethod put) throws IOException {
++    private String sendPutData(PutMethod put) throws IOException, EncoderException {
+         // Buffer to hold the put body, except file content
+         StringBuilder putBody = new StringBuilder(1000);
+         boolean hasPutBody = false;
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	火  8月 30 12:51:21 2011 +0900
+@@ -26,7 +26,6 @@
+ import java.net.InetAddress;
+ import java.net.URI;
+ import java.net.URL;
+-import java.net.URLDecoder;
+ import java.nio.charset.Charset;
+ import java.security.GeneralSecurityException;
+ import java.util.ArrayList;
+@@ -34,6 +33,9 @@
+ import java.util.List;
+ import java.util.Map;
+ 
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.EncoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.http.Header;
+ import org.apache.http.HttpConnection;
+ import org.apache.http.HttpConnectionMetrics;
+@@ -338,6 +340,16 @@
+             HTTPSampleResult err = errorResult(e, res);
+             err.setSampleLabel("Error: " + url.toString());
+             return err;
++        } catch (DecoderException e) {
++            res.sampleEnd();
++            HTTPSampleResult err = errorResult(e, res);
++            err.setSampleLabel("Error: " + url.toString());
++            return err;
++        } catch (EncoderException e) {
++            res.sampleEnd();
++            HTTPSampleResult err = errorResult(e, res);
++            err.setSampleLabel("Error: " + url.toString());
++            return err;
+         } catch (RuntimeException e) {
+             res.sampleEnd();
+             HTTPSampleResult err = errorResult(e, res);
+@@ -717,7 +729,7 @@
+     }
+ 
+     // TODO needs cleaning up
+-    private String sendPostData(HttpPost post)  throws IOException {
++    private String sendPostData(HttpPost post)  throws IOException, DecoderException, EncoderException {
+         // Buffer to hold the post body, except file content
+         StringBuilder postedBody = new StringBuilder(1000);
+         HTTPFileArg files[] = getHTTPFiles();
+@@ -888,8 +900,8 @@
+                             // Must decode the value now, so that when the
+                             // httpclient encodes it, we end up with the same value
+                             // as the user had entered.
+-                            parameterName = URLDecoder.decode(parameterName, urlContentEncoding);
+-                            parameterValue = URLDecoder.decode(parameterValue, urlContentEncoding);
++                            parameterName = new URLCodec(parameterName).decode(urlContentEncoding);
++                            parameterValue = new URLCodec(parameterValue).decode(urlContentEncoding);
+                         }
+                         // Add the parameter, httpclient will urlencode it
+                         nvps.add(new BasicNameValuePair(parameterName, parameterValue));
+@@ -935,7 +947,7 @@
+     }
+ 
+     // TODO - implementation not fully tested
+-    private String sendPutData(HttpPut put) throws IOException {
++    private String sendPutData(HttpPut put) throws IOException, EncoderException {
+         // Buffer to hold the put body, except file content
+         StringBuilder putBody = new StringBuilder(1000);
+         boolean hasPutBody = false;
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPJavaImpl.java	火  8月 30 12:51:21 2011 +0900
+@@ -34,6 +34,7 @@
+ import java.util.Set;
+ import java.util.zip.GZIPInputStream;
+ 
++import org.apache.commons.codec.EncoderException;
+ import org.apache.commons.io.input.CountingInputStream;
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.Authorization;
+@@ -94,13 +95,14 @@
+      *            <code>URLConnection</code> to set headers on
+      * @exception IOException
+      *                if an I/O exception occurs
++     * @throws EncoderException 
+      */
+-    protected void setPostHeaders(URLConnection conn) throws IOException {
++    protected void setPostHeaders(URLConnection conn) throws IOException, EncoderException {
+         postOrPutWriter = new PostWriter();
+         postOrPutWriter.setHeaders(conn, testElement);
+     }
+ 
+-    private void setPutHeaders(URLConnection conn) throws IOException {
++    private void setPutHeaders(URLConnection conn) throws IOException, EncoderException {
+         postOrPutWriter = new PutWriter();
+         postOrPutWriter.setHeaders(conn, testElement);
+     }
+@@ -139,8 +141,9 @@
+      * @return <code>HttpURLConnection</code> ready for .connect
+      * @exception IOException
+      *                if an I/O Exception occurs
++     * @throws EncoderException 
+      */
+-    protected HttpURLConnection setupConnection(URL u, String method, HTTPSampleResult res) throws IOException {
++    protected HttpURLConnection setupConnection(URL u, String method, HTTPSampleResult res) throws IOException, EncoderException {
+         SSLManager sslmgr = null;
+         if (PROTOCOL_HTTPS.equalsIgnoreCase(u.getProtocol())) {
+             try {
+@@ -499,6 +502,9 @@
+                 } catch (IOException e) {
+                     log.debug("Connection failed, giving up");
+                     throw e;
++                } catch (EncoderException e) {
++                    log.debug("Connection failed, giving up");
++                    throw e;
+                 }
+             }
+             if (retry > MAX_CONN_RETRIES) {
+@@ -603,6 +609,16 @@
+             savedConn = null; // we don't want interrupt to try disconnection again
+             conn=null; // Don't process again
+             return errorResult(e, res);
++        } catch (EncoderException e) {
++            res.sampleEnd();
++            // We don't want to continue using this connection, even if KeepAlive is set
++            if (conn != null) { // May not exist
++                savedConn = null; // we don't want interrupt to try disconnection again
++                conn.disconnect();
++            }
++            savedConn = null; // we don't want interrupt to try disconnection again
++            conn=null; // Don't process again
++            return errorResult(e, res);
+         } finally {
+             // calling disconnect doesn't close the connection immediately,
+             // but indicates we're through with it. The JVM should close
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	火  8月 30 12:51:21 2011 +0900
+@@ -21,7 +21,6 @@
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.PrintStream;
+-import java.io.UnsupportedEncodingException;
+ import java.net.MalformedURLException;
+ import java.net.URI;
+ import java.net.URL;
+@@ -41,6 +40,7 @@
+ import java.util.concurrent.ThreadPoolExecutor;
+ import java.util.concurrent.TimeUnit;
+ 
++import org.apache.commons.codec.EncoderException;
+ import org.apache.commons.io.IOUtils;
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.config.Arguments;
+@@ -501,7 +501,7 @@
+             try {
+                 valueEncoded = arg.getEncodedValue(contentEncoding);
+             }
+-            catch (UnsupportedEncodingException e) {
++            catch (EncoderException e) {
+                 log.warn("Unable to get encoded value using encoding " + contentEncoding);
+                 valueEncoded = arg.getEncodedValue();
+             }
+@@ -892,7 +892,7 @@
+             try {
+                 buf.append(item.getEncodedValue(contentEncoding));
+             }
+-            catch(UnsupportedEncodingException e) {
++            catch(EncoderException e) {
+                 log.warn("Unable to encode parameter in encoding " + contentEncoding + ", parameter value not included in query string");
+             }
+         }
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	火  8月 30 12:51:21 2011 +0900
+@@ -28,6 +28,7 @@
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLConnection;
+ 
++import org.apache.commons.codec.EncoderException;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+ import org.apache.jmeter.protocol.http.util.HTTPConstants;
+ import org.apache.jmeter.protocol.http.util.HTTPFileArg;
+@@ -161,7 +162,7 @@
+         return postedBody.toString();
+     }
+ 
+-    public void setHeaders(URLConnection connection, HTTPSamplerBase sampler) throws IOException {
++    public void setHeaders(URLConnection connection, HTTPSamplerBase sampler) throws IOException, EncoderException {
+         // Get the encoding to use for the request
+         String contentEncoding = sampler.getContentEncoding();
+         if(contentEncoding == null || contentEncoding.length() == 0) {
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/sampler/PutWriter.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PutWriter.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PutWriter.java	火  8月 30 12:51:21 2011 +0900
+@@ -23,6 +23,7 @@
+ import java.io.IOException;
+ import java.net.URLConnection;
+ 
++import org.apache.commons.codec.EncoderException;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+ import org.apache.jmeter.protocol.http.util.HTTPConstants;
+ import org.apache.jmeter.protocol.http.util.HTTPFileArg;
+@@ -42,7 +43,7 @@
+     }
+ 
+     @Override
+-    public void setHeaders(URLConnection connection, HTTPSamplerBase sampler) throws IOException {
++    public void setHeaders(URLConnection connection, HTTPSamplerBase sampler) throws IOException, EncoderException {
+         // Get the encoding to use for the request
+         String contentEncoding = sampler.getContentEncoding();
+         if(contentEncoding == null || contentEncoding.length() == 0) {
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java	火  8月 30 12:51:21 2011 +0900
+@@ -18,9 +18,8 @@
+ 
+ package org.apache.jmeter.protocol.http.util;
+ 
+-import java.io.UnsupportedEncodingException;
+-import java.net.URLEncoder;
+-
++import org.apache.commons.codec.EncoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.oro.util.Cache;
+ import org.apache.oro.util.CacheLRU;
+ 
+@@ -45,7 +44,7 @@
+     public String getEncoded(String k) {
+         try {
+             return getEncoded(k, URL_ARGUMENT_ENCODING);
+-        } catch (UnsupportedEncodingException e) {
++        } catch (EncoderException e) {
+             // This can't happen (how should utf8 not be supported!?!),
+             // so just throw an Error:
+             throw new Error("Should not happen: " + e.toString());
+@@ -58,9 +57,9 @@
+      * @param k the value to encode
+      * @param contentEncoding the encoding to use when URL encoding
+      * @return the value URL encoded using the specified encoding
+-     * @throws UnsupportedEncodingException if the specified encoding is not supported
++     * @throws EncoderException if the specified encoding is not supported
+      */
+-    public String getEncoded(String k, String contentEncoding) throws UnsupportedEncodingException {
++    public String getEncoded(String k, String contentEncoding) throws EncoderException {
+         String cacheKey = k + contentEncoding;
+         // Check if we have it in the cache
+         Object encodedValue = cache.getElement(cacheKey);
+@@ -68,7 +67,7 @@
+             return (String) encodedValue;
+         }
+         // Perform the encoding
+-        encodedValue = URLEncoder.encode(k, contentEncoding);
++        encodedValue = new URLCodec(contentEncoding).encode(k);
+         // Add to cache
+         cache.addElement(cacheKey, encodedValue);
+         return (String) encodedValue;
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java	火  8月 30 12:51:21 2011 +0900
+@@ -20,10 +20,12 @@
+ 
+ import java.io.Serializable;
+ import java.io.UnsupportedEncodingException;
+-import java.net.URLDecoder;
+ import java.util.LinkedList;
+ import java.util.List;
+ 
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.EncoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+@@ -108,10 +110,10 @@
+         if (alreadyEncoded) {
+             try {
+                 // We assume the name is always encoded according to spec
+-                name = URLDecoder.decode(name, EncoderCache.URL_ARGUMENT_ENCODING);
++                name = new URLCodec(EncoderCache.URL_ARGUMENT_ENCODING).decode(name);
+                 // The value is encoded in the specified encoding
+-                value = URLDecoder.decode(value, contentEncoding);
+-            } catch (UnsupportedEncodingException e) {
++                value = new URLCodec(contentEncoding).decode(value);
++            } catch (DecoderException e) {
+                 log.error(contentEncoding + " encoding not supported!");
+                 throw new Error(e.toString());
+             }
+@@ -172,7 +174,7 @@
+         // Encode according to the HTTP spec, i.e. UTF-8
+         try {
+             return getEncodedValue(EncoderCache.URL_ARGUMENT_ENCODING);
+-        } catch (UnsupportedEncodingException e) {
++        } catch (EncoderException e) {
+             // This can't happen (how should utf8 not be supported!?!),
+             // so just throw an Error:
+             throw new Error("Should not happen: " + e.toString());
+@@ -186,7 +188,7 @@
+      * @return the argument value encoded in the specified encoding
+      * @throws UnsupportedEncodingException
+      */
+-    public String getEncodedValue(String contentEncoding) throws UnsupportedEncodingException {
++    public String getEncodedValue(String contentEncoding) throws EncoderException {
+         if (isAlwaysEncoded()) {
+             return cache.getEncoded(getValue(), contentEncoding);
+         } else {
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java	火  8月 30 12:51:21 2011 +0900
+@@ -24,12 +24,12 @@
+ import java.io.FileReader;
+ import java.io.IOException;
+ import java.io.InputStreamReader;
+-import java.io.UnsupportedEncodingException;
+-import java.net.URLDecoder;
+ import java.util.StringTokenizer;
+ import java.util.Vector;
+ import java.util.zip.GZIPInputStream;
+ 
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -505,8 +505,8 @@
+         } else {
+             if (decode) {
+                 try {
+-                    value = URLDecoder.decode(value,"UTF-8");
+-                } catch (UnsupportedEncodingException e) {
++                    value = new URLCodec("UTF-8").decode(value);
++                } catch (DecoderException e) {
+                     log.warn(e.getMessage());
+                 }
+             }
+diff -r d7888572428c -r ae372bd84bf3 src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java	火  8月 30 11:17:17 2011 +0900
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java	火  8月 30 12:51:21 2011 +0900
+@@ -20,9 +20,7 @@
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Component;
+-import java.io.UnsupportedEncodingException;
+ import java.net.URL;
+-import java.net.URLDecoder;
+ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.Map;
+@@ -35,6 +33,8 @@
+ import javax.swing.table.TableCellRenderer;
+ import javax.swing.table.TableColumn;
+ 
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.apache.jmeter.gui.util.HeaderAsPropertyRenderer;
+ import org.apache.jmeter.gui.util.TextBoxDialoger.TextBoxDoubleClick;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
+@@ -256,8 +256,8 @@
+     public static String decodeQuery(String query) {
+         if (query != null && query.length() > 0) {
+             try {
+-                query = URLDecoder.decode(query, CHARSET_DECODE); // better ISO-8859-1 than UTF-8
+-            } catch (UnsupportedEncodingException uee) {
++                query = new URLCodec(CHARSET_DECODE).decode(query); // better ISO-8859-1 than UTF-8
++            } catch (DecoderException uee) {
+                 log.warn("Error in parse query:" + query, uee);
+                 return null;
+             }
+diff -r d7888572428c -r ae372bd84bf3 test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java
+--- a/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	火  8月 30 11:17:17 2011 +0900
++++ b/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	火  8月 30 12:51:21 2011 +0900
+@@ -25,6 +25,7 @@
+ import java.util.HashMap;
+ import java.util.Map;
+ 
++import org.apache.commons.codec.EncoderException;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.junit.JMeterTestCase;
+ import org.apache.jmeter.protocol.http.control.Header;
+@@ -578,7 +579,7 @@
+             String expectedValue,
+             String expectedEncodedValue,
+             String contentEncoding,
+-            boolean expectedEncoded) throws IOException {
++            boolean expectedEncoded) throws IOException, EncoderException {
+         assertEquals(expectedName, arg.getName());
+ //        System.out.println("expect " + URLEncoder.encode(expectedValue, "UTF-8"));
+ //        System.out.println("actual " + URLEncoder.encode(arg.getValue(), "UTF-8"));
+diff -r d7888572428c -r ae372bd84bf3 test/src/org/apache/jmeter/protocol/http/sampler/PostWriterTest.java
+--- a/test/src/org/apache/jmeter/protocol/http/sampler/PostWriterTest.java	火  8月 30 11:17:17 2011 +0900
++++ b/test/src/org/apache/jmeter/protocol/http/sampler/PostWriterTest.java	火  8月 30 12:51:21 2011 +0900
+@@ -34,6 +34,7 @@
+ 
+ import junit.framework.TestCase;
+ 
++import org.apache.commons.codec.EncoderException;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+ import org.apache.jmeter.protocol.http.util.HTTPFileArg;
+@@ -82,7 +83,7 @@
+      * Test method for 'org.apache.jmeter.protocol.http.sampler.postWriter.sendPostData(URLConnection, HTTPSampler)'
+      * This method test sending a request which contains both formdata and file content
+      */
+-    public void testSendPostData() throws IOException {
++    public void testSendPostData() throws IOException, EncoderException {
+         sampler.setMethod(HTTPSamplerBase.POST);
+         setupFilepart(sampler);
+         String titleValue = "mytitle";
+@@ -147,7 +148,7 @@
+      * This method test sending a HTTPSampler with form parameters, and only
+      * the filename of a file.
+      */
+-    public void testSendPostData_NoFilename() throws IOException {
++    public void testSendPostData_NoFilename() throws IOException, EncoderException {
+         setupNoFilename(sampler);
+         String titleValue = "mytitle";
+         String descriptionValue = "mydescription";
+@@ -189,7 +190,7 @@
+      * Test method for 'org.apache.jmeter.protocol.http.sampler.postWriter.sendPostData(URLConnection, HTTPSampler)'
+      * This method test sending file content as the only content of the post body
+      */
+-    public void testSendPostData_FileAsBody() throws IOException {
++    public void testSendPostData_FileAsBody() throws IOException, EncoderException {
+         setupFilepart(sampler, "", temporaryFile, "");
+         
+         // Check using default encoding
+@@ -240,7 +241,7 @@
+      * Test method for 'org.apache.jmeter.protocol.http.sampler.postWriter.sendPostData(URLConnection, HTTPSampler)'
+      * This method test sending only a file multipart.
+      */
+-    public void testSendFileData_Multipart() throws IOException {
++    public void testSendFileData_Multipart() throws IOException, EncoderException {
+         sampler.setMethod(HTTPSamplerBase.POST);
+         String fileField = "upload";
+         String mimeType = "text/plain";
+@@ -294,7 +295,7 @@
+      * Test method for 'org.apache.jmeter.protocol.http.sampler.postWriter.sendPostData(URLConnection, HTTPSampler)'
+      * This method test sending only a formdata, as a multipart/form-data request.
+      */
+-    public void testSendFormData_Multipart() throws IOException {
++    public void testSendFormData_Multipart() throws IOException, EncoderException {
+         sampler.setMethod(HTTPSamplerBase.POST);
+         String titleField = "title";
+         String titleValue = "mytitle";
+@@ -383,7 +384,7 @@
+      * Test method for 'org.apache.jmeter.protocol.http.sampler.postWriter.sendPostData(URLConnection, HTTPSampler)'
+      * This method test sending only a formdata, as urlencoded data
+      */
+-    public void testSendFormData_Urlencoded() throws IOException {
++    public void testSendFormData_Urlencoded() throws IOException, EncoderException {
+         String titleValue = "mytitle";
+         String descriptionValue = "mydescription";
+         setupFormData(sampler, titleValue, descriptionValue);
+@@ -545,7 +546,7 @@
+     /*
+      * Test method for 'org.apache.jmeter.protocol.http.sampler.postWriter.setHeaders(URLConnection, HTTPSampler)'
+      */
+-    public void testSetHeaders() throws IOException {
++    public void testSetHeaders() throws IOException, EncoderException {
+         sampler.setMethod(HTTPSamplerBase.POST);
+         setupFilepart(sampler);
+         setupFormData(sampler);
+@@ -557,7 +558,7 @@
+     /*
+      * Test method for 'org.apache.jmeter.protocol.http.sampler.postWriter.setHeaders(URLConnection, HTTPSampler)'
+      */
+-    public void testSetHeaders_NoFilename() throws IOException {
++    public void testSetHeaders_NoFilename() throws IOException, EncoderException {
+         setupNoFilename(sampler);
+         setupFormData(sampler);
+         

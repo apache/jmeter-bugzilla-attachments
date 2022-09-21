@@ -1,0 +1,1957 @@
+Index: LICENSE
+===================================================================
+--- LICENSE	(revision 1832327)
++++ LICENSE	(working copy)
+@@ -284,3 +284,4 @@
+ * xpp3-1.1.4c.jar (Indiana University Extreme! Lab Software License 1.1.1)
+ * xstream-1.4.10.jar (BSD)
+ * hamcrest-date-2.0.4.jar (BSD)
++* saxon9he-9.8.0.11.jar (Mozilla Public License version 2.0)
+\ No newline at end of file
+Index: bin/saveservice.properties
+===================================================================
+--- bin/saveservice.properties	(revision 1831500)
++++ bin/saveservice.properties	(working copy)
+@@ -364,7 +364,9 @@
+ XPathAssertionGui=org.apache.jmeter.assertions.gui.XPathAssertionGui
+ XPathExtractor=org.apache.jmeter.extractor.XPathExtractor
+ XPathExtractorGui=org.apache.jmeter.extractor.gui.XPathExtractorGui
+-#
++XPath2Extractor=org.apache.jmeter.extractor.XPath2Extractor
++XPath2ExtractorGui=org.apache.jmeter.extractor.gui.XPath2ExtractorGui
++
+ # Properties - all start with lower case letter and end with Prop
+ #
+ boolProp=org.apache.jmeter.testelement.property.BooleanProperty
+Index: build.properties
+===================================================================
+--- build.properties	(revision 1832327)
++++ build.properties	(working copy)
+@@ -473,6 +473,12 @@
+ activemq-all.loc             = ${maven2.repo}/org/apache/activemq/activemq-all/${activemq-all.version}
+ activemq-all.md5             = bd24ae082be11dc969a6e5bc45515ab7
+ 
++# Used by XPath 2
++saxon-HE.version              = 9.8.0-12
++saxon-HE.jar                  = Saxon-HE-${saxon-HE.version}.jar
++saxon-HE.loc                 = ${maven2.repo}/net/sf/saxon/Saxon-HE/${saxon-HE.version}
++saxon-HE.md5                  = 80e040add296c6545b92d7cb1b648534
++
+ # Optional for use by FTP_TESTS.jmx
+ mina-core.version            = 2.0.16
+ mina-core.jar                = mina-core-${mina-core.version}.jar
+Index: build.xml
+===================================================================
+--- build.xml	(revision 1831500)
++++ build.xml	(working copy)
+@@ -446,6 +446,7 @@
+     <include name="${lib.dir}/${tika-core.jar}"/>
+     <include name="${lib.dir}/${tika-parsers.jar}"/>
+     <include name="${lib.dir}/${xalan.jar}"/>
++    <include name="${lib.dir}/${saxon-HE.jar}"/>
+     <include name="${lib.dir}/${xerces.jar}"/>
+     <include name="${lib.dir}/${xml-apis.jar}"/>
+     <include name="${lib.dir}/${xmlgraphics-commons.jar}"/>
+@@ -532,6 +533,7 @@
+     <pathelement location="${lib.dir}/${tika-core.jar}"/>
+     <pathelement location="${lib.dir}/${tika-parsers.jar}"/>
+     <pathelement location="${lib.dir}/${xalan.jar}"/>
++    <pathelement location="${lib.dir}/${saxon-HE.jar}"/>
+     <pathelement location="${lib.dir}/${xerces.jar}"/>
+     <pathelement location="${lib.dir}/${xml-apis.jar}"/>
+     <pathelement location="${lib.dir}/${xmlgraphics-commons.jar}"/>
+@@ -3400,6 +3402,7 @@
+     <process_jarfile jarname="velocity"   dest.dir="${lib.doc}"/>
+     <process_jarfile jarname="commons-lang" dest.dir="${lib.doc}"/>
+     <process_jarfile jarname="xalan"/>
++    <process_jarfile jarname="saxon-HE"/>
+     <process_jarfile jarname="xerces"/>
+     <process_jarfile jarname="xml-apis"/>
+     <process_jarfile jarname="xmlgraphics-commons"/>
+Index: eclipse.classpath
+===================================================================
+--- eclipse.classpath	(revision 1832327)
++++ eclipse.classpath	(working copy)
+@@ -97,6 +97,7 @@
+ 	<classpathentry kind="lib" path="lib/ph-commons-9.0.0.jar"/>
+ 	<classpathentry kind="lib" path="lib/rhino-1.7.7.2.jar"/>
+ 	<classpathentry kind="lib" path="lib/rsyntaxtextarea-2.6.1.jar"/>
++	<classpathentry kind="lib" path="lib/saxon9he-9.8.0.11.jar"/>
+ 	<classpathentry kind="lib" path="lib/serializer-2.7.2.jar"/>
+ 	<classpathentry kind="lib" path="lib/slf4j-api-1.7.25.jar"/>
+ 	<classpathentry kind="lib" path="lib/slf4j-ext-1.7.25.jar"/>
+Index: lib/aareadme.txt
+===================================================================
+--- lib/aareadme.txt	(revision 1832773)
++++ lib/aareadme.txt	(working copy)
+@@ -249,6 +249,10 @@
+ --------------------------
+ - DataSourceElement (JDBC)
+ 
++Saxon-HE-9.8.0-12 (net.sf.saxon)
++--------------------------
++- XPath2Extractor (XML)
++
+ velocity-1.7
+ --------------
+ http://velocity.apache.org/download.cgi
+Index: licenses/bin/saxon-HE-9.8.0-12.txt
+===================================================================
+--- licenses/bin/saxon-HE-9.8.0-12.txt	(revision 0)
++++ licenses/bin/saxon-HE-9.8.0-12.txt	(revision 0)
+@@ -0,0 +1,373 @@
++Mozilla Public License Version 2.0
++==================================
++
++1. Definitions
++--------------
++
++1.1. "Contributor"
++    means each individual or legal entity that creates, contributes to
++    the creation of, or owns Covered Software.
++
++1.2. "Contributor Version"
++    means the combination of the Contributions of others (if any) used
++    by a Contributor and that particular Contributor's Contribution.
++
++1.3. "Contribution"
++    means Covered Software of a particular Contributor.
++
++1.4. "Covered Software"
++    means Source Code Form to which the initial Contributor has attached
++    the notice in Exhibit A, the Executable Form of such Source Code
++    Form, and Modifications of such Source Code Form, in each case
++    including portions thereof.
++
++1.5. "Incompatible With Secondary Licenses"
++    means
++
++    (a) that the initial Contributor has attached the notice described
++        in Exhibit B to the Covered Software; or
++
++    (b) that the Covered Software was made available under the terms of
++        version 1.1 or earlier of the License, but not also under the
++        terms of a Secondary License.
++
++1.6. "Executable Form"
++    means any form of the work other than Source Code Form.
++
++1.7. "Larger Work"
++    means a work that combines Covered Software with other material, in 
++    a separate file or files, that is not Covered Software.
++
++1.8. "License"
++    means this document.
++
++1.9. "Licensable"
++    means having the right to grant, to the maximum extent possible,
++    whether at the time of the initial grant or subsequently, any and
++    all of the rights conveyed by this License.
++
++1.10. "Modifications"
++    means any of the following:
++
++    (a) any file in Source Code Form that results from an addition to,
++        deletion from, or modification of the contents of Covered
++        Software; or
++
++    (b) any new file in Source Code Form that contains any Covered
++        Software.
++
++1.11. "Patent Claims" of a Contributor
++    means any patent claim(s), including without limitation, method,
++    process, and apparatus claims, in any patent Licensable by such
++    Contributor that would be infringed, but for the grant of the
++    License, by the making, using, selling, offering for sale, having
++    made, import, or transfer of either its Contributions or its
++    Contributor Version.
++
++1.12. "Secondary License"
++    means either the GNU General Public License, Version 2.0, the GNU
++    Lesser General Public License, Version 2.1, the GNU Affero General
++    Public License, Version 3.0, or any later versions of those
++    licenses.
++
++1.13. "Source Code Form"
++    means the form of the work preferred for making modifications.
++
++1.14. "You" (or "Your")
++    means an individual or a legal entity exercising rights under this
++    License. For legal entities, "You" includes any entity that
++    controls, is controlled by, or is under common control with You. For
++    purposes of this definition, "control" means (a) the power, direct
++    or indirect, to cause the direction or management of such entity,
++    whether by contract or otherwise, or (b) ownership of more than
++    fifty percent (50%) of the outstanding shares or beneficial
++    ownership of such entity.
++
++2. License Grants and Conditions
++--------------------------------
++
++2.1. Grants
++
++Each Contributor hereby grants You a world-wide, royalty-free,
++non-exclusive license:
++
++(a) under intellectual property rights (other than patent or trademark)
++    Licensable by such Contributor to use, reproduce, make available,
++    modify, display, perform, distribute, and otherwise exploit its
++    Contributions, either on an unmodified basis, with Modifications, or
++    as part of a Larger Work; and
++
++(b) under Patent Claims of such Contributor to make, use, sell, offer
++    for sale, have made, import, and otherwise transfer either its
++    Contributions or its Contributor Version.
++
++2.2. Effective Date
++
++The licenses granted in Section 2.1 with respect to any Contribution
++become effective for each Contribution on the date the Contributor first
++distributes such Contribution.
++
++2.3. Limitations on Grant Scope
++
++The licenses granted in this Section 2 are the only rights granted under
++this License. No additional rights or licenses will be implied from the
++distribution or licensing of Covered Software under this License.
++Notwithstanding Section 2.1(b) above, no patent license is granted by a
++Contributor:
++
++(a) for any code that a Contributor has removed from Covered Software;
++    or
++
++(b) for infringements caused by: (i) Your and any other third party's
++    modifications of Covered Software, or (ii) the combination of its
++    Contributions with other software (except as part of its Contributor
++    Version); or
++
++(c) under Patent Claims infringed by Covered Software in the absence of
++    its Contributions.
++
++This License does not grant any rights in the trademarks, service marks,
++or logos of any Contributor (except as may be necessary to comply with
++the notice requirements in Section 3.4).
++
++2.4. Subsequent Licenses
++
++No Contributor makes additional grants as a result of Your choice to
++distribute the Covered Software under a subsequent version of this
++License (see Section 10.2) or under the terms of a Secondary License (if
++permitted under the terms of Section 3.3).
++
++2.5. Representation
++
++Each Contributor represents that the Contributor believes its
++Contributions are its original creation(s) or it has sufficient rights
++to grant the rights to its Contributions conveyed by this License.
++
++2.6. Fair Use
++
++This License is not intended to limit any rights You have under
++applicable copyright doctrines of fair use, fair dealing, or other
++equivalents.
++
++2.7. Conditions
++
++Sections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted
++in Section 2.1.
++
++3. Responsibilities
++-------------------
++
++3.1. Distribution of Source Form
++
++All distribution of Covered Software in Source Code Form, including any
++Modifications that You create or to which You contribute, must be under
++the terms of this License. You must inform recipients that the Source
++Code Form of the Covered Software is governed by the terms of this
++License, and how they can obtain a copy of this License. You may not
++attempt to alter or restrict the recipients' rights in the Source Code
++Form.
++
++3.2. Distribution of Executable Form
++
++If You distribute Covered Software in Executable Form then:
++
++(a) such Covered Software must also be made available in Source Code
++    Form, as described in Section 3.1, and You must inform recipients of
++    the Executable Form how they can obtain a copy of such Source Code
++    Form by reasonable means in a timely manner, at a charge no more
++    than the cost of distribution to the recipient; and
++
++(b) You may distribute such Executable Form under the terms of this
++    License, or sublicense it under different terms, provided that the
++    license for the Executable Form does not attempt to limit or alter
++    the recipients' rights in the Source Code Form under this License.
++
++3.3. Distribution of a Larger Work
++
++You may create and distribute a Larger Work under terms of Your choice,
++provided that You also comply with the requirements of this License for
++the Covered Software. If the Larger Work is a combination of Covered
++Software with a work governed by one or more Secondary Licenses, and the
++Covered Software is not Incompatible With Secondary Licenses, this
++License permits You to additionally distribute such Covered Software
++under the terms of such Secondary License(s), so that the recipient of
++the Larger Work may, at their option, further distribute the Covered
++Software under the terms of either this License or such Secondary
++License(s).
++
++3.4. Notices
++
++You may not remove or alter the substance of any license notices
++(including copyright notices, patent notices, disclaimers of warranty,
++or limitations of liability) contained within the Source Code Form of
++the Covered Software, except that You may alter any license notices to
++the extent required to remedy known factual inaccuracies.
++
++3.5. Application of Additional Terms
++
++You may choose to offer, and to charge a fee for, warranty, support,
++indemnity or liability obligations to one or more recipients of Covered
++Software. However, You may do so only on Your own behalf, and not on
++behalf of any Contributor. You must make it absolutely clear that any
++such warranty, support, indemnity, or liability obligation is offered by
++You alone, and You hereby agree to indemnify every Contributor for any
++liability incurred by such Contributor as a result of warranty, support,
++indemnity or liability terms You offer. You may include additional
++disclaimers of warranty and limitations of liability specific to any
++jurisdiction.
++
++4. Inability to Comply Due to Statute or Regulation
++---------------------------------------------------
++
++If it is impossible for You to comply with any of the terms of this
++License with respect to some or all of the Covered Software due to
++statute, judicial order, or regulation then You must: (a) comply with
++the terms of this License to the maximum extent possible; and (b)
++describe the limitations and the code they affect. Such description must
++be placed in a text file included with all distributions of the Covered
++Software under this License. Except to the extent prohibited by statute
++or regulation, such description must be sufficiently detailed for a
++recipient of ordinary skill to be able to understand it.
++
++5. Termination
++--------------
++
++5.1. The rights granted under this License will terminate automatically
++if You fail to comply with any of its terms. However, if You become
++compliant, then the rights granted under this License from a particular
++Contributor are reinstated (a) provisionally, unless and until such
++Contributor explicitly and finally terminates Your grants, and (b) on an
++ongoing basis, if such Contributor fails to notify You of the
++non-compliance by some reasonable means prior to 60 days after You have
++come back into compliance. Moreover, Your grants from a particular
++Contributor are reinstated on an ongoing basis if such Contributor
++notifies You of the non-compliance by some reasonable means, this is the
++first time You have received notice of non-compliance with this License
++from such Contributor, and You become compliant prior to 30 days after
++Your receipt of the notice.
++
++5.2. If You initiate litigation against any entity by asserting a patent
++infringement claim (excluding declaratory judgment actions,
++counter-claims, and cross-claims) alleging that a Contributor Version
++directly or indirectly infringes any patent, then the rights granted to
++You by any and all Contributors for the Covered Software under Section
++2.1 of this License shall terminate.
++
++5.3. In the event of termination under Sections 5.1 or 5.2 above, all
++end user license agreements (excluding distributors and resellers) which
++have been validly granted by You or Your distributors under this License
++prior to termination shall survive termination.
++
++************************************************************************
++*                                                                      *
++*  6. Disclaimer of Warranty                                           *
++*  -------------------------                                           *
++*                                                                      *
++*  Covered Software is provided under this License on an "as is"       *
++*  basis, without warranty of any kind, either expressed, implied, or  *
++*  statutory, including, without limitation, warranties that the       *
++*  Covered Software is free of defects, merchantable, fit for a        *
++*  particular purpose or non-infringing. The entire risk as to the     *
++*  quality and performance of the Covered Software is with You.        *
++*  Should any Covered Software prove defective in any respect, You     *
++*  (not any Contributor) assume the cost of any necessary servicing,   *
++*  repair, or correction. This disclaimer of warranty constitutes an   *
++*  essential part of this License. No use of any Covered Software is   *
++*  authorized under this License except under this disclaimer.         *
++*                                                                      *
++************************************************************************
++
++************************************************************************
++*                                                                      *
++*  7. Limitation of Liability                                          *
++*  --------------------------                                          *
++*                                                                      *
++*  Under no circumstances and under no legal theory, whether tort      *
++*  (including negligence), contract, or otherwise, shall any           *
++*  Contributor, or anyone who distributes Covered Software as          *
++*  permitted above, be liable to You for any direct, indirect,         *
++*  special, incidental, or consequential damages of any character      *
++*  including, without limitation, damages for lost profits, loss of    *
++*  goodwill, work stoppage, computer failure or malfunction, or any    *
++*  and all other commercial damages or losses, even if such party      *
++*  shall have been informed of the possibility of such damages. This   *
++*  limitation of liability shall not apply to liability for death or   *
++*  personal injury resulting from such party's negligence to the       *
++*  extent applicable law prohibits such limitation. Some               *
++*  jurisdictions do not allow the exclusion or limitation of           *
++*  incidental or consequential damages, so this exclusion and          *
++*  limitation may not apply to You.                                    *
++*                                                                      *
++************************************************************************
++
++8. Litigation
++-------------
++
++Any litigation relating to this License may be brought only in the
++courts of a jurisdiction where the defendant maintains its principal
++place of business and such litigation shall be governed by laws of that
++jurisdiction, without reference to its conflict-of-law provisions.
++Nothing in this Section shall prevent a party's ability to bring
++cross-claims or counter-claims.
++
++9. Miscellaneous
++----------------
++
++This License represents the complete agreement concerning the subject
++matter hereof. If any provision of this License is held to be
++unenforceable, such provision shall be reformed only to the extent
++necessary to make it enforceable. Any law or regulation which provides
++that the language of a contract shall be construed against the drafter
++shall not be used to construe this License against a Contributor.
++
++10. Versions of the License
++---------------------------
++
++10.1. New Versions
++
++Mozilla Foundation is the license steward. Except as provided in Section
++10.3, no one other than the license steward has the right to modify or
++publish new versions of this License. Each version will be given a
++distinguishing version number.
++
++10.2. Effect of New Versions
++
++You may distribute the Covered Software under the terms of the version
++of the License under which You originally received the Covered Software,
++or under the terms of any subsequent version published by the license
++steward.
++
++10.3. Modified Versions
++
++If you create software not governed by this License, and you want to
++create a new license for such software, you may create and use a
++modified version of this License if you rename the license and remove
++any references to the name of the license steward (except to note that
++such modified license differs from this License).
++
++10.4. Distributing Source Code Form that is Incompatible With Secondary
++Licenses
++
++If You choose to distribute Source Code Form that is Incompatible With
++Secondary Licenses under the terms of this version of the License, the
++notice described in Exhibit B of this License must be attached.
++
++Exhibit A - Source Code Form License Notice
++-------------------------------------------
++
++  This Source Code Form is subject to the terms of the Mozilla Public
++  License, v. 2.0. If a copy of the MPL was not distributed with this
++  file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
++If it is not possible or desirable to put the notice in a particular
++file, then You may include the notice in a location (such as a LICENSE
++file in a relevant directory) where a recipient would be likely to look
++for such a notice.
++
++You may add additional accurate notices of copyright ownership.
++
++Exhibit B - "Incompatible With Secondary Licenses" Notice
++---------------------------------------------------------
++
++  This Source Code Form is "Incompatible With Secondary Licenses", as
++  defined by the Mozilla Public License, v. 2.0.
+Index: res/maven/ApacheJMeter_parent.pom
+===================================================================
+--- res/maven/ApacheJMeter_parent.pom	(revision 1832327)
++++ res/maven/ApacheJMeter_parent.pom	(working copy)
+@@ -99,6 +99,7 @@
+       <ph-css.version>6.0.0</ph-css.version>
+       <ph-commons.version>9.0.0</ph-commons.version>
+       <rsyntaxtextarea.version>2.6.1</rsyntaxtextarea.version>
++      <saxon-HE.version>9.8.0-12</saxon-HE.version>
+       <slf4j-api.version>1.7.25</slf4j-api.version>
+       <slf4j-ext.version>1.7.25</slf4j-ext.version>
+       <log4j-api.version>2.10.0</log4j-api.version>
+@@ -333,6 +334,11 @@
+         <version>${serializer.version}</version>
+       </dependency>
+       <dependency>
++        <groupId>net.sf.saxon</groupId>
++        <artifactId>Saxon-HE</artifactId>
++        <version>${saxon-HE.version}</version>
++      </dependency>
++      <dependency>
+         <groupId>xerces</groupId>
+         <artifactId>xercesImpl</artifactId>
+         <version>${xerces.version}</version>
+Index: src/components/org/apache/jmeter/extractor/XPath2Extractor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/XPath2Extractor.java	(revision 0)
++++ src/components/org/apache/jmeter/extractor/XPath2Extractor.java	(revision 0)
+@@ -0,0 +1,359 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.extractor;
++
++import java.io.Serializable;
++import java.util.ArrayList;
++import java.util.List;
++
++import javax.xml.stream.FactoryConfigurationError;
++import javax.xml.stream.XMLStreamException;
++
++import org.apache.jmeter.assertions.AssertionResult;
++import org.apache.jmeter.processor.PostProcessor;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.AbstractScopedTestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.IntegerProperty;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.apache.jmeter.util.XPathUtil;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++import net.sf.saxon.s9api.SaxonApiException;
++
++/**
++ * Extracts text from (X)HTML response using XPath query language
++ * Example XPath queries:
++ * <dl>
++ * <dt>/html/head/title</dt>
++ *     <dd>extracts Title from HTML response</dd>
++ * <dt>//form[@name='countryForm']//select[@name='country']/option[text()='Czech Republic'])/@value
++ *     <dd>extracts value attribute of option element that match text 'Czech Republic'
++ *                 inside of select element with name attribute  'country' inside of
++ *                 form with name attribute 'countryForm'</dd>
++ * <dt>//head</dt>
++ *     <dd>extracts the XML fragment for head node.</dd>
++ * <dt>//head/text()</dt>
++ *     <dd>extracts the text content for head node.</dd>
++ * </dl>
++  see org.apache.jmeter.extractor.TestXPathExtractor for unit tests
++ */
++public class XPath2Extractor extends AbstractScopedTestElement implements
++PostProcessor, Serializable {
++    private static final Logger log = LoggerFactory.getLogger(XPathExtractor.class);
++
++    private static final long serialVersionUID = 242L;
++
++    private static final int DEFAULT_VALUE = -1;
++    public static final String DEFAULT_VALUE_AS_STRING = Integer.toString(DEFAULT_VALUE);
++
++    private static final String REF_MATCH_NR    = "matchNr"; // $NON-NLS-1$
++
++    //+ JMX file attributes
++    private static final String XPATH_QUERY     = "XPathExtractor2.xpathQuery"; // $NON-NLS-1$
++    private static final String REFNAME         = "XPathExtractor2.refname"; // $NON-NLS-1$
++    private static final String DEFAULT         = "XPathExtractor2.default"; // $NON-NLS-1$
++    private static final String TOLERANT        = "XPathExtractor2.tolerant"; // $NON-NLS-1$
++    private static final String QUIET           = "XPathExtractor2.quiet"; // $NON-NLS-1$
++    private static final String REPORT_ERRORS   = "XPathExtractor2.report_errors"; // $NON-NLS-1$
++    private static final String SHOW_WARNINGS   = "XPathExtractor2.show_warnings"; // $NON-NLS-1$
++    private static final String DOWNLOAD_DTDS   = "XPathExtractor2.download_dtds"; // $NON-NLS-1$
++    private static final String WHITESPACE      = "XPathExtractor2.whitespace"; // $NON-NLS-1$
++    private static final String VALIDATE        = "XPathExtractor2.validate"; // $NON-NLS-1$
++    private static final String FRAGMENT        = "XPathExtractor2.fragment"; // $NON-NLS-1$
++    private static final String NAMESPACES      = "XPathExtractor2.namespaces"; // $NON-NLS-1$
++    private static final String MATCH_NUMBER    = "XPathExtractor2.matchNumber"; // $NON-NLS-1$
++    //- JMX file attributes
++
++    private String concat(String s1,String s2){
++        return new StringBuilder(s1).append("_").append(s2).toString(); // $NON-NLS-1$
++    }
++
++    private String concat(String s1, int i){
++        return new StringBuilder(s1).append("_").append(i).toString(); // $NON-NLS-1$
++    }
++
++
++    /**
++     * Do the job - extract value from (X)HTML response using XPath Query.
++     * Return value as variable defined by REFNAME. Returns DEFAULT value
++     * if not found.
++     */
++    @Override
++    public void process() {
++        JMeterContext context = getThreadContext();
++        final SampleResult previousResult = context.getPreviousResult();
++        if (previousResult == null){
++            return;
++        }
++        JMeterVariables vars = context.getVariables();
++        String refName = getRefName();
++        vars.put(refName, getDefaultValue());
++        final String matchNR = concat(refName,REF_MATCH_NR);
++        int prevCount=0; // number of previous matches
++        try {
++            prevCount=Integer.parseInt(vars.get(matchNR));
++        } catch (NumberFormatException e) {
++            // ignored
++        }
++
++        vars.put(matchNR, "0"); // In case parse fails // $NON-NLS-1$
++        vars.remove(concat(refName,"1")); // In case parse fails // $NON-NLS-1$
++
++        int matchNumber = getMatchNumber();
++        List<String> matches = new ArrayList<>();
++        try{
++            if (isScopeVariable()){
++                String inputString=vars.get(getVariableName());
++                if(inputString != null) {
++                    if(inputString.length()>0) {
++                        getValuesForXPath(getXPathQuery(), matches, matchNumber,previousResult.getResponseDataAsString());
++                    }
++                } else {
++                    if (log.isWarnEnabled()) {
++                        log.warn("No variable '{}' found to process by XPathExtractor '{}', skipping processing",
++                                getVariableName(), getName());
++                    }
++                }
++            } else {
++                List<SampleResult> samples = getSampleList(previousResult);
++                int size = samples.size();
++                for(int i = 0;i<size;i++) {
++                    getValuesForXPath(getXPathQuery(), matches, matchNumber,previousResult.getResponseDataAsString());
++                }
++            }
++            final int matchCount = matches.size();
++            vars.put(matchNR, String.valueOf(matchCount));
++            if (matchCount > 0){
++                String value = matches.get(0);
++                if (value != null) {
++                    vars.put(refName, value);
++                }
++                for(int i=0; i < matchCount; i++){
++                    value = matches.get(i);
++                    if (value != null) {
++                        vars.put(concat(refName,i+1),matches.get(i));
++                    }
++                }
++            }
++            vars.remove(concat(refName,matchCount+1)); // Just in case
++            // Clear any other remaining variables
++            for(int i=matchCount+2; i <= prevCount; i++) {
++                vars.remove(concat(refName,i));
++            }
++        }catch (SaxonApiException e) {// Saxon exception
++            if (log.isWarnEnabled()) {
++                log.warn("SaxonApiException while processing ({}). {}", getXPathQuery(), e.getLocalizedMessage());
++            }
++            addAssertionFailure(previousResult, e, false);
++        } catch (XMLStreamException e) {
++            log.error("XMLStreamException on {}", e);
++            log.warn("XMLStreamException while processing {}", e.getLocalizedMessage());
++        } catch (FactoryConfigurationError e) {
++            log.error("FactoryConfigurationError on {}", e);
++            log.warn("FactoryConfigurationError while processing {}", e.getLocalizedMessage());
++
++        }
++    }
++
++    private void addAssertionFailure(final SampleResult previousResult,
++            final Throwable thrown, final boolean setFailed) {
++        AssertionResult ass = new AssertionResult(getName()); // $NON-NLS-1$
++        ass.setFailure(true);
++        ass.setFailureMessage(thrown.getLocalizedMessage()+"\nSee log file for further details.");
++        previousResult.addAssertionResult(ass);
++        if (setFailed){
++            previousResult.setSuccessful(false);
++        }
++    }
++
++    /*============= object properties ================*/
++    public void setXPathQuery(String val){
++        setProperty(XPATH_QUERY,val);
++    }
++
++    public String getXPathQuery(){
++        return getPropertyAsString(XPATH_QUERY);
++    }
++
++    public void setRefName(String refName) {
++        setProperty(REFNAME, refName);
++    }
++
++    public String getRefName() {
++        return getPropertyAsString(REFNAME);
++    }
++
++
++    public void setDefaultValue(String val) {
++        setProperty(DEFAULT, val);
++    }
++
++    public String getDefaultValue() {
++        return getPropertyAsString(DEFAULT);
++    }
++
++    public void setTolerant(boolean val) {
++        setProperty(new BooleanProperty(TOLERANT, val));
++    }
++
++    public boolean isTolerant() {
++        return getPropertyAsBoolean(TOLERANT);
++    }
++
++    public void setNameSpace(boolean val) {
++        setProperty(new BooleanProperty(NAMESPACES, val));
++    }
++
++    public boolean useNameSpace() {
++        return getPropertyAsBoolean(NAMESPACES);
++    }
++
++    public void setReportErrors(boolean val) {
++        setProperty(REPORT_ERRORS, val, false);
++    }
++
++    public boolean reportErrors() {
++        return getPropertyAsBoolean(REPORT_ERRORS, false);
++    }
++
++    public void setShowWarnings(boolean val) {
++        setProperty(SHOW_WARNINGS, val, false);
++    }
++
++    public boolean showWarnings() {
++        return getPropertyAsBoolean(SHOW_WARNINGS, false);
++    }
++
++    public void setQuiet(boolean val) {
++        setProperty(QUIET, val, true);
++    }
++
++    public boolean isQuiet() {
++        return getPropertyAsBoolean(QUIET, true);
++    }
++
++    /**
++     * Should we return fragment as text, rather than text of fragment?
++     * @return true if we should return fragment rather than text
++     */
++    public boolean getFragment() {
++        return getPropertyAsBoolean(FRAGMENT, false);
++    }
++
++    /**
++     * Should we return fragment as text, rather than text of fragment?
++     * @param selected true to return fragment.
++     */
++    public void setFragment(boolean selected) {
++        setProperty(FRAGMENT, selected, false);
++    }
++
++    /*================= internal business =================*/
++
++    /**
++     * Extract value from String responseData by XPath query.
++     * @param query the query to execute
++     * @param matchStrings list of matched strings (may include nulls)
++     * @param matchNumber int Match Number
++     * @param responseData String that contains the entire Document
++     * @throws SaxonApiException
++     * @throws XMLStreamException 
++     * @throws FactoryConfigurationError 
++     */
++    private void getValuesForXPath(String query, List<String> matchStrings, int matchNumber, String responseData)
++            throws SaxonApiException, XMLStreamException, FactoryConfigurationError {
++        XPathUtil.putValuesForXPathInListUsingSaxon(responseData, query, matchStrings, getFragment(), matchNumber, getNamespaces());
++    }
++
++
++
++    public void setWhitespace(boolean selected) {
++        setProperty(WHITESPACE, selected, false);
++    }
++
++    public boolean isWhitespace() {
++        return getPropertyAsBoolean(WHITESPACE, false);
++    }
++
++    public void setValidating(boolean selected) {
++        setProperty(VALIDATE, selected);
++    }
++
++    public boolean isValidating() {
++        return getPropertyAsBoolean(VALIDATE, false);
++    }
++
++    public void setDownloadDTDs(boolean selected) {
++        setProperty(DOWNLOAD_DTDS, selected, false);
++    }
++
++    public boolean isDownloadDTDs() {
++        return getPropertyAsBoolean(DOWNLOAD_DTDS, false);
++    }
++
++    /**
++     * Set which Match to use. This can be any positive number, indicating the
++     * exact match to use, or <code>0</code>, which is interpreted as meaning random.
++     *
++     * @param matchNumber The number of the match to be used
++     */
++    public void setMatchNumber(int matchNumber) {
++        setProperty(new IntegerProperty(MATCH_NUMBER, matchNumber));
++    }
++
++    /**
++     * Set which Match to use. This can be any positive number, indicating the
++     * exact match to use, or <code>0</code>, which is interpreted as meaning random.
++     *
++     * @param matchNumber The number of the match to be used
++     */
++    public void setMatchNumber(String matchNumber) {
++        setProperty(MATCH_NUMBER, matchNumber);
++    }
++
++    /**
++     * Return which Match to use. This can be any positive number, indicating the
++     * exact match to use, or <code>0</code>, which is interpreted as meaning random.
++     *
++     * @return matchNumber The number of the match to be used
++     */
++    public int getMatchNumber() {
++        return getPropertyAsInt(MATCH_NUMBER, DEFAULT_VALUE);
++    }
++
++    /**
++     * Return which Match to use. This can be any positive number, indicating the
++     * exact match to use, or <code>0</code>, which is interpreted as meaning random.
++     *
++     * @return matchNumber The number of the match to be used
++     */
++    public String getMatchNumberAsString() {
++        return getPropertyAsString(MATCH_NUMBER, DEFAULT_VALUE_AS_STRING);
++    }
++
++    public void setNamespaces(String namespaces) {
++        setProperty(NAMESPACES, namespaces);
++    }
++
++    public String getNamespaces() {
++        return getPropertyAsString(NAMESPACES);
++    }
++}
+Index: src/components/org/apache/jmeter/extractor/gui/XPath2ExtractorGui.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/gui/XPath2ExtractorGui.java	(revision 0)
++++ src/components/org/apache/jmeter/extractor/gui/XPath2ExtractorGui.java	(revision 0)
+@@ -0,0 +1,183 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.extractor.gui;
++
++import java.awt.BorderLayout;
++import java.awt.GridBagConstraints;
++import java.awt.GridBagLayout;
++import java.util.List;
++
++import javax.swing.Box;
++import javax.swing.JCheckBox;
++import javax.swing.JComponent;
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++
++import org.apache.jmeter.extractor.XPath2Extractor;
++import org.apache.jmeter.gui.util.JSyntaxTextArea;
++import org.apache.jmeter.gui.util.JTextScrollPane;
++import org.apache.jmeter.processor.gui.AbstractPostProcessorGui;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
++
++/**
++ * GUI for XPath2Extractor class.
++ * @since 4.1
++ */
++public class XPath2ExtractorGui extends AbstractPostProcessorGui{ // NOSONAR Ignore parents warning
++
++    private static final long serialVersionUID = 1L;
++
++    private final JLabeledTextField defaultField = new JLabeledTextField(
++            JMeterUtils.getResString("default_value_field"));//$NON-NLS-1$
++
++    private final JLabeledTextField xpathQueryField = new JLabeledTextField(
++            JMeterUtils.getResString("xpath_extractor_query"));//$NON-NLS-1$
++
++    private final JLabeledTextField matchNumberField = new JLabeledTextField(
++            JMeterUtils.getResString("match_num_field"));//$NON-NLS-1$
++
++    private final JLabeledTextField refNameField = new JLabeledTextField(JMeterUtils.getResString("ref_name_field"));//$NON-NLS-1$
++
++    // Should we return fragment as text, rather than text of fragment?
++    private JCheckBox getFragment;
++    
++    private JSyntaxTextArea namespacesTA;
++    
++    @Override
++    public String getLabelResource() {
++        return "xpath2_extractor_title"; //$NON-NLS-1$
++    }
++
++    public XPath2ExtractorGui() {
++        super();
++        init();
++    }
++
++    @Override
++    public void configure(TestElement el) {
++        super.configure(el);
++        XPath2Extractor xpe = (XPath2Extractor) el;
++        showScopeSettings(xpe, true);
++        xpathQueryField.setText(xpe.getXPathQuery());
++        defaultField.setText(xpe.getDefaultValue());
++        refNameField.setText(xpe.getRefName());
++        matchNumberField.setText(xpe.getMatchNumberAsString());
++        namespacesTA.setText(xpe.getNamespaces());
++        getFragment.setSelected(xpe.getFragment());
++    }
++
++    @Override
++    public TestElement createTestElement() {
++        XPath2Extractor extractor = new XPath2Extractor();
++        modifyTestElement(extractor);
++        return extractor;
++    }
++
++    @Override
++    public void modifyTestElement(TestElement extractor) {
++        super.configureTestElement(extractor);
++        if (extractor instanceof XPath2Extractor) {
++            XPath2Extractor xpath = (XPath2Extractor) extractor;
++            saveScopeSettings(xpath);
++            xpath.setDefaultValue(defaultField.getText());
++            xpath.setRefName(refNameField.getText());
++            xpath.setMatchNumber(matchNumberField.getText());
++            xpath.setXPathQuery(xpathQueryField.getText());
++            xpath.setFragment(getFragment.isSelected());
++            xpath.setNamespaces(namespacesTA.getText());
++        }
++    }
++
++    /**
++     * Implements JMeterGUIComponent.clearGui
++     */
++    @Override
++    public void clearGui() {
++        super.clearGui();
++        xpathQueryField.setText(""); // $NON-NLS-1$
++        defaultField.setText(""); // $NON-NLS-1$
++        refNameField.setText(""); // $NON-NLS-1$
++        matchNumberField.setText(XPath2Extractor.DEFAULT_VALUE_AS_STRING); // $NON-NLS-1$
++        namespacesTA.setText("");
++    }
++
++    private void init() { // WARNING: called from ctor so must not be overridden (i.e. must be private or final)
++        setLayout(new BorderLayout());
++        setBorder(makeBorder());
++        Box box = Box.createVerticalBox();
++        box.add(makeTitlePanel());
++        box.add(createScopePanel(true, true, true));
++        box.add(makeParameterPanel());
++        add(box, BorderLayout.NORTH);
++    }
++    
++    private JPanel makeParameterPanel() {
++        JPanel panel = new JPanel(new GridBagLayout());
++        GridBagConstraints gbc = new GridBagConstraints();
++        initConstraints(gbc);
++        addField(panel, refNameField, gbc);
++        resetContraints(gbc);
++        addField(panel, xpathQueryField, gbc);
++        resetContraints(gbc);
++        addField(panel, matchNumberField, gbc);
++        resetContraints(gbc);
++        addField(panel, defaultField, gbc);
++        resetContraints(gbc);
++        panel.add(new JLabel(JMeterUtils.getResString("xpath_extractor_user_namespaces")), gbc.clone());
++        gbc.gridx++;
++        gbc.weightx = 1;
++        gbc.fill = GridBagConstraints.HORIZONTAL;
++        namespacesTA = JSyntaxTextArea.getInstance(5, 80);
++        panel.add(JTextScrollPane.getInstance(namespacesTA, true), gbc.clone());
++
++        resetContraints(gbc);
++        gbc.gridwidth = 2;
++        getFragment = new JCheckBox(JMeterUtils.getResString("xpath_extractor_fragment"));//$NON-NLS-1$
++        panel.add(getFragment, gbc.clone());
++        return panel;
++    }
++
++    private void addField(JPanel panel, JLabeledTextField field, GridBagConstraints gbc) {
++        List<JComponent> item = field.getComponentList();
++        panel.add(item.get(0), gbc.clone());
++        gbc.gridx++;
++        gbc.weightx = 1;
++        gbc.fill = GridBagConstraints.HORIZONTAL;
++        panel.add(item.get(1), gbc.clone());
++    }
++
++    private void resetContraints(GridBagConstraints gbc) {
++        gbc.gridx = 0;
++        gbc.gridy++;
++        gbc.weightx = 0;
++        gbc.fill = GridBagConstraints.NONE;
++    }
++
++    private void initConstraints(GridBagConstraints gbc) {
++        gbc.anchor = GridBagConstraints.NORTHWEST;
++        gbc.fill = GridBagConstraints.NONE;
++        gbc.gridheight = 1;
++        gbc.gridwidth = 1;
++        gbc.gridx = 0;
++        gbc.gridy = 0;
++        gbc.weightx = 0;
++        gbc.weighty = 0;
++    }
++}
+Index: src/components/org/apache/jmeter/visualizers/RenderAsXPath2.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/RenderAsXPath2.java	(revision 0)
++++ src/components/org/apache/jmeter/visualizers/RenderAsXPath2.java	(revision 0)
+@@ -0,0 +1,293 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements. See the NOTICE file distributed with this
++ * work for additional information regarding copyright ownership. The ASF
++ * licenses this file to You under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ * 
++ * http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
++ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.visualizers;
++
++import java.awt.BorderLayout;
++import java.awt.Color;
++import java.awt.Dimension;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++import java.util.ArrayList;
++import java.util.List;
++
++import javax.swing.Box;
++import javax.swing.JButton;
++import javax.swing.JCheckBox;
++import javax.swing.JPanel;
++import javax.swing.JScrollPane;
++import javax.swing.JSplitPane;
++import javax.swing.JTabbedPane;
++import javax.swing.JTextArea;
++import javax.swing.border.Border;
++import javax.swing.border.EmptyBorder;
++
++import org.apache.commons.lang3.exception.ExceptionUtils;
++import org.apache.jmeter.extractor.XPath2Extractor;
++import org.apache.jmeter.gui.util.JSyntaxTextArea;
++import org.apache.jmeter.gui.util.JTextScrollPane;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.XPathUtil;
++import org.apache.jorphan.gui.GuiUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
++import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++
++/**
++ * Implement ResultsRender for XPath tester
++ */
++public class RenderAsXPath2 implements ResultRenderer, ActionListener {
++
++    private static final Logger log = LoggerFactory.getLogger(RenderAsXPath.class);
++
++    private static final String XPATH_TESTER_COMMAND = "xpath_tester"; // $NON-NLS-1$
++    
++    private static final String XPATH_NAMESPACES_COMMAND = "xpath_namespaces"; // $NON-NLS-1$
++
++    private JPanel xmlWithXPathPane;
++
++    private JSyntaxTextArea xmlDataField;
++
++    private JLabeledTextField xpathExpressionField;
++
++    private JTextArea xpathResultField;
++
++    private JTabbedPane rightSide;
++
++    private SampleResult sampleResult = null;
++    
++    // Should we return fragment as text, rather than text of fragment?
++    private final JCheckBox getFragment =
++        new JCheckBox(JMeterUtils.getResString("xpath_tester_fragment"));//$NON-NLS-1$
++    
++    /** {@inheritDoc} */
++    @Override
++    public void clearData() {
++        // N.B. don't set xpathExpressionField to empty to keep xpath
++        this.xmlDataField.setText(""); // $NON-NLS-1$
++        this.xpathResultField.setText(""); // $NON-NLS-1$
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void init() {
++        // Create the panels for the xpath tab
++        xmlWithXPathPane = createXpathExtractorPanel();
++    }
++
++    /**
++     * Display the response as text or as rendered HTML. Change the text on the
++     * button appropriate to the current display.
++     *
++     * @param e the ActionEvent being processed
++     */
++    @Override
++    public void actionPerformed(ActionEvent e) {
++        String command = e.getActionCommand();
++        if ((sampleResult != null) && (XPATH_TESTER_COMMAND.equals(command))) {
++            String response = xmlDataField.getText();
++            XPath2Extractor extractor = new XPath2Extractor();
++            extractor.setFragment(getFragment.isSelected());
++            executeAndShowXPathTester(response, extractor);
++        }
++        else if ((sampleResult != null) && (XPATH_NAMESPACES_COMMAND.equals(command))) {
++            String response = xmlDataField.getText();
++            this.xpathResultField.setText(getDocumentNamespaces(response));
++        }
++    }
++
++    /**
++     * Launch xpath engine to parse a input text
++     * @param textToParse
++     */
++    private void executeAndShowXPathTester(String textToParse, XPath2Extractor extractor) {
++        if (textToParse != null && textToParse.length() > 0
++                && this.xpathExpressionField.getText().length() > 0) {
++            this.xpathResultField.setText(process(textToParse, extractor));
++            this.xpathResultField.setCaretPosition(0); // go to first line
++        }
++    }
++
++    private String process(String textToParse, XPath2Extractor extractor) {
++        try {
++            List<String> matchStrings = new ArrayList<>();
++            XPathUtil.putValuesForXPathInListUsingSaxon(textToParse, xpathExpressionField.getText(), matchStrings, extractor.getFragment(), -1, getDocumentNamespaces(textToParse));
++            StringBuilder builder = new StringBuilder();
++            int nbFound = matchStrings.size();
++            builder.append("Match count: ").append(nbFound).append("\n");
++            for (int i = 0; i < nbFound; i++) {
++                builder.append("Match[").append(i+1).append("]=").append(matchStrings.get(i)).append("\n");
++            }
++            return builder.toString();
++        } catch (Exception e) {
++            return "Exception:"+ ExceptionUtils.getStackTrace(e);
++        }
++    }
++    
++    
++    private String getDocumentNamespaces(String textToParse) {
++        StringBuilder result = new StringBuilder();
++        try {
++            List<String[]> namespaces = XPathUtil.getNamespaces(textToParse);
++            for (int i = 0;i<namespaces.size();i++) {
++                result.append(namespaces.get(i)[0])
++                .append('=') // $NON-NLS-1$
++                .append(namespaces.get(i)[1])
++                .append('\n'); // $NON-NLS-1$
++            }
++            return result.toString();
++        } catch (Exception e) {
++            return "Exception:"+ ExceptionUtils.getStackTrace(e);
++        }
++    }
++    
++    /*================= internal business =================*/
++    /** {@inheritDoc} */
++    @Override
++    public void renderResult(SampleResult sampleResult) {
++        String response = ViewResultsFullVisualizer.getResponseAsString(sampleResult);
++        try {
++            xmlDataField.setText(response == null ? "" : response);
++            xmlDataField.setCaretPosition(0);
++        } catch (Exception e) {
++            log.error("Exception converting to XML: {}, message: {}", response, e.getMessage(), e);
++            xmlDataField.setText("Exception converting to XML:"+response+ ", message:"+e.getMessage());
++            xmlDataField.setCaretPosition(0);
++        }
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public String toString() {
++        return JMeterUtils.getResString("xpath2_tester"); // $NON-NLS-1$
++    }
++
++
++    /** {@inheritDoc} */
++    @Override
++    public void setupTabPane() {
++         // Add xpath tester pane
++        if (rightSide.indexOfTab(JMeterUtils.getResString("xpath_tester_title")) < 0) { // $NON-NLS-1$
++            rightSide.addTab(JMeterUtils.getResString("xpath_tester_title"), xmlWithXPathPane); // $NON-NLS-1$
++        }
++        clearData();
++    }
++
++    /**
++     * @return XPath Tester panel
++     */
++    private JPanel createXpathExtractorPanel() {
++        xmlDataField = JSyntaxTextArea.getInstance(50, 80, true);
++        xmlDataField.setCodeFoldingEnabled(true);
++        xmlDataField.setEditable(false);
++        xmlDataField.setBracketMatchingEnabled(false);
++        xmlDataField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_XML);
++        xmlDataField.setLanguage(SyntaxConstants.SYNTAX_STYLE_XML);
++        xmlDataField.setLineWrap(true);
++        xmlDataField.setWrapStyleWord(true);
++
++        JScrollPane xmlDataPane = JTextScrollPane.getInstance(xmlDataField, true);
++        xmlDataPane.setPreferredSize(new Dimension(0, 200));
++
++        JPanel pane = new JPanel(new BorderLayout(0, 5));
++
++        JSplitPane mainSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
++                xmlDataPane, createXpathExtractorTasksPanel());
++        mainSplit.setDividerLocation(0.6d);
++        mainSplit.setOneTouchExpandable(true);
++        pane.add(mainSplit, BorderLayout.CENTER);
++        return pane;
++    }
++
++    /**
++     * Create the XPath task pane
++     *
++     * @return XPath task pane
++     */
++    private JPanel createXpathExtractorTasksPanel() {
++        Box xpathActionPanel = Box.createVerticalBox();
++        
++        Box selectorAndButton = Box.createHorizontalBox();
++
++        Border margin = new EmptyBorder(5, 5, 0, 5);
++        xpathActionPanel.setBorder(margin);
++        xpathExpressionField = new JLabeledTextField(JMeterUtils.getResString("xpath_tester_field")); // $NON-NLS-1$
++        
++        JButton xpathTester = new JButton(JMeterUtils.getResString("xpath_tester_button_test")); // $NON-NLS-1$
++        xpathTester.setActionCommand(XPATH_TESTER_COMMAND);
++        xpathTester.addActionListener(this);
++        
++        JButton xpathTesterNamespaces = new JButton(JMeterUtils.getResString("xpath_namespaces")); // $NON-NLS-1$
++        xpathTesterNamespaces.setActionCommand(XPATH_NAMESPACES_COMMAND);
++        xpathTesterNamespaces.addActionListener(this);
++        
++        selectorAndButton.add(xpathExpressionField);
++        selectorAndButton.add(xpathTester);
++        selectorAndButton.add(xpathTesterNamespaces);
++        
++        xpathActionPanel.add(selectorAndButton);
++        xpathActionPanel.add(getFragment);
++        
++        xpathResultField = new JTextArea();
++        xpathResultField.setEditable(false);
++        xpathResultField.setLineWrap(true);
++        xpathResultField.setWrapStyleWord(true);
++
++        JPanel xpathTasksPanel = new JPanel(new BorderLayout(0, 5));
++        xpathTasksPanel.add(xpathActionPanel, BorderLayout.NORTH);
++        xpathTasksPanel.add(GuiUtils.makeScrollPane(xpathResultField), BorderLayout.CENTER);
++
++        return xpathTasksPanel;
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public synchronized void setRightSide(JTabbedPane side) {
++        rightSide = side;
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public synchronized void setSamplerResult(Object userObject) {
++        if (userObject instanceof SampleResult) {
++            sampleResult = (SampleResult) userObject;
++        }
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void setLastSelectedTab(int index) {
++        // nothing to do
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void renderImage(SampleResult sampleResult) {
++        clearData();
++        xmlDataField.setText(JMeterUtils.getResString("xpath_tester_no_text")); // $NON-NLS-1$
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void setBackgroundColor(Color backGround) {
++        // NOOP
++    }
++}
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1831500)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -1396,6 +1396,7 @@
+ web_testing_source_ip_device_ipv6=Device IPv6
+ web_testing_source_ip_hostname=IP/Hostname
+ web_testing_title=HTTP Request
++web_testing_namespaces=namespaces (prefix = value)
+ while_controller_label=Condition (function or variable)
+ while_controller_title=While Controller
+ workbench_title=WorkBench
+@@ -1423,9 +1424,13 @@
+ xpath_expression=XPath expression to match against
+ xpath_extractor_fragment=Return entire XPath fragment instead of text content?
+ xpath_extractor_query=XPath query:
++xpath_extractor_namespaces=Use every namespaces in the response?
++xpath_extractor_user_namespaces=Namespaces list :
+ xpath_extractor_title=XPath Extractor
+ xpath_file_file_name=XML file to get values from 
+ xpath_tester=XPath Tester
++xpath2_tester=XPath2 Tester
++xpath_namespaces=Show namespaces aliases
+ xpath_tester_button_test=Test
+ xpath_tester_field=XPath expression
+ xpath_tester_fragment=Return entire XPath fragment instead of text content?
+@@ -1434,6 +1439,9 @@
+ xpath_tidy_quiet=Quiet
+ xpath_tidy_report_errors=Report errors
+ xpath_tidy_show_warnings=Show warnings
++xpath2_extractor_title=XPath2 Extractor
++xpath2_extractor_empty_query=Empty XPath expression !
++xpath2_extractor_match_number_failure=MatchNumber out of bonds \:
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+ zh_tw=Chinese (Traditional)
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1831500)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -1385,6 +1385,7 @@
+ web_testing_source_ip_device_ipv6=Interface IPv6
+ web_testing_source_ip_hostname=IP/Nom d'h\u00F4te
+ web_testing_title=Requ\u00EAte HTTP
++web_testing_namespaces=namespaces (prefix = value)
+ while_controller_label=Condition (fonction ou variable) \:
+ while_controller_title=Contr\u00F4leur Tant Que
+ workbench_title=Plan de travail
+@@ -1412,9 +1413,13 @@
+ xpath_expression=Expression XPath de correspondance
+ xpath_extractor_fragment=Retourner le fragment XPath entier au lieu du contenu
+ xpath_extractor_query=Requ\u00EAte XPath \:
++xpath_extractor_namespaces=Utiliser tous les namespaces?
++xpath_extractor_user_namespaces=liste des namespaces :
+ xpath_extractor_title=Extracteur XPath
+ xpath_file_file_name=Fichier XML contenant les valeurs
+ xpath_tester=Testeur XPath
++xpath2_tester=Testeur XPath2
++xpath_namespaces=Voir alias namespaces
+ xpath_tester_button_test=Tester
+ xpath_tester_field=Expression XPath
+ xpath_tester_fragment=Retourner le fragment XPath entier au lieu du contenu ?
+@@ -1423,6 +1428,9 @@
+ xpath_tidy_quiet=Silencieux
+ xpath_tidy_report_errors=Rapporter les erreurs
+ xpath_tidy_show_warnings=Afficher les alertes
++xpath2_extractor_title=Extracteur XPath2
++xpath2_extractor_empty_query=Expression XPath vide !
++xpath2_extractor_match_number_failure=Correspondance hors de port\u00E9e : 
+ you_must_enter_a_valid_number=Vous devez entrer un nombre valide
+ zh_cn=Chinois (simplifi\u00E9)
+ zh_tw=Chinois (traditionnel)
+Index: src/core/org/apache/jmeter/util/XPathQueryCacheLoader.java
+===================================================================
+--- src/core/org/apache/jmeter/util/XPathQueryCacheLoader.java	(revision 0)
++++ src/core/org/apache/jmeter/util/XPathQueryCacheLoader.java	(revision 0)
+@@ -0,0 +1,60 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.util;
++
++import java.util.List;
++
++import org.apache.commons.lang3.tuple.ImmutablePair;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++import com.github.benmanes.caffeine.cache.CacheLoader;
++
++import net.sf.saxon.s9api.Processor;
++import net.sf.saxon.s9api.XPathCompiler;
++import net.sf.saxon.s9api.XPathExecutable;
++
++/**
++ * load method is called when the key composed of
++ * namespaces + xPathQuery is not in the cache.
++ * Return the compiled XPathQuery with the associated
++ * namespaces.
++ */
++public class XPathQueryCacheLoader implements CacheLoader<ImmutablePair<String, String>, XPathExecutable> {
++    
++    private static final Logger log = LoggerFactory.getLogger(XPathQueryCacheLoader.class);
++
++    @Override
++    public XPathExecutable load(ImmutablePair<String, String> key) 
++            throws Exception {
++        String xPathQuery = key.left;
++        String namespacesString = key.right;
++
++        Processor processor = XPathUtil.getProcessor();
++        XPathCompiler xPathCompiler = processor.newXPathCompiler();
++
++        List<String[]> namespacesList = XPathUtil.namespacesParse(namespacesString);
++        log.debug("Parsed namespaces:{} into list of namespaces:{}", namespacesString, namespacesList);
++        for (String[] namespaces : namespacesList) {
++            xPathCompiler.declareNamespace(namespaces[0], namespaces[1]);
++        }
++        log.debug("Declared namespaces:{}, now compiling xPathQuery:{}", namespacesList, xPathQuery);
++        return xPathCompiler.compile(xPathQuery);
++    }
++}
+Index: src/core/org/apache/jmeter/util/XPathUtil.java
+===================================================================
+--- src/core/org/apache/jmeter/util/XPathUtil.java	(revision 1831500)
++++ src/core/org/apache/jmeter/util/XPathUtil.java	(working copy)
+@@ -26,11 +26,17 @@
+ import java.io.StringReader;
+ import java.io.StringWriter;
+ import java.nio.charset.StandardCharsets;
++import java.util.ArrayList;
+ import java.util.List;
+ 
+ import javax.xml.parsers.DocumentBuilder;
+ import javax.xml.parsers.DocumentBuilderFactory;
+ import javax.xml.parsers.ParserConfigurationException;
++import javax.xml.stream.FactoryConfigurationError;
++import javax.xml.stream.XMLInputFactory;
++import javax.xml.stream.XMLStreamConstants;
++import javax.xml.stream.XMLStreamException;
++import javax.xml.stream.XMLStreamReader;
+ import javax.xml.transform.OutputKeys;
+ import javax.xml.transform.Source;
+ import javax.xml.transform.Transformer;
+@@ -39,7 +45,9 @@
+ import javax.xml.transform.dom.DOMSource;
+ import javax.xml.transform.sax.SAXSource;
+ import javax.xml.transform.stream.StreamResult;
++import javax.xml.transform.stream.StreamSource;
+ 
++import org.apache.commons.lang3.tuple.ImmutablePair;
+ import org.apache.jmeter.assertions.AssertionResult;
+ import org.apache.xml.utils.PrefixResolver;
+ import org.apache.xpath.XPathAPI;
+@@ -57,16 +65,44 @@
+ import org.xml.sax.SAXException;
+ import org.xml.sax.SAXParseException;
+ 
++import com.github.benmanes.caffeine.cache.Caffeine;
++import com.github.benmanes.caffeine.cache.LoadingCache;
++
++import net.sf.saxon.s9api.Processor;
++import net.sf.saxon.s9api.SaxonApiException;
++import net.sf.saxon.s9api.XPathExecutable;
++import net.sf.saxon.s9api.XPathSelector;
++import net.sf.saxon.s9api.XdmItem;
++import net.sf.saxon.s9api.XdmNode;
++import net.sf.saxon.s9api.XdmValue;
++
+ /**
+  * This class provides a few utility methods for dealing with XML/XPath.
+  */
+ public class XPathUtil {
++
+     private static final Logger log = LoggerFactory.getLogger(XPathUtil.class);
+ 
++    private static final LoadingCache<ImmutablePair<String, String>, XPathExecutable> XPATH_CACHE;
++    static {
++        final int cacheSize = JMeterUtils.getPropDefault(
++                "xpath2query.parser.cache.size", 400);
++        XPATH_CACHE = Caffeine.newBuilder().maximumSize(cacheSize).build(new XPathQueryCacheLoader());
++    }
++
++    /**
++     * 
++     */
++    private static final Processor PROCESSOR = new Processor(false);
++
+     private XPathUtil() {
+         super();
+     }
+ 
++    public static Processor getProcessor() {
++        return PROCESSOR;
++    }
++
+     private static DocumentBuilderFactory documentBuilderFactory;
+ 
+     /**
+@@ -289,6 +325,7 @@
+         return sw.toString();
+     }
+     
++
+     /**
+      * @param node {@link Node}
+      * @return String content of node
+@@ -330,6 +367,7 @@
+     }
+     
+     
++
+     /**
+      * Put in matchStrings results of evaluation
+      * @param document XML document
+@@ -339,10 +377,8 @@
+      * @param matchNumber match number
+      * @throws TransformerException when the internally used xpath engine fails
+      */
+-    public static void putValuesForXPathInList(Document document, 
+-            String xPathQuery,
+-            List<String> matchStrings, boolean fragment, 
+-            int matchNumber) throws TransformerException {
++    public static void putValuesForXPathInList(Document document, String xPathQuery, List<String> matchStrings, boolean fragment, int matchNumber)
++            throws TransformerException {
+         String val = null;
+         XObject xObject = XPathAPI.eval(document, xPathQuery, getPrefixResolver(document));
+         final int objectType = xObject.getType();
+@@ -381,6 +417,144 @@
+       }
+     }
+ 
++    public static void putValuesForXPathInListUsingSaxon(
++            String xmlFile, String xPathQuery, 
++            List<String> matchStrings, boolean fragment, 
++            int matchNumber, String namespaces)
++            throws SaxonApiException, FactoryConfigurationError {
++
++        // generating the cache key
++        final ImmutablePair<String, String> key = ImmutablePair.of(xPathQuery, namespaces);
++
++        //check the cache
++        XPathExecutable xPathExecutable;
++        if(!xPathQuery.equals("")) {
++            xPathExecutable = XPATH_CACHE.get(key);
++        }
++        else {
++            log.warn("Error : {}", JMeterUtils.getResString("xpath2_extractor_empty_query"));
++            return;
++        }
++
++        try (StringReader reader = new StringReader(xmlFile)) {
++            // We could instanciate it once but might trigger issues in the future 
++            // Sharing of a DocumentBuilder across multiple threads is not recommended. 
++            // However, in the current implementation sharing a DocumentBuilder (once initialized) 
++            // will only cause problems if a SchemaValidator is used.
++            net.sf.saxon.s9api.DocumentBuilder builder = PROCESSOR.newDocumentBuilder();
++            XdmNode xdmNode = builder.build(new StreamSource(reader));
++            
++            if(xPathExecutable!=null) {
++                XPathSelector selector = xPathExecutable.load();
++                selector.setContextItem(xdmNode);
++                XdmValue nodes = selector.evaluate();
++                int length = nodes.size();
++                int indexToMatch = matchNumber;
++                // In case we need to extract everything
++                if(matchNumber < 0) {
++                    for(XdmItem item : nodes) {
++                        if(fragment) {
++                            matchStrings.add(item.toString());
++                        }
++                        else {
++                            matchStrings.add(item.getStringValue());
++                        }
++                    }
++                } else {
++                    if(indexToMatch <= length) {
++                        if(matchNumber == 0 && length>0) {
++                            indexToMatch = JMeterUtils.getRandomInt(length)+1;
++                        } 
++                        XdmItem item = nodes.itemAt(indexToMatch-1);
++                        matchStrings.add(fragment ? item.toString() : item.getStringValue());
++                    } else {
++                        if(log.isWarnEnabled()) {
++                            log.warn("Error : {}{}", JMeterUtils.getResString("xpath2_extractor_match_number_failure"),indexToMatch);
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++
++    public static List<String[]> namespacesParse(String namespaces) {
++        List<String[]> res = new ArrayList<>();
++        int length = namespaces.length();
++        int startWord = 0;
++        boolean afterEqual = false;
++        int positionLastKey = -1;
++        for(int i = 0; i < length; i++) {
++            char actualChar = namespaces.charAt(i);
++            if(actualChar=='=' && !afterEqual) {
++                String [] tmp = new String[2];
++                tmp[0] = namespaces.substring(startWord, i);
++                res.add(tmp);
++                afterEqual = true;
++                startWord = i+1;
++                positionLastKey++;
++            }
++            else if(namespaces.charAt(i)=='\n' && afterEqual) {
++                afterEqual = false;
++                res.get(positionLastKey)[1]= namespaces.substring(startWord, i);
++                startWord = i+1;
++            }
++            else if(namespaces.charAt(i)=='\n') {
++                startWord = i+1;
++            }
++            else if(i==length-1 && afterEqual) {
++                res.get(positionLastKey)[1]= namespaces.substring(startWord, i+1);
++            }
++        }
++        return res;
++    }
++
++    public static List<String[]> getNamespaces(String xml)
++            throws XMLStreamException, FactoryConfigurationError{
++        List<String[]> res= new ArrayList<>();
++        XMLStreamReader reader;
++        if(!xml.equals("")) {
++            reader = XMLInputFactory.newFactory().createXMLStreamReader(new StringReader(xml));
++            while (reader.hasNext()) {
++                int event = reader.next();
++                if (XMLStreamConstants.START_ELEMENT == event) {
++                    addToList(reader, res);
++                } else if(XMLStreamConstants.NAMESPACE == event) {
++                    // This almost never happens
++                    addToList(reader, res);
++                }
++            }
++        }
++        return res;
++    }
++
++    private static void addToList(XMLStreamReader reader, List<String[]> res) {
++        boolean isInList = false;
++        int namespaceCount = reader.getNamespaceCount(); 
++        if (namespaceCount > 0) {
++            for (int nsIndex = 0; nsIndex < namespaceCount; nsIndex++) {
++                String[] tmp = {"",""};
++                String nsPrefix = reader.getNamespacePrefix(nsIndex);
++                for(int i = 0;i<res.size();i++) {
++                    String prefix = res.get(i)[0];
++                    if(prefix != null && prefix.equals(nsPrefix)) {
++                        isInList = true;
++                        break;
++                    }
++                }
++                if(!isInList) {
++                    String nsId = reader.getNamespaceURI(nsIndex);
++                    tmp[0] = nsPrefix;
++                    tmp[1] = nsId;
++                    res.add(tmp);
++                }
++                isInList=false;
++            }
++        }
++    }
++
++
++
+     /**
+      * 
+      * @param document XML Document
+Index: test/resources/XPathUtilTestXml.xml
+===================================================================
+--- test/resources/XPathUtilTestXml.xml	(revision 0)
++++ test/resources/XPathUtilTestXml.xml	(revision 0)
+@@ -0,0 +1,27 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<Employees>
++    <Employee id="1">
++        <age:ag xmlns:age="http://www.w3.org/2003/01/geo/wgs84_pos#">29</age:ag>
++        <name>Pankaj</name>
++        <gender>Male</gender>
++        <role>Java Developer</role>
++    </Employee>
++    <Employee id="2">
++        <age:ag xmlns:age="http://www.w3.org/2003/01/geo/wgs84_pos#">35</age:ag>
++        <name>Lisa</name>
++        <gender>Female</gender>
++        <role>CEO</role>
++    </Employee>
++    <Employee id="3">
++        <age:ag xmlns:age="http://www.w3.org/2003/01/geo/wgs84_pos#">45</age:ag>
++        <name>Tom</name>
++        <gender>Male</gender>
++        <role>Manager</role>
++    </Employee>
++    <Employee id="4">
++        <age:ag xmlns:age="http://www.w3.org/2003/01/geo/wgs84_pos#">55</age:ag>
++        <name>Meghan</name>
++        <gender>Female</gender>
++        <role>Manager</role>
++    </Employee>
++</Employees>
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/util/XPathUtilTest.java
+===================================================================
+--- test/src/org/apache/jmeter/util/XPathUtilTest.java	(revision 1831500)
++++ test/src/org/apache/jmeter/util/XPathUtilTest.java	(working copy)
+@@ -18,17 +18,110 @@
+ 
+ package org.apache.jmeter.util;
+ 
++import static org.junit.Assert.assertEquals;
+ import static org.junit.Assert.assertThat;
+ 
+ import java.io.PrintStream;
++import java.util.ArrayList;
++import java.util.List;
++
++import javax.xml.stream.FactoryConfigurationError;
+ 
+ import org.hamcrest.CoreMatchers;
+ import org.junit.Test;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ 
+-public class XPathUtilTest {
++import net.sf.saxon.s9api.SaxonApiException;
+ 
++public class XPathUtilTest {
++    private static final Logger log = LoggerFactory.getLogger(XPathUtil.class);
+     final String lineSeparator = System.getProperty("line.separator");
+ 
++    final String xmlDoc = JMeterUtils.getResourceFileAsText("XPathUtilTestXml.xml");
++    
++    @Test
++    public void testputValuesForXPathInListUsingSaxon(){
++        
++        String xPathQuery="//Employees/Employee/role";
++        ArrayList<String> matchStrings = new ArrayList<String>();
++        boolean fragment = false;
++        String namespaces = "age=http://www.w3.org/2003/01/geo/wgs84_pos#";
++        int matchNumber = 3;
++        
++        try {
++            XPathUtil.putValuesForXPathInListUsingSaxon(xmlDoc, xPathQuery, matchStrings, fragment, matchNumber, namespaces);
++            assertEquals("Manager",matchStrings.get(0));
++            
++            matchNumber = 0;
++            xPathQuery="//Employees/Employee[1]/age:ag";
++            fragment = true;
++            matchStrings.clear();
++            XPathUtil.putValuesForXPathInListUsingSaxon(xmlDoc, xPathQuery, matchStrings, fragment, matchNumber, namespaces);
++            assertEquals("<age:ag xmlns:age=\"http://www.w3.org/2003/01/geo/wgs84_pos#\">29</age:ag>",matchStrings.get(0));
++            assertEquals(1,matchStrings.size());
++            
++            matchNumber = -1;
++            xPathQuery="//Employees/Employee/age:ag";
++            matchStrings.clear();
++            XPathUtil.putValuesForXPathInListUsingSaxon(xmlDoc, xPathQuery, matchStrings, fragment, matchNumber, namespaces);
++            assertEquals("<age:ag xmlns:age=\"http://www.w3.org/2003/01/geo/wgs84_pos#\">29</age:ag>",matchStrings.get(0));
++            assertEquals(4,matchStrings.size());
++            
++            fragment = false;
++            matchStrings.clear();
++            XPathUtil.putValuesForXPathInListUsingSaxon(xmlDoc, xPathQuery, matchStrings, fragment, matchNumber, namespaces);
++            assertEquals("29",matchStrings.get(0));
++            assertEquals(4,matchStrings.size());
++            
++            matchStrings.clear();
++            xPathQuery="regtsgwsdfstgsdf";
++            XPathUtil.putValuesForXPathInListUsingSaxon(xmlDoc, xPathQuery, matchStrings, fragment, matchNumber, namespaces);
++            assertEquals(new ArrayList<String>(),matchStrings);
++            assertEquals(0,matchStrings.size());
++            
++            matchStrings.clear();
++            xPathQuery="//Employees/Employee[1]/age:ag";
++            matchNumber = 555;
++            XPathUtil.putValuesForXPathInListUsingSaxon(xmlDoc, xPathQuery, matchStrings, fragment, matchNumber, namespaces);
++            assertEquals(new ArrayList<String>(),matchStrings);
++            assertEquals(0,matchStrings.size());
++
++        } catch (SaxonApiException e) {
++            if (log.isWarnEnabled()) {
++                log.warn("SaxonApiException while processing ({}). {}", xPathQuery, e.getLocalizedMessage());
++            }
++        }catch(FactoryConfigurationError e) {
++            log.error("FactoryConfigurationError on {}", e);
++            log.warn("FactoryConfigurationError while processing {}", e.getLocalizedMessage());
++        }
++    }
++
++    @Test
++    public void testnamespacesParse() {
++        String namespaces = "donald=duck";
++        List<String[]> test = XPathUtil.namespacesParse(namespaces);
++        assertEquals("donald",test.get(0)[0]);
++        assertEquals("duck",test.get(0)[1]);
++        
++        namespaces = "donald=duck\nmickey=mouse";
++        test = XPathUtil.namespacesParse(namespaces);
++        assertEquals("donald",test.get(0)[0]);
++        assertEquals("duck",test.get(0)[1]);
++        assertEquals("mickey",test.get(1)[0]);
++        assertEquals("mouse",test.get(1)[1]);
++        
++        namespaces = "donald=duck\n\n\nmickey=mouse";
++        test = XPathUtil.namespacesParse(namespaces);
++        assertEquals("mickey",test.get(1)[0]);
++        assertEquals("mouse",test.get(1)[1]);
++        
++        namespaces = "geo=patate\n       \n   \n\nmickey=mouse\n\n      \n";
++        test = XPathUtil.namespacesParse(namespaces);
++        assertEquals("mickey",test.get(1)[0]);
++        assertEquals("mouse",test.get(1)[1]);
++    }
++
+     @Test
+     public void testFormatXmlSimple() {
+         assertThat(XPathUtil.formatXml("<one foo='bar'>Test</one>"),
+@@ -49,6 +142,7 @@
+                         "")));
+     }
+ 
++
+     @Test()
+     public void testFormatXmlInvalid() {
+         PrintStream origErr = System.err;
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1832327)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -5758,6 +5758,58 @@
+ </p>
+ </component>
+ 
++<component name="XPath2 Extractor" index="&sect-num;.8.3"  width="729" height="317" screenshot="xpath2_extractor.png">
++    <description>This test element allows the user to extract value(s) from 
++        structured response - XML or (X)HTML - using XPath2
++        query language.
++   </description>
++   <properties>
++       <property name="Name" required="No">Descriptive name for this element that is shown in the tree.</property>
++       <property name="Apply to:" required="Yes">
++        This is for use with samplers that can generate sub-samples, 
++        e.g. HTTP Sampler with embedded resources, Mail Reader or samples generated by the Transaction Controller.
++        <ul>
++        <li><code>Main sample only</code> - only applies to the main sample</li>
++        <li><code>Sub-samples only</code> - only applies to the sub-samples</li>
++        <li><code>Main sample and sub-samples</code> - applies to both.</li>
++        <li><code>JMeter Variable Name to use</code> - extraction is to be applied to the contents of the named variable</li>
++        </ul>
++        XPath matching is applied to all qualifying samples in turn, and all the matching results will be returned.
++       </property>
++    <property name="Return entire XPath fragment instead of text content?" required="Yes">
++    If selected, the fragment will be returned rather than the text content.<br></br>
++    For example <code>//title</code> would return "<code>&lt;title&gt;Apache JMeter&lt;/title&gt;</code>" rather than "<code>Apache JMeter</code>".<br></br>
++    In this case, <code>//title/text()</code> would return "<code>Apache JMeter</code>".
++    </property>
++    <property name="Name of created variable" required="Yes">The name of the JMeter variable in which to store the result.</property>
++    <property name="XPath Query" required="Yes">Element query in XPath language. Can return more than one match.</property>
++    <property name="Match No. (0 for Random)" required="No">If the XPath Path query leads to many results, you can choose which one(s) to extract as Variables:
++    <ul>
++        <li><code>0</code> : means random</li>
++        <li><code>-1</code> means extract all results (default value), they will be named as <code><em>&lt;variable name&gt;</em>_N</code> (where <code>N</code> goes from 1 to Number of results)</li>
++        <li><code>X</code> : means extract the X<sup>th</sup> result. If this X<sup>th</sup> is greater than number of matches, then nothing is returned. Default value will be used</li>
++    </ul>
++    </property>
++    <property name="Default Value" required="yes">Default value returned when no match found. 
++    It is also returned if the node has no value and the fragment option is not selected.</property>
++    <property name="Namespaces list" required="No">List of namespaces aliases you want to use to parse the document.
++    You must specify them as follow : <code>prefix=namespace</code>. This implementation makes it easier to
++    use namespaces than in the old XPathExtractor version.</property>
++   </properties>
++   <p>To allow for use in a <complink name="ForEach Controller"/>, it works exactly the same as the above XPath Extractor</p>
++   <p>XPath2 Extractor provides some interestings tools such as an improved syntax and much more functions than in it's first version.</p>
++   <p>Here are some exemples : </p>
++   <dl> 
++   <dt><code>abs(/book/page[2])</code></dt>
++     <dd>extracts 2<sup>nd</sup> absolute value of the page from a book</dd>
++   <dt><code>avg(/librarie/book/page)</code></dt>
++     <dd>extracts the average number of page from all the books in the libraries</dd>
++     <dt><code>compare(/book[1]/page[2],/book[2]/page[2])</code></dt>
++    <dd>return Integer value equal 0 to if the 2<sup>nd</sup> page of the first book is equal to the 2<sup>nd</sup> page of the 2<sup>nd</sup> book, else return -1.</dd>
++ </dl>
++ <p>To see more informations about thoses fuctions, please check <a href="http://saxon.sourceforge.net/saxon7.9.1/functions.html">xPath2 functions</a></p>
++</component>
++
+ <component name="XPath Extractor" index="&sect-num;.8.3"  width="729" height="317" screenshot="xpath_extractor.png">
+     <description>This test element allows the user to extract value(s) from 
+         structured response - XML or (X)HTML - using XPath

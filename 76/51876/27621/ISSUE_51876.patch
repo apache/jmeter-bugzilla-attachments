@@ -1,0 +1,321 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 1176814)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -45,6 +45,7 @@
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
++import org.apache.jmeter.gui.Searchable;
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+@@ -84,7 +85,7 @@
+  *
+  */
+ public abstract class HTTPSamplerBase extends AbstractSampler
+-    implements TestListener, ThreadListener, HTTPConstantsInterface {
++    implements TestListener, ThreadListener, HTTPConstantsInterface, Searchable {
+ 
+     private static final long serialVersionUID = 240L;
+ 
+@@ -1708,5 +1709,29 @@
+             return sample(url, method, areFollowingRedirect, depth);
+         }
+     }
++    
++    /**
++     * We search in URL and arguments
++     * TODO Can be enhanced
++     * {@inheritDoc}
++     */
++    public boolean searchContent(String textToSearch) throws Exception {
++        if(getUrl() != null && getUrl().toString().indexOf(textToSearch)>=0){
++            return true;
++        }
++        Arguments arguments = getArguments();
++        if(arguments != null) {
++            for (int i = 0; i < arguments.getArgumentCount(); i++) {
++                Argument argument = arguments.getArgument(i);
++                if(argument.getName().indexOf(textToSearch)>=0) {
++                    return true;
++                }
++                if(argument.getValue().indexOf(textToSearch)>=0) {
++                    return true;
++                }
++            }
++        }
++        return false;
++    }
+ }
+ 
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1176336)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -83,6 +83,7 @@
+     public static final String SUB_TREE_SAVED   = "sub_tree_saved"; // $NON-NLS-1$
+     public static final String TOGGLE           = "toggle"; // $NON-NLS-1$ enable/disable
+     public static final String WHAT_CLASS       = "what_class"; // $NON-NLS-1$
++    public static final String SEARCH_TREE      = "search_tree"; // $NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames(){
+Index: src/core/org/apache/jmeter/gui/action/SearchTreeCommand.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/SearchTreeCommand.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/SearchTreeCommand.java	(revision 0)
+@@ -0,0 +1,88 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Iterator;
++import java.util.Set;
++
++import javax.swing.JOptionPane;
++
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.Searchable;
++import org.apache.jmeter.gui.tree.JMeterTreeModel;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Search nodes for a text
++ * TODO Enhance search dialog to select kind of nodes ....
++ */
++public class SearchTreeCommand extends AbstractAction {
++    private static final Set<String> commands = new HashSet<String>();
++
++    static {
++        commands.add(ActionNames.SEARCH_TREE);
++    }
++
++    /**
++     * @see Command#doAction(ActionEvent)
++     */
++    @Override
++    public void doAction(ActionEvent e) {
++        String wordToSearch = JOptionPane.showInputDialog(
++                GuiPackage.getInstance().getMainFrame(),
++                JMeterUtils.getResString("search_word"),  // $NON-NLS-1$
++                JMeterUtils.getResString("search_tree_title"),  // $NON-NLS-1$
++                JOptionPane.QUESTION_MESSAGE);
++        GuiPackage guiPackage = GuiPackage.getInstance();
++        JMeterTreeModel jMeterTreeModel = guiPackage.getTreeModel();
++        Iterator<?> iter = jMeterTreeModel.getNodesOfType(Searchable.class).iterator();
++        while (iter.hasNext()) {
++            try {
++                JMeterTreeNode jMeterTreeNode = (JMeterTreeNode) iter.next();
++                if (jMeterTreeNode.getUserObject() instanceof Searchable){
++                    Searchable searchable = (Searchable) jMeterTreeNode.getUserObject();
++                    
++                    boolean result = searchable.searchContent(wordToSearch);
++                    if(result) {
++                        jMeterTreeNode.setMarkedBySearch(true);
++                    }
++                    else {
++                        jMeterTreeNode.setMarkedBySearch(false);   
++                    }
++                }
++            } catch (Exception ex) {
++                // FIXME Improve this
++                ex.printStackTrace();
++            }
++        }
++        GuiPackage.getInstance().getMainFrame().repaint();
++    }
++
++
++    /**
++     * @see Command#getActionNames()
++     */
++    @Override
++    public Set<String> getActionNames() {
++        return commands;
++    }
++}
+Index: src/core/org/apache/jmeter/gui/tree/JMeterCellRenderer.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/tree/JMeterCellRenderer.java	(revision 1176336)
++++ src/core/org/apache/jmeter/gui/tree/JMeterCellRenderer.java	(working copy)
+@@ -18,8 +18,10 @@
+ 
+ package org.apache.jmeter.gui.tree;
+ 
++import java.awt.Color;
+ import java.awt.Component;
+ 
++import javax.swing.BorderFactory;
+ import javax.swing.ImageIcon;
+ import javax.swing.JTree;
+ import javax.swing.tree.DefaultTreeCellRenderer;
+@@ -36,10 +38,11 @@
+     @Override
+     public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded,
+             boolean leaf, int row, boolean p_hasFocus) {
+-        super.getTreeCellRendererComponent(tree, ((JMeterTreeNode) value).getName(), sel, expanded, leaf, row,
++        JMeterTreeNode node = (JMeterTreeNode) value;
++        super.getTreeCellRendererComponent(tree, (node).getName(), sel, expanded, leaf, row,
+                 p_hasFocus);
+-        boolean enabled = ((JMeterTreeNode) value).isEnabled();
+-        ImageIcon ic = ((JMeterTreeNode) value).getIcon(enabled);
++        boolean enabled = (node).isEnabled();
++        ImageIcon ic = (node).getIcon(enabled);
+         if (ic != null) {
+             if (enabled) {
+                 setIcon(ic);
+@@ -51,13 +54,21 @@
+             {
+                 // Must therefore set the enabled icon so there is at least some
+                 // icon
+-                ic = ((JMeterTreeNode) value).getIcon();
++                ic = (node).getIcon();
+                 if (ic != null) {
+                     setIcon(ic);
+                 }
+             }
+         }
+         this.setEnabled(enabled);
++        if(node.isMarkedBySearch())
++        {
++            setBorder(BorderFactory.createLineBorder(Color.red));
++        }
++        else
++        {
++            setBorder(null);
++        }
+         return this;
+     }
+ }
+Index: src/core/org/apache/jmeter/gui/Searchable.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/Searchable.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/Searchable.java	(revision 0)
+@@ -0,0 +1,19 @@
++/**
++ * 
++ */
++package org.apache.jmeter.gui;
++
++/**
++ * Interface for nodes that are searchable
++ */
++public interface Searchable {
++
++    /**
++     * 
++     * @param textToSearch
++     * @return true if search was successful
++     */
++    boolean searchContent(String textToSearch)
++        throws Exception ;
++
++}
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(revision 1176336)
++++ src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(working copy)
+@@ -309,6 +309,9 @@
+ 
+         JMenuItem expand = makeMenuItemRes("menu_expand_all", ActionNames.EXPAND_ALL, KeyStrokes.EXPAND_ALL); //$NON-NLS-1$
+         optionsMenu.add(expand);
++        
++        JMenuItem search = makeMenuItemRes("menu_search", ActionNames.SEARCH_TREE); //$NON-NLS-1$
++        optionsMenu.add(search);
+     }
+ 
+     private static class LangMenuHelper{
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1176336)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -29,6 +29,10 @@
+ add_user=Add User
+ add_value=Add Value
+ addtest=Add test
++menu_search=Search in Tree
++search_tree=Search Tree
++search_word=Word to search
++search_tree_title=Search Tree
+ aggregate_graph=Statistical Graphs
+ aggregate_graph_column=Column
+ aggregate_graph_display=Display Graph
+@@ -1030,6 +1034,14 @@
+ web_server_client=Client implementation:
+ web_server_domain=Server Name or IP\:
+ web_server_port=Port Number\:
++web_parameters_lost_message=Switching to RAW Post body will convert parameters\nto raw body and loose parameters table when you select \nanother node or save test plan, do you confirm ?
++web_cannot_convert_parameters_to_raw=Cannot convert parameters to RAW Post body \nbecause one of the parameters has a name
++web_cannot_switch_tab=You cannot switch because data cannot be converted\n to target Tab data, empty data to switch
++confirm=Confirm
++post_as_parameters=Parameters
++post_as_rawbody=RAW Body
++post_body_raw=Raw Post Body
++post_body=Post Body
+ web_testing2_source_ip=Source IP address:
+ web_testing2_title=HTTP Request HTTPClient
+ web_testing_concurrent_download=Use concurrent pool. Size:
+Index: src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java	(revision 1176336)
++++ src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java	(working copy)
+@@ -45,6 +45,8 @@
+ 
+     private final JMeterTreeModel treeModel;
+ 
++    private boolean markedBySearch;
++
+     public JMeterTreeNode() {// Allow serializable test to work
+         // TODO: is the serializable test necessary now that JMeterTreeNode is
+         // no longer a GUI component?
+@@ -64,6 +66,23 @@
+         getTestElement().setProperty(new BooleanProperty(TestElement.ENABLED, enabled));
+         treeModel.nodeChanged(this);
+     }
++    
++    /**
++     * Tag Node as result of a search
++     * @return
++     */
++    public void setMarkedBySearch(boolean tagged) {
++        this.markedBySearch = tagged;
++        treeModel.nodeChanged(this);
++    }
++    
++    /**
++     * Node is markedBySearch by a search
++     * @return
++     */
++    public boolean isMarkedBySearch() {
++        return this.markedBySearch;
++    }
+ 
+     public ImageIcon getIcon() {
+         return getIcon(true);
+@@ -153,4 +172,6 @@
+     public Enumeration<JMeterTreeNode> children() {
+         return super.children();
+     }
++
++
+ }

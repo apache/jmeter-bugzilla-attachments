@@ -1,0 +1,203 @@
+<html xmlns:jmeter="http://jmeter.apache.org/">
+   <title>Schematic view of Test Plan</title>
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+      <style>
+ul.tree, ul.tree ul {
+    list-style-type: none;
+    background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAKAQMAAABPHKYJAAAAA1BMVEWIiIhYZW6zAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH1ggGExMZBky19AAAAAtJREFUCNdjYMAEAAAUAAHlhrBKAAAAAElFTkSuQmCC') repeat-y;
+    margin: 0;
+    padding: 0;
+}
+ul.tree ul {
+    margin-left: 10px;
+}
+ul.tree li {
+    margin: 0;
+    padding: 0 12px;
+    line-height: 20px;
+    background:  url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAUAQMAAACK1e4oAAAABlBMVEUAAwCIiIgd2JB2AAAAAXRSTlMAQObYZgAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9YIBhQIJYVaFGwAAAARSURBVAjXY2hgQIf/GTDFGgDSkwqATqpCHAAAAABJRU5ErkJggg==') no-repeat;
+    color: #369;
+}
+ul.tree li:last-child { 
+    background: #fff url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAUAQMAAACK1e4oAAAABlBMVEUAAwCIiIgd2JB2AAAAAXRSTlMAQObYZgAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9YIBhQIIhs+gc8AAAAQSURBVAjXY2hgQIf/GbAAAKCTBYBUjWvCAAAAAElFTkSuQmCC') no-repeat; 
+}
+</style>
+   </head>
+   <body>
+      <ul class="tree" id="tree">
+         <li><b>load test </b>
+            "StringDocument" 
+            (globalVars:[
+            "SERVERS"
+            =
+            "${__P(cb.servers,127.0.0.1)} "
+            ,
+            "THREADS"
+            =
+            "${__P(cb.threads,1)}"
+            ,
+            "DURATION"
+            =
+            "${__P(cb.duration,600)}"
+            ,
+            "RAMPUP"
+            =
+            "${__P(cb.rampup,50)}"
+            ,
+            "RESULTS_FILE"
+            =
+            "${__P(cb.resultsFile,Baseline)}"
+            ,
+            "RESULTS_PATH"
+            =
+            "${__P(cb.resultpath,results)}"
+            ,
+            "JVMS"
+            =
+            "${__P(cb.jvms,4)}"
+            ,
+            "BUCKET"
+            =
+            "${__P(cb.bucket,TEST_BUCKET)}"
+            ,
+            "PASSWORD"
+            =
+            "${__P(cb.password,Password@1234)}"
+            ,
+            "KEYPREFIX"
+            =
+            "${__P(cb.keyprefix,jmeter)}"
+            ,
+            "EXPIRY"
+            =
+            "${__P(cb.expiry,300)}"
+            ,
+            "TIMEOUT"
+            =
+            "${__P(cb.timeout,5000)}"
+            ,
+            "CONNECTTIMEOUT"
+            =
+            "${__P(cb.connecttimeout,5000)}"
+            ,
+            "KVTIMEOUT"
+            =
+            "${__P(cb.kvtimeout,2500)}"
+            ,
+            "KVENDPOINTS"
+            =
+            "${__P(cb.kvendpoints,4)}"
+            ,
+            "IOPOOLSIZE"
+            =
+            "${__P(cb.iopoolsize,4)}"
+            ,
+            "REQBUFFSIZE"
+            =
+            "${__P(cb.reqbuffsize,2097152)}"
+            ,
+            "RESBUFFSIZE"
+            =
+            "${__P(cb.resbuffsize,2097152)}"
+            ,
+            "CBDEBUG"
+            =
+            "${__P(cb.debug,true)}"
+            ], 
+            executeTearDownThreadsOnShutdown: )
+            <br>
+            &nbsp;&nbsp;&nbsp;Comments: <i style="color:green"></i></li>
+         <li>
+            <ul>
+               <li><b>globalVars</b>
+                  "Environment" 
+                  ([
+                  "RESULTSFILE"
+                  =
+                  "${RESULTS_PATH}/${RESULTS_FILE}_${HOSTNAME}_Threads${THREADS}_Duration${DURATION}_JVMS${JVMS}_${__time(yyyyMMddHHmm)}.jtl"
+                  ,
+                  "ERRORS"
+                  =
+                  "${RESULTS_PATH}/${RESULTS_FILE}_${HOSTNAME}_Threads${THREADS}_Duration${DURATION}_JVMS${JVMS}_${__time(yyyyMMddHHmm)}_errors.xml"
+                  ,
+                  "myValue"
+                  =
+                  "${__RandomString(2500,"abcdefghijklmnopqrstuvwxyz1234567890")}"
+                  ])
+                  </li>
+               <li><b>run</b>
+                  "StringDocument" 
+                  (
+                  threads: "${THREADS}",
+                  loops: "-1",
+                  ramp-up: "${RAMPUP}"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>DebugSampler</b>
+                        "Debug Sampler" <del>(disabled)</del>&nbsp;
+                        </li>
+                     <li><b>JavaSampler</b>
+                        "get-non-existent" </li>
+                     <li>
+                        <ul>
+                           <li><b>extract-regexp </b>
+                              "getStatus" <b>
+                                 using response code
+                                 </b>
+                              (exportedVar: "getStatus"
+                              regex: "",
+                              template: "",
+                              default: "",
+                              matchNr: "")
+                              </li>
+                        </ul>
+                     </li>
+                     <li><b>DebugSampler</b>
+                        "Debug Sampler" <del>(disabled)</del>&nbsp;
+                        </li>
+                     <li><a id="NotFound"><b>if</b></a>
+                        "NotFound" 
+                        (condition: ""${getStatus}" == "204"")
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>JavaSampler</b>
+                              "upsert" </li>
+                        </ul>
+                     </li>
+                     <li><b>JavaSampler</b>
+                        "get-exists" </li>
+                     <li><b>DebugSampler</b>
+                        "Debug Sampler" <del>(disabled)</del>&nbsp;
+                        </li>
+                  </ul>
+               </li>
+               <li><b>write samples</b>
+                  "View Results Tree" <del>(disabled)</del>&nbsp;
+                  </li>
+               <li><b>write samples</b>
+                  "Summary Report" <del>(disabled)</del>&nbsp;
+                  </li>
+               <li><b>write samples</b>
+                  "Results" <del>(disabled)</del>&nbsp;
+                  
+                  (filename: "${RESULTSFILE}",
+                  xml: false,
+                  errorsOnly: false,
+                  successOnly: )
+                  </li>
+               <li><b>write samples</b>
+                  "Errors" 
+                  (filename: "${ERRORS}",
+                  xml: true,
+                  errorsOnly: true,
+                  successOnly: )
+                  </li>
+            </ul>
+         </li>
+      </ul>
+   </body>
+</html>

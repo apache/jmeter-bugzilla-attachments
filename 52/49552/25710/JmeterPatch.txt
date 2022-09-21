@@ -1,0 +1,508 @@
+### Eclipse Workspace Patch 1.0
+#P jmeterSVN
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java	(revision 960199)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java	(working copy)
+@@ -27,7 +27,6 @@
+ import java.io.InputStreamReader;
+ import java.io.PrintStream;
+ import java.util.ArrayList;
+-import java.util.HashMap;
+ import java.util.List;
+ import java.util.Properties;
+ 
+@@ -44,7 +43,10 @@
+ import javax.mail.internet.MimeMessage;
+ import javax.mail.internet.MimeMultipart;
+ 
++import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.services.FileServer;
++import org.apache.jmeter.testelement.property.CollectionProperty;
++import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -75,7 +77,7 @@
+     private List<InternetAddress> receiverTo;
+     private List<InternetAddress> receiverCC;
+     private List<InternetAddress> receiverBCC;
+-    private HashMap<String, String> headers; // Not currently set up
++    private CollectionProperty headerFields; // Not currently set up
+     private String subject = "";
+ 
+     private boolean useAuthentication = false;
+@@ -105,7 +107,7 @@
+      * Standard-Constructor
+      */
+     public SendMailCommand() {
+-        headers = new HashMap<String, String>();
++        headerFields = new CollectionProperty();
+         attachments = new ArrayList<File>();
+     }
+ 
+@@ -189,8 +191,9 @@
+             message.setRecipients(Message.RecipientType.BCC, bcc);
+         }
+ 
+-        for (String key : headers.keySet()) {
+-            message.setHeader(key, headers.get(key));
++        for (int i = 0; i < headerFields.size(); i++) {
++        	Argument argument = (Argument)((TestElementProperty)headerFields.get(i)).getObjectValue();
++            message.setHeader(argument.getName(), argument.getValue());
+         }
+ 
+         message.saveChanges();
+@@ -588,20 +591,20 @@
+     /**
+      * Returns headers for current message - standard getter
+      *
+-     * @return HashMap of headers for current message
++     * @return CollectionProperty of headers for current message
+      */
+-    public HashMap<String, String> getHeaders() {
+-        return headers;
++    public CollectionProperty getHeaders() {
++        return headerFields;
+     }
+ 
+     /**
+      * Sets headers for current message
+      *
+      * @param headers
+-     *            HashMap of headers for current message
++     *            CollectionProperty of headers for current message
+      */
+-    public void setHeaders(HashMap<String, String> headers) {
+-        this.headers = headers;
++    public void setHeaderFields(CollectionProperty headerFields) {
++        this.headerFields = headerFields;
+     }
+ 
+     /**
+@@ -614,19 +617,22 @@
+      *            Value for current header
+      */
+     public void addHeader(String headerName, String headerValue) {
+-        if (this.headers == null)
+-            this.headers = new HashMap<String, String>();
+-        this.headers.put(headerName, headerValue);
++        if (this.headerFields == null){
++            this.headerFields = new CollectionProperty();
++        }
++        Argument argument = new Argument(headerName, headerValue);
++        this.headerFields.addItem(argument);
+     }
+ 
+     /**
+      * Deletes all current headers in HashMap
+      */
+     public void clearHeaders() {
+-        if (this.headers == null)
+-            this.headers = new HashMap<String, String>();
+-        else
+-            this.headers.clear();
++        if (this.headerFields == null){
++            this.headerFields = new CollectionProperty();
++        }else{
++            this.headerFields.clear();
++        }
+     }
+ 
+     /**
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 960465)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -823,6 +823,10 @@
+ smtp_username=Username:
+ smtp_usessl=Use SSL
+ smtp_usestarttls=Use StartTLS
++smtp_header_add=Add Header
++smtp_header_remove=Remove
++smtp_header_name=Header Name
++smtp_header_value=Header Value
+ soap_action=Soap Action
+ soap_data_title=Soap/XML-RPC Data
+ soap_sampler_title=SOAP/XML-RPC Request
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java	(revision 959811)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java	(working copy)
+@@ -25,6 +25,7 @@
+ import org.apache.jmeter.protocol.smtp.sampler.SmtpSampler;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.CollectionProperty;
+ 
+ /**
+  * Class to build superstructure-gui for SMTP-panel, sets/gets value for a JMeter's testElement-object (i.e. also for save/load-purposes).
+@@ -61,9 +62,9 @@
+      */
+     @Override
+     public void configure(TestElement element) {
+-        if (smtpPanel == null)
++        if (smtpPanel == null){
+             smtpPanel = new SmtpPanel();
+-
++        }
+         smtpPanel.setServer(element.getPropertyAsString(SmtpSampler.SERVER));
+         smtpPanel.setPort(element.getPropertyAsString(SmtpSampler.SERVER_PORT));
+         smtpPanel.setMailFrom(element.getPropertyAsString(SmtpSampler.MAIL_FROM));
+@@ -74,6 +75,7 @@
+         smtpPanel.setBody(element.getPropertyAsString(SmtpSampler.MESSAGE));
+         smtpPanel.setSubject(element.getPropertyAsString(SmtpSampler.SUBJECT));
+         smtpPanel.setIncludeTimestamp(element.getPropertyAsBoolean(SmtpSampler.INCLUDE_TIMESTAMP));
++        smtpPanel.setHeaderFields((CollectionProperty)element.getProperty(SmtpSampler.HEADER_FIELDS));
+         smtpPanel.setAttachments(element.getPropertyAsString(SmtpSampler.ATTACH_FILE));
+ 
+         smtpPanel.setUseEmlMessage(element.getPropertyAsBoolean(SmtpSampler.USE_EML));
+@@ -93,8 +95,7 @@
+         smtpPanel.setUsername(element.getPropertyAsString(SmtpSampler.USERNAME));
+         smtpPanel.setPassword(element.getPropertyAsString(SmtpSampler.PASSWORD));
+ 
+-        smtpPanel.setMessageSizeStatistic(element.getPropertyAsBoolean(SmtpSampler.MESSAGE_SIZE_STATS));
+-
++        smtpPanel.setMessageSizeStatistic(element.getPropertyAsBoolean(SmtpSampler.MESSAGE_SIZE_STATS));	
+         super.configure(element);
+     }
+ 
+@@ -117,7 +118,7 @@
+     public void modifyTestElement(TestElement te) {
+         te.clear();
+         super.configureTestElement(te);
+-        te.setProperty(SmtpSampler.SERVER, smtpPanel.getServer());
++    	te.setProperty(SmtpSampler.SERVER, smtpPanel.getServer());
+         te.setProperty(SmtpSampler.SERVER_PORT, smtpPanel.getPort());
+         te.setProperty(SmtpSampler.MAIL_FROM, smtpPanel.getMailFrom());
+         te.setProperty(SmtpSampler.RECEIVER_TO, smtpPanel.getReceiverTo());
+@@ -143,6 +144,7 @@
+         te.setProperty(SmtpSampler.USERNAME, smtpPanel.getUsername());
+ 
+         te.setProperty(SmtpSampler.MESSAGE_SIZE_STATS, Boolean.toString(smtpPanel.isMessageSizeStatistics()));
++        te.setProperty(smtpPanel.getHeaderFields());
+     }
+ 
+     /**
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(revision 960600)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(working copy)
+@@ -24,6 +24,9 @@
+ import java.awt.event.ActionListener;
+ import java.awt.event.ItemEvent;
+ import java.awt.event.ItemListener;
++import java.util.HashMap;
++import java.util.Iterator;
++import java.util.Map;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.ButtonGroup;
+@@ -36,7 +39,10 @@
+ import javax.swing.JTextArea;
+ import javax.swing.JTextField;
+ 
++import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.protocol.smtp.sampler.SmtpSampler;
++import org.apache.jmeter.testelement.property.CollectionProperty;
++import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+@@ -92,6 +98,14 @@
+     private JCheckBox cbIncludeTimestamp;
+     private JCheckBox cbMessageSizeStats;
+     private JCheckBox cbUseEmlMessage;
++    
++    private JPanel headerFieldsPanel;
++    private JButton addHeaderFieldButton;
++    private JLabel headerFieldName;
++    private JLabel headerFieldValue;
++    private Map<JTextField, JTextField> headerFields = new HashMap<JTextField, JTextField>();
++    private Map<JButton,JTextField> removeButtons = new HashMap<JButton, JTextField>();
++    private int headerGridY = 0;
+ 
+     /**
+      * Creates new form SmtpPanel, standard constructer. Calls
+@@ -522,8 +536,34 @@
+     public void setUsername(String username) {
+         tfAuthUsername.setText(username);
+     }
++    
++    public CollectionProperty getHeaderFields() {
++    	CollectionProperty result = new CollectionProperty();
++    	result.setName(SmtpSampler.HEADER_FIELDS);
++		for (Iterator<JTextField> iterator = headerFields.keySet().iterator(); iterator.hasNext();) {
++			JTextField headerName = iterator.next();
++			String name = headerName.getText();
++			String value = headerFields.get(headerName).getText();
++			Argument argument = new Argument(name, value);
++			result.addItem(argument);
++		}
++    	return result;
++	}
+ 
+-    /**
++    public void setHeaderFields(CollectionProperty fields) {
++    	clearHeaderFields();
++    	for (int i = 0; i < fields.size(); i++) {
++    		Argument argument = (Argument)((TestElementProperty)fields.get(i)).getObjectValue();
++			String name = argument.getName();
++			JButton removeButton = addHeaderActionPerformed(null);
++			JTextField nameTF = removeButtons.get(removeButton);
++			nameTF.setText(name);
++			JTextField valueTF = headerFields.get(nameTF);
++			valueTF.setText(argument.getValue());			
++		}
++    	validate();
++	}
++	/**
+      * Main method of class, builds all gui-components for SMTP-sampler.
+      */
+     private void initComponents() {
+@@ -600,6 +640,7 @@
+         gridBagConstraints.insets = new java.awt.Insets(2, 2, 2, 2);
+         gridBagConstraints.fill = GridBagConstraints.NONE;
+         gridBagConstraints.anchor = GridBagConstraints.WEST;
++        gridBagConstraints.weightx = 0.5;
+ 
+         /*
+          * Server Settings
+@@ -840,29 +881,68 @@
+ 
+         gridBagConstraints.gridx = 1;
+         gridBagConstraints.gridy = 0;
++        gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
+         panelMessageSettings.add(tfSubject, gridBagConstraints);
+ 
+         cbIncludeTimestamp.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+         cbIncludeTimestamp.setMargin(new java.awt.Insets(0, 0, 0, 0));
+         gridBagConstraints.gridx = 2;
+         gridBagConstraints.gridy = 0;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(cbIncludeTimestamp, gridBagConstraints);
++        
++        /*
++         * Add the header panel
++         */
++        
++        addHeaderFieldButton = new JButton(JMeterUtils.getResString("smtp_header_add"));
++        addHeaderFieldButton.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent evt) {
++                addHeaderActionPerformed(evt);
++            }
++        });
++        headerFieldName = new JLabel(JMeterUtils.getResString("smtp_header_name"));
++        headerFieldValue = new JLabel(JMeterUtils.getResString("smtp_header_value"));
++        headerFieldsPanel = new JPanel(new GridBagLayout());
++        
++        headerFieldName.setVisible(false);
++        headerFieldValue.setVisible(false);        
+ 
++        headerGridY=0;
+         gridBagConstraints.gridx = 0;
+-        gridBagConstraints.gridy = 1;
++        gridBagConstraints.gridy = headerGridY++;
++        headerFieldsPanel.add(addHeaderFieldButton, gridBagConstraints);
++        
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = headerGridY;
++        headerFieldsPanel.add(headerFieldName, gridBagConstraints);
++        
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = headerGridY++;
++        headerFieldsPanel.add(headerFieldValue, gridBagConstraints);
++        
++        gridBagConstraintsMain.gridx = 1;
++        gridBagConstraintsMain.gridy = 1;
++        panelMessageSettings.add(headerFieldsPanel, gridBagConstraintsMain);        
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 2;
+         panelMessageSettings.add(jlMessage, gridBagConstraints);
+ 
+         taMessage.setBorder(BorderFactory.createBevelBorder(1));
+         gridBagConstraints.gridx = 1;
+-        gridBagConstraints.gridy = 1;
++        gridBagConstraints.gridy = 2;
++        gridBagConstraints.fill = GridBagConstraints.BOTH;
+         panelMessageSettings.add(taMessage, gridBagConstraints);
+ 
+         gridBagConstraints.gridx = 0;
+-        gridBagConstraints.gridy = 2;
++        gridBagConstraints.gridy = 3;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(jlAttachFile, gridBagConstraints);
+ 
+         gridBagConstraints.gridx = 1;
+-        gridBagConstraints.gridy = 2;
++        gridBagConstraints.gridy = 3;
++        gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
+         panelMessageSettings.add(tfAttachment, gridBagConstraints);
+         tfAttachment.setToolTipText(JMeterUtils.getResString("smtp_attach_file_tooltip")); // $NON-NLS-1$
+ 
+@@ -873,7 +953,8 @@
+         });
+ 
+         gridBagConstraints.gridx = 2;
+-        gridBagConstraints.gridy = 2;
++        gridBagConstraints.gridy = 3;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(browseButton, gridBagConstraints);
+ 
+         cbUseEmlMessage.setSelected(false);
+@@ -884,11 +965,13 @@
+         });
+ 
+         gridBagConstraints.gridx = 0;
+-        gridBagConstraints.gridy = 3;
++        gridBagConstraints.gridy = 4;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(cbUseEmlMessage, gridBagConstraints);
+ 
+         gridBagConstraints.gridx = 1;
+-        gridBagConstraints.gridy = 3;
++        gridBagConstraints.gridy = 4;
++        gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
+         tfEmlMessage.setEnabled(false);
+         panelMessageSettings.add(tfEmlMessage, gridBagConstraints);
+ 
+@@ -900,11 +983,12 @@
+         emlBrowseButton.setEnabled(false);
+ 
+         gridBagConstraints.gridx = 2;
+-        gridBagConstraints.gridy = 3;
++        gridBagConstraints.gridy = 4;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(emlBrowseButton, gridBagConstraints);
+ 
+         gridBagConstraintsMain.gridx = 0;
+-        gridBagConstraintsMain.gridy = 4;
++        gridBagConstraintsMain.gridy = 5;
+         add(panelMessageSettings, gridBagConstraintsMain);
+ 
+         /*
+@@ -924,7 +1008,7 @@
+         panelAdditionalSettings.add(cbMessageSizeStats, gridBagConstraints);
+ 
+         gridBagConstraintsMain.gridx = 0;
+-        gridBagConstraintsMain.gridy = 5;
++        gridBagConstraintsMain.gridy = 6;
+         add(panelAdditionalSettings, gridBagConstraintsMain);
+     }
+ 
+@@ -1113,6 +1197,83 @@
+         tfSubject.setText("");
+         tfTrustStoreToUse.setText("");
+         rbUseNone.setSelected(true);
++   		clearHeaderFields();
++		validate();        
+     }
+ 
++	private void clearHeaderFields() {
++		headerFieldName.setVisible(false);
++   		headerFieldValue.setVisible(false);
++
++		for (Iterator<JButton> iterator = removeButtons.keySet().iterator(); iterator.hasNext();) {
++			JButton removeButton = iterator.next();
++	   		JTextField headerName = removeButtons.get(removeButton);
++			JTextField headerValue = headerFields.get(headerName);
++			
++			headerFieldsPanel.remove(headerName);
++			headerFieldsPanel.remove(headerValue);
++			headerFieldsPanel.remove(removeButton);	
++			headerFields.remove(headerName);
++			iterator.remove();
++		}
++	}
++    
++    private JButton addHeaderActionPerformed(ActionEvent evt){
++		if(headerFields.size() == 0){
++    		headerFieldName.setVisible(true);
++    		headerFieldValue.setVisible(true);
++        }
++    	JTextField nameTF = new JTextField();
++    	JTextField valueTF = new JTextField();    	
++    	JButton removeButton = new JButton(JMeterUtils.getResString("smtp_header_remove"));
++    	headerFields.put(nameTF, valueTF);
++    	removeButtons.put(removeButton, nameTF);
++    	
++    	removeButton.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent evt) {
++            	removeHeaderActionPerformed(evt);
++            }
++        });
++    	
++    	GridBagConstraints gridBagConstraints = new GridBagConstraints();
++    	gridBagConstraints.insets = new java.awt.Insets(2, 2, 2, 2);
++    	gridBagConstraints.weightx = 0.5;
++    	gridBagConstraints.anchor = GridBagConstraints.WEST;
++    	
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = headerGridY;
++        gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
++        headerFieldsPanel.add(nameTF, gridBagConstraints);
++        
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = headerGridY;
++        gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
++        headerFieldsPanel.add(valueTF, gridBagConstraints);
++        
++        gridBagConstraints.gridx = 2;
++        gridBagConstraints.gridy = headerGridY++;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
++        headerFieldsPanel.add(removeButton, gridBagConstraints);
++        
++        validate();
++        return removeButton;
++    }
++    
++    private void removeHeaderActionPerformed(ActionEvent evt){
++    	final Object source = evt.getSource();
++    	if(source != null && source instanceof JButton){
++			if(headerFields.size() == 1){
++	    		headerFieldName.setVisible(false);
++	    		headerFieldValue.setVisible(false);
++	        }
++			JTextField nameTF = removeButtons.get(source);
++			JTextField valueTF = headerFields.get(nameTF);
++			headerFields.remove(nameTF);
++			
++			headerFieldsPanel.remove(nameTF);
++			headerFieldsPanel.remove(valueTF);
++			headerFieldsPanel.remove((JButton)source);
++			validate();
++		}
++    }
+ }
+\ No newline at end of file
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(revision 960199)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(working copy)
+@@ -36,6 +36,7 @@
+ import org.apache.jmeter.samplers.AbstractSampler;
+ import org.apache.jmeter.samplers.Entry;
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -68,6 +69,7 @@
+     public final static String INCLUDE_TIMESTAMP    = "SMTPSampler.include_timestamp"; // $NON-NLS-1$
+     public final static String ATTACH_FILE          = "SMTPSampler.attachFile"; // $NON-NLS-1$
+     public final static String MESSAGE_SIZE_STATS   = "SMTPSampler.messageSizeStatistics"; // $NON-NLS-1$
++    public static final String HEADER_FIELDS        = "SMTPSampler.headerFields"; // $NON-NLS-1$
+ 
+     public final static String USE_SSL              = "SMTPSampler.useSSL"; // $NON-NLS-1$
+     public final static String USE_STARTTLS         = "SMTPSampler.useStartTLS"; // $NON-NLS-1$
+@@ -153,7 +155,8 @@
+ 
+             // needed for measuring sending time
+             instance.setSynchronousMode(true);
+-
++            
++            instance.setHeaderFields((CollectionProperty)getProperty(SmtpSampler.HEADER_FIELDS));
+             message = instance.prepareMessage();
+ 
+             if (getPropertyAsBoolean(MESSAGE_SIZE_STATS)) {

@@ -1,0 +1,101 @@
+Index: src/core/org/apache/jmeter/JMeter.java
+===================================================================
+--- src/core/org/apache/jmeter/JMeter.java	(revision 1550536)
++++ src/core/org/apache/jmeter/JMeter.java	(working copy)
+@@ -82,6 +82,7 @@
+ import org.apache.jmeter.util.BeanShellServer;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
++import org.apache.jorphan.collections.HashTreeTraverser;
+ import org.apache.jorphan.collections.SearchByClass;
+ import org.apache.jorphan.gui.ComponentUtil;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -859,6 +860,7 @@
+                         if (subTree != null) {
+                             HashTree replacementTree = rc.getReplacementSubTree();
+                             if (replacementTree != null) {
++                                checkForInfiniteRecursivity(replacementTree, rc);
+                                 convertSubTree(replacementTree);
+                                 tree.replace(item, rc);
+                                 tree.set(rc, replacementTree);
+@@ -884,6 +886,7 @@
+                         if (subTree != null) {
+                             HashTree replacementTree = rc.getReplacementSubTree();
+                             if (replacementTree != null) {
++                                checkForInfiniteRecursivity(replacementTree, rc);
+                                 convertSubTree(replacementTree);
+                                 tree.replace(item, rc);
+                                 tree.set(rc, replacementTree);
+@@ -900,6 +903,72 @@
+             }
+         }
+     }
++    
++    /**
++     * @since 2.10.1
++     */
++    private static final class InfiniteRecursivityDetector implements HashTreeTraverser {
++        boolean infiniteRecursivity;
++        private ReplaceableController replaceableController;
++
++        /**
++         * 
++         * @param nodeToFind
++         */
++        public InfiniteRecursivityDetector(ReplaceableController replaceableController) {
++            this.replaceableController = replaceableController;
++        }
++        
++        /**
++         * @return boolean
++         */
++        public boolean getInfiniteRecursivity() {
++            return infiniteRecursivity;
++        }
++        
++        @Override
++        public void subtractNode() {
++            // noop   
++        }
++        
++        @Override
++        public void processPath() {
++            // noop
++        }
++        
++        @Override
++        public void addNode(Object node, HashTree subTree) {
++            if(infiniteRecursivity== true) {
++                return;
++            }
++            if(node instanceof JMeterTreeNode) {
++                Object uo = ((JMeterTreeNode)node).getUserObject();
++                if(uo==replaceableController) {
++                    this.infiniteRecursivity = true;
++                }
++            }
++            if(node == replaceableController) {
++                this.infiniteRecursivity = true;
++            }            
++        }
++    }
++
++    /**
++     * Checks that replacementTree (built after replacement of ReplaceableController) does 
++     * not still contain ReplaceableController which would lead to infinite recursivity 
++     * see BUG 55375
++     * @param replacementTree {@link HashTreeTraverser}
++     * @param replaceableController {@link ReplaceableController}
++     */
++    private static void checkForInfiniteRecursivity(HashTree replacementTree,
++            final ReplaceableController replaceableController) {
++        InfiniteRecursivityDetector hashTreeTraverser = new InfiniteRecursivityDetector(replaceableController);
++        replacementTree.traverse(hashTreeTraverser);
++        if(hashTreeTraverser.getInfiniteRecursivity()) {
++            throw new IllegalStateException(
++                    "Recursivity detected in tree:"+((TestElement)replaceableController).getName());            
++        }
++    }
+ 
+     /**
+      * Ensures the {@link ReplaceableController} is loaded

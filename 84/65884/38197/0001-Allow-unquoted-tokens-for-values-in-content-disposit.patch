@@ -1,0 +1,62 @@
+From 7645e05e433e6af15fb1ef67fb1c7c28db6c9f5c Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Wed, 16 Feb 2022 21:54:44 +0100
+Subject: [PATCH] Allow unquoted tokens for values in content-disposition
+ header
+
+---
+ .../http/config/MultipartUrlConfig.java       | 30 +++++++++++--------
+ 1 file changed, 17 insertions(+), 13 deletions(-)
+
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
+index e420fdefbd..18275a49f5 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
+@@ -20,6 +20,8 @@ package org.apache.jmeter.protocol.http.config;
+ import java.io.Serializable;
+ 
+ import org.apache.commons.lang3.StringUtils;
++import org.apache.http.HeaderElement;
++import org.apache.http.message.BasicHeaderValueParser;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+ import org.apache.jmeter.protocol.http.util.HTTPFileArgs;
+@@ -129,20 +131,22 @@ public class MultipartUrlConfig implements Serializable {
+             // Check if it is form data
+             if (contentDisposition != null && contentDisposition.contains("form-data")) { //$NON-NLS-1$
+                 // Get the form field name
+-                final String namePrefix = "name=\""; //$NON-NLS-1$
+-                int index = contentDisposition.indexOf(namePrefix) + namePrefix.length();
+-                String name = contentDisposition.substring(index, contentDisposition.indexOf('\"', index)); //$NON-NLS-1$
+-
+-                // Check if it is a file being uploaded
+-                final String filenamePrefix = "filename=\""; //$NON-NLS-1$
+-                if (contentDisposition.contains(filenamePrefix)) {
+-                    // Get the filename
+-                    index = contentDisposition.indexOf(filenamePrefix) + filenamePrefix.length();
+-                    String path = contentDisposition.substring(index, contentDisposition.indexOf('\"', index)); //$NON-NLS-1$
+-                    if (path != null && path.length() > 0) {
+-                        // Set the values retrieved for the file upload
+-                        files.addHTTPFileArg(path, name, contentType);
++                HeaderElement[] headerElements = BasicHeaderValueParser.parseElements(
++                        contentDisposition,
++                        BasicHeaderValueParser.INSTANCE);
++                String name = "";
++                String path = null;
++                for (HeaderElement element: headerElements) {
++                    String elementName = element.getName();
++                    if ("name".equals(elementName)) {
++                        name = element.getValue();
++                    } else if ("filename".equals(elementName)) {
++                        path = element.getValue();
+                     }
++                }
++                if (path != null && !path.isEmpty()) {
++                    // Set the values retrieved for the file upload
++                    files.addHTTPFileArg(path, name, contentType);
+                 } else {
+                     // Find the first empty line of the multipart, it signals end of headers for multipart
+                     // Agents are supposed to terminate lines in CRLF:
+-- 
+2.25.1
+

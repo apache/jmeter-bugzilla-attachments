@@ -1,0 +1,123 @@
+Index: src/core/org/apache/jmeter/testelement/TestMergeable.java
+===================================================================
+--- src/core/org/apache/jmeter/testelement/TestMergeable.java	(revision 0)
++++ src/core/org/apache/jmeter/testelement/TestMergeable.java	(revision 0)
+@@ -0,0 +1,12 @@
++package org.apache.jmeter.testelement;
++
++public interface TestMergeable {
++
++	/**
++	 * Merge an object's attributes with a TestElement's attributes.
++	 * @param element The object to be merged with
++	 * @param preferLocalValue When both objects have a value for the 
++	 *        same attribute, this flag determines which value is preferred. 
++	 */
++	public TestElement merge(TestElement element, boolean preferLocalValues);	
++}
+
+Property changes on: src\core\org\apache\jmeter\testelement\TestMergeable.java
+___________________________________________________________________
+Added: svn:keywords
+   + "Date Revision Author HeadURL Id"
+Added: svn:eol-style
+   + native
+
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/HeaderManager.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/HeaderManager.java	(revision 679216)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/HeaderManager.java	(working copy)
+@@ -30,6 +30,8 @@
+ import java.util.Vector;
+ 
+ import org.apache.jmeter.config.ConfigTestElement;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.TestMergeable;
+ import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.util.JOrphanUtils;
+@@ -40,7 +42,7 @@
+  *
+  * @version $Revision$
+  */
+-public class HeaderManager extends ConfigTestElement implements Serializable {
++public class HeaderManager extends ConfigTestElement implements TestMergeable, Serializable {
+ 
+     public static final String HEADERS = "HeaderManager.headers";// $NON-NLS-1$
+ 
+@@ -252,4 +254,55 @@
+     public void setSOAPHeader(Object header) {
+         this.SOAPHeader = header;
+     }
++
++	/**
++	 * Merge the attributes with a another HeaderManager's attributes.
++	 * @param element The object to be merged with
++	 * @param preferLocalValue When both objects have a value for the 
++	 *        same attribute, this flag determines which value is preferred. 
++	 */
++	public HeaderManager merge(TestElement element, boolean preferLocalValues) {
++		if (!(element instanceof HeaderManager)) {
++			throw new IllegalArgumentException("Cannot merge type:" + this.getClass().getName() + " with type:" + element.getClass().getName());
++		}
++		
++		// start off with a merged object as a copy of the local object
++		HeaderManager merged = (HeaderManager)this.clone();
++		
++		HeaderManager other = (HeaderManager)element;
++		// iterate thru each of the other headers
++		for (int i = 0; i < other.getHeaders().size(); i++) {
++			Header otherHeader = other.get(i);
++			boolean found = false;
++			// find the same property in the local headers
++			for (int j = 0; j < merged.getHeaders().size(); j++) {
++				Header mergedHeader = merged.get(j);
++				if (mergedHeader.getName().equalsIgnoreCase(otherHeader.getName())) {
++					// we have a match
++					found = true;
++					if (!preferLocalValues) {
++						// prefer values from the other object
++						if ( (otherHeader.getValue() == null) || (otherHeader.getValue().length() == 0) ) {
++							// the other object has an empty value, so remove this value from the merged object
++							merged.remove(j);
++						} else {
++							// use the other object's value
++							mergedHeader.setValue(otherHeader.getValue());
++						}
++					}
++					// break out of the inner loop
++					break;
++				}
++			}
++			if (!found) {
++				// the other object has a new value to be added to the merged
++				merged.add(otherHeader);
++			}
++		}
++		
++		// finally, merge the names so its clear they've been merged
++		merged.setName(merged.getName() + ":" + other.getName());
++		
++		return merged;
++	}
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 679216)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -727,7 +727,14 @@
+     public void setHeaderManager(HeaderManager value) {
+         HeaderManager mgr = getHeaderManager();
+         if (mgr != null) {
+-            log.warn("Existing HeaderManager " + mgr.getName() + " superseded by " + value.getName());
++            log.warn("Existing HeaderManager '" + mgr.getName() + "' merged with '" + value.getName() + "'");
++            value = mgr.merge(value, true);
++            if (log.isDebugEnabled()) {
++            	log.debug("HeaderManager merged: " + value.getName());
++            	for (int i=0; i < value.getHeaders().size(); i++) {
++            		log.debug("    " + value.getHeader(i).getName() + "=" + value.getHeader(i).getValue());
++            	}
++            }
+         }
+         setProperty(new TestElementProperty(HEADER_MANAGER, value));
+     }

@@ -1,0 +1,192 @@
+From 1af91e3aec03b6f7fbad015d75efa0541bf0bd75 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 26 Feb 2017 13:10:05 +0100
+Subject: [PATCH] Use Jsoup for HTMLAssertion, if configured.
+
+---
+ .../apache/jmeter/assertions/HTMLAssertion.java    | 45 ++++++++++++++++++++++
+ .../jmeter/assertions/gui/HTMLAssertionGui.java    | 30 ++++++++++++++-
+ 2 files changed, 74 insertions(+), 1 deletion(-)
+
+diff --git a/src/components/org/apache/jmeter/assertions/HTMLAssertion.java b/src/components/org/apache/jmeter/assertions/HTMLAssertion.java
+index 6a9d662..3f9f276 100644
+--- a/src/components/org/apache/jmeter/assertions/HTMLAssertion.java
++++ b/src/components/org/apache/jmeter/assertions/HTMLAssertion.java
+@@ -27,6 +27,7 @@ import java.io.Serializable;
+ import java.io.StringWriter;
+ import java.nio.charset.StandardCharsets;
+ import java.text.MessageFormat;
++import java.util.List;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+@@ -34,6 +35,8 @@ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.LongProperty;
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.jsoup.parser.ParseError;
++import org.jsoup.parser.Parser;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ import org.w3c.tidy.Node;
+@@ -62,6 +65,8 @@ public class HTMLAssertion extends AbstractTestElement implements Serializable,
+ 
+     public static final String FILENAME_KEY = "html_assertion_filename"; //$NON-NLS-1$
+ 
++    public static final String USE_JSOUP = "html_assertion_use_jsoup";
++
+     /**
+      * 
+      */
+@@ -87,6 +92,15 @@ public class HTMLAssertion extends AbstractTestElement implements Serializable,
+ 
+         result.setFailure(false);
+ 
++        if (getUseJsoup()) {
++            return checkWithJsoup(inResponse, result);
++        } else {
++            return checkWithJTidy(inResponse, result);
++        }
++    }
++
++    private AssertionResult checkWithJTidy(SampleResult inResponse,
++            AssertionResult result) {
+         // create parser
+         Tidy tidy = null;
+         try {
+@@ -167,6 +181,29 @@ public class HTMLAssertion extends AbstractTestElement implements Serializable,
+         return result;
+     }
+ 
++    private AssertionResult checkWithJsoup(SampleResult inResponse,
++            AssertionResult result) {
++        try {
++            Parser parser = Parser.htmlParser();
++            parser.setTrackErrors((int) Math.max(getErrorThreshold(), getWarningThreshold()));
++            parser.parseInput(inResponse.getResponseDataAsString(), "");
++            final List<ParseError> errors = parser.getErrors();
++            log.debug("HTML Errors: {}", errors);
++            if (!errors.isEmpty() && errors.size() > Math
++                    .min(getWarningThreshold(), getErrorThreshold())) {
++                result.setFailure(true);
++                result.setFailureMessage(String.format(
++                        "Found at least %d errors while parsing HTML Document: %s",
++                        errors.size(), errors));
++            }
++        } catch (Exception e) {
++            result.setFailure(true);
++            result.setFailureMessage("Can't parse document as HTML: " + e.getMessage());
++            log.warn("Problem parsing the document as HTML", e);
++        }
++        return result;
++    }
++
+     /**
+      * Writes the output of tidy to file.
+      * 
+@@ -352,4 +389,12 @@ public class HTMLAssertion extends AbstractTestElement implements Serializable,
+     public void setFilename(String inName) {
+         setProperty(FILENAME_KEY, inName);
+     }
++
++    public void setUseJsoup(boolean useJsoup) {
++        setProperty(USE_JSOUP, useJsoup, false);
++    }
++
++    public boolean getUseJsoup() {
++        return getPropertyAsBoolean(USE_JSOUP);
++    }
+ }
+diff --git a/src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java b/src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java
+index b35b496..ee5b6ec 100644
+--- a/src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java
++++ b/src/components/org/apache/jmeter/assertions/gui/HTMLAssertionGui.java
+@@ -28,6 +28,7 @@ import javax.swing.BorderFactory;
+ import javax.swing.ButtonGroup;
+ import javax.swing.JCheckBox;
+ import javax.swing.JComboBox;
++import javax.swing.JComponent;
+ import javax.swing.JLabel;
+ import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+@@ -74,6 +75,10 @@ public class HTMLAssertionGui extends AbstractAssertionGui implements KeyListene
+ 
+     private FilePanel filePanel = null;
+ 
++    private JCheckBox useJsoup = null;
++
++    private VerticalPanel formatPanel;
++
+     /**
+      * The constructor.
+      */
+@@ -144,6 +149,8 @@ public class HTMLAssertionGui extends AbstractAssertionGui implements KeyListene
+             ((HTMLAssertion) inElement).setXML();
+         }
+         ((HTMLAssertion) inElement).setFilename(filePanel.getFilename());
++
++        ((HTMLAssertion) inElement).setUseJsoup(useJsoup.isSelected());
+     }
+ 
+     /**
+@@ -162,6 +169,7 @@ public class HTMLAssertionGui extends AbstractAssertionGui implements KeyListene
+         warningThresholdField.setText("0"); //$NON-NLS-1$
+         filePanel.setFilename(""); //$NON-NLS-1$
+         errorsOnly.setSelected(false);
++        useJsoup.setSelected(false);
+     }
+ 
+     /**
+@@ -192,6 +200,8 @@ public class HTMLAssertionGui extends AbstractAssertionGui implements KeyListene
+             warningThresholdField.setEditable(true);
+         }
+         filePanel.setFilename(lAssertion.getFilename());
++        useJsoup.setSelected(lAssertion.getUseJsoup());
++        setJsoupDependentFlags();
+     }
+ 
+     /**
+@@ -210,6 +220,10 @@ public class HTMLAssertionGui extends AbstractAssertionGui implements KeyListene
+         VerticalPanel assertionPanel = new VerticalPanel();
+         assertionPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), "Tidy Settings"));
+ 
++        useJsoup = new JCheckBox("Use Jsoup");
++        useJsoup.addActionListener(this);
++        assertionPanel.add(useJsoup);
++
+         // doctype
+         HorizontalPanel docTypePanel = new HorizontalPanel();
+         docTypeBox = new JComboBox<>(new String[] { "omit", "auto", "strict", "loose" });
+@@ -220,7 +234,7 @@ public class HTMLAssertionGui extends AbstractAssertionGui implements KeyListene
+         assertionPanel.add(docTypePanel);
+ 
+         // format (HTML, XHTML, XML)
+-        VerticalPanel formatPanel = new VerticalPanel();
++        formatPanel = new VerticalPanel();
+         formatPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), "Format"));
+         htmlRadioButton = new JRadioButton("HTML", true); //$NON-NLS-1$
+         xhtmlRadioButton = new JRadioButton("XHTML", false); //$NON-NLS-1$
+@@ -275,6 +289,20 @@ public class HTMLAssertionGui extends AbstractAssertionGui implements KeyListene
+             warningThresholdField.setEnabled(true);
+             warningThresholdField.setEditable(true);
+         }
++        setJsoupDependentFlags();
++    }
++
++    private void setJsoupDependentFlags() {
++        boolean jsoupFlag = !useJsoup.isSelected();
++        docTypeBox.setEditable(jsoupFlag);
++        docTypeBox.setEnabled(jsoupFlag);
++        filePanel.setEnabled(jsoupFlag);
++        filePanel.enableFile(jsoupFlag);
++        formatPanel.setEnabled(jsoupFlag);
++        htmlRadioButton.setEnabled(jsoupFlag);
++        xhtmlRadioButton.setEnabled(jsoupFlag);
++        xmlRadioButton.setEnabled(jsoupFlag);
++        errorsOnly.setEnabled(jsoupFlag);
+     }
+ 
+     @Override
+-- 
+2.7.4
+

@@ -1,0 +1,592 @@
+From e5ab8f2486cc3dc52dc85e314f6ce84d551d2b5e Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 19 Jun 2016 16:05:45 +0200
+Subject: [PATCH] Use StandardCharsets instead of String constants when
+ possible.
+
+---
+ .../apache/jmeter/assertions/HTMLAssertion.java    |  5 ++--
+ .../apache/jmeter/assertions/XPathAssertion.java   |  5 ++--
+ .../apache/jmeter/extractor/XPathExtractor.java    |  6 ++---
+ .../apache/jmeter/visualizers/RenderAsXPath.java   |  6 ++---
+ .../backend/graphite/GraphiteMetricsSender.java    |  4 ++-
+ .../apache/jmeter/reporters/ResultCollector.java   |  3 ++-
+ .../org/apache/jmeter/samplers/SampleResult.java   |  3 ++-
+ .../org/apache/jmeter/save/CSVSaveService.java     |  3 ++-
+ .../jmeter/save/converters/ConversionHelp.java     |  3 ++-
+ src/core/org/apache/jmeter/util/XPathUtil.java     |  5 ++--
+ .../org/apache/jmeter/functions/UrlDecode.java     |  3 ++-
+ .../org/apache/jmeter/functions/UrlEncode.java     |  3 ++-
+ .../protocol/http/control/HttpMirrorThread.java    |  3 ++-
+ .../protocol/http/parser/HtmlParsingUtils.java     | 29 +++++++++++-----------
+ .../protocol/http/parser/JTidyHTMLParser.java      |  3 ++-
+ .../jmeter/protocol/http/sampler/PostWriter.java   |  3 ++-
+ .../jmeter/protocol/http/util/ConversionUtils.java |  3 ++-
+ .../jmeter/protocol/http/util/EncoderCache.java    |  5 ++--
+ .../protocol/http/util/accesslog/TCLogParser.java  |  3 ++-
+ .../protocol/http/visualizers/RequestViewHTTP.java |  3 ++-
+ .../protocol/jdbc/AbstractJDBCTestElement.java     |  5 ++--
+ .../protocol/ldap/sampler/LDAPExtSampler.java      | 11 ++------
+ 22 files changed, 64 insertions(+), 53 deletions(-)
+
+diff --git a/src/components/org/apache/jmeter/assertions/HTMLAssertion.java b/src/components/org/apache/jmeter/assertions/HTMLAssertion.java
+index cf90a18..3032678 100644
+--- a/src/components/org/apache/jmeter/assertions/HTMLAssertion.java
++++ b/src/components/org/apache/jmeter/assertions/HTMLAssertion.java
+@@ -25,6 +25,7 @@ import java.io.IOException;
+ import java.io.PrintWriter;
+ import java.io.Serializable;
+ import java.io.StringWriter;
++import java.nio.charset.StandardCharsets;
+ import java.text.MessageFormat;
+ 
+ import org.apache.commons.io.IOUtils;
+@@ -101,8 +102,8 @@ public class HTMLAssertion extends AbstractTestElement implements Serializable,
+                 log.debug("xml mode: " + isXML());
+             }
+             tidy = new Tidy();
+-            tidy.setInputEncoding("UTF8");
+-            tidy.setOutputEncoding("UTF8");
++            tidy.setInputEncoding(StandardCharsets.UTF_8.name());
++            tidy.setOutputEncoding(StandardCharsets.UTF_8.name());
+             tidy.setQuiet(false);
+             tidy.setShowWarnings(true);
+             tidy.setOnlyErrors(isErrorsOnly());
+diff --git a/src/components/org/apache/jmeter/assertions/XPathAssertion.java b/src/components/org/apache/jmeter/assertions/XPathAssertion.java
+index c841f39..a760707 100644
+--- a/src/components/org/apache/jmeter/assertions/XPathAssertion.java
++++ b/src/components/org/apache/jmeter/assertions/XPathAssertion.java
+@@ -21,6 +21,7 @@ package org.apache.jmeter.assertions;
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
+ import java.io.Serializable;
++import java.nio.charset.StandardCharsets;
+ 
+ import javax.xml.parsers.ParserConfigurationException;
+ 
+@@ -80,8 +81,8 @@ public class XPathAssertion extends AbstractScopedAssertion implements Serializa
+         try {
+             if (isScopeVariable()){
+                 String inputString=getThreadContext().getVariables().get(getVariableName());
+-                if(!StringUtils.isEmpty(inputString)) {
+-                    responseData = inputString.getBytes("UTF-8");
++                if (!StringUtils.isEmpty(inputString)) {
++                    responseData = inputString.getBytes(StandardCharsets.UTF_8);
+                 } 
+             } else {
+                 responseData = response.getResponseData();
+diff --git a/src/components/org/apache/jmeter/extractor/XPathExtractor.java b/src/components/org/apache/jmeter/extractor/XPathExtractor.java
+index 9a16cba..1616fd3 100644
+--- a/src/components/org/apache/jmeter/extractor/XPathExtractor.java
++++ b/src/components/org/apache/jmeter/extractor/XPathExtractor.java
+@@ -20,7 +20,7 @@ package org.apache.jmeter.extractor;
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
+ import java.io.Serializable;
+-import java.io.UnsupportedEncodingException;
++import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
+@@ -287,7 +287,7 @@ public class XPathExtractor extends AbstractScopedTestElement implements
+      *
+      */
+     private Document parseResponse(String unicodeData)
+-      throws UnsupportedEncodingException, IOException, ParserConfigurationException,SAXException,TidyException
++      throws IOException, ParserConfigurationException,SAXException,TidyException
+     {
+       //TODO: validate contentType for reasonable types?
+ 
+@@ -295,7 +295,7 @@ public class XPathExtractor extends AbstractScopedTestElement implements
+       //       Therefore we do byte -> unicode -> byte conversion
+       //       to ensure UTF-8 encoding as required by XPathUtil
+       // convert unicode String -> UTF-8 bytes
+-      byte[] utf8data = unicodeData.getBytes("UTF-8"); // $NON-NLS-1$
++      byte[] utf8data = unicodeData.getBytes(StandardCharsets.UTF_8);
+       ByteArrayInputStream in = new ByteArrayInputStream(utf8data);
+       boolean isXML = JOrphanUtils.isXML(utf8data);
+       // this method assumes UTF-8 input data
+diff --git a/src/components/org/apache/jmeter/visualizers/RenderAsXPath.java b/src/components/org/apache/jmeter/visualizers/RenderAsXPath.java
+index 0ab7fbe..b355905 100644
+--- a/src/components/org/apache/jmeter/visualizers/RenderAsXPath.java
++++ b/src/components/org/apache/jmeter/visualizers/RenderAsXPath.java
+@@ -25,7 +25,7 @@ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
+-import java.io.UnsupportedEncodingException;
++import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
+@@ -160,7 +160,7 @@ public class RenderAsXPath implements ResultRenderer, ActionListener {
+      *
+      */
+     private Document parseResponse(String unicodeData, XPathExtractor extractor)
+-      throws UnsupportedEncodingException, IOException, ParserConfigurationException,SAXException,TidyException
++      throws IOException, ParserConfigurationException,SAXException,TidyException
+     {
+       //TODO: validate contentType for reasonable types?
+ 
+@@ -168,7 +168,7 @@ public class RenderAsXPath implements ResultRenderer, ActionListener {
+       //       Therefore we do byte -> unicode -> byte conversion
+       //       to ensure UTF-8 encoding as required by XPathUtil
+       // convert unicode String -> UTF-8 bytes
+-      byte[] utf8data = unicodeData.getBytes("UTF-8"); // $NON-NLS-1$
++      byte[] utf8data = unicodeData.getBytes(StandardCharsets.UTF_8);
+       ByteArrayInputStream in = new ByteArrayInputStream(utf8data);
+       boolean isXML = JOrphanUtils.isXML(utf8data);
+       // this method assumes UTF-8 input data
+diff --git a/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteMetricsSender.java b/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteMetricsSender.java
+index 16168e8..9f22537 100644
+--- a/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteMetricsSender.java
++++ b/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteMetricsSender.java
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.jmeter.visualizers.backend.graphite;
+ 
++import java.nio.charset.StandardCharsets;
++
+ /**
+  * @since 2.13
+  */
+@@ -26,7 +28,7 @@ interface GraphiteMetricsSender {
+     int SOCKET_TIMEOUT = 1000;
+ 
+ 
+-    String CHARSET_NAME = "UTF-8"; //$NON-NLS-1$
++    String CHARSET_NAME = StandardCharsets.UTF_8.name();
+ 
+     final class MetricTuple {
+         String name;
+diff --git a/src/core/org/apache/jmeter/reporters/ResultCollector.java b/src/core/org/apache/jmeter/reporters/ResultCollector.java
+index f37e777..5c2e68a 100644
+--- a/src/core/org/apache/jmeter/reporters/ResultCollector.java
++++ b/src/core/org/apache/jmeter/reporters/ResultCollector.java
+@@ -31,6 +31,7 @@ import java.io.OutputStreamWriter;
+ import java.io.PrintWriter;
+ import java.io.RandomAccessFile;
+ import java.io.Serializable;
++import java.nio.charset.StandardCharsets;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+@@ -470,7 +471,7 @@ public class ResultCollector extends AbstractListenerElement implements SampleLi
+                 }
+             }
+             writer = new PrintWriter(new OutputStreamWriter(new BufferedOutputStream(new FileOutputStream(filename,
+-                    trimmed)), SaveService.getFileEncoding("UTF-8")), SAVING_AUTOFLUSH); // $NON-NLS-1$
++                    trimmed)), SaveService.getFileEncoding(StandardCharsets.UTF_8.name())), SAVING_AUTOFLUSH); // $NON-NLS-1$
+             log.debug("Opened file: "+filename);
+             files.put(filename, new FileEntry(writer, saveConfig));
+         } else {
+diff --git a/src/core/org/apache/jmeter/samplers/SampleResult.java b/src/core/org/apache/jmeter/samplers/SampleResult.java
+index bcbfc42..9c321c9 100644
+--- a/src/core/org/apache/jmeter/samplers/SampleResult.java
++++ b/src/core/org/apache/jmeter/samplers/SampleResult.java
+@@ -23,6 +23,7 @@ import java.io.UnsupportedEncodingException;
+ import java.net.HttpURLConnection;
+ import java.net.URL;
+ import java.nio.charset.Charset;
++import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -54,7 +55,7 @@ public class SampleResult implements Serializable, Cloneable, Searchable {
+      * The default encoding to be used if not overridden.
+      * The value is ISO-8859-1.
+      */
+-    public static final String DEFAULT_HTTP_ENCODING = "ISO-8859-1";  // $NON-NLS-1$
++    public static final String DEFAULT_HTTP_ENCODING = StandardCharsets.ISO_8859_1.name();
+ 
+     // Bug 33196 - encoding ISO-8859-1 is only suitable for Western countries
+     // However the suggested System.getProperty("file.encoding") is Cp1252 on
+diff --git a/src/core/org/apache/jmeter/save/CSVSaveService.java b/src/core/org/apache/jmeter/save/CSVSaveService.java
+index 83a2bc7..b8be184 100644
+--- a/src/core/org/apache/jmeter/save/CSVSaveService.java
++++ b/src/core/org/apache/jmeter/save/CSVSaveService.java
+@@ -25,6 +25,7 @@ import java.io.FileWriter;
+ import java.io.IOException;
+ import java.io.InputStreamReader;
+ import java.io.StringReader;
++import java.nio.charset.StandardCharsets;
+ import java.text.ParseException;
+ import java.text.SimpleDateFormat;
+ import java.util.ArrayList;
+@@ -138,7 +139,7 @@ public final class CSVSaveService {
+         final boolean successOnly = resultCollector.isSuccessOnlyLogging();
+         try {
+             dataReader = new BufferedReader(new InputStreamReader(
+-                    new FileInputStream(filename), SaveService.getFileEncoding("UTF-8"))); 
++                    new FileInputStream(filename), SaveService.getFileEncoding(StandardCharsets.UTF_8.name())));
+             dataReader.mark(400);// Enough to read the header column names
+             // Get the first line, and see if it is the header
+             String line = dataReader.readLine();
+diff --git a/src/core/org/apache/jmeter/save/converters/ConversionHelp.java b/src/core/org/apache/jmeter/save/converters/ConversionHelp.java
+index 991b49b..1d54d2b 100644
+--- a/src/core/org/apache/jmeter/save/converters/ConversionHelp.java
++++ b/src/core/org/apache/jmeter/save/converters/ConversionHelp.java
+@@ -24,6 +24,7 @@ package org.apache.jmeter.save.converters;
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLDecoder;
+ import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+@@ -44,7 +45,7 @@ import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+ public class ConversionHelp {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    private static final String CHAR_SET = "UTF-8"; //$NON-NLS-1$
++    private static final String CHAR_SET = StandardCharsets.UTF_8.name();
+ 
+     // Attributes for TestElement and TestElementProperty
+     // Must all be unique
+diff --git a/src/core/org/apache/jmeter/util/XPathUtil.java b/src/core/org/apache/jmeter/util/XPathUtil.java
+index c400df6..8e1c8f1 100644
+--- a/src/core/org/apache/jmeter/util/XPathUtil.java
++++ b/src/core/org/apache/jmeter/util/XPathUtil.java
+@@ -25,6 +25,7 @@ import java.io.OutputStream;
+ import java.io.PrintWriter;
+ import java.io.StringReader;
+ import java.io.StringWriter;
++import java.nio.charset.StandardCharsets;
+ import java.util.List;
+ 
+ import javax.xml.parsers.DocumentBuilder;
+@@ -219,8 +220,8 @@ public class XPathUtil {
+      */
+     public static Tidy makeTidyParser(boolean quiet, boolean showWarnings, boolean isXml, StringWriter stringWriter) {
+         Tidy tidy = new Tidy();
+-        tidy.setInputEncoding("UTF8");
+-        tidy.setOutputEncoding("UTF8");
++        tidy.setInputEncoding(StandardCharsets.UTF_8.name());
++        tidy.setOutputEncoding(StandardCharsets.UTF_8.name());
+         tidy.setQuiet(quiet);
+         tidy.setShowWarnings(showWarnings);
+         tidy.setMakeClean(true);
+diff --git a/src/functions/org/apache/jmeter/functions/UrlDecode.java b/src/functions/org/apache/jmeter/functions/UrlDecode.java
+index f5c8c3a..2915e8b 100644
+--- a/src/functions/org/apache/jmeter/functions/UrlDecode.java
++++ b/src/functions/org/apache/jmeter/functions/UrlDecode.java
+@@ -21,6 +21,7 @@ package org.apache.jmeter.functions;
+ 
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
+ import java.util.Collection;
+ import java.util.LinkedList;
+ import java.util.List;
+@@ -37,7 +38,7 @@ import org.apache.jmeter.util.JMeterUtils;
+  */
+ public class UrlDecode extends AbstractFunction {
+ 
+-    private static final String CHARSET_ENCODING = "UTF-8"; //$NON-NLS-1$
++    private static final String CHARSET_ENCODING = StandardCharsets.UTF_8.name();
+     
+     private static final List<String> desc = new LinkedList<>();
+ 
+diff --git a/src/functions/org/apache/jmeter/functions/UrlEncode.java b/src/functions/org/apache/jmeter/functions/UrlEncode.java
+index d751a65..3b25f81 100644
+--- a/src/functions/org/apache/jmeter/functions/UrlEncode.java
++++ b/src/functions/org/apache/jmeter/functions/UrlEncode.java
+@@ -21,6 +21,7 @@ package org.apache.jmeter.functions;
+ 
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
+ import java.util.Collection;
+ import java.util.LinkedList;
+ import java.util.List;
+@@ -37,7 +38,7 @@ import org.apache.jmeter.util.JMeterUtils;
+  */
+ public class UrlEncode extends AbstractFunction {
+ 
+-    private static final String CHARSET_ENCODING = "UTF-8"; //$NON-NLS-1$
++    private static final String CHARSET_ENCODING = StandardCharsets.UTF_8.name();
+     
+     private static final List<String> desc = new LinkedList<>();
+ 
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorThread.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorThread.java
+index d89372d..986c1e9 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorThread.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorThread.java
+@@ -25,6 +25,7 @@ import java.io.IOException;
+ import java.net.Socket;
+ import java.net.URI;
+ import java.net.URISyntaxException;
++import java.nio.charset.StandardCharsets;
+ import java.util.HashMap;
+ import java.util.concurrent.TimeUnit;
+ 
+@@ -57,7 +58,7 @@ import org.apache.oro.text.regex.Perl5Matcher;
+ public class HttpMirrorThread implements Runnable {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    private static final String ISO_8859_1 = "ISO-8859-1"; //$NON-NLS-1$
++    private static final String ISO_8859_1 = StandardCharsets.ISO_8859_1.name();
+     private static final byte[] CRLF = { 0x0d, 0x0a };
+ 
+     private static final String REDIRECT = "redirect"; //$NON-NLS-1$
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java
+index 726c13c..b16e95c 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java
+@@ -23,6 +23,7 @@ import java.io.UnsupportedEncodingException;
+ import java.net.MalformedURLException;
+ import java.net.URL;
+ import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
+ import java.util.LinkedList;
+ import java.util.List;
+ 
+@@ -74,7 +75,7 @@ public final class HtmlParsingUtils {
+     {
+         String query = null;
+         try {
+-            query = URLDecoder.decode(newLink.getQueryString(), "UTF-8"); // $NON-NLS-1$
++            query = URLDecoder.decode(newLink.getQueryString(), StandardCharsets.UTF_8.name());
+         } catch (UnsupportedEncodingException e) {
+             // UTF-8 unsupported? You must be joking!
+             log.error("UTF-8 encoding not supported!");
+@@ -204,8 +205,8 @@ public final class HtmlParsingUtils {
+     public static Tidy getParser() {
+         log.debug("Start : getParser1");
+         Tidy tidy = new Tidy();
+-        tidy.setInputEncoding("UTF8");
+-        tidy.setOutputEncoding("UTF8");
++        tidy.setInputEncoding(StandardCharsets.UTF_8.name());
++        tidy.setOutputEncoding(StandardCharsets.UTF_8.name());
+         tidy.setQuiet(true);
+         tidy.setShowWarnings(false);
+ 
+@@ -228,21 +229,19 @@ public final class HtmlParsingUtils {
+     public static Node getDOM(String text) {
+         log.debug("Start : getDOM1");
+ 
+-        try {
+-            Node node = getParser().parseDOM(new ByteArrayInputStream(text.getBytes("UTF-8")), null);// $NON-NLS-1$
++        Node node = getParser()
++                .parseDOM(
++                        new ByteArrayInputStream(
++                                text.getBytes(StandardCharsets.UTF_8)), null);
+ 
+-            if (log.isDebugEnabled()) {
+-                log.debug("node : " + node);
+-            }
++        if (log.isDebugEnabled()) {
++            log.debug("node : " + node);
++        }
+ 
+-            log.debug("End : getDOM1");
++        log.debug("End : getDOM1");
++
++        return node;
+ 
+-            return node;
+-        } catch (UnsupportedEncodingException e) {
+-            log.error("getDOM1 : Unsupported encoding exception - " + e);
+-            log.debug("End : getDOM1");
+-            throw new RuntimeException("UTF-8 encoding failed", e);
+-        }
+     }
+ 
+     public static Document createEmptyDoc() {
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/JTidyHTMLParser.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/JTidyHTMLParser.java
+index 2895114..c81b53f 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/JTidyHTMLParser.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/JTidyHTMLParser.java
+@@ -21,6 +21,7 @@ package org.apache.jmeter.protocol.http.parser;
+ import java.io.ByteArrayInputStream;
+ import java.net.MalformedURLException;
+ import java.net.URL;
++import java.nio.charset.StandardCharsets;
+ import java.util.Iterator;
+ 
+ import org.apache.commons.lang3.StringUtils;
+@@ -211,7 +212,7 @@ class JTidyHTMLParser extends HTMLParser {
+         log.debug("Start : getParser");
+         Tidy tidy = new Tidy();
+         tidy.setInputEncoding(encoding);
+-        tidy.setOutputEncoding("UTF8");
++        tidy.setOutputEncoding(StandardCharsets.UTF_8.name());
+         tidy.setQuiet(true);
+         tidy.setShowWarnings(false);
+         if (log.isDebugEnabled()) {
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java
+index 838d1be..f583929 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java
+@@ -27,6 +27,7 @@ import java.io.InputStream;
+ import java.io.OutputStream;
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLConnection;
++import java.nio.charset.StandardCharsets;
+ 
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+ import org.apache.jmeter.protocol.http.util.HTTPConstants;
+@@ -49,7 +50,7 @@ public class PostWriter {
+ 
+     private static final byte[] CRLF = { 0x0d, 0x0A };
+ 
+-    public static final String ENCODING = "ISO-8859-1"; // $NON-NLS-1$
++    public static final String ENCODING = StandardCharsets.ISO_8859_1.name();
+ 
+     /** The form data that is going to be sent as url encoded */
+     protected byte[] formDataUrlEncoded;
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/ConversionUtils.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/ConversionUtils.java
+index ae70e50..5a4570a 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/ConversionUtils.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/ConversionUtils.java
+@@ -25,6 +25,7 @@ import java.net.URL;
+ import java.net.URLDecoder;
+ import java.nio.charset.Charset;
+ import java.nio.charset.IllegalCharsetNameException;
++import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.StringTokenizer;
+@@ -127,7 +128,7 @@ public class ConversionUtils {
+      * @throws Exception when given <code>url</code> leads to a malformed URL or URI
+      */
+     public static String escapeIllegalURLCharacters(String url) throws Exception{
+-        String decodeUrl = URLDecoder.decode(url,"UTF-8");
++        String decodeUrl = URLDecoder.decode(url,StandardCharsets.UTF_8.name());
+         URL urlString = new URL(decodeUrl);
+         URI uri = new URI(urlString.getProtocol(), urlString.getUserInfo(), urlString.getHost(), urlString.getPort(), urlString.getPath(), urlString.getQuery(), urlString.getRef());
+         return uri.toString();
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java
+index d9440c0..6bd2294 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java
+@@ -20,6 +20,7 @@ package org.apache.jmeter.protocol.http.util;
+ 
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
+ 
+ import org.apache.oro.util.Cache;
+ import org.apache.oro.util.CacheLRU;
+@@ -27,7 +28,7 @@ import org.apache.oro.util.CacheLRU;
+ public class EncoderCache {
+ 
+     /** The encoding which should be usd for URLs, according to HTTP specification */
+-    public static final String URL_ARGUMENT_ENCODING = "UTF-8";
++    public static final String URL_ARGUMENT_ENCODING = StandardCharsets.UTF_8.name();
+ 
+     private Cache cache;
+ 
+@@ -48,7 +49,7 @@ public class EncoderCache {
+         } catch (UnsupportedEncodingException e) {
+             // This can't happen (how should utf8 not be supported!?!),
+             // so just throw an Error:
+-            throw new Error("Should not happen: " + e.toString());
++            throw new Error("Should not happen: " + e.toString(), e);
+         }
+     }
+ 
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java
+index 0c64599..6a8af74 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java
+@@ -26,6 +26,7 @@ import java.io.IOException;
+ import java.io.InputStreamReader;
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.StringTokenizer;
+@@ -528,7 +529,7 @@ public class TCLogParser implements LogParser {
+         } else {
+             if (decode) {
+                 try {
+-                    value = URLDecoder.decode(value,"UTF-8");
++                    value = URLDecoder.decode(value, StandardCharsets.UTF_8.name());
+                 } catch (UnsupportedEncodingException e) {
+                     log.warn(e.getMessage());
+                 }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java b/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java
+index c570db6..d7af410 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java
+@@ -23,6 +23,7 @@ import java.awt.Component;
+ import java.io.UnsupportedEncodingException;
+ import java.net.URL;
+ import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
+ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.Map;
+@@ -67,7 +68,7 @@ public class RequestViewHTTP implements RequestView {
+ 
+     private static final String KEY_LABEL = "view_results_table_request_tab_http"; //$NON-NLS-1$
+     
+-    private static final String CHARSET_DECODE = "ISO-8859-1"; //$NON-NLS-1$
++    private static final String CHARSET_DECODE = StandardCharsets.ISO_8859_1.name();
+     
+     private static final String PARAM_CONCATENATE = "&"; //$NON-NLS-1$
+ 
+diff --git a/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java b/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+index bf90d96..836cef8 100644
+--- a/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
++++ b/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+@@ -22,6 +22,7 @@ import java.io.IOException;
+ import java.io.UnsupportedEncodingException;
+ import java.lang.reflect.Field;
+ import java.math.BigDecimal;
++import java.nio.charset.StandardCharsets;
+ import java.sql.CallableStatement;
+ import java.sql.Connection;
+ import java.sql.Date;
+@@ -77,7 +78,7 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+     private static final String OUT = "OUT"; // $NON-NLS-1$
+ 
+     // TODO - should the encoding be configurable?
+-    protected static final String ENCODING = "UTF-8"; // $NON-NLS-1$
++    protected static final String ENCODING = StandardCharsets.UTF_8.name();
+ 
+     // key: name (lowercase) from java.sql.Types; entry: corresponding int value
+     private static final Map<String, Integer> mapJdbcNameToInt;
+@@ -153,7 +154,7 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+      * @throws IOException when I/O error occurs
+      * @throws UnsupportedOperationException if the user provided incorrect query type 
+      */
+-    protected byte[] execute(Connection conn) throws SQLException, UnsupportedEncodingException, IOException, UnsupportedOperationException {
++    protected byte[] execute(Connection conn) throws SQLException, IOException, UnsupportedOperationException {
+         log.debug("executing jdbc");
+         Statement stmt = null;
+         
+diff --git a/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java b/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+index cf31f64..4a37ed2 100644
+--- a/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
++++ b/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+@@ -18,7 +18,7 @@
+ 
+ package org.apache.jmeter.protocol.ldap.sampler;
+ 
+-import java.io.UnsupportedEncodingException;
++import java.nio.charset.StandardCharsets;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Collections;
+@@ -1031,14 +1031,7 @@ public class LDAPExtSampler extends AbstractSampler implements TestStateListener
+             return StringEscapeUtils.escapeXml10((String)value);
+         }
+         if (value instanceof byte[]) {
+-            try
+-            {
+-                return StringEscapeUtils.escapeXml10(new String((byte[])value, "UTF-8")); //$NON-NLS-1$
+-            }
+-            catch (UnsupportedEncodingException e)
+-            {
+-                log.error("this can't happen: UTF-8 character encoding not supported", e);
+-            }
++            return StringEscapeUtils.escapeXml10(new String((byte[])value, StandardCharsets.UTF_8));
+         }
+         return StringEscapeUtils.escapeXml10(value.toString());
+     }
+-- 
+2.7.4
+

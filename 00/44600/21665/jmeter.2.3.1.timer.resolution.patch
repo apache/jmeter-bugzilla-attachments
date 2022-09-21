@@ -1,0 +1,189 @@
+=== modified file 'src/core/org/apache/jmeter/samplers/SampleResult.java'
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	2008-03-12 13:02:10 +0000
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	2008-03-13 19:11:38 +0000
+@@ -140,6 +140,10 @@
+ 	private String dataEncoding;// (is this really the character set?) e.g.
+ 								// ISO-8895-1, UTF-8
+ 
++	private static long referenceTimeNsClock; // a reference time from the nanosecond clock in milliseconds
++
++	private static long referenceTimeMsClock; // a reference time from the millisecond clock in milliseconds
++
+ 	private long time = 0; // elapsed time
+ 
+ 	private long latency = 0; // time to first response
+@@ -175,9 +179,17 @@
+ 	}
+ 
+ 	public SampleResult() {
++		initReferenceTime();
+ 		time = 0;
+ 	}
+ 
++	private static void initReferenceTime() {
++		if (referenceTimeMsClock == 0) {
++			referenceTimeNsClock = sampleNsClockInMs();
++			referenceTimeMsClock = System.currentTimeMillis();
++		}
++	}
++
+ 	/**
+ 	 * Construct a 'parent' result for an already-existing result, essentially
+ 	 * cloning it
+@@ -186,6 +198,7 @@
+ 	 *            existing sample result
+ 	 */
+ 	public SampleResult(SampleResult res) {
++		initReferenceTime();
+ 		//TODO - why not just copy all the fields? Do we need the calculations that some of the set() methods perform?
+ 		//TODO - why are the following not copied:
+ 		// assertionResults, bytes, idleTime, latency, parent,pauseTime,resultFileName,sampleCount,samplerData,saveConfig
+@@ -228,7 +241,8 @@
+ 	 *            create the sample finishing now, else starting now
+ 	 */
+ 	protected SampleResult(long elapsed, boolean atend) {
+-		long now = System.currentTimeMillis();
++		initReferenceTime();
++		long now = currentTimeInMs();
+ 		if (atend) {
+ 			setTimes(now - elapsed, now);
+ 		} else {
+@@ -237,36 +251,6 @@
+ 	}
+ 
+ 	/**
+-	 * Create a sample with specific start and end times for test purposes, but
+-	 * don't allow the times to be changed later
+-	 * 
+-	 * (used by StatVisualizerModel.Test)
+-	 * 
+-	 * @param start
+-	 *            start time
+-	 * @param end
+-	 *            end time
+-	 */
+-	public static SampleResult createTestSample(long start, long end) {
+-		SampleResult res = new SampleResult();
+-		res.setStartTime(start);
+-		res.setEndTime(end);
+-		return res;
+-	}
+-
+-	/**
+-	 * Create a sample with a specific elapsed time for test purposes, but don't
+-	 * allow the times to be changed later
+-	 * 
+-	 * @param elapsed -
+-	 *            desired elapsed time
+-	 */
+-	public static SampleResult createTestSample(long elapsed) {
+-		long now = System.currentTimeMillis();
+-		return createTestSample(now, now + elapsed);
+-	}
+-
+-	/**
+ 	 * Allow users to create a sample with specific timestamp and elapsed times
+ 	 * for cloning purposes, but don't allow the times to be changed later
+ 	 * 
+@@ -277,9 +261,20 @@
+ 	 * @param elapsed
+ 	 */
+ 	public SampleResult(long stamp, long elapsed) {
++		initReferenceTime();
+ 		stampAndTime(stamp, elapsed);
+ 	}
+ 
++	private static long sampleNsClockInMs() {
++		return System.nanoTime() / 1000000;
++	}
++
++	// Helper method to get 1 ms resolution timing.
++	private static long currentTimeInMs() {
++		long elapsedInMs = sampleNsClockInMs() - referenceTimeNsClock;
++		return referenceTimeMsClock + elapsedInMs;
++	}
++
+ 	// Helper method to maintain timestamp relationships
+ 	private void stampAndTime(long stamp, long elapsed) {
+ 		if (startTimeStamp) {
+@@ -325,7 +320,7 @@
+ 		if (startTime != 0 || endTime != 0){
+ 			throw new RuntimeException("Calling setTime() after start/end times have been set");
+ 		}
+-		long now = System.currentTimeMillis();
++		long now = currentTimeInMs();
+ 	    setTimes(now - elapsed, now);
+ 	}
+ 
+@@ -805,7 +800,7 @@
+ 	 */
+ 	public void sampleStart() {
+ 		if (startTime == 0) {
+-			setStartTime(System.currentTimeMillis());
++			setStartTime(currentTimeInMs());
+ 		} else {
+ 			log.error("sampleStart called twice", new Throwable("Invalid call sequence"));
+ 		}
+@@ -817,7 +812,7 @@
+ 	 */
+ 	public void sampleEnd() {
+ 		if (endTime == 0) {
+-			setEndTime(System.currentTimeMillis());
++			setEndTime(currentTimeInMs());
+ 		} else {
+ 			log.error("sampleEnd called twice", new Throwable("Invalid call sequence"));
+ 		}
+@@ -831,7 +826,7 @@
+ 		if (pauseTime != 0) {
+ 			log.error("samplePause called twice", new Throwable("Invalid call sequence"));
+ 		}
+-		pauseTime = System.currentTimeMillis();
++		pauseTime = currentTimeInMs();
+ 	}
+ 
+ 	/**
+@@ -842,7 +837,7 @@
+ 		if (pauseTime == 0) {
+ 			log.error("sampleResume without samplePause", new Throwable("Invalid call sequence"));
+ 		}
+-		idleTime += System.currentTimeMillis() - pauseTime;
++		idleTime += currentTimeInMs() - pauseTime;
+ 		pauseTime = 0;
+ 	}
+ 
+@@ -943,7 +938,7 @@
+      *
+      */
+ 	public void latencyEnd() {
+-		latency = System.currentTimeMillis() - startTime - idleTime;
++		latency = currentTimeInMs() - startTime - idleTime;
+ 	}
+ 
+ 	/**
+
+=== modified file 'test/src/org/apache/jmeter/samplers/TestSampleResult.java'
+--- test/src/org/apache/jmeter/samplers/TestSampleResult.java	2008-03-12 13:02:10 +0000
++++ test/src/org/apache/jmeter/samplers/TestSampleResult.java	2008-03-13 19:10:26 +0000
+@@ -106,8 +106,8 @@
+             // Sample that will get two sub results, simulates a web page load 
+             SampleResult resWithSubResults = new SampleResult();            
+ 
+-            long beginTest = System.currentTimeMillis();
+-            
++            long beginTest = System.nanoTime() / 1000000;
++
+             resWithSubResults.sampleStart();
+             Thread.sleep(100);
+             resWithSubResults.setBytes(300);
+@@ -142,8 +142,8 @@
+             resNoSubResults2.sampleEnd();
+             long sample2Time = resNoSubResults2.getTime();
+ 
+-            long overallTime = System.currentTimeMillis() - beginTest;
+-            
++            long overallTime = (System.nanoTime() / 1000000) - beginTest;
++
+             assertTrue(resNoSubResults2.isSuccessful());
+             assertEquals(200, resNoSubResults2.getBytes());
+             assertEquals("sample with no subresults", resNoSubResults2.getSampleLabel());
+

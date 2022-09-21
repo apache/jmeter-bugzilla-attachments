@@ -1,0 +1,23 @@
+Index: src/components/org/apache/jmeter/visualizers/RespTimeGraphChart.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/RespTimeGraphChart.java	(revision 1442965)
++++ src/components/org/apache/jmeter/visualizers/RespTimeGraphChart.java	(working copy)
+@@ -316,8 +316,16 @@
+                 BigDecimal round = new BigDecimal(max / 1000d);
+                 round = round.setScale(0, BigDecimal.ROUND_UP);
+                 double topValue = round.doubleValue() * 1000;
+-                yaxis.setUserDefinedScale(0, 500);
+-                yaxis.setNumItems((int) (topValue / 500)+1);
++	 	
++				int num_rows = _height / 50;
++				int ascale = new Double(max / num_rows).intValue();
++				int scale = 500;
++		
++				while (scale < ascale)
++					scale = scale + 500;
++
++                yaxis.setUserDefinedScale(0, scale);
++                yaxis.setNumItems((int) (topValue / scale)+1);
+                 yaxis.setShowGridLines(1);
+             } catch (PropertyException e) {
+                 log.warn("",e);

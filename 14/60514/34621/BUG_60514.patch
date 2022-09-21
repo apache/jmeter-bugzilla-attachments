@@ -1,0 +1,352 @@
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1778844)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -37,6 +37,8 @@
+ import org.apache.jmeter.engine.util.ValueReplacer;
+ import org.apache.jmeter.exceptions.IllegalUserActionException;
+ import org.apache.jmeter.gui.UndoHistory.HistoryListener;
++import org.apache.jmeter.gui.action.TreeNodeNamingPolicy;
++import org.apache.jmeter.gui.action.impl.DefaultTreeNodeNamingPolicy;
+ import org.apache.jmeter.gui.tree.JMeterTreeListener;
+ import org.apache.jmeter.gui.tree.JMeterTreeModel;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
+@@ -69,6 +71,10 @@
+     /** Logging. */
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private static final String NAMING_POLICY_IMPLEMENTATION = 
++            JMeterUtils.getPropDefault("naming_policy_impl", //$NON-NLS-1$ 
++                    DefaultTreeNodeNamingPolicy.class.getName());
++
+     /** Singleton instance. */
+     private static GuiPackage guiPack;
+ 
+@@ -653,6 +659,8 @@
+ 
+     private final List<Stoppable> stoppables = Collections.synchronizedList(new ArrayList<Stoppable>());
+ 
++    private TreeNodeNamingPolicy namingPolicy;
++
+     /**
+      * Sets the filepath of the current test plan. It's shown in the main frame
+      * title and used on saving.
+@@ -856,4 +864,21 @@
+         ((JMeterToolBar)toolbar).updateUndoRedoIcons(history.canUndo(), history.canRedo());
+     }
+ 
++    /**
++     * @return {@link TreeNodeNamingPolicy}
++     */
++    public TreeNodeNamingPolicy getNamingPolicy() {
++        if(namingPolicy == null) {
++            try {
++                Class<?> implementationClass = Class.forName(NAMING_POLICY_IMPLEMENTATION);
++                this.namingPolicy = (TreeNodeNamingPolicy) implementationClass.newInstance();
++                
++            } catch (Exception ex) {
++                log.error("Failed to create configured naming policy:"+NAMING_POLICY_IMPLEMENTATION+", will use default one", ex);
++                this.namingPolicy = new DefaultTreeNodeNamingPolicy();
++            }
++        }
++        return namingPolicy;
++    }
++
+ }
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1778844)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -34,6 +34,7 @@
+     public static final String ADD_ALL          = "add_all"; // $NON-NLS-1$
+     public static final String ADD_PARENT       = "Add Parent"; // $NON-NLS-1$
+     public static final String ANALYZE_FILE     = "Analyze File"; // $NON-NLS-1$
++    public static final String APPLY_NAMING_CONVENTION    = "Apply Naming Convention"; // $NON-NLS-1$
+     public static final String CHANGE_LANGUAGE  = "change_language"; // $NON-NLS-1$
+     public static final String CHANGE_PARENT    = "Change Parent"; // $NON-NLS-1$
+     public static final String CHECK_DIRTY      = "check_dirty"; // $NON-NLS-1$
+Index: src/core/org/apache/jmeter/gui/action/AddToTree.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/AddToTree.java	(revision 1778844)
++++ src/core/org/apache/jmeter/gui/action/AddToTree.java	(working copy)
+@@ -68,6 +68,7 @@
+             TestElement testElement = guiPackage.createTestElement(((JComponent) e.getSource()).getName());
+             JMeterTreeNode parentNode = guiPackage.getCurrentNode();
+             JMeterTreeNode node = guiPackage.getTreeModel().addComponent(testElement, parentNode);
++            guiPackage.getNamingPolicy().nameOnCreation(node);
+             guiPackage.getMainFrame().getTree().setSelectionPath(new TreePath(node.getPath()));
+         } catch (Exception err) {
+             log.error("", err); // $NON-NLS-1$
+Index: src/core/org/apache/jmeter/gui/action/ApplyNamingConvention.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ApplyNamingConvention.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/ApplyNamingConvention.java	(revision 0)
+@@ -0,0 +1,92 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.Toolkit;
++import java.awt.event.ActionEvent;
++import java.util.Enumeration;
++import java.util.HashSet;
++import java.util.Set;
++
++import org.apache.jmeter.control.Controller;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Allows to apply naming convention on nodes
++ * @since 3.2
++ */
++public class ApplyNamingConvention extends AbstractAction {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final Set<String> commands = new HashSet<>();
++    
++
++    static {
++        commands.add(ActionNames.APPLY_NAMING_CONVENTION);
++    }
++
++    public ApplyNamingConvention() {
++    }
++
++    @Override
++    public void doAction(ActionEvent e) {
++        GuiPackage guiPackage = GuiPackage.getInstance();
++        JMeterTreeNode currentNode = guiPackage.getTreeListener().getCurrentNode();
++        if (!(currentNode.getUserObject() instanceof Controller)) {
++            Toolkit.getDefaultToolkit().beep();
++            return;
++        }
++        try {
++            applyNamingPolicyToCurrentNode(guiPackage, currentNode);            
++        } catch (Exception err) {
++            Toolkit.getDefaultToolkit().beep();
++            log.error("Failed to apply naming policy", err);
++            JMeterUtils.reportErrorToUser("Failed to apply naming policy", err);
++        }
++
++    }
++
++    /**
++     * Apply the naming policy of currentNode children
++     * @param guiPackage {@link GuiPackage}
++     * @param currentNode Parent node of elements on which we apply naming policy
++     */
++    private void applyNamingPolicyToCurrentNode(GuiPackage guiPackage, 
++            JMeterTreeNode currentNode) {
++        TreeNodeNamingPolicy namingPolicy = guiPackage.getNamingPolicy();
++        guiPackage.updateCurrentNode();
++        Enumeration<JMeterTreeNode> enumeration = currentNode.children();
++        int index = 0;
++        namingPolicy.resetState(currentNode);
++        while(enumeration.hasMoreElements()) {
++            JMeterTreeNode childNode = enumeration.nextElement();
++            namingPolicy.rename(currentNode, childNode, index);
++            index++;
++        }        
++    }
++
++    @Override
++    public Set<String> getActionNames() {
++        return commands;
++    }
++}
+Index: src/core/org/apache/jmeter/gui/action/TreeNodeNamingPolicy.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/TreeNodeNamingPolicy.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/TreeNodeNamingPolicy.java	(revision 0)
+@@ -0,0 +1,53 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.gui.action;
++
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++
++/**
++ * Naming policy applied to JMeter Tree nodes :
++ * <ul>
++ * <li>on creation through {@link TreeNodeNamingPolicy#nameOnCreation(JMeterTreeNode)}</li>
++ * <li>By applying naming policy on Controller child nodes through {@link TreeNodeNamingPolicy#resetState(JMeterTreeNode)}
++    and {@link TreeNodeNamingPolicy#rename(JMeterTreeNode, JMeterTreeNode, int)}</li>
++ * </ul> 
++ * @since 3.2
++ */
++public interface TreeNodeNamingPolicy {
++
++    /**
++     * Called by Apply Naming Policy popup menu on TransactionController nodes
++     * Rename childNode based on custom policy 
++     * @param parentNode Parent node
++     * @param childNode Child node
++     * @param index index of child node
++     */
++    void rename(JMeterTreeNode parentNode, JMeterTreeNode childNode, int index);
++
++    /**
++     * Called within Apply Naming Policy popup menu on TransactionController nodes to 
++     * init the naming process. 
++     * @param parentNode {@link JMeterTreeNode} Parent of nodes that will be renamed
++     */
++    void resetState(JMeterTreeNode parentNode);
++    
++    /**
++     * @param node {@link JMeterTreeNode} node that has been added to JMeter Tree node
++     */
++    void nameOnCreation(JMeterTreeNode node);
++}
+Index: src/core/org/apache/jmeter/gui/action/impl/DefaultTreeNodeNamingPolicy.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/impl/DefaultTreeNodeNamingPolicy.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/impl/DefaultTreeNodeNamingPolicy.java	(revision 0)
+@@ -0,0 +1,76 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action.impl;
++
++import java.text.DecimalFormat;
++
++import org.apache.jmeter.control.TransactionController;
++import org.apache.jmeter.gui.action.TreeNodeNamingPolicy;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Default implementation of {@link TreeNodeNamingPolicy}
++ * @since 3.2
++ */
++public class DefaultTreeNodeNamingPolicy implements TreeNodeNamingPolicy {
++    private static final String PREFIX = JMeterUtils.getPropDefault("naming_policy.prefix", ""); 
++    private static final String SUFFIX = JMeterUtils.getPropDefault("naming_policy.suffix", ""); 
++    private int numberOfChildren;
++    private int index;
++    private DecimalFormat formatter;
++
++
++    /**
++     * @see org.apache.jmeter.gui.action.TreeNodeNamingPolicy#rename(org.apache.jmeter.gui.tree.JMeterTreeNode, org.apache.jmeter.gui.tree.JMeterTreeNode, int)
++     */
++    @Override
++    public void rename(JMeterTreeNode parentNode, JMeterTreeNode childNode, int iterationIndex) {
++        if(childNode.getUserObject() instanceof TransactionController ||
++                childNode.getUserObject() instanceof Sampler) {
++            childNode.setName(parentNode.getName()+"-"+formatter.format(index));
++            index++;
++        }
++    }
++
++    /**
++     * @see org.apache.jmeter.gui.action.TreeNodeNamingPolicy#resetState(org.apache.jmeter.gui.tree.JMeterTreeNode)
++     */
++    @Override
++    public void resetState(JMeterTreeNode rootNode) {
++        this.numberOfChildren = rootNode.getChildCount();
++        this.index = 0;
++        int numberOfDigits = String.valueOf(numberOfChildren).length();
++        StringBuilder formatSB = new StringBuilder(numberOfDigits);
++        for (int i=0; i<numberOfDigits;i++) {
++            formatSB.append("0");
++        }
++        this.formatter = new DecimalFormat(formatSB.toString());
++    }
++
++    @Override
++    public void nameOnCreation(JMeterTreeNode node) {
++        if(node.getName().isEmpty()) {
++            node.setName(((TestElement)node.getUserObject()).getClass().getSimpleName());
++        }
++        node.setName(PREFIX+node.getName()+SUFFIX);
++    }
++}
+Index: src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 1778844)
++++ src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -293,6 +293,8 @@
+         pop.add(makeMenus(MENU_PARENT_CONTROLLER,
+                 JMeterUtils.getResString("change_parent"),// $NON-NLS-1$
+                 ActionNames.CHANGE_PARENT));
++        pop.add(MenuFactory.makeMenuItemRes("apply_naming",// $NON-NLS-1$
++                ActionNames.APPLY_NAMING_CONVENTION));
+         MenuFactory.addEditMenu(pop, true);
+         MenuFactory.addFileMenu(pop);
+         return pop;
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1778844)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -99,6 +99,7 @@
+ analyze=Analyze Data File...
+ anchor_modifier_title=HTML Link Parser
+ appearance=Look and Feel
++apply_naming=Apply Naming Policy
+ argument_must_not_be_negative=The Argument must not be negative\!
+ arguments_panel_title=Command parameters
+ assertion_assume_success=Ignore Status
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1778844)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -92,6 +92,7 @@
+ analyze=En train d'analyser le fichier de donn\u00E9es
+ anchor_modifier_title=Analyseur de lien HTML
+ appearance=Apparence
++apply_naming=Appliquer Convention Nommage
+ argument_must_not_be_negative=L'argument ne peut pas \u00EAtre n\u00E9gatif \!
+ arguments_panel_title=Param\u00E8tres de commande
+ assertion_assume_success=Ignorer le statut

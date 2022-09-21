@@ -1,0 +1,198 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1498167)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -224,12 +224,7 @@
+     protected HTTPSampleResult sample(URL url, String method,
+             boolean areFollowingRedirect, int frameDepth) {
+ 
+-        HTTPSampleResult res = new HTTPSampleResult();
+-        res.setMonitor(isMonitor());
+-
+-        res.setSampleLabel(url.toString()); // May be replaced later
+-        res.setHTTPMethod(method);
+-        res.setURL(url);
++        HTTPSampleResult res = createSampleResult(url, method);
+ 
+         HttpClient httpClient = setupClient(url);
+         
+@@ -279,14 +274,7 @@
+ 
+         try {
+             currentRequest = httpRequest;
+-            // Handle the various methods
+-            if (method.equals(HTTPConstants.POST)) {
+-                String postBody = sendPostData((HttpPost)httpRequest);
+-                res.setQueryString(postBody);
+-            } else if (method.equals(HTTPConstants.PUT) || method.equals(HTTPConstants.PATCH)) {
+-                String entityBody = sendEntityData(( HttpEntityEnclosingRequestBase)httpRequest);
+-                res.setQueryString(entityBody);
+-            }
++            handleMethod(method, res, httpRequest, localContext);
+             HttpResponse httpResponse = httpClient.execute(httpRequest, localContext); // perform the sample
+ 
+             // Needs to be done after execute to pick up all the headers
+@@ -378,6 +366,42 @@
+     }
+ 
+     /**
++     * @param method String HTTP method
++     * @param result {@link HTTPSampleResult}
++     * @param httpRequest {@link HttpRequestBase}
++     * @param localContext {@link HttpContext}
++     * @throws IOException
++     */
++    protected void handleMethod(String method, HTTPSampleResult result,
++            HttpRequestBase httpRequest, HttpContext localContext) throws IOException {
++        // Handle the various methods
++        if (method.equals(HTTPConstants.POST)) {
++            String postBody = sendPostData((HttpPost)httpRequest);
++            result.setQueryString(postBody);
++        } else if (method.equals(HTTPConstants.PUT) || method.equals(HTTPConstants.PATCH)) {
++            String entityBody = sendEntityData(( HttpEntityEnclosingRequestBase)httpRequest);
++            result.setQueryString(entityBody);
++        }
++    }
++
++    /**
++     * Create HTTPSampleResult
++     * @param url URL
++     * @param method HTTP Method
++     * @return {@link HTTPSampleResult}
++     */
++    protected HTTPSampleResult createSampleResult(URL url, String method) {
++        HTTPSampleResult res = new HTTPSampleResult();
++        res.setMonitor(isMonitor());
++
++        res.setSampleLabel(url.toString()); // May be replaced later
++        res.setHTTPMethod(method);
++        res.setURL(url);
++        
++        return res;
++    }
++
++    /**
+      * Holder class for all fields that define an HttpClient instance;
+      * used as the key to the ThreadLocal map of HttpClient instances.
+      */
+@@ -558,54 +582,54 @@
+         return httpClient;
+     }
+ 
+-    private void setupRequest(URL url, HttpRequestBase httpRequest, HTTPSampleResult res)
++    protected void setupRequest(URL url, HttpRequestBase httpRequest, HTTPSampleResult res)
+         throws IOException {
+ 
+-    HttpParams requestParams = httpRequest.getParams();
++        HttpParams requestParams = httpRequest.getParams();
++        
++        // Set up the local address if one exists
++        final String ipSource = getIpSource();
++        if (ipSource.length() > 0) {// Use special field ip source address (for pseudo 'ip spoofing')
++            InetAddress inetAddr = InetAddress.getByName(ipSource);
++            requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, inetAddr);
++        } else if (localAddress != null){
++            requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, localAddress);
++        } else { // reset in case was set previously
++            requestParams.removeParameter(ConnRoutePNames.LOCAL_ADDRESS);
++        }
+     
+-    // Set up the local address if one exists
+-    final String ipSource = getIpSource();
+-    if (ipSource.length() > 0) {// Use special field ip source address (for pseudo 'ip spoofing')
+-        InetAddress inetAddr = InetAddress.getByName(ipSource);
+-        requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, inetAddr);
+-    } else if (localAddress != null){
+-        requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, localAddress);
+-    } else { // reset in case was set previously
+-        requestParams.removeParameter(ConnRoutePNames.LOCAL_ADDRESS);
+-    }
+-
+-    int rto = getResponseTimeout();
+-    if (rto > 0){
+-        requestParams.setIntParameter(CoreConnectionPNames.SO_TIMEOUT, rto);
+-    }
+-
+-    int cto = getConnectTimeout();
+-    if (cto > 0){
+-        requestParams.setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, cto);
+-    }
+-
+-    requestParams.setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, getAutoRedirects());
++        int rto = getResponseTimeout();
++        if (rto > 0){
++            requestParams.setIntParameter(CoreConnectionPNames.SO_TIMEOUT, rto);
++        }
+     
+-    // a well-behaved browser is supposed to send 'Connection: close'
+-    // with the last request to an HTTP server. Instead, most browsers
+-    // leave it to the server to close the connection after their
+-    // timeout period. Leave it to the JMeter user to decide.
+-    if (getUseKeepAlive()) {
+-        httpRequest.setHeader(HTTPConstants.HEADER_CONNECTION, HTTPConstants.KEEP_ALIVE);
+-    } else {
+-        httpRequest.setHeader(HTTPConstants.HEADER_CONNECTION, HTTPConstants.CONNECTION_CLOSE);
+-    }
+-
+-    setConnectionHeaders(httpRequest, url, getHeaderManager(), getCacheManager());
+-
+-    String cookies = setConnectionCookie(httpRequest, url, getCookieManager());
+-
+-    if (res != null) {
+-        res.setCookies(cookies);
++        int cto = getConnectTimeout();
++        if (cto > 0){
++            requestParams.setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, cto);
++        }
++    
++        requestParams.setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, getAutoRedirects());
++        
++        // a well-behaved browser is supposed to send 'Connection: close'
++        // with the last request to an HTTP server. Instead, most browsers
++        // leave it to the server to close the connection after their
++        // timeout period. Leave it to the JMeter user to decide.
++        if (getUseKeepAlive()) {
++            httpRequest.setHeader(HTTPConstants.HEADER_CONNECTION, HTTPConstants.KEEP_ALIVE);
++        } else {
++            httpRequest.setHeader(HTTPConstants.HEADER_CONNECTION, HTTPConstants.CONNECTION_CLOSE);
++        }
++    
++        setConnectionHeaders(httpRequest, url, getHeaderManager(), getCacheManager());
++    
++        String cookies = setConnectionCookie(httpRequest, url, getCookieManager());
++    
++        if (res != null) {
++            res.setCookies(cookies);
++        }
++    
+     }
+ 
+-}
+-
+     
+     /**
+      * Set any default request headers to include
+@@ -790,7 +814,13 @@
+     }
+ 
+     // TODO needs cleaning up
+-    private String sendPostData(HttpPost post)  throws IOException {
++    /**
++     * 
++     * @param post {@link HttpPost}
++     * @return String posted body if computable
++     * @throws IOException
++     */
++    protected String sendPostData(HttpPost post)  throws IOException {
+         // Buffer to hold the post body, except file content
+         StringBuilder postedBody = new StringBuilder(1000);
+         HTTPFileArg files[] = getHTTPFiles();
+@@ -1008,7 +1038,7 @@
+      * @throws  UnsupportedEncodingException for invalid charset name
+      * @throws IOException cannot really occur for ByteArrayOutputStream methods
+      */
+-    private String sendEntityData( HttpEntityEnclosingRequestBase entity) throws IOException {
++    protected String sendEntityData( HttpEntityEnclosingRequestBase entity) throws IOException {
+         // Buffer to hold the entity body
+         StringBuilder entityBody = new StringBuilder(1000);
+         boolean hasEntityBody = false;

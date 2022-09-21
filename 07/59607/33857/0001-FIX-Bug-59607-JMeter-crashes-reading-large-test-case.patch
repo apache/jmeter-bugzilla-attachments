@@ -1,0 +1,35 @@
+From 328d7e05bb043928780ec1b7ef6917a149540a0f Mon Sep 17 00:00:00 2001
+From: Felix Draxler <felix.draxler@sap.com>
+Date: Fri, 20 May 2016 10:56:49 +0200
+Subject: [PATCH] FIX Bug 59607 - JMeter crashes reading large test case
+
+---
+ src/core/org/apache/jmeter/save/SaveService.java | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/save/SaveService.java b/src/core/org/apache/jmeter/save/SaveService.java
+index c013cf6..756f3e3 100644
+--- a/src/core/org/apache/jmeter/save/SaveService.java
++++ b/src/core/org/apache/jmeter/save/SaveService.java
+@@ -18,7 +18,6 @@
+ 
+ package org.apache.jmeter.save;
+ 
+-import java.io.BufferedInputStream;
+ import java.io.BufferedReader;
+ import java.io.File;
+ import java.io.FileInputStream;
+@@ -513,10 +512,6 @@ public class SaveService {
+      */
+     private static HashTree readTree(InputStream reader, File file)
+             throws IOException {
+-        if (!reader.markSupported()) {
+-            reader = new BufferedInputStream(reader);
+-        }
+-        reader.mark(Integer.MAX_VALUE);
+         ScriptWrapper wrapper = null;
+         try {
+             // Get the InputReader to use
+-- 
+2.8.1.windows.1
+

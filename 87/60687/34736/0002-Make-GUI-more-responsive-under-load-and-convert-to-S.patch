@@ -1,0 +1,185 @@
+From 3c3c6ed609c2db62bea93e460abfb16474f0aefe Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@debeka.de>
+Date: Wed, 8 Feb 2017 12:28:00 +0100
+Subject: [PATCH 2/2] Make GUI more responsive under load and convert to SLF4J
+
+---
+ bin/jmeter.properties                              |  8 ++-
+ .../visualizers/ViewResultsFullVisualizer.java     | 72 +++++++++++++++-------
+ 2 files changed, 58 insertions(+), 22 deletions(-)
+
+diff --git a/bin/jmeter.properties b/bin/jmeter.properties
+index bb6e063..d812601 100644
+--- a/bin/jmeter.properties
++++ b/bin/jmeter.properties
+@@ -1073,6 +1073,12 @@ cookies=cookies
+ # prefixed with org.apache.jmeter.visualizers
+ view.results.tree.renderers_order=.RenderAsText,.RenderAsRegexp,.RenderAsCssJQuery,.RenderAsXPath,org.apache.jmeter.extractor.json.render.RenderAsJsonRenderer,.RenderAsHTML,.RenderAsHTMLFormatted,.RenderAsHTMLWithEmbedded,.RenderAsDocument,.RenderAsJSON,.RenderAsXML
+ 
++# Period after which the results tree should be refreshed
++#view.results.tree.update_period=500
++
++# Maximum number of results in the results tree
++#view.results.tree.max_results=100
++
+ # Maximum size of Document that can be parsed by Tika engine; defaut=10 * 1024 * 1024 (10MB)
+ # Set to 0 to disable the size check
+ #document.max_size=0
+@@ -1222,4 +1228,4 @@ jmeter.reportgenerator.apdex_tolerated_threshold=1500
+ #naming_policy.suffix
+ 
+ # Implementation of interface org.apache.jmeter.gui.action.TreeNodeNamingPolicy
+-#naming_policy.impl=org.apache.jmeter.gui.action.impl.DefaultTreeNodeNamingPolicy
+\ No newline at end of file
++#naming_policy.impl=org.apache.jmeter.gui.action.impl.DefaultTreeNodeNamingPolicy
+diff --git a/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java b/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+index e127e08..2bb8718 100644
+--- a/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
++++ b/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+@@ -33,6 +33,7 @@ import java.awt.event.ItemListener;
+ import java.io.IOException;
+ import java.util.Collections;
+ import java.util.HashMap;
++import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+ 
+@@ -46,6 +47,7 @@ import javax.swing.JScrollPane;
+ import javax.swing.JSplitPane;
+ import javax.swing.JTabbedPane;
+ import javax.swing.JTree;
++import javax.swing.Timer;
+ import javax.swing.border.Border;
+ import javax.swing.event.TreeSelectionEvent;
+ import javax.swing.event.TreeSelectionListener;
+@@ -55,6 +57,7 @@ import javax.swing.tree.DefaultTreeModel;
+ import javax.swing.tree.TreePath;
+ import javax.swing.tree.TreeSelectionModel;
+ 
++import org.apache.commons.collections.buffer.BoundedFifoBuffer;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.JMeter;
+ import org.apache.jmeter.assertions.AssertionResult;
+@@ -63,8 +66,8 @@ import org.apache.jmeter.samplers.Clearable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+-import org.apache.jorphan.logging.LoggingManager;
+-import org.apache.log.Logger;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ 
+ /**
+  * Base for ViewResults
+@@ -75,7 +78,7 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+ 
+     private static final long serialVersionUID = 7338676747296593842L;
+ 
+-    private static final Logger log = LoggingManager.getLoggerForClass();
++    private static final Logger log = LoggerFactory.getLogger(ViewResultsFullVisualizer.class);
+ 
+     public static final Color SERVER_ERROR_COLOR = Color.red;
+ 
+@@ -124,42 +127,70 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+     private static final String VIEWERS_ORDER =
+         JMeterUtils.getPropDefault("view.results.tree.renderers_order", ""); // $NON-NLS-1$ //$NON-NLS-2$
+ 
++    private static final int UPDATE_PERIOD = JMeterUtils.getPropDefault("view.results.tree.update_period", 500);
++
+     private ResultRenderer resultsRender = null;
+ 
+     private TreeSelectionEvent lastSelectionEvent;
+ 
+     private JCheckBox autoScrollCB;
+ 
++    private BoundedFifoBuffer buffer = new BoundedFifoBuffer(JMeterUtils.getPropDefault("view.results.tree.max_results", 100));
++
++    private boolean dataChanged;
++
+     /**
+      * Constructor
+      */
+     public ViewResultsFullVisualizer() {
+         super();
+         init();
++        new Timer(UPDATE_PERIOD, e -> {
++            updateGui();
++        }).start();
+     }
+ 
+     /** {@inheritDoc} */
+     @Override
+     public void add(final SampleResult sample) {
+-        JMeterUtils.runSafe(false, ()-> updateGui(sample));
++        synchronized (buffer) {
++            if (buffer.isFull()) {
++                buffer.remove();
++            }
++            buffer.add(sample);
++            dataChanged = true;
++        }
+     }
+ 
+     /**
+      * Update the visualizer with new data.
+      */
+-    private synchronized void updateGui(SampleResult res) {
+-        // Add sample
+-        DefaultMutableTreeNode currNode = new SearchableTreeNode(res, treeModel);
+-        treeModel.insertNodeInto(currNode, root, root.getChildCount());
+-        addSubResults(currNode, res);
+-        // Add any assertion that failed as children of the sample node
+-        AssertionResult[] assertionResults = res.getAssertionResults();
+-        int assertionIndex = currNode.getChildCount();
+-        for (AssertionResult assertionResult : assertionResults) {
+-            if (assertionResult.isFailure() || assertionResult.isError()) {
+-                DefaultMutableTreeNode assertionNode = new SearchableTreeNode(assertionResult, treeModel);
+-                treeModel.insertNodeInto(assertionNode, currNode, assertionIndex++);
++    private void updateGui() {
++        synchronized (buffer) {
++            if (!dataChanged) {
++                return;
++            }
++            root.removeAllChildren();
++            @SuppressWarnings("unchecked")
++            Iterator<SampleResult> samplers = buffer.iterator();
++            while (samplers.hasNext()) {
++                SampleResult res = (SampleResult) samplers.next();
++                // Add sample
++                DefaultMutableTreeNode currNode = new SearchableTreeNode(res, treeModel);
++                treeModel.insertNodeInto(currNode, root, root.getChildCount());
++                addSubResults(currNode, res);
++                // Add any assertion that failed as children of the sample node
++                AssertionResult[] assertionResults = res.getAssertionResults();
++                int assertionIndex = currNode.getChildCount();
++                for (AssertionResult assertionResult : assertionResults) {
++                    if (assertionResult.isFailure() || assertionResult.isError()) {
++                        DefaultMutableTreeNode assertionNode = new SearchableTreeNode(assertionResult, treeModel);
++                        treeModel.insertNodeInto(assertionNode, currNode, assertionIndex++);
++                    }
++                }
+             }
++            treeModel.nodeStructureChanged(root);
++            dataChanged = false;
+         }
+ 
+         if (root.getChildCount() == 1) {
+@@ -198,11 +229,10 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void clearData() {
+-        while (root.getChildCount() > 0) {
+-            // the child to be removed will always be 0 'cos as the nodes are
+-            // removed the nth node will become (n-1)th
+-            treeModel.removeNodeFromParent((DefaultMutableTreeNode) root.getChildAt(0));
++    public void clearData() {
++        synchronized (buffer) {
++            buffer.clear();
++            dataChanged = true;
+         }
+         resultsRender.clearData();
+     }
+-- 
+2.10.2
+

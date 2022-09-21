@@ -1,0 +1,129 @@
+From 15ddc452a9800ce7f5103b6847fd6db6ec5d6310 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 2 Jan 2021 22:36:42 +0100
+Subject: [PATCH 3/3] Sorting in Listener is not correct- View Results in Table
+
+All string columns will get sorted by human understandable alpha numeric sort
+
+Bugzilla Id: 63061
+---
+ .../jmeter/visualizers/TableVisualizer.java   | 11 +++-
+ .../util/AlphaNumericKeyComparator.java       | 50 ++-----------------
+ 2 files changed, 12 insertions(+), 49 deletions(-)
+
+diff --git a/src/components/src/main/java/org/apache/jmeter/visualizers/TableVisualizer.java b/src/components/src/main/java/org/apache/jmeter/visualizers/TableVisualizer.java
+index 45afebfcf2..8f3bbbc205 100644
+--- a/src/components/src/main/java/org/apache/jmeter/visualizers/TableVisualizer.java
++++ b/src/components/src/main/java/org/apache/jmeter/visualizers/TableVisualizer.java
+@@ -54,6 +54,7 @@ import org.apache.jorphan.gui.RendererUtils;
+ import org.apache.jorphan.gui.RightAlignRenderer;
+ import org.apache.jorphan.gui.layout.VerticalLayout;
+ import org.apache.jorphan.reflect.Functor;
++import org.apache.jorphan.util.AlphaNumericComparator;
+ 
+ /**
+  * This class implements a statistical analyser that calculates both the average
+@@ -226,7 +227,7 @@ public class TableVisualizer extends AbstractVisualizer implements Clearable {
+ 
+         // Set up the table itself
+         table = new JTable(model);
+-        table.setRowSorter(new ObjectTableSorter(model).setValueComparator(5,
++        final ObjectTableSorter rowSorter = new ObjectTableSorter(model).setValueComparator(5,
+                 Comparator.nullsFirst(
+                         (ImageIcon o1, ImageIcon o2) -> {
+                             if (o1 == o2) {
+@@ -239,7 +240,13 @@ public class TableVisualizer extends AbstractVisualizer implements Clearable {
+                                 return 1;
+                             }
+                             throw new IllegalArgumentException("Only success and failure images can be compared");
+-                        })));
++                        }));
++        for (int i=0; i<model.getColumnCount(); i++) {
++            if (model.getColumnClass(i).equals(String.class)) {
++                rowSorter.setValueComparator(i, new AlphaNumericComparator<Object>(o -> o.toString()));
++            }
++        }
++        table.setRowSorter(rowSorter);
+         JMeterUtils.applyHiDPI(table);
+         HeaderAsPropertyRendererWrapper.setupDefaultRenderer(table);
+         RendererUtils.applyRenderers(table, RENDERERS);
+diff --git a/src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java b/src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java
+index 9a610eb61e..3ed5e54455 100644
+--- a/src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java
++++ b/src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java
+@@ -16,11 +16,8 @@
+  */
+ package org.apache.jorphan.util;
+ 
+-import java.math.BigInteger;
+ import java.util.Comparator;
+ import java.util.Map;
+-import java.util.regex.Matcher;
+-import java.util.regex.Pattern;
+ 
+ /**
+  * Comparator for {@link Map.Entry} Objects, that compares based on their keys only. The keys
+@@ -31,57 +28,16 @@ import java.util.regex.Pattern;
+ public class AlphaNumericKeyComparator implements Comparator<Map.Entry<Object, Object>> {
+     
+     public static final AlphaNumericKeyComparator INSTANCE = new AlphaNumericKeyComparator();
++    private AlphaNumericComparator<Map.Entry<Object, Object>> comparator;
+     
+     private AlphaNumericKeyComparator() {
+         // don't instantiate this class on your own.
++        this.comparator = new AlphaNumericComparator<Map.Entry<Object, Object>>(e -> e.getKey().toString());
+     }
+ 
+-    private static final Pattern parts = Pattern.compile("(\\D*)(\\d*)");
+-    private static final int ALPHA_PART = 1;
+-    private static final int NUM_PART = 2;
+-
+     @Override
+     public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
+-        Matcher m1 = parts.matcher(o1.getKey().toString());
+-        Matcher m2 = parts.matcher(o2.getKey().toString());
+-
+-        while (m1.find() && m2.find()) {
+-            int compareCharGroup = m1.group(ALPHA_PART).compareTo(m2.group(ALPHA_PART));
+-            if (compareCharGroup != 0) {
+-                return compareCharGroup;
+-            }
+-            String numberPart1 = m1.group(NUM_PART);
+-            String numberPart2 = m2.group(NUM_PART);
+-            if (numberPart1.isEmpty()) {
+-                if (numberPart2.isEmpty()) {
+-                    return 0;
+-                }
+-                return -1;
+-            } else if (numberPart2.isEmpty()) {
+-                return 1;
+-            }
+-            int lengthNumber1 = numberPart1.length();
+-            int lengthNumber2 = numberPart2.length();
+-            if (lengthNumber1 != lengthNumber2) {
+-                if (lengthNumber1 < lengthNumber2) {
+-                    return -1;
+-                }
+-                return 1;
+-            }
+-            BigInteger i1 = new BigInteger(numberPart1);
+-            BigInteger i2 = new BigInteger(numberPart2);
+-            int compareNumber = i1.compareTo(i2);
+-            if (compareNumber != 0) {
+-                return compareNumber;
+-            }
+-        }
+-        if (m1.hitEnd() && m2.hitEnd()) {
+-            return 0;
+-        }
+-        if (m1.hitEnd()) {
+-            return -1;
+-        }
+-        return 1;
++        return this.comparator.compare(o1, o2);
+     }
+ 
+ }
+-- 
+2.25.1
+

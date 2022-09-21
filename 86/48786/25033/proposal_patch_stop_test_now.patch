@@ -1,0 +1,34 @@
+Index: src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 911192)
++++ src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -352,12 +352,12 @@
+         public void run() {
+             running = false;
+             engine = null;
++            boolean stopped = false;
+             if (now) {
+                 tellThreadsToStop();
+                 pause(10 * allThreads.size());
+-                boolean stopped = verifyThreadsStopped();
++                stopped = verifyThreadsStopped();
+                 if (!stopped) {
+-                    notifyTestListenersOfEnd(testListenersSave);
+                     if (JMeter.isNonGUI()) {
+                         exit();
+                     } else {
+@@ -369,9 +369,10 @@
+                 } // else will be done by threadFinished()
+             } else {
+                 stopAllThreads();
+-                if (serialized) {
+-                    notifyTestListenersOfEnd(testListenersSave);
+-                }
++            }
++            //  for TGs which run consecutively or when thread don't stop 
++            if (serialized || !stopped) {
++                notifyTestListenersOfEnd(testListenersSave);
+             }
+         }
+     }
+

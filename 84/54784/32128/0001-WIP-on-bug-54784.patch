@@ -1,0 +1,280 @@
+From 45582f01875b4380592753ecffa760e616cff1cd Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Sun, 19 Oct 2014 16:03:20 +0100
+Subject: [PATCH] WIP on bug 54784
+
+---
+ src/core/org/apache/jmeter/gui/GuiPackage.java     | 20 +++---
+ .../org/apache/jmeter/gui/action/KeyStrokes.java   |  6 +-
+ .../apache/jmeter/gui/tree/JMeterTreeListener.java | 82 +++++++++++-----------
+ .../org/apache/jmeter/gui/util/MenuFactory.java    | 11 +--
+ 4 files changed, 65 insertions(+), 54 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/gui/GuiPackage.java b/src/core/org/apache/jmeter/gui/GuiPackage.java
+index 0010a25..e57c8fc 100644
+--- a/src/core/org/apache/jmeter/gui/GuiPackage.java
++++ b/src/core/org/apache/jmeter/gui/GuiPackage.java
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.gui;
+ 
+ import java.awt.Component;
++import java.awt.Point;
+ import java.awt.event.MouseEvent;
+ import java.beans.Introspector;
+ import java.util.ArrayList;
+@@ -175,7 +176,7 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+      *
+      * @return GuiPackage
+      */
+-    public static GuiPackage getInstance(JMeterTreeListener listener, JMeterTreeModel treeModel) {
++    public synchronized static GuiPackage getInstance(JMeterTreeListener listener, JMeterTreeModel treeModel) {
+         if (guiPack == null) {
+             guiPack = new GuiPackage(treeModel, listener);
+             guiPack.undoHistory.add(treeModel, "Created");
+@@ -607,7 +608,9 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+      *            the popup menu to display
+      */
+     public void displayPopUp(MouseEvent e, JPopupMenu popup) {
+-        displayPopUp((Component) e.getSource(), e, popup);
++        final Point point = new Point(e.getX(), e.getY());
++        Component invoker = (Component) e.getSource();
++        displayPopUp(invoker, point, popup);
+     }
+ 
+     /**
+@@ -616,17 +619,19 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+      *
+      * @param invoker
+      *            the source component
+-     * @param e
+-     *            the mouse event causing this popup to be displayed
++     * @param p
++     *            the point at which to display the popup
+      * @param popup
+      *            the popup menu to display
+      */
+-    public void displayPopUp(Component invoker, MouseEvent e, JPopupMenu popup) {
++    public void displayPopUp(Component invoker, Point p, JPopupMenu popup) {
+         if (popup != null) {
+-            log.debug("Showing pop up for " + invoker + " at x,y = " + e.getX() + "," + e.getY());
++            if (log.isDebugEnabled()) {
++                log.debug("Showing pop up for " + invoker + " at x,y = " + p.x + "," + p.y);
++            }
+ 
+             popup.pack();
+-            popup.show(invoker, e.getX(), e.getY());
++            popup.show(invoker, p.x, p.y);
+             popup.setVisible(true);
+             popup.requestFocusInWindow();
+         }
+@@ -739,7 +744,6 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+                 JOptionPane.showMessageDialog(null,message,title,type);
+             }
+         });
+-
+     }
+ 
+     /**
+diff --git a/src/core/org/apache/jmeter/gui/action/KeyStrokes.java b/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+index 5590c5c..683f9d0 100644
+--- a/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
++++ b/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+@@ -30,8 +30,7 @@ import javax.swing.KeyStroke;
+  */
+ public final class KeyStrokes {
+     // Prevent instantiation
+-    private KeyStrokes(){
+-    }
++    private KeyStrokes() {}
+ 
+     // Bug 47064 - fixes for Mac LAF
+     private static final int CONTROL_MASK =Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
+@@ -74,6 +73,9 @@ public final class KeyStrokes {
+     public static final KeyStroke ALT_DOWN_ARROW    = KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, InputEvent.ALT_DOWN_MASK);
+     public static final KeyStroke ALT_LEFT_ARROW    = KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK);
+     public static final KeyStroke ALT_RIGHT_ARROW   = KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK);
++    
++    public static final KeyStroke CONTEXT_MENU      = KeyStroke.getKeyStroke(KeyEvent.VK_CONTEXT_MENU, 0);
++    public static final KeyStroke SHIFT_F10_CONTEXT_MENU = KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK);
+ 
+     /**
+      * Check if an event matches the KeyStroke definition.
+diff --git a/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java b/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+index e3d9484..fdb01cf 100644
+--- a/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
++++ b/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+@@ -18,7 +18,10 @@
+ 
+ package org.apache.jmeter.gui.tree;
+ 
++import java.awt.Component;
+ import java.awt.Container;
++import java.awt.Point;
++import java.awt.Rectangle;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.awt.event.InputEvent;
+@@ -44,8 +47,6 @@ import org.apache.log.Logger;
+ public class JMeterTreeListener implements TreeSelectionListener, MouseListener, KeyListener {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    // Container endWindow;
+-    // JPopupMenu pop;
+     private TreePath currentPath;
+ 
+     private ActionListener actionHandler;
+@@ -145,9 +146,7 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+         log.debug("value changed, updating currentPath");
+         currentPath = e.getNewLeadSelectionPath();
+         // Call requestFocusInWindow to ensure current component loses focus and
+-        // all values are correctly saved
+-        // see https://issues.apache.org/bugzilla/show_bug.cgi?id=55103
+-        // see https://issues.apache.org/bugzilla/show_bug.cgi?id=55459
++        // all values are correctly saved. See Bug IDs 55103 and 55459.
+         tree.requestFocusInWindow();
+         actionHandler.actionPerformed(new ActionEvent(this, 3333, ActionNames.EDIT)); // $NON-NLS-1$
+     }
+@@ -177,8 +176,6 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+             currentPath = tree.getPathForLocation(e.getX(), e.getY());
+         }
+         if (selRow != -1) {
+-            // updateMainMenu(((JMeterGUIComponent)
+-            // getCurrentNode().getUserObject()).createPopupMenu());
+             if (isRightClick(e)) {
+                 if (tree.getSelectionCount() < 2) {
+                     tree.setSelectionPath(currentPath);
+@@ -189,48 +186,53 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+         }
+     }
+ 
+-
+     @Override
+-    public void mouseExited(MouseEvent ev) {
++    public void mouseExited(MouseEvent e) {
+     }
+ 
+     @Override
+     public void keyPressed(KeyEvent e) {
+-        if (KeyStrokes.matches(e,KeyStrokes.COPY)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.COPY));
+-            e.consume();
+-        } else if (KeyStrokes.matches(e,KeyStrokes.PASTE)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.PASTE));
+-            e.consume();
+-        } else if (KeyStrokes.matches(e,KeyStrokes.CUT)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.CUT));
+-            e.consume();
+-        } else if (KeyStrokes.matches(e,KeyStrokes.DUPLICATE)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.DUPLICATE));
+-            e.consume();
+-        } else if (KeyStrokes.matches(e,KeyStrokes.ALT_UP_ARROW)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_UP));
+-            e.consume();
+-        } else if (KeyStrokes.matches(e,KeyStrokes.ALT_DOWN_ARROW)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_DOWN));
+-            e.consume();
+-        } else if (KeyStrokes.matches(e,KeyStrokes.ALT_LEFT_ARROW)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_LEFT));
+-            e.consume();
+-        } else if (KeyStrokes.matches(e,KeyStrokes.ALT_RIGHT_ARROW)) {
+-            ActionRouter actionRouter = ActionRouter.getInstance();
+-            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.MOVE_RIGHT));
++        String actionName = null;
++
++        if (KeyStrokes.matches(e, KeyStrokes.COPY)) {
++            actionName = ActionNames.COPY;
++        } else if (KeyStrokes.matches(e, KeyStrokes.PASTE)) {
++            actionName = ActionNames.PASTE;
++        } else if (KeyStrokes.matches(e, KeyStrokes.CUT)) {
++            actionName = ActionNames.CUT;
++        } else if (KeyStrokes.matches(e, KeyStrokes.DUPLICATE)) {
++            actionName = ActionNames.DUPLICATE;
++        } else if (KeyStrokes.matches(e, KeyStrokes.ALT_UP_ARROW)) {
++            actionName = ActionNames.MOVE_UP;
++        } else if (KeyStrokes.matches(e, KeyStrokes.ALT_DOWN_ARROW)) {
++            actionName = ActionNames.MOVE_DOWN;
++        } else if (KeyStrokes.matches(e, KeyStrokes.ALT_LEFT_ARROW)) {
++            actionName = ActionNames.MOVE_LEFT;
++        } else if (KeyStrokes.matches(e, KeyStrokes.ALT_RIGHT_ARROW)) {
++            actionName = ActionNames.MOVE_RIGHT;
++        } else if (KeyStrokes.matches(e, KeyStrokes.SHIFT_F10_CONTEXT_MENU)
++                || KeyStrokes.matches(e, KeyStrokes.CONTEXT_MENU)) {
++            // Bug 54784
++            displayPopupMenu(e);
++        }
++        
++        if (actionName != null) {
++            final ActionRouter actionRouter = ActionRouter.getInstance();
++            actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), actionName));
+             e.consume();
+         }
+     }
+ 
++    private void displayPopupMenu(KeyEvent e) {
++        Component invoker = e.getComponent();
++        TreePath path = new TreePath(getCurrentNode().getPath());
++        Rectangle r = getJTree().getPathBounds(path);
++        int padding = 5;
++        Point point = new Point(r.x + padding, r.y + padding);
++        JPopupMenu popup = getCurrentNode().createPopupMenu();
++        GuiPackage.getInstance().displayPopUp(invoker, point, popup);
++    }
++
+     @Override
+     public void keyReleased(KeyEvent e) {
+     }
+diff --git a/src/core/org/apache/jmeter/gui/util/MenuFactory.java b/src/core/org/apache/jmeter/gui/util/MenuFactory.java
+index af4d87b..eb23149 100644
+--- a/src/core/org/apache/jmeter/gui/util/MenuFactory.java
++++ b/src/core/org/apache/jmeter/gui/util/MenuFactory.java
+@@ -39,7 +39,6 @@ import javax.swing.JMenuItem;
+ import javax.swing.JPopupMenu;
+ import javax.swing.KeyStroke;
+ import javax.swing.MenuElement;
+-
+ import org.apache.jmeter.control.Controller;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.JMeterGUIComponent;
+@@ -436,6 +435,9 @@ public final class MenuFactory {
+         JMenuItem newMenuChoice = new JMenuItem(info.getLabel());
+         newMenuChoice.setName(info.getClassName());
+         newMenuChoice.addActionListener(ActionRouter.getInstance());
++        newMenuChoice.registerKeyboardAction(ActionRouter.getInstance(), actionCommand,
++                KeyStrokes.ENTER, JMenuItem.WHEN_IN_FOCUSED_WINDOW); // Bug 54784
++
+         if (actionCommand != null) {
+             newMenuChoice.setActionCommand(actionCommand);
+         }
+@@ -609,8 +611,9 @@ public final class MenuFactory {
+ 
+         // Force TestFragment to only be pastable under a Test Plan
+         if (foundClass(nodes, new Class[]{org.apache.jmeter.control.TestFragmentController.class})){
+-            if (parent instanceof TestPlan)
++            if (parent instanceof TestPlan) {
+                 return true;
++            }
+             return false;
+         }
+ 
+@@ -721,9 +724,9 @@ public final class MenuFactory {
+             String lab1 = o1.getLabel();
+             String lab2 = o2.getLabel();
+             if (caseBlind) {
+-                return lab1.toLowerCase(Locale.ENGLISH).compareTo(lab2.toLowerCase(Locale.ENGLISH));                
++                return lab1.toLowerCase(Locale.ENGLISH).compareTo(lab2.toLowerCase(Locale.ENGLISH));
+             }
+-            return lab1.compareTo(lab2);                
++            return lab1.compareTo(lab2);
+         }
+     }
+ 
+-- 
+1.9.1
+

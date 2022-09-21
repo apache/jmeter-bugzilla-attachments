@@ -1,0 +1,62 @@
+Index: bin/nongui.bat
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/bin/nongui.bat,v
+retrieving revision 1.1
+diff -r1.1 nongui.bat
+1c1
+< @echo on
+---
+> @echo off
+3c3
+< rem set the log4j configuration file 
+---
+> rem set the log4j configuration file
+26,27c26,31
+< set CLSPATH=../lib/xerces.jar;ApacheJMeter.jar;../lib/Tidy.jar;../lib/log4j.jar;
+< java -cp %CLASSPATH%;%CLSPATH% -D%LOG4JCONFIG% %HOST% %PORT% org.apache.jmeter.NonGuiDriver %PROP% %SRC%
+---
+> 
+> for %%i in ("..\lib\*.jar") do CALL ..\lcp %%i
+> for %%i in ("..\ext\*.jar") do CALL ..\lcp %%i
+> 
+> java -cp %LOCALCLASSPATH%;ApacheJMeter.jar -D%LOG4JCONFIG% %HOST% %PORT% org.apache.jmeter.NonGuiDriver %PROP% %SRC%
+> 
+Index: src/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/threads/JMeterThread.java,v
+retrieving revision 1.17
+diff -r1.17 JMeterThread.java
+142a143,144
+>         
+>         group.threadStopped();
+Index: src/org/apache/jmeter/threads/ThreadGroup.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/threads/ThreadGroup.java,v
+retrieving revision 1.19
+diff -r1.19 ThreadGroup.java
+179a180,190
+>     
+>     public synchronized void threadStopped()
+>     {
+>         if (--threadsStarted == 0)
+>         {
+>             if (this.queue != null)
+>             {
+>                 this.queue.stop();
+>             }
+>         }
+>     }
+462a474,475
+>         
+>         private boolean running = true;
+473a487,492
+>         
+>         synchronized void stop()
+>         {
+>             running = false;
+>             this.notify();
+>         }
+478c497
+< 			while(true)
+---
+> 			while(running)

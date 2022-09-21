@@ -1,0 +1,2107 @@
+From 4a76090a1038dbea188b9dd29192beb58771d50e Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Thu, 5 Jan 2012 22:48:20 +0000
+Subject: [PATCH 01/11] added .gitignore file
+
+---
+ .gitignore |   44 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 files changed, 44 insertions(+), 0 deletions(-)
+ create mode 100644 .gitignore
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..686003d
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,44 @@
++# Compiled source #
++###################
++*.com
++*.class
++*.dll
++*.exe
++*.o
++*.so
++
++# Packages #
++############
++# it's better to unpack these files and commit the raw source
++# git has its own built in compression methods
++*.7z
++*.dmg
++*.gz
++*.iso
++*.jar
++*.rar
++*.tar
++*.zip
++
++# Logs and databases #
++######################
++*.log
++*.sql
++*.sqlite
++
++# OS generated files #
++######################
++.DS_Store*
++ehthumbs.db
++Icon?
++Thumbs.db
++
++# IntelliJ #
++############
++*.iml
++*.ipr
++*.iws
++
++# Maven #
++#########
++*/target/*
+-- 
+1.7.5.4
+
+
+From 4cf5484394882ce77a54b0058d531a3419759607 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 13:48:23 +0000
+Subject: [PATCH 02/11] BUG-49753 - Added POM files for components to enable
+ creation of mavenised artifacts that can be pushed up
+ to a maven repo.
+
+---
+ pom.xml                   |   87 ++++++++++++++++++++++++++++++++++++++
+ src/components/pom.xml    |  103 +++++++++++++++++++++++++++++++++++++++++++++
+ src/core/pom.xml          |   92 ++++++++++++++++++++++++++++++++++++++++
+ src/functions/pom.xml     |   59 ++++++++++++++++++++++++++
+ src/jorphan/pom.xml       |   75 ++++++++++++++++++++++++++++++++
+ src/protocol/ftp/pom.xml  |   59 ++++++++++++++++++++++++++
+ src/protocol/http/pom.xml |   91 +++++++++++++++++++++++++++++++++++++++
+ src/protocol/java/pom.xml |   52 +++++++++++++++++++++++
+ src/protocol/jdbc/pom.xml |   59 ++++++++++++++++++++++++++
+ src/protocol/jms/pom.xml  |   59 ++++++++++++++++++++++++++
+ src/protocol/ldap/pom.xml |   52 +++++++++++++++++++++++
+ src/protocol/mail/pom.xml |   52 +++++++++++++++++++++++
+ src/protocol/pom.xml      |   42 ++++++++++++++++++
+ src/protocol/tcp/pom.xml  |   52 +++++++++++++++++++++++
+ src/reports/pom.xml       |   52 +++++++++++++++++++++++
+ 15 files changed, 986 insertions(+), 0 deletions(-)
+ create mode 100644 pom.xml
+ create mode 100644 src/components/pom.xml
+ create mode 100644 src/core/pom.xml
+ create mode 100644 src/functions/pom.xml
+ create mode 100644 src/jorphan/pom.xml
+ create mode 100644 src/protocol/ftp/pom.xml
+ create mode 100644 src/protocol/http/pom.xml
+ create mode 100644 src/protocol/java/pom.xml
+ create mode 100644 src/protocol/jdbc/pom.xml
+ create mode 100644 src/protocol/jms/pom.xml
+ create mode 100644 src/protocol/ldap/pom.xml
+ create mode 100644 src/protocol/mail/pom.xml
+ create mode 100644 src/protocol/pom.xml
+ create mode 100644 src/protocol/tcp/pom.xml
+ create mode 100644 src/reports/pom.xml
+
+diff --git a/pom.xml b/pom.xml
+new file mode 100644
+index 0000000..fbcaef4
+--- /dev/null
++++ b/pom.xml
+@@ -0,0 +1,87 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>apache</artifactId>
++        <groupId>org.apache</groupId>
++        <version>7</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <groupId>org.apache.jmeter</groupId>
++    <artifactId>ApacheJMeter_parent</artifactId>
++    <packaging>pom</packaging>
++    <name>Apache JMeter</name>
++    <version>2.5.1</version>
++    <description>Apache JMeter is open source software, a 100% pure Java desktop application designed to load test functional behavior and measure performance. It was originally designed for testing Web Applications but has since expanded to other test functions.</description>
++    <url>http://jakarta.apache.org/jmeter/</url>
++    <issueManagement>
++        <system>bugzilla</system>
++        <url>https://issues.apache.org/bugzilla/describecomponents.cgi?product=JMeter</url>
++    </issueManagement>
++    <inceptionYear>1998</inceptionYear>
++
++    <properties>
++        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
++    </properties>
++
++    <modules>
++        <module>src/jorphan</module>
++        <module>src/core</module>
++        <module>src/components</module>
++        <module>src/functions</module>
++        <module>src/reports</module>
++        <module>src/protocol</module>
++    </modules>
++
++    <build>
++        <!-- override maven conventions to match jMeter ant-build ones -->
++        <sourceDirectory>src</sourceDirectory>
++        <testSourceDirectory>test</testSourceDirectory>
++        <resources>
++            <resource>
++                <directory>src</directory>
++                <excludes>
++                    <exclude>**/*.java</exclude>
++                </excludes>
++            </resource>
++        </resources>
++        <testResources>
++            <testResource>
++                <directory>test</directory>
++                <excludes>
++                    <exclude>**/*.java</exclude>
++                </excludes>
++            </testResource>
++        </testResources>
++
++        <plugins>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-compiler-plugin</artifactId>
++                <version>2.3.1</version>
++                <configuration>
++                    <source>1.5</source>
++                    <target>1.5</target>
++                </configuration>
++            </plugin>
++        </plugins>
++    </build>
++
++</project>
+\ No newline at end of file
+diff --git a/src/components/pom.xml b/src/components/pom.xml
+new file mode 100644
+index 0000000..1075572
+--- /dev/null
++++ b/src/components/pom.xml
+@@ -0,0 +1,103 @@
++
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++	<parent>
++		<artifactId>ApacheJMeter_parent</artifactId>
++		<groupId>org.apache.jmeter</groupId>
++		<version>2.5.1</version>
++	</parent>
++	<modelVersion>4.0.0</modelVersion>
++	<artifactId>ApacheJMeter_components</artifactId>
++    <name>Apache JMeter Components</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++	<dependencies>
++      <dependency>
++        <groupId>${project.groupId}</groupId>
++        <artifactId>jorphan</artifactId>
++        <version>${project.version}</version>
++      </dependency>
++      <dependency>
++        <groupId>${project.groupId}</groupId>
++        <artifactId>ApacheJMeter_core</artifactId>
++        <version>${project.version}</version>
++      </dependency>
++      <dependency>
++      	<groupId>jcharts</groupId>
++      	<artifactId>jcharts</artifactId>
++      	<version>0.7.5</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>javax.mail</groupId>
++      	<artifactId>mail</artifactId>
++      	<version>1.4.4</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>xalan</groupId>
++      	<artifactId>xalan</artifactId>
++      	<version>2.7.1</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>jdom</groupId>
++      	<artifactId>jdom</artifactId>
++      	<version>1.1</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>org.bouncycastle</groupId>
++      	<artifactId>bcmail-jdk15</artifactId>
++      	<version>1.45</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>org.bouncycastle</groupId>
++      	<artifactId>bcprov-jdk15</artifactId>
++      	<version>1.45</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++	</dependencies>
++
++    <repositories>
++      <repository>
++        <!-- required to get javamail 1.4.3 - downgrade to 1.4.1 ??? -->
++        <id>java.net</id>
++        <url>http://download.java.net/maven/2</url>
++     </repository>
++     <repository>
++        <!-- required for jCharts 0.7.5 - Upgrade to 1.0.0-alpha-1 ??? -->
++        <id>geotools</id>
++        <url>http://maven.geotools.fr/repository</url>
++     </repository>
++    </repositories>
++
++</project>
+\ No newline at end of file
+diff --git a/src/core/pom.xml b/src/core/pom.xml
+new file mode 100644
+index 0000000..00e2e9b
+--- /dev/null
++++ b/src/core/pom.xml
+@@ -0,0 +1,92 @@
++
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++	<parent>
++		<artifactId>ApacheJMeter_parent</artifactId>
++		<groupId>org.apache.jmeter</groupId>
++		<version>2.5.1</version>
++	</parent>
++	<modelVersion>4.0.0</modelVersion>
++	<artifactId>ApacheJMeter_core</artifactId>
++    <name>Apache JMeter Core</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++	<dependencies>
++      <dependency>
++        <groupId>${project.groupId}</groupId>
++        <artifactId>jorphan</artifactId>
++        <version>${project.version}</version>
++      </dependency>
++      <dependency>
++      	<groupId>com.thoughtworks.xstream</groupId>
++      	<artifactId>xstream</artifactId>
++      	<version>1.3.1</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>oro</groupId>
++      	<artifactId>oro</artifactId>
++      	<version>2.0.8</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>commons-httpclient</groupId>
++      	<artifactId>commons-httpclient</artifactId>
++      	<version>3.1</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>commons-io</groupId>
++      	<artifactId>commons-io</artifactId>
++      	<version>2.0.1</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>net.sf.jtidy</groupId>
++      	<artifactId>jtidy</artifactId>
++      	<version>r938</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>rhino</groupId>
++      	<artifactId>js</artifactId>
++      	<version>1.6R5</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++      <dependency>
++      	<groupId>org.apache.xmlgraphics</groupId>
++      	<artifactId>xmlgraphics-commons</artifactId>
++      	<version>1.3.1</version>
++      	<type>jar</type>
++      	<scope>compile</scope>
++      </dependency>
++	</dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/functions/pom.xml b/src/functions/pom.xml
+new file mode 100644
+index 0000000..9474a8a
+--- /dev/null
++++ b/src/functions/pom.xml
+@@ -0,0 +1,59 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_parent</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_functions</artifactId>
++    <name>Apache JMeter Functions</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>xalan</groupId>
++            <artifactId>xalan</artifactId>
++            <version>2.7.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>org.apache.commons</groupId>
++            <artifactId>commons-jexl</artifactId>
++            <version>2.0.1</version>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/jorphan/pom.xml b/src/jorphan/pom.xml
+new file mode 100644
+index 0000000..f9e233e
+--- /dev/null
++++ b/src/jorphan/pom.xml
+@@ -0,0 +1,75 @@
++
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++	<parent>
++		<artifactId>ApacheJMeter_parent</artifactId>
++		<groupId>org.apache.jmeter</groupId>
++		<version>2.5.1</version>
++	</parent>
++	<modelVersion>4.0.0</modelVersion>
++	<artifactId>jorphan</artifactId>
++    <name>Apache jOrphan</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++	<dependencies>
++		<dependency>
++			<groupId>commons-jexl</groupId>
++			<artifactId>commons-jexl</artifactId>
++			<version>1.1</version>
++		</dependency>
++		<dependency>
++			<groupId>logkit</groupId>
++			<artifactId>logkit</artifactId>
++			<version>2.0</version>
++		</dependency>
++		<dependency>
++			<groupId>commons-lang</groupId>
++			<artifactId>commons-lang</artifactId>
++			<version>2.6</version>
++		</dependency>
++		<dependency>
++			<groupId>excalibur-logger</groupId>
++			<artifactId>excalibur-logger</artifactId>
++			<version>1.1</version>
++		</dependency>
++		<dependency>
++			<groupId>avalon</groupId>
++			<artifactId>avalon-framework</artifactId>
++			<version>4.1.4</version>
++		</dependency>
++		<dependency>
++			<groupId>commons-collections</groupId>
++			<artifactId>commons-collections</artifactId>
++			<version>3.2.1</version>
++		</dependency>
++		<dependency>
++			<groupId>bsf</groupId>
++			<artifactId>bsf</artifactId>
++			<version>2.4.0</version>
++			<type>jar</type>
++			<scope>compile</scope>
++		</dependency>
++	</dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/ftp/pom.xml b/src/protocol/ftp/pom.xml
+new file mode 100644
+index 0000000..79a3671
+--- /dev/null
++++ b/src/protocol/ftp/pom.xml
+@@ -0,0 +1,59 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_ftp</artifactId>
++    <name>Apache JMeter FTP</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>commons-net</groupId>
++            <artifactId>commons-net</artifactId>
++            <version>3.0.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/http/pom.xml b/src/protocol/http/pom.xml
+new file mode 100644
+index 0000000..446466f
+--- /dev/null
++++ b/src/protocol/http/pom.xml
+@@ -0,0 +1,91 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_http</artifactId>
++    <name>Apache JMeter HTTP</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>soap</groupId>
++            <artifactId>soap</artifactId>
++            <version>2.3.1</version>
++        </dependency>
++        <dependency>
++            <groupId>org.htmlparser</groupId>
++            <artifactId>htmlparser</artifactId>
++            <version>2.1</version>
++        </dependency>
++        <dependency>
++            <groupId>org.htmlparser</groupId>
++            <artifactId>htmllexer</artifactId>
++            <version>2.1</version>
++        </dependency>
++        <dependency>
++            <groupId>org.apache.httpcomponents</groupId>
++            <artifactId>httpclient</artifactId>
++            <version>4.1.2</version>
++        </dependency>
++        <dependency>
++            <groupId>org.apache.httpcomponents</groupId>
++            <artifactId>httpmime</artifactId>
++            <version>4.1.2</version>
++        </dependency>
++    </dependencies>
++
++    <repositories>
++        <repository>
++            <!-- required for htmlparser -->
++            <id>htmlparser</id>
++            <url>http://htmlparser.sourceforge.net/m2-snapshot-repo</url>
++            <snapshots>
++                <enabled>true</enabled>
++            </snapshots>
++            <releases>
++                <enabled>false</enabled>
++            </releases>
++        </repository>
++    </repositories>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/java/pom.xml b/src/protocol/java/pom.xml
+new file mode 100644
+index 0000000..d3e132e
+--- /dev/null
++++ b/src/protocol/java/pom.xml
+@@ -0,0 +1,52 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_java</artifactId>
++    <name>Apache JMeter Java</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/jdbc/pom.xml b/src/protocol/jdbc/pom.xml
+new file mode 100644
+index 0000000..02e313a
+--- /dev/null
++++ b/src/protocol/jdbc/pom.xml
+@@ -0,0 +1,59 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_jdbc</artifactId>
++    <name>Apache JMeter JDBC</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>excalibur-datasource</groupId>
++            <artifactId>excalibur-datasource</artifactId>
++            <version>1.1.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/jms/pom.xml b/src/protocol/jms/pom.xml
+new file mode 100644
+index 0000000..ce21d78
+--- /dev/null
++++ b/src/protocol/jms/pom.xml
+@@ -0,0 +1,59 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_jms</artifactId>
++    <name>Apache JMeter JMS</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>org.apache.geronimo.specs</groupId>
++            <artifactId>geronimo-jms_1.1_spec</artifactId>
++            <version>1.1.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/ldap/pom.xml b/src/protocol/ldap/pom.xml
+new file mode 100644
+index 0000000..637eae9
+--- /dev/null
++++ b/src/protocol/ldap/pom.xml
+@@ -0,0 +1,52 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_ldap</artifactId>
++    <name>Apache JMeter LDAP</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/mail/pom.xml b/src/protocol/mail/pom.xml
+new file mode 100644
+index 0000000..4ecfb04
+--- /dev/null
++++ b/src/protocol/mail/pom.xml
+@@ -0,0 +1,52 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_mail</artifactId>
++    <name>Apache JMeter Mail</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/pom.xml b/src/protocol/pom.xml
+new file mode 100644
+index 0000000..b2eea61
+--- /dev/null
++++ b/src/protocol/pom.xml
+@@ -0,0 +1,42 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_parent</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_protocol</artifactId>
++    <name>Apache JMeter Protocol</name>
++    <packaging>pom</packaging>
++
++    <modules>
++        <module>ftp</module>
++        <module>http</module>
++        <module>java</module>
++        <module>jdbc</module>
++        <module>jms</module>
++        <module>ldap</module>
++        <module>mail</module>
++        <module>tcp</module>
++    </modules>
++
++</project>
+\ No newline at end of file
+diff --git a/src/protocol/tcp/pom.xml b/src/protocol/tcp/pom.xml
+new file mode 100644
+index 0000000..3546279
+--- /dev/null
++++ b/src/protocol/tcp/pom.xml
+@@ -0,0 +1,52 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_protocol</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_tcp</artifactId>
++    <name>Apache JMeter TCP</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+diff --git a/src/reports/pom.xml b/src/reports/pom.xml
+new file mode 100644
+index 0000000..94e1af4
+--- /dev/null
++++ b/src/reports/pom.xml
+@@ -0,0 +1,52 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one
++or more contributor license agreements.  See the NOTICE file
++distributed with this work for additional information
++regarding copyright ownership.  The ASF licenses this file
++to you under the Apache License, Version 2.0 (the
++"License"); you may not use this file except in compliance
++with the License.  You may obtain a copy of the License at
++
++  http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing,
++software distributed under the License is distributed on an
++"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++KIND, either express or implied.  See the License for the
++specific language governing permissions and limitations
++under the License.
++-->
++
++<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
++    <parent>
++        <artifactId>ApacheJMeter_parent</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_reports</artifactId>
++    <name>Apache JMeter Reports</name>
++
++    <build>
++        <sourceDirectory>.</sourceDirectory>
++    </build>
++
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_components</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++    </dependencies>
++
++</project>
+\ No newline at end of file
+-- 
+1.7.5.4
+
+
+From 375734201be4a38eff407d7c0200efbd5974c6e1 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 14:34:10 +0000
+Subject: [PATCH 03/11] BUG-49753 - Also generates sources as well as base
+ artefacts now.
+
+---
+ pom.xml             |   23 ++++++++++++
+ src/jorphan/pom.xml |   93 +++++++++++++++++++++++++--------------------------
+ 2 files changed, 69 insertions(+), 47 deletions(-)
+
+diff --git a/pom.xml b/pom.xml
+index fbcaef4..66de4af 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -59,6 +59,7 @@ under the License.
+                 <directory>src</directory>
+                 <excludes>
+                     <exclude>**/*.java</exclude>
++                    <exclude>*/target/*</exclude>
+                 </excludes>
+             </resource>
+         </resources>
+@@ -67,6 +68,7 @@ under the License.
+                 <directory>test</directory>
+                 <excludes>
+                     <exclude>**/*.java</exclude>
++                    <exclude>*/target/*</exclude>
+                 </excludes>
+             </testResource>
+         </testResources>
+@@ -81,6 +83,27 @@ under the License.
+                     <target>1.5</target>
+                 </configuration>
+             </plugin>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-source-plugin</artifactId>
++                <version>2.1.2</version>
++                <executions>
++                    <execution>
++                        <id>attach-sources</id>
++                        <phase>verify</phase>
++                        <goals>
++                            <goal>jar-no-fork</goal>
++                        </goals>
++                        <configuration>
++                            <excludes>
++                                <exclude>**/*.jar</exclude>
++                                <exclude>**/*.iml</exclude>
++                                <exclude>**/*.zip</exclude>
++                            </excludes>
++                        </configuration>
++                    </execution>
++                </executions>
++            </plugin>
+         </plugins>
+     </build>
+ 
+diff --git a/src/jorphan/pom.xml b/src/jorphan/pom.xml
+index f9e233e..daca177 100644
+--- a/src/jorphan/pom.xml
++++ b/src/jorphan/pom.xml
+@@ -1,4 +1,3 @@
+-
+ <!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+@@ -19,57 +18,57 @@ under the License.
+ -->
+ 
+ <project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+-	<parent>
+-		<artifactId>ApacheJMeter_parent</artifactId>
+-		<groupId>org.apache.jmeter</groupId>
+-		<version>2.5.1</version>
+-	</parent>
+-	<modelVersion>4.0.0</modelVersion>
+-	<artifactId>jorphan</artifactId>
++    <parent>
++        <artifactId>ApacheJMeter_parent</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>jorphan</artifactId>
+     <name>Apache jOrphan</name>
+ 
+     <build>
+         <sourceDirectory>.</sourceDirectory>
+     </build>
+ 
+-	<dependencies>
+-		<dependency>
+-			<groupId>commons-jexl</groupId>
+-			<artifactId>commons-jexl</artifactId>
+-			<version>1.1</version>
+-		</dependency>
+-		<dependency>
+-			<groupId>logkit</groupId>
+-			<artifactId>logkit</artifactId>
+-			<version>2.0</version>
+-		</dependency>
+-		<dependency>
+-			<groupId>commons-lang</groupId>
+-			<artifactId>commons-lang</artifactId>
+-			<version>2.6</version>
+-		</dependency>
+-		<dependency>
+-			<groupId>excalibur-logger</groupId>
+-			<artifactId>excalibur-logger</artifactId>
+-			<version>1.1</version>
+-		</dependency>
+-		<dependency>
+-			<groupId>avalon</groupId>
+-			<artifactId>avalon-framework</artifactId>
+-			<version>4.1.4</version>
+-		</dependency>
+-		<dependency>
+-			<groupId>commons-collections</groupId>
+-			<artifactId>commons-collections</artifactId>
+-			<version>3.2.1</version>
+-		</dependency>
+-		<dependency>
+-			<groupId>bsf</groupId>
+-			<artifactId>bsf</artifactId>
+-			<version>2.4.0</version>
+-			<type>jar</type>
+-			<scope>compile</scope>
+-		</dependency>
+-	</dependencies>
++    <dependencies>
++        <dependency>
++            <groupId>commons-jexl</groupId>
++            <artifactId>commons-jexl</artifactId>
++            <version>1.1</version>
++        </dependency>
++        <dependency>
++            <groupId>logkit</groupId>
++            <artifactId>logkit</artifactId>
++            <version>2.0</version>
++        </dependency>
++        <dependency>
++            <groupId>commons-lang</groupId>
++            <artifactId>commons-lang</artifactId>
++            <version>2.6</version>
++        </dependency>
++        <dependency>
++            <groupId>excalibur-logger</groupId>
++            <artifactId>excalibur-logger</artifactId>
++            <version>1.1</version>
++        </dependency>
++        <dependency>
++            <groupId>avalon</groupId>
++            <artifactId>avalon-framework</artifactId>
++            <version>4.1.4</version>
++        </dependency>
++        <dependency>
++            <groupId>commons-collections</groupId>
++            <artifactId>commons-collections</artifactId>
++            <version>3.2.1</version>
++        </dependency>
++        <dependency>
++            <groupId>bsf</groupId>
++            <artifactId>bsf</artifactId>
++            <version>2.4.0</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++    </dependencies>
+ 
+ </project>
+\ No newline at end of file
+-- 
+1.7.5.4
+
+
+From fb6b9e4b6c00d69c235dab9ea8d3de687f87e676 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 14:55:15 +0000
+Subject: [PATCH 04/11] BUG-49753 - correct SCM added
+
+---
+ pom.xml |    6 ++++++
+ 1 files changed, 6 insertions(+), 0 deletions(-)
+
+diff --git a/pom.xml b/pom.xml
+index 66de4af..87cddac 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -36,9 +36,15 @@ under the License.
+         <url>https://issues.apache.org/bugzilla/describecomponents.cgi?product=JMeter</url>
+     </issueManagement>
+     <inceptionYear>1998</inceptionYear>
++    <scm>
++        <connection>http://svn.apache.org/repos/asf/jmeter/trunk/</connection>
++        <developerConnection>https://svn.apache.org/repos/asf/jmeter/trunk/</developerConnection>
++        <url>http://svn.apache.org/viewvc/jmeter/trunk/</url>
++    </scm>
+ 
+     <properties>
+         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
++        <maven.build.timestamp.format>yyyy-MM-dd</maven.build.timestamp.format>
+     </properties>
+ 
+     <modules>
+-- 
+1.7.5.4
+
+
+From 88daf3c03da5cc5326430a7170bd3e9f84643169 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 14:56:04 +0000
+Subject: [PATCH 05/11] BUG-49753 - commented out distributionManagement
+ template added.  Just needs to be filled in.
+
+---
+ pom.xml |   11 +++++++++++
+ 1 files changed, 11 insertions(+), 0 deletions(-)
+
+diff --git a/pom.xml b/pom.xml
+index 87cddac..8bf6c1e 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -113,4 +113,15 @@ under the License.
+         </plugins>
+     </build>
+ 
++    <!--<distributionManagement>-->
++        <!--<snapshotRepository>-->
++            <!--<id></id>-->
++            <!--<url></url>-->
++        <!--</snapshotRepository>-->
++        <!--<repository>-->
++            <!--<id></id>-->
++            <!--<url></url>-->
++        <!--</repository>-->
++    <!--</distributionManagement>-->
++
+ </project>
+\ No newline at end of file
+-- 
+1.7.5.4
+
+
+From e83c433b6ddac37f71a522bad2eabd5b26f22655 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 15:00:24 +0000
+Subject: [PATCH 06/11] BUG-49753 - <url> now points at the correct place.
+
+---
+ pom.xml |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/pom.xml b/pom.xml
+index 8bf6c1e..55036ab 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -30,7 +30,7 @@ under the License.
+     <name>Apache JMeter</name>
+     <version>2.5.1</version>
+     <description>Apache JMeter is open source software, a 100% pure Java desktop application designed to load test functional behavior and measure performance. It was originally designed for testing Web Applications but has since expanded to other test functions.</description>
+-    <url>http://jakarta.apache.org/jmeter/</url>
++    <url>http://jmeter.apache.org/</url>
+     <issueManagement>
+         <system>bugzilla</system>
+         <url>https://issues.apache.org/bugzilla/describecomponents.cgi?product=JMeter</url>
+-- 
+1.7.5.4
+
+
+From 222629d3f501368d1739350b7ce88445c53a628c Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 15:42:42 +0000
+Subject: [PATCH 07/11] BUGS-49753 - Force the inclusion of properties in the
+ built artefacts.
+
+---
+ pom.xml |    3 +++
+ 1 files changed, 3 insertions(+), 0 deletions(-)
+
+diff --git a/pom.xml b/pom.xml
+index 55036ab..b259a47 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -67,6 +67,9 @@ under the License.
+                     <exclude>**/*.java</exclude>
+                     <exclude>*/target/*</exclude>
+                 </excludes>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
+             </resource>
+         </resources>
+         <testResources>
+-- 
+1.7.5.4
+
+
+From 8e4929526d62973fd980cf4cf591f9538290d2f2 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 16:36:19 +0000
+Subject: [PATCH 08/11] BUGS-49753 - Defined resources location for JMeter
+ Core
+
+---
+ pom.xml          |    3 -
+ src/core/pom.xml |  133 ++++++++++++++++++++++++++++--------------------------
+ 2 files changed, 69 insertions(+), 67 deletions(-)
+
+diff --git a/pom.xml b/pom.xml
+index b259a47..55036ab 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -67,9 +67,6 @@ under the License.
+                     <exclude>**/*.java</exclude>
+                     <exclude>*/target/*</exclude>
+                 </excludes>
+-                <includes>
+-                    <include>**/*.properties</include>
+-                </includes>
+             </resource>
+         </resources>
+         <testResources>
+diff --git a/src/core/pom.xml b/src/core/pom.xml
+index 00e2e9b..da25d1d 100644
+--- a/src/core/pom.xml
++++ b/src/core/pom.xml
+@@ -1,4 +1,3 @@
+-
+ <!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+@@ -19,74 +18,80 @@ under the License.
+ -->
+ 
+ <project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+-	<parent>
+-		<artifactId>ApacheJMeter_parent</artifactId>
+-		<groupId>org.apache.jmeter</groupId>
+-		<version>2.5.1</version>
+-	</parent>
+-	<modelVersion>4.0.0</modelVersion>
+-	<artifactId>ApacheJMeter_core</artifactId>
++    <parent>
++        <artifactId>ApacheJMeter_parent</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_core</artifactId>
+     <name>Apache JMeter Core</name>
+ 
+     <build>
+         <sourceDirectory>.</sourceDirectory>
++        <resources>
++            <resource>
++                <directory>org/apache/jmeter/resources</directory>
++                <targetPath>org/apache/jmeter/resources</targetPath>
++            </resource>
++        </resources>
+     </build>
+ 
+-	<dependencies>
+-      <dependency>
+-        <groupId>${project.groupId}</groupId>
+-        <artifactId>jorphan</artifactId>
+-        <version>${project.version}</version>
+-      </dependency>
+-      <dependency>
+-      	<groupId>com.thoughtworks.xstream</groupId>
+-      	<artifactId>xstream</artifactId>
+-      	<version>1.3.1</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>oro</groupId>
+-      	<artifactId>oro</artifactId>
+-      	<version>2.0.8</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>commons-httpclient</groupId>
+-      	<artifactId>commons-httpclient</artifactId>
+-      	<version>3.1</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>commons-io</groupId>
+-      	<artifactId>commons-io</artifactId>
+-      	<version>2.0.1</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>net.sf.jtidy</groupId>
+-      	<artifactId>jtidy</artifactId>
+-      	<version>r938</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>rhino</groupId>
+-      	<artifactId>js</artifactId>
+-      	<version>1.6R5</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>org.apache.xmlgraphics</groupId>
+-      	<artifactId>xmlgraphics-commons</artifactId>
+-      	<version>1.3.1</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-	</dependencies>
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>com.thoughtworks.xstream</groupId>
++            <artifactId>xstream</artifactId>
++            <version>1.3.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>oro</groupId>
++            <artifactId>oro</artifactId>
++            <version>2.0.8</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>commons-httpclient</groupId>
++            <artifactId>commons-httpclient</artifactId>
++            <version>3.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>commons-io</groupId>
++            <artifactId>commons-io</artifactId>
++            <version>2.0.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>net.sf.jtidy</groupId>
++            <artifactId>jtidy</artifactId>
++            <version>r938</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>rhino</groupId>
++            <artifactId>js</artifactId>
++            <version>1.6R5</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>org.apache.xmlgraphics</groupId>
++            <artifactId>xmlgraphics-commons</artifactId>
++            <version>1.3.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++    </dependencies>
+ 
+ </project>
+\ No newline at end of file
+-- 
+1.7.5.4
+
+
+From 317fe138ced31830e9a3d5b764b51fb8db75fef6 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Fri, 6 Jan 2012 17:08:02 +0000
+Subject: [PATCH 09/11] BUGS-49753 - removed repo's that are no longer needed
+ (need todouble check these)
+
+---
+ src/components/pom.xml    |    5 -----
+ src/protocol/http/pom.xml |   14 --------------
+ 2 files changed, 0 insertions(+), 19 deletions(-)
+
+diff --git a/src/components/pom.xml b/src/components/pom.xml
+index 1075572..f8f74e1 100644
+--- a/src/components/pom.xml
++++ b/src/components/pom.xml
+@@ -88,11 +88,6 @@ under the License.
+ 	</dependencies>
+ 
+     <repositories>
+-      <repository>
+-        <!-- required to get javamail 1.4.3 - downgrade to 1.4.1 ??? -->
+-        <id>java.net</id>
+-        <url>http://download.java.net/maven/2</url>
+-     </repository>
+      <repository>
+         <!-- required for jCharts 0.7.5 - Upgrade to 1.0.0-alpha-1 ??? -->
+         <id>geotools</id>
+diff --git a/src/protocol/http/pom.xml b/src/protocol/http/pom.xml
+index 446466f..e57c355 100644
+--- a/src/protocol/http/pom.xml
++++ b/src/protocol/http/pom.xml
+@@ -74,18 +74,4 @@ under the License.
+         </dependency>
+     </dependencies>
+ 
+-    <repositories>
+-        <repository>
+-            <!-- required for htmlparser -->
+-            <id>htmlparser</id>
+-            <url>http://htmlparser.sourceforge.net/m2-snapshot-repo</url>
+-            <snapshots>
+-                <enabled>true</enabled>
+-            </snapshots>
+-            <releases>
+-                <enabled>false</enabled>
+-            </releases>
+-        </repository>
+-    </repositories>
+-
+ </project>
+\ No newline at end of file
+-- 
+1.7.5.4
+
+
+From 02fc3fdf875c6d09b3c1a88e8408fe0bc588b03a Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Sun, 8 Jan 2012 17:55:27 +0000
+Subject: [PATCH 10/11] updated repo for jCharts 0.7.5
+
+---
+ src/components/pom.xml |    6 +++---
+ 1 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/components/pom.xml b/src/components/pom.xml
+index f8f74e1..7d36ec9 100644
+--- a/src/components/pom.xml
++++ b/src/components/pom.xml
+@@ -89,9 +89,9 @@ under the License.
+ 
+     <repositories>
+      <repository>
+-        <!-- required for jCharts 0.7.5 - Upgrade to 1.0.0-alpha-1 ??? -->
+-        <id>geotools</id>
+-        <url>http://maven.geotools.fr/repository</url>
++        <!-- required for jCharts 0.7.5 -->
++        <id>mvnsearch</id>
++        <url>http://www.mvnsearch.org/maven2</url>
+      </repository>
+     </repositories>
+ 
+-- 
+1.7.5.4
+
+
+From 83d59ba5373262f725b5dbf261f82214de1069f8 Mon Sep 17 00:00:00 2001
+From: Mark Collin <mark@ardescosolutions.com>
+Date: Tue, 10 Jan 2012 11:09:32 +0000
+Subject: [PATCH 11/11] BUG-49753 - Fixed some bugs where properties where not
+ being added to some jar's. Removed some target
+ directories from sources jars that had snuck in.
+
+---
+ pom.xml                   |    5 +-
+ src/components/pom.xml    |  185 ++++++++++++++++++++++++++++----------------
+ src/core/pom.xml          |    5 +-
+ src/protocol/http/pom.xml |    9 ++
+ src/protocol/java/pom.xml |    9 ++
+ src/protocol/jdbc/pom.xml |   16 ++++
+ 6 files changed, 159 insertions(+), 70 deletions(-)
+
+diff --git a/pom.xml b/pom.xml
+index 55036ab..9ffe247 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -65,7 +65,7 @@ under the License.
+                 <directory>src</directory>
+                 <excludes>
+                     <exclude>**/*.java</exclude>
+-                    <exclude>*/target/*</exclude>
++                    <exclude>**/target/*</exclude>
+                 </excludes>
+             </resource>
+         </resources>
+@@ -74,7 +74,7 @@ under the License.
+                 <directory>test</directory>
+                 <excludes>
+                     <exclude>**/*.java</exclude>
+-                    <exclude>*/target/*</exclude>
++                    <exclude>**/target/*</exclude>
+                 </excludes>
+             </testResource>
+         </testResources>
+@@ -105,6 +105,7 @@ under the License.
+                                 <exclude>**/*.jar</exclude>
+                                 <exclude>**/*.iml</exclude>
+                                 <exclude>**/*.zip</exclude>
++                                <exclude>**/target/**</exclude>
+                             </excludes>
+                         </configuration>
+                     </execution>
+diff --git a/src/components/pom.xml b/src/components/pom.xml
+index 7d36ec9..84d5516 100644
+--- a/src/components/pom.xml
++++ b/src/components/pom.xml
+@@ -1,4 +1,3 @@
+-
+ <!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+@@ -19,80 +18,132 @@ under the License.
+ -->
+ 
+ <project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+-	<parent>
+-		<artifactId>ApacheJMeter_parent</artifactId>
+-		<groupId>org.apache.jmeter</groupId>
+-		<version>2.5.1</version>
+-	</parent>
+-	<modelVersion>4.0.0</modelVersion>
+-	<artifactId>ApacheJMeter_components</artifactId>
++    <parent>
++        <artifactId>ApacheJMeter_parent</artifactId>
++        <groupId>org.apache.jmeter</groupId>
++        <version>2.5.1</version>
++    </parent>
++    <modelVersion>4.0.0</modelVersion>
++    <artifactId>ApacheJMeter_components</artifactId>
+     <name>Apache JMeter Components</name>
+ 
+     <build>
+         <sourceDirectory>.</sourceDirectory>
++        <!-- Need to specify each directory that should contain properties -->
++        <resources>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/assertions</directory>
++                <targetPath>org/apache/jmeter/assertions</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/config</directory>
++                <targetPath>org/apache/jmeter/config</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/extractor</directory>
++                <targetPath>org/apache/jmeter/extractor</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/modifiers</directory>
++                <targetPath>org/apache/jmeter/modifiers</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/sampler</directory>
++                <targetPath>org/apache/jmeter/sampler</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/timers</directory>
++                <targetPath>org/apache/jmeter/timers</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/visualizers</directory>
++                <targetPath>org/apache/jmeter/visualizers</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++        </resources>
+     </build>
+ 
+-	<dependencies>
+-      <dependency>
+-        <groupId>${project.groupId}</groupId>
+-        <artifactId>jorphan</artifactId>
+-        <version>${project.version}</version>
+-      </dependency>
+-      <dependency>
+-        <groupId>${project.groupId}</groupId>
+-        <artifactId>ApacheJMeter_core</artifactId>
+-        <version>${project.version}</version>
+-      </dependency>
+-      <dependency>
+-      	<groupId>jcharts</groupId>
+-      	<artifactId>jcharts</artifactId>
+-      	<version>0.7.5</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>javax.mail</groupId>
+-      	<artifactId>mail</artifactId>
+-      	<version>1.4.4</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>xalan</groupId>
+-      	<artifactId>xalan</artifactId>
+-      	<version>2.7.1</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>jdom</groupId>
+-      	<artifactId>jdom</artifactId>
+-      	<version>1.1</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>org.bouncycastle</groupId>
+-      	<artifactId>bcmail-jdk15</artifactId>
+-      	<version>1.45</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-      <dependency>
+-      	<groupId>org.bouncycastle</groupId>
+-      	<artifactId>bcprov-jdk15</artifactId>
+-      	<version>1.45</version>
+-      	<type>jar</type>
+-      	<scope>compile</scope>
+-      </dependency>
+-	</dependencies>
++    <dependencies>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>jorphan</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>${project.groupId}</groupId>
++            <artifactId>ApacheJMeter_core</artifactId>
++            <version>${project.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>jcharts</groupId>
++            <artifactId>jcharts</artifactId>
++            <version>0.7.5</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>javax.mail</groupId>
++            <artifactId>mail</artifactId>
++            <version>1.4.4</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>xalan</groupId>
++            <artifactId>xalan</artifactId>
++            <version>2.7.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>jdom</groupId>
++            <artifactId>jdom</artifactId>
++            <version>1.1</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>org.bouncycastle</groupId>
++            <artifactId>bcmail-jdk15</artifactId>
++            <version>1.45</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++        <dependency>
++            <groupId>org.bouncycastle</groupId>
++            <artifactId>bcprov-jdk15</artifactId>
++            <version>1.45</version>
++            <type>jar</type>
++            <scope>compile</scope>
++        </dependency>
++    </dependencies>
+ 
+     <repositories>
+-     <repository>
+-        <!-- required for jCharts 0.7.5 -->
+-        <id>mvnsearch</id>
+-        <url>http://www.mvnsearch.org/maven2</url>
+-     </repository>
++        <repository>
++            <!-- required for jCharts 0.7.5 -->
++            <id>mvnsearch</id>
++            <url>http://www.mvnsearch.org/maven2</url>
++        </repository>
+     </repositories>
+ 
+ </project>
+\ No newline at end of file
+diff --git a/src/core/pom.xml b/src/core/pom.xml
+index da25d1d..4704ce2 100644
+--- a/src/core/pom.xml
++++ b/src/core/pom.xml
+@@ -31,8 +31,11 @@ under the License.
+         <sourceDirectory>.</sourceDirectory>
+         <resources>
+             <resource>
+-                <directory>org/apache/jmeter/resources</directory>
++                <directory>${basedir}/org/apache/jmeter/resources</directory>
+                 <targetPath>org/apache/jmeter/resources</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
+             </resource>
+         </resources>
+     </build>
+diff --git a/src/protocol/http/pom.xml b/src/protocol/http/pom.xml
+index e57c355..75c875a 100644
+--- a/src/protocol/http/pom.xml
++++ b/src/protocol/http/pom.xml
+@@ -29,6 +29,15 @@ under the License.
+ 
+     <build>
+         <sourceDirectory>.</sourceDirectory>
++        <resources>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/protocol/http/sampler</directory>
++                <targetPath>org/apache/jmeter/protocol/http/sampler</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++        </resources>
+     </build>
+ 
+     <dependencies>
+diff --git a/src/protocol/java/pom.xml b/src/protocol/java/pom.xml
+index d3e132e..c688a1b 100644
+--- a/src/protocol/java/pom.xml
++++ b/src/protocol/java/pom.xml
+@@ -29,6 +29,15 @@ under the License.
+ 
+     <build>
+         <sourceDirectory>.</sourceDirectory>
++        <resources>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/protocol/java/sampler</directory>
++                <targetPath>org/apache/jmeter/protocol/java/sampler</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++        </resources>
+     </build>
+ 
+     <dependencies>
+diff --git a/src/protocol/jdbc/pom.xml b/src/protocol/jdbc/pom.xml
+index 02e313a..86896b7 100644
+--- a/src/protocol/jdbc/pom.xml
++++ b/src/protocol/jdbc/pom.xml
+@@ -29,6 +29,22 @@ under the License.
+ 
+     <build>
+         <sourceDirectory>.</sourceDirectory>
++        <resources>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/protocol/jdbc/config</directory>
++                <targetPath>org/apache/jmeter/protocol/jdbc/config</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++            <resource>
++                <directory>${basedir}/org/apache/jmeter/protocol/jdbc/sampler</directory>
++                <targetPath>org/apache/jmeter/protocol/jdbc/sampler</targetPath>
++                <includes>
++                    <include>**/*.properties</include>
++                </includes>
++            </resource>
++        </resources>
+     </build>
+ 
+     <dependencies>
+-- 
+1.7.5.4

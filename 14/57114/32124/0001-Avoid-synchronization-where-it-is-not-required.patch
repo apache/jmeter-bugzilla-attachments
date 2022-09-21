@@ -1,0 +1,856 @@
+From f369e8901d665a962ecb0e9c7266994063c50c98 Mon Sep 17 00:00:00 2001
+From: Vladimir Sitnikov <sitnikov.vladimir@gmail.com>
+Date: Fri, 17 Oct 2014 11:27:40 +0400
+Subject: [PATCH] Avoid synchronization where it is not required
+
+---
+ .../jmeter/engine/util/CompoundVariable.java       | 22 +++++++++++++---------
+ .../apache/jmeter/functions/AbstractFunction.java  | 11 ++++-------
+ .../jmeter/functions/AbstractHostIPName.java       |  2 +-
+ .../org/apache/jmeter/functions/CSVRead.java       | 12 ++++++++----
+ .../org/apache/jmeter/functions/CharFunction.java  |  4 ++--
+ .../org/apache/jmeter/functions/EscapeHtml.java    |  4 ++--
+ .../jmeter/functions/EscapeOroRegexpChars.java     |  2 +-
+ .../org/apache/jmeter/functions/EvalFunction.java  |  4 ++--
+ .../apache/jmeter/functions/EvalVarFunction.java   |  4 ++--
+ .../org/apache/jmeter/functions/FileToString.java  |  4 ++--
+ .../org/apache/jmeter/functions/IntSum.java        |  4 ++--
+ .../apache/jmeter/functions/IterationCounter.java  | 11 ++++++-----
+ .../org/apache/jmeter/functions/JavaScript.java    |  4 ++--
+ .../org/apache/jmeter/functions/Jexl2Function.java |  4 ++--
+ .../org/apache/jmeter/functions/JexlFunction.java  |  4 ++--
+ .../org/apache/jmeter/functions/LogFunction.java   |  3 ++-
+ .../org/apache/jmeter/functions/LogFunction2.java  |  4 ++--
+ .../org/apache/jmeter/functions/LongSum.java       |  4 ++--
+ .../org/apache/jmeter/functions/Property.java      |  4 ++--
+ .../org/apache/jmeter/functions/Property2.java     |  4 ++--
+ .../org/apache/jmeter/functions/Random.java        |  4 ++--
+ .../org/apache/jmeter/functions/RandomString.java  |  4 ++--
+ .../org/apache/jmeter/functions/RegexFunction.java |  6 ++++--
+ .../org/apache/jmeter/functions/SamplerName.java   |  2 +-
+ .../org/apache/jmeter/functions/SetProperty.java   |  4 ++--
+ .../org/apache/jmeter/functions/SplitFunction.java |  4 ++--
+ .../org/apache/jmeter/functions/TestPlanName.java  |  2 +-
+ .../org/apache/jmeter/functions/TimeFunction.java  |  5 +++--
+ .../org/apache/jmeter/functions/UnEscape.java      |  4 ++--
+ .../org/apache/jmeter/functions/UnEscapeHtml.java  |  4 ++--
+ .../org/apache/jmeter/functions/UrlDecode.java     |  4 ++--
+ .../org/apache/jmeter/functions/UrlEncode.java     |  4 ++--
+ .../org/apache/jmeter/functions/Variable.java      |  4 ++--
+ 33 files changed, 88 insertions(+), 78 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/engine/util/CompoundVariable.java b/src/core/org/apache/jmeter/engine/util/CompoundVariable.java
+index b314985..0eb1244 100644
+--- a/src/core/org/apache/jmeter/engine/util/CompoundVariable.java
++++ b/src/core/org/apache/jmeter/engine/util/CompoundVariable.java
+@@ -53,7 +53,7 @@ public class CompoundVariable implements Function {
+ 
+     private boolean hasFunction, isDynamic;
+ 
+-    private String permanentResults = ""; // $NON-NLS-1$
++    private String permanentResults;
+ 
+     private LinkedList<Object> compiledComponents = new LinkedList<Object>();
+ 
+@@ -95,8 +95,6 @@ public class CompoundVariable implements Function {
+     }
+ 
+     public CompoundVariable() {
+-        super();
+-        isDynamic = true;
+         hasFunction = false;
+     }
+ 
+@@ -113,7 +111,7 @@ public class CompoundVariable implements Function {
+     }
+ 
+     public String execute() {
+-        if (isDynamic) {
++        if (isDynamic || permanentResults == null) {
+             JMeterContext context = JMeterContextService.getContext();
+             SampleResult previousResult = context.getPreviousResult();
+             Sampler currentSampler = context.getCurrentSampler();
+@@ -137,11 +135,9 @@ public class CompoundVariable implements Function {
+         if (compiledComponents == null || compiledComponents.size() == 0) {
+             return ""; // $NON-NLS-1$
+         }
+-        boolean testDynamic = false;
+         StringBuilder results = new StringBuilder();
+         for (Object item : compiledComponents) {
+             if (item instanceof Function) {
+-                testDynamic = true;
+                 try {
+                     results.append(((Function) item).execute(previousResult, currentSampler));
+                 } catch (InvalidVariableException e) {
+@@ -151,14 +147,12 @@ public class CompoundVariable implements Function {
+                     }
+                 }
+             } else if (item instanceof SimpleVariable) {
+-                testDynamic = true;
+                 results.append(((SimpleVariable) item).toString());
+             } else {
+                 results.append(item);
+             }
+         }
+-        if (!testDynamic) {
+-            isDynamic = false;
++        if (!isDynamic) {
+             permanentResults = results.toString();
+         }
+         return results.toString();
+@@ -169,6 +163,8 @@ public class CompoundVariable implements Function {
+         CompoundVariable func = new CompoundVariable();
+         func.compiledComponents = (LinkedList<Object>) compiledComponents.clone();
+         func.rawParameters = rawParameters;
++        func.hasFunction = hasFunction;
++        func.isDynamic = isDynamic;
+         return func;
+     }
+ 
+@@ -194,6 +190,14 @@ public class CompoundVariable implements Function {
+         if (compiledComponents.size() > 1 || !(compiledComponents.get(0) instanceof String)) {
+             hasFunction = true;
+         }
++        permanentResults = null; // To be calculated and cached on first execution
++        isDynamic = false;
++        for (Object item : compiledComponents) {
++            if (item instanceof Function || item instanceof SimpleVariable) {
++                isDynamic = true;
++                break;
++            }
++        }
+     }
+ 
+     static Object getNamedFunction(String functionName) throws InvalidVariableException {
+diff --git a/src/core/org/apache/jmeter/functions/AbstractFunction.java b/src/core/org/apache/jmeter/functions/AbstractFunction.java
+index f2b54e9..4c95737 100644
+--- a/src/core/org/apache/jmeter/functions/AbstractFunction.java
++++ b/src/core/org/apache/jmeter/functions/AbstractFunction.java
+@@ -34,9 +34,11 @@ public abstract class AbstractFunction implements Function {
+ 
+     /**
+      * <p><b>
+-     * N.B. setParameters() and execute() are called from different threads,
+-     * so both must be synchronized unless there are no parameters to save
++     * N.B. execute() should be synchronized if function is operating with non-thread-safe
++     * objects (e.g. operates with files).
+      * </b></p>
++     * JMeter ensures setParameters() happens-before execute(): setParameters is executed in main thread,
++     * and worker threads are started after that.
+      * @see Function#execute(SampleResult, Sampler)
+      */
+     @Override
+@@ -51,11 +53,6 @@ public abstract class AbstractFunction implements Function {
+ 
+     /**
+      *
+-     * <p><b>
+-     * N.B. setParameters() and execute() are called from different threads,
+-     * so both must be synchronized unless there are no parameters to save
+-     * </b></p>
+-     *
+      * @see Function#setParameters(Collection)
+      * <br/>
+      * Note: This is always called even if no parameters are provided
+diff --git a/src/functions/org/apache/jmeter/functions/AbstractHostIPName.java b/src/functions/org/apache/jmeter/functions/AbstractHostIPName.java
+index 376bb9d..f807ed3 100644
+--- a/src/functions/org/apache/jmeter/functions/AbstractHostIPName.java
++++ b/src/functions/org/apache/jmeter/functions/AbstractHostIPName.java
+@@ -71,7 +71,7 @@ abstract class AbstractHostIPName extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 0, 1);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/CSVRead.java b/src/functions/org/apache/jmeter/functions/CSVRead.java
+index 0e19b49..62367fa 100644
+--- a/src/functions/org/apache/jmeter/functions/CSVRead.java
++++ b/src/functions/org/apache/jmeter/functions/CSVRead.java
+@@ -69,14 +69,16 @@ public class CSVRead extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String myValue = ""; //$NON-NLS-1$
+ 
+         String fileName = ((org.apache.jmeter.engine.util.CompoundVariable) values[0]).execute();
+         String columnOrNext = ((org.apache.jmeter.engine.util.CompoundVariable) values[1]).execute();
+ 
+-        log.debug("execute (" + fileName + " , " + columnOrNext + ")   ");
++        if (log.isDebugEnabled()) {
++            log.debug("execute (" + fileName + " , " + columnOrNext + ")   ");
++        }
+ 
+         // Process __CSVRead(filename,*ALIAS)
+         if (columnOrNext.startsWith("*")) { //$NON-NLS-1$
+@@ -115,7 +117,9 @@ public class CSVRead extends AbstractFunction {
+                     + FileWrapper.getCurrentRow(fileName) + " " + e.toString());
+         }
+ 
+-        log.debug("execute value: " + myValue);
++        if (log.isDebugEnabled()) {
++            log.debug("execute value: " + myValue);
++        }
+ 
+         return myValue;
+     }
+@@ -134,7 +138,7 @@ public class CSVRead extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         log.debug("setParameter - Collection.size=" + parameters.size());
+ 
+         values = parameters.toArray();
+diff --git a/src/functions/org/apache/jmeter/functions/CharFunction.java b/src/functions/org/apache/jmeter/functions/CharFunction.java
+index a61adc8..813e047 100644
+--- a/src/functions/org/apache/jmeter/functions/CharFunction.java
++++ b/src/functions/org/apache/jmeter/functions/CharFunction.java
+@@ -52,7 +52,7 @@ public class CharFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         StringBuilder sb = new StringBuilder(values.length);
+@@ -72,7 +72,7 @@ public class CharFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkMinParameterCount(parameters, 1);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/EscapeHtml.java b/src/functions/org/apache/jmeter/functions/EscapeHtml.java
+index 9b6c346..694c6d5 100644
+--- a/src/functions/org/apache/jmeter/functions/EscapeHtml.java
++++ b/src/functions/org/apache/jmeter/functions/EscapeHtml.java
+@@ -64,7 +64,7 @@ public class EscapeHtml extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         String rawString = ((CompoundVariable) values[0]).execute();
+@@ -74,7 +74,7 @@ public class EscapeHtml extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 1);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/EscapeOroRegexpChars.java b/src/functions/org/apache/jmeter/functions/EscapeOroRegexpChars.java
+index 73074c5..c6793b5 100644
+--- a/src/functions/org/apache/jmeter/functions/EscapeOroRegexpChars.java
++++ b/src/functions/org/apache/jmeter/functions/EscapeOroRegexpChars.java
+@@ -64,7 +64,7 @@ public class EscapeOroRegexpChars extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         String valueToEscape = values[0].execute();       
+diff --git a/src/functions/org/apache/jmeter/functions/EvalFunction.java b/src/functions/org/apache/jmeter/functions/EvalFunction.java
+index 451dc61..5f88250 100644
+--- a/src/functions/org/apache/jmeter/functions/EvalFunction.java
++++ b/src/functions/org/apache/jmeter/functions/EvalFunction.java
+@@ -58,7 +58,7 @@ public class EvalFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String parameter = ((CompoundVariable) values[0]).execute();
+         CompoundVariable cv = new CompoundVariable(parameter);
+@@ -67,7 +67,7 @@ public class EvalFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/EvalVarFunction.java b/src/functions/org/apache/jmeter/functions/EvalVarFunction.java
+index fd3e556..dfff314 100644
+--- a/src/functions/org/apache/jmeter/functions/EvalVarFunction.java
++++ b/src/functions/org/apache/jmeter/functions/EvalVarFunction.java
+@@ -63,7 +63,7 @@ public class EvalVarFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String variableName = ((CompoundVariable) values[0]).execute();
+         final JMeterVariables vars = getVariables();
+@@ -78,7 +78,7 @@ public class EvalVarFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/FileToString.java b/src/functions/org/apache/jmeter/functions/FileToString.java
+index 8fc5043..2649380 100644
+--- a/src/functions/org/apache/jmeter/functions/FileToString.java
++++ b/src/functions/org/apache/jmeter/functions/FileToString.java
+@@ -78,7 +78,7 @@ public class FileToString extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         String fileName = ((CompoundVariable) values[0]).execute();
+@@ -124,7 +124,7 @@ public class FileToString extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAM_COUNT, MAX_PARAM_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/IntSum.java b/src/functions/org/apache/jmeter/functions/IntSum.java
+index 373f417..7cc6447 100644
+--- a/src/functions/org/apache/jmeter/functions/IntSum.java
++++ b/src/functions/org/apache/jmeter/functions/IntSum.java
+@@ -55,7 +55,7 @@ public class IntSum extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         JMeterVariables vars = getVariables();
+@@ -87,7 +87,7 @@ public class IntSum extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkMinParameterCount(parameters, 2);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/IterationCounter.java b/src/functions/org/apache/jmeter/functions/IterationCounter.java
+index 7fb4c6a..b22f56a 100644
+--- a/src/functions/org/apache/jmeter/functions/IterationCounter.java
++++ b/src/functions/org/apache/jmeter/functions/IterationCounter.java
+@@ -68,11 +68,9 @@ public class IterationCounter extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+-        globalCounter++;
+-
+         JMeterVariables vars = getVariables();
+ 
+         boolean perThread = Boolean.parseBoolean(((CompoundVariable) variables[0]).execute());
+@@ -90,7 +88,10 @@ public class IterationCounter extends AbstractFunction {
+             perThreadInt.set(Integer.valueOf(threadCounter));
+             counterString = String.valueOf(threadCounter);
+         } else {
+-            counterString = String.valueOf(globalCounter);
++            synchronized (this) {
++                globalCounter++;
++                counterString = String.valueOf(globalCounter);
++            }
+         }
+ 
+         // vars will be null on Test Plan
+@@ -102,7 +103,7 @@ public class IterationCounter extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 1, 2);
+         variables = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/JavaScript.java b/src/functions/org/apache/jmeter/functions/JavaScript.java
+index 9ef3d19..a656345 100644
+--- a/src/functions/org/apache/jmeter/functions/JavaScript.java
++++ b/src/functions/org/apache/jmeter/functions/JavaScript.java
+@@ -59,7 +59,7 @@ public class JavaScript extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         JMeterContext jmctx = JMeterContextService.getContext();
+@@ -105,7 +105,7 @@ public class JavaScript extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 1, 2);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/Jexl2Function.java b/src/functions/org/apache/jmeter/functions/Jexl2Function.java
+index 6b4aad0..dcbfd6c 100644
+--- a/src/functions/org/apache/jmeter/functions/Jexl2Function.java
++++ b/src/functions/org/apache/jmeter/functions/Jexl2Function.java
+@@ -60,7 +60,7 @@ public class Jexl2Function extends AbstractFunction implements ThreadListener {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException
+     {
+         String str = ""; //$NON-NLS-1$
+@@ -139,7 +139,7 @@ public class Jexl2Function extends AbstractFunction implements ThreadListener {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters)
++    public void setParameters(Collection<CompoundVariable> parameters)
+             throws InvalidVariableException
+     {
+         checkParameterCount(parameters, 1, 2);
+diff --git a/src/functions/org/apache/jmeter/functions/JexlFunction.java b/src/functions/org/apache/jmeter/functions/JexlFunction.java
+index 2227c4f..f403a9f 100644
+--- a/src/functions/org/apache/jmeter/functions/JexlFunction.java
++++ b/src/functions/org/apache/jmeter/functions/JexlFunction.java
+@@ -58,7 +58,7 @@ public class JexlFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException
+     {
+         String str = ""; //$NON-NLS-1$
+@@ -123,7 +123,7 @@ public class JexlFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters)
++    public void setParameters(Collection<CompoundVariable> parameters)
+             throws InvalidVariableException
+     {
+         checkParameterCount(parameters, 1, 2);
+diff --git a/src/functions/org/apache/jmeter/functions/LogFunction.java b/src/functions/org/apache/jmeter/functions/LogFunction.java
+index 570e5a0..066af6c 100644
+--- a/src/functions/org/apache/jmeter/functions/LogFunction.java
++++ b/src/functions/org/apache/jmeter/functions/LogFunction.java
+@@ -78,6 +78,7 @@ public class LogFunction extends AbstractFunction {
+     @Override
+     public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
++        // The method is synchronized to avoid interference of messages from multiple threads
+         String stringToLog = ((CompoundVariable) values[0]).execute();
+ 
+         String priorityString;
+@@ -162,7 +163,7 @@ public class LogFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/LogFunction2.java b/src/functions/org/apache/jmeter/functions/LogFunction2.java
+index f8eddde..fa6a755 100644
+--- a/src/functions/org/apache/jmeter/functions/LogFunction2.java
++++ b/src/functions/org/apache/jmeter/functions/LogFunction2.java
+@@ -71,7 +71,7 @@ public class LogFunction2 extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String stringToLog = ((CompoundVariable) values[0]).execute();
+ 
+@@ -98,7 +98,7 @@ public class LogFunction2 extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/LongSum.java b/src/functions/org/apache/jmeter/functions/LongSum.java
+index 978fd1f..f68cdc4 100644
+--- a/src/functions/org/apache/jmeter/functions/LongSum.java
++++ b/src/functions/org/apache/jmeter/functions/LongSum.java
+@@ -55,7 +55,7 @@ public class LongSum extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         JMeterVariables vars = getVariables();
+@@ -87,7 +87,7 @@ public class LongSum extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkMinParameterCount(parameters, 2);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/Property.java b/src/functions/org/apache/jmeter/functions/Property.java
+index fda85a4..b993593 100644
+--- a/src/functions/org/apache/jmeter/functions/Property.java
++++ b/src/functions/org/apache/jmeter/functions/Property.java
+@@ -65,7 +65,7 @@ public class Property extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String propertyName = ((CompoundVariable) values[0]).execute();
+         String propertyDefault = propertyName;
+@@ -88,7 +88,7 @@ public class Property extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/Property2.java b/src/functions/org/apache/jmeter/functions/Property2.java
+index 408b5ca..eab945b 100644
+--- a/src/functions/org/apache/jmeter/functions/Property2.java
++++ b/src/functions/org/apache/jmeter/functions/Property2.java
+@@ -69,7 +69,7 @@ public class Property2 extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String propertyName = ((CompoundVariable) values[0]).execute();
+ 
+@@ -86,7 +86,7 @@ public class Property2 extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/Random.java b/src/functions/org/apache/jmeter/functions/Random.java
+index 3e09f8b..67b1cc1 100644
+--- a/src/functions/org/apache/jmeter/functions/Random.java
++++ b/src/functions/org/apache/jmeter/functions/Random.java
+@@ -55,7 +55,7 @@ public class Random extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+ 
+@@ -80,7 +80,7 @@ public class Random extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 2, 3);
+         Object[] values = parameters.toArray();
+ 
+diff --git a/src/functions/org/apache/jmeter/functions/RandomString.java b/src/functions/org/apache/jmeter/functions/RandomString.java
+index 37da535..1c8bdc6 100644
+--- a/src/functions/org/apache/jmeter/functions/RandomString.java
++++ b/src/functions/org/apache/jmeter/functions/RandomString.java
+@@ -69,7 +69,7 @@ public class RandomString extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         int length = Integer.parseInt(values[0].execute());
+@@ -112,7 +112,7 @@ public class RandomString extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAM_COUNT, MAX_PARAM_COUNT);
+         values = parameters.toArray(new CompoundVariable[parameters.size()]);
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/RegexFunction.java b/src/functions/org/apache/jmeter/functions/RegexFunction.java
+index f077ca6..79ff6fe 100644
+--- a/src/functions/org/apache/jmeter/functions/RegexFunction.java
++++ b/src/functions/org/apache/jmeter/functions/RegexFunction.java
+@@ -57,6 +57,8 @@ public class RegexFunction extends AbstractFunction {
+ 
+     private Object[] values;// Parameters are stored here
+ 
++    // Using the same Random across threads might result in pool performance
++    // It might make sense to use ThreadLocalRandom or ThreadLocal<Random>
+     private static final Random rand = new Random();
+ 
+     private static final List<String> desc = new LinkedList<String>();
+@@ -86,7 +88,7 @@ public class RegexFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String valueIndex = ""; //$NON-NLS-1$
+         String defaultValue = ""; //$NON-NLS-1$
+@@ -242,7 +244,7 @@ public class RegexFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/SamplerName.java b/src/functions/org/apache/jmeter/functions/SamplerName.java
+index 34663bc..76cb326 100644
+--- a/src/functions/org/apache/jmeter/functions/SamplerName.java
++++ b/src/functions/org/apache/jmeter/functions/SamplerName.java
+@@ -69,7 +69,7 @@ public class SamplerName extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters)
++    public void setParameters(Collection<CompoundVariable> parameters)
+             throws InvalidVariableException {
+         checkParameterCount(parameters, 0, 1);
+         values = parameters.toArray();
+diff --git a/src/functions/org/apache/jmeter/functions/SetProperty.java b/src/functions/org/apache/jmeter/functions/SetProperty.java
+index 27c5936..a31fb3d 100644
+--- a/src/functions/org/apache/jmeter/functions/SetProperty.java
++++ b/src/functions/org/apache/jmeter/functions/SetProperty.java
+@@ -64,7 +64,7 @@ public class SetProperty extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String propertyName = ((CompoundVariable) values[0]).execute();
+ 
+@@ -85,7 +85,7 @@ public class SetProperty extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/SplitFunction.java b/src/functions/org/apache/jmeter/functions/SplitFunction.java
+index f79ecfa..86dd179 100644
+--- a/src/functions/org/apache/jmeter/functions/SplitFunction.java
++++ b/src/functions/org/apache/jmeter/functions/SplitFunction.java
+@@ -79,7 +79,7 @@ public class SplitFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         JMeterVariables vars = getVariables();
+ 
+@@ -110,7 +110,7 @@ public class SplitFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/TestPlanName.java b/src/functions/org/apache/jmeter/functions/TestPlanName.java
+index 208437f..4958c6c 100644
+--- a/src/functions/org/apache/jmeter/functions/TestPlanName.java
++++ b/src/functions/org/apache/jmeter/functions/TestPlanName.java
+@@ -46,7 +46,7 @@ public class TestPlanName extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         return FileServer.getFileServer().getScriptName();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/TimeFunction.java b/src/functions/org/apache/jmeter/functions/TimeFunction.java
+index 8e55113..8179f05 100644
+--- a/src/functions/org/apache/jmeter/functions/TimeFunction.java
++++ b/src/functions/org/apache/jmeter/functions/TimeFunction.java
+@@ -75,7 +75,7 @@ public class TimeFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++    public String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
+         String datetime;
+         if (format.length() == 0){// Default to milliseconds
+             datetime = Long.toString(System.currentTimeMillis());
+@@ -85,6 +85,7 @@ public class TimeFunction extends AbstractFunction {
+             if (fmt == null) {
+                 fmt = format;// Not found
+             }
++            // TODO: avoid regexp parsing in loop
+             if (fmt.matches("/\\d+")) { // divisor is a positive number
+                 long div = Long.parseLong(fmt.substring(1)); // should never case NFE
+                 datetime = Long.toString((System.currentTimeMillis() / div));
+@@ -105,7 +106,7 @@ public class TimeFunction extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+ 
+         checkParameterCount(parameters, 0, 2);
+ 
+diff --git a/src/functions/org/apache/jmeter/functions/UnEscape.java b/src/functions/org/apache/jmeter/functions/UnEscape.java
+index d8fcc6d..ac148a9 100644
+--- a/src/functions/org/apache/jmeter/functions/UnEscape.java
++++ b/src/functions/org/apache/jmeter/functions/UnEscape.java
+@@ -54,7 +54,7 @@ public class UnEscape extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         String rawString = ((CompoundVariable) values[0]).execute();
+@@ -64,7 +64,7 @@ public class UnEscape extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 1);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/UnEscapeHtml.java b/src/functions/org/apache/jmeter/functions/UnEscapeHtml.java
+index 0a33dc4..3449a20 100644
+--- a/src/functions/org/apache/jmeter/functions/UnEscapeHtml.java
++++ b/src/functions/org/apache/jmeter/functions/UnEscapeHtml.java
+@@ -60,7 +60,7 @@ public class UnEscapeHtml extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+ 
+         String escapedString = ((CompoundVariable) values[0]).execute();
+@@ -70,7 +70,7 @@ public class UnEscapeHtml extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 1);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/UrlDecode.java b/src/functions/org/apache/jmeter/functions/UrlDecode.java
+index 5135955..9478a41 100644
+--- a/src/functions/org/apache/jmeter/functions/UrlDecode.java
++++ b/src/functions/org/apache/jmeter/functions/UrlDecode.java
+@@ -54,7 +54,7 @@ public class UrlDecode extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String decodeString = ""; //$NON-NLS-1$
+         try {
+@@ -68,7 +68,7 @@ public class UrlDecode extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 1);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/UrlEncode.java b/src/functions/org/apache/jmeter/functions/UrlEncode.java
+index 07d2a02..0e3e2da 100644
+--- a/src/functions/org/apache/jmeter/functions/UrlEncode.java
++++ b/src/functions/org/apache/jmeter/functions/UrlEncode.java
+@@ -54,7 +54,7 @@ public class UrlEncode extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String decodeString = ""; //$NON-NLS-1$
+         try {
+@@ -68,7 +68,7 @@ public class UrlEncode extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, 1);
+         values = parameters.toArray();
+     }
+diff --git a/src/functions/org/apache/jmeter/functions/Variable.java b/src/functions/org/apache/jmeter/functions/Variable.java
+index 8fa4d7f..8d27d48 100644
+--- a/src/functions/org/apache/jmeter/functions/Variable.java
++++ b/src/functions/org/apache/jmeter/functions/Variable.java
+@@ -60,7 +60,7 @@ public class Variable extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
++    public String execute(SampleResult previousResult, Sampler currentSampler)
+             throws InvalidVariableException {
+         String variableName = ((CompoundVariable) values[0]).execute();
+         String variableValue = getVariables().get(variableName);
+@@ -70,7 +70,7 @@ public class Variable extends AbstractFunction {
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+         checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
+         values = parameters.toArray();
+     }
+-- 
+2.0.1
+

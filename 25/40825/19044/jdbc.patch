@@ -1,0 +1,411 @@
+Index: C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources_es.properties
+===================================================================
+--- C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources_es.properties	(revision 466937)
++++ C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources_es.properties	(working copy)
+@@ -8,3 +8,9 @@
+ queryType.shortDescription=is true, se lanzar\u00E1 como una query y no como un update/inser. Si no, se lanza como update.
+ sql.displayName=Query SQL
+ varName.displayName=Nombre de Variable Ligada al Pool
++queryArguments.displayName=Argumentos
++queryArguments.shortDescription=los valores de los argumentos separados por comas
++queryArgumentsTypes.displayName=Tipos de los argumentos
++queryArgumentsTypes.shortDescription=los valores de los argumentos separados por comas
++
++
+Index: C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
+===================================================================
+--- C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(revision 466937)
++++ C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(working copy)
+@@ -17,12 +17,19 @@
+ 
+ package org.apache.jmeter.protocol.jdbc.sampler;
+ 
++import java.lang.reflect.Field;
+ import java.sql.CallableStatement;
+ import java.sql.Connection;
++import java.sql.PreparedStatement;
+ import java.sql.ResultSet;
+ import java.sql.ResultSetMetaData;
+ import java.sql.SQLException;
+ import java.sql.Statement;
++import java.util.Collection;
++import java.util.HashMap;
++import java.util.Iterator;
++import java.util.LinkedHashMap;
++import java.util.Map;
+ 
+ import org.apache.avalon.excalibur.datasource.DataSourceComponent;
+ import org.apache.jmeter.samplers.AbstractSampler;
+@@ -40,18 +47,44 @@
+  * @author <a href="mailto:jeremy_a@bigfoot.com">Jeremy Arnold</a>
+  */
+ public class JDBCSampler extends AbstractSampler implements TestBean {
++	private static final int MAX_ENTRIES = 200;
++
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
++    static Map mapJdbcNameToInt;
+ 
+     // Query types (used to communicate with GUI)
+ 	static final String SELECT   = "Select Statement";
+ 	static final String UPDATE   = "Update Statement";
+ 	static final String CALLABLE = "Callable Statement";
++	static final String PREPARED_SELECT = "Prepared Select Statement";
++	static final String PREPARED_UPDATE = "Prepared Update Statement";
+ 
+ 	private String query = "";
+ 
+ 	private String dataSource = "";
+ 
+ 	private String queryType = SELECT;
++	private String queryArguments = "";
++	private String queryArgumentsTypes = "";
++	
++	/**
++	 *  Cache of PreparedStatements stored in a per-connection basis. Each entry of this 
++	 *  cache is another Map mapping the statemente string to the actual PreparedStatement.
++	 *  The cache has a fixed size of MAX_ENTRIES and it will throw aways all PreparedStatements 
++	 *  from the least recently used connections.  
++	 */
++	private static Map perConnCache = new LinkedHashMap(MAX_ENTRIES){
++		protected boolean removeEldestEntry(java.util.Map.Entry arg0) {
++			if (size() > MAX_ENTRIES) {
++				final Object value = arg0.getValue();
++				if (value instanceof Map) {
++					closeAllStatements(((Map)value).values());
++				}
++				return true;
++			}
++			return false;
++		}
++	};
+ 
+ 	/**
+ 	 * Creates a JDBCSampler.
+@@ -78,7 +111,7 @@
+ 		log.debug("DataSourceComponent: " + pool);
+ 		Connection conn = null;
+ 		Statement stmt = null;
+-		CallableStatement cs = null;
++		
+ 
+ 		try {
+ 
+@@ -88,11 +121,11 @@
+ 			// TODO: Consider creating a sub-result with the time to get the
+ 			// connection.
+ 			conn = pool.getConnection();
+-			stmt = conn.createStatement();
+ 
+             // Based on query return value, get results
+             String _queryType = getQueryType();
+             if (SELECT.equals(_queryType)) {
++            	stmt = conn.createStatement();
+ 				ResultSet rs = null;
+ 				try {
+ 					rs = stmt.executeQuery(getQuery());
+@@ -101,25 +134,32 @@
+ 				} finally {
+ 					close(rs);
+ 				}
+-			} else if (CALLABLE.equals(_queryType)) {
+-					cs = conn.prepareCall(getQuery());
+-					boolean hasResultSet = cs.execute();
+-					if (hasResultSet){
+-						ResultSet rs=cs.getResultSet();
+-						Data data = getDataFromResultSet(rs);
+-						res.setResponseData(data.toString().getBytes());
+-					} else {
+-						int updateCount = cs.getUpdateCount();
+-						String results = updateCount + " updates";
+-						res.setResponseData(results.getBytes());
+-					}
+-					//TODO process additional results (if any) using getMoreResults()
++            } else if (CALLABLE.equals(_queryType)) {
++            	CallableStatement cstmt = getCallableStatement(conn);
++            	setArguments(cstmt);
++            	// A CallableStatement can return more than 1 ResultSets
++            	// plus a number of update counts. 
++            	boolean hasResultSet = cstmt.execute();
++            	String sb = resultSetsToString(cstmt,hasResultSet);
++            	res.setResponseData(sb.toString().getBytes());       	
+             } else if (UPDATE.equals(_queryType)) {
+-				stmt.execute(getQuery());
++            	stmt = conn.createStatement();
++            	stmt.executeUpdate(getQuery());
+ 				int updateCount = stmt.getUpdateCount();
+ 				String results = updateCount + " updates";
+ 				res.setResponseData(results.getBytes());
+-            // TODO add support for PreparedStatments
++            } else if (PREPARED_SELECT.equals(_queryType)) {
++            	PreparedStatement pstmt = getPreparedStatement(conn);
++            	setArguments(pstmt);
++            	pstmt.executeQuery();
++            	String sb = resultSetsToString(pstmt,true);
++            	res.setResponseData(sb.toString().getBytes());
++            } else if (PREPARED_UPDATE.equals(_queryType)) {
++            	PreparedStatement pstmt = getPreparedStatement(conn);
++            	setArguments(pstmt);
++            	pstmt.executeUpdate();
++				String sb = resultSetsToString(pstmt,false);
++            	res.setResponseData(sb.toString().getBytes());
+             } else { // User provided incorrect query type
+                 String results="Unexpected query type: "+_queryType;
+                 res.setResponseMessage(results);
+@@ -131,7 +171,6 @@
+ 			res.setResponseMessage(ex.toString());
+ 			res.setSuccessful(false);
+ 		} finally {
+-			close(cs);
+ 			close(stmt);
+ 			close(conn);
+ 		}
+@@ -140,6 +179,141 @@
+ 		return res;
+ 	}
+ 
++	private String resultSetsToString(PreparedStatement pstmt, boolean result) throws SQLException {
++		StringBuffer sb = new StringBuffer();
++		sb.append("\n");
++		int updateCount = 0;
++		if (!result) {
++			updateCount = pstmt.getUpdateCount();
++		}
++		do {
++			if (result) {
++				ResultSet rs = null;
++				try {
++					rs = pstmt.getResultSet();
++					Data data = getDataFromResultSet(rs);
++					sb.append(data.toString()).append("\n");
++				} finally {
++					close(rs);
++				}
++			} else {
++				sb.append(updateCount).append(" updates.\n");
++			}
++			result = pstmt.getMoreResults();
++			if (!result) {
++				updateCount = pstmt.getUpdateCount();
++			}
++		} while (result || (updateCount != -1));
++		return sb.toString();
++	}
++
++
++	private void setArguments(PreparedStatement pstmt) throws SQLException {
++		if ("".equals(getQueryArguments().trim())) {
++			return;
++		}
++		String[] arguments = getQueryArguments().split(",");
++		String[] argumentsTypes = getQueryArgumentsTypes().split(",");
++		if (arguments.length != argumentsTypes.length) {
++			throw new SQLException("number of arguments ("+arguments.length+") and number of types ("+argumentsTypes.length+") are not equal");
++		}
++		for (int i = 0; i < arguments.length; i++) {
++			String argument = arguments[i];
++			String argumentType = argumentsTypes[i];
++			//TODO should be a more elegant way to do it
++		    int targetSqlType = getJdbcType(argumentType);
++		    pstmt.setObject(i+1, argument, targetSqlType);
++		}
++	}
++    
++    public static int getJdbcType(String jdbcType) {
++        // based on e291. Getting the Name of a JDBC Type from javaalmanac.com
++        // http://javaalmanac.com/egs/java.sql/JdbcInt2Str.html
++    	if (mapJdbcNameToInt == null) {
++    		mapJdbcNameToInt = new HashMap();
++    		
++    		//Get all field in java.sql.Types
++    		Field[] fields = java.sql.Types.class.getFields();
++            for (int i=0; i<fields.length; i++) {
++                try {
++                    // Get field name
++                    String name = fields[i].getName();
++    
++                    // Get field value
++                    Integer value = (Integer)fields[i].get(null);
++    
++                    // Add to map
++                    mapJdbcNameToInt.put(name.toLowerCase(),value);
++                } catch (IllegalAccessException e) {
++                	throw new RuntimeException(e);
++                }
++            }
++    		
++    	}
++    	return ((Integer)mapJdbcNameToInt.get(jdbcType.toLowerCase())).intValue();
++    }
++	
++
++	private CallableStatement getCallableStatement(Connection conn) throws SQLException {
++		return (CallableStatement) getPreparedStatement(conn,true);
++		
++	}
++	private PreparedStatement getPreparedStatement(Connection conn) throws SQLException {
++		return getPreparedStatement(conn,false);
++	}
++
++	private PreparedStatement getPreparedStatement(Connection conn, boolean callable) throws SQLException {
++		Map preparedStatementMap = (Map) perConnCache.get(conn);
++		if (null == preparedStatementMap ) {
++		    // MRU PreparedStatements cache. 
++			preparedStatementMap = new LinkedHashMap(MAX_ENTRIES) {
++				protected boolean removeEldestEntry(java.util.Map.Entry arg0) {
++					final int theSize = size();
++					if (theSize > MAX_ENTRIES) {
++						Object value = arg0.getValue();
++						if (value instanceof PreparedStatement) {
++							PreparedStatement pstmt = (PreparedStatement) value;
++							try {
++								pstmt.close();
++							} catch (SQLException e) {
++								// ignore this exception
++								e.printStackTrace();
++							}
++						}
++						return true;
++					}
++					return false;
++				}
++			};
++			perConnCache.put(conn, preparedStatementMap);
++		}
++		PreparedStatement pstmt = (PreparedStatement) preparedStatementMap.get(getQuery());
++		if (null == pstmt) {
++			if (callable) {
++				pstmt = conn.prepareCall(getQuery());
++			} else {
++				pstmt = conn.prepareStatement(getQuery());
++			}
++			preparedStatementMap.put(getQuery(), pstmt);
++		}
++		pstmt.clearParameters();
++		return pstmt;
++	}
++
++	private static void closeAllStatements(Collection collection) {
++		Iterator iterator = collection.iterator();
++		while (iterator.hasNext()) {
++			PreparedStatement pstmt = (PreparedStatement) iterator.next();
++			try {
++				pstmt.close();
++			} catch (SQLException e) {
++				// ignore this exception
++				e.printStackTrace();
++			}
++		}
++		
++	}
++
+ 	/**
+ 	 * Gets a Data object from a ResultSet.
+ 	 * 
+@@ -171,7 +345,7 @@
+ 		}
+ 		return data;
+ 	}
+-
++	
+ 	public static void close(Connection c) {
+ 		try {
+ 			if (c != null) c.close();
+@@ -184,18 +358,11 @@
+ 		try {
+ 			if (s != null) s.close();
+ 		} catch (SQLException e) {
+-			log.warn("Error closing Statement", e);
++			log.warn("Error closing Statement " + s.toString(), e);
+ 		}
+ 	}
+ 
+-	public static void close(CallableStatement cs) {
+-		try {
+-			if (cs != null) cs.close();
+-		} catch (SQLException e) {
+-			log.warn("Error closing CallableStatement", e);
+-		}
+-	}
+-
++	
+ 	public static void close(ResultSet rs) {
+ 		try {
+ 			if (rs != null) rs.close();
+@@ -253,4 +420,20 @@
+ 	public void setQueryType(String queryType) {
+ 		this.queryType = queryType;
+ 	}
++
++	public String getQueryArguments() {
++		return queryArguments;
++	}
++
++	public void setQueryArguments(String queryArguments) {
++		this.queryArguments = queryArguments;
++	}
++
++	public String getQueryArgumentsTypes() {
++		return queryArgumentsTypes;
++	}
++
++	public void setQueryArgumentsTypes(String queryArgumentsType) {
++		this.queryArgumentsTypes = queryArgumentsType;
++	}
+ }
+Index: C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerBeanInfo.java
+===================================================================
+--- C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerBeanInfo.java	(revision 466937)
++++ C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerBeanInfo.java	(working copy)
+@@ -40,22 +40,33 @@
+ 
+ 		createPropertyGroup("varName", new String[] { "dataSource" });
+ 
+-		createPropertyGroup("sql", new String[] { "queryType", "query" });
++		createPropertyGroup("sql", new String[] { "queryType", "query", "queryArguments","queryArgumentsTypes" });
+ 
+ 		PropertyDescriptor p = property("dataSource");
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, "");
+ 
++		p = property("queryArguments");
++		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++		p.setValue(DEFAULT, "");
++		
++		p = property("queryArgumentsTypes");
++		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++		p.setValue(DEFAULT, "");
++		
++
+ 		p = property("queryType");
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, JDBCSampler.SELECT);
+ 		p.setValue(NOT_OTHER,Boolean.TRUE);
+-		p.setValue(TAGS,new String[]{JDBCSampler.SELECT,JDBCSampler.UPDATE,JDBCSampler.CALLABLE});
++		p.setValue(TAGS,new String[]{JDBCSampler.SELECT,JDBCSampler.UPDATE,JDBCSampler.CALLABLE, JDBCSampler.PREPARED_SELECT, JDBCSampler.PREPARED_UPDATE});
+ 
+ 		p = property("query");
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, "");
+ 		p.setPropertyEditorClass(TextAreaEditor.class);
++		
++//		
+ 
+ 	}
+ }
+Index: C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties
+===================================================================
+--- C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	(revision 466937)
++++ C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	(working copy)
+@@ -6,4 +6,10 @@
+ queryType.displayName=Query Type
+ queryType.shortDescription=Determines if the SQL statement should be run as a select statement or an update statement.
+ dataSource.displayName=Variable Name
+-dataSource.shortDescription=Name of the JMeter variable that the connection pool is bound to.
+\ No newline at end of file
++dataSource.shortDescription=Name of the JMeter variable that the connection pool is bound to.
++queryArguments.displayName=Parameters
++queryArguments.shortDescription=SQL parameter values
++queryArgumentsTypes.displayName=Parameter JDBC Type
++queryArgumentsTypes.shortDescription=JDBC Type names form java.sql.Types. VARCHAR, INTEGER, etc. 
++
++

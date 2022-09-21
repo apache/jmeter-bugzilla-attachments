@@ -1,0 +1,61 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1622832)
++++ bin/jmeter.properties	(working copy)
+@@ -129,6 +129,12 @@
+ # default to false
+ #jmeter.loggerpanel.display=false
+ 
++# Enable LogViewer Panel to receive log event even if closed
++# Enabled since 2.12
++# Note this has some impact on performances, but as GUI mode must
++# not be used for Load Test it is acceptable
++#jmeter.loggerpanel.enable_when_closed=true
++
+ # Error/Fatal Log count display
+ # defaults to true
+ #jmeter.errorscounter.display=true
+Index: src/core/org/apache/jmeter/gui/LoggerPanel.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/LoggerPanel.java	(revision 1622832)
++++ src/core/org/apache/jmeter/gui/LoggerPanel.java	(working copy)
+@@ -49,6 +49,10 @@
+     private static final int LOGGER_PANEL_MAX_LENGTH =
+             JMeterUtils.getPropDefault("jmeter.loggerpanel.maxlength", 80000); // $NON-NLS-1$
+ 
++    // Make panel handle event even if closed
++    private static final boolean LOGGER_PANEL_RECEIVE_WHEN_CLOSED =
++            JMeterUtils.getPropDefault("jmeter.loggerpanel.enable_when_closed", true); // $NON-NLS-1$
++
+     /**
+      * Pane for display JMeter log file
+      */
+@@ -78,7 +82,7 @@
+      */
+     @Override
+     public void processEvent(final LogEvent logEvent) {
+-        if(!GuiPackage.getInstance().getMenuItemLoggerPanel().getModel().isSelected()) {
++        if(!LOGGER_PANEL_RECEIVE_WHEN_CLOSED && !GuiPackage.getInstance().getMenuItemLoggerPanel().getModel().isSelected()) {
+             return;
+         }
+         
+Index: src/core/org/apache/jmeter/gui/MainFrame.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/MainFrame.java	(revision 1622832)
++++ src/core/org/apache/jmeter/gui/MainFrame.java	(working copy)
+@@ -20,6 +20,7 @@
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Component;
++import java.awt.Cursor;
+ import java.awt.Dimension;
+ import java.awt.Font;
+ import java.awt.Insets;
+@@ -204,6 +205,7 @@
+         warnIndicator.setOpaque(false);
+         warnIndicator.setContentAreaFilled(false);
+         warnIndicator.setBorderPainted(false);
++        warnIndicator.setCursor(new Cursor(Cursor.HAND_CURSOR));
+ 
+         warnIndicator.setToolTipText(JMeterUtils.getResString("error_indicator_tooltip")); // $NON-NLS-1$
+         warnIndicator.addActionListener(this);

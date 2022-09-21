@@ -1,0 +1,245 @@
+From 9c81bc7754be9862592439268e46c29c9f48aedd Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Wed, 25 Dec 2019 11:41:42 +0100
+Subject: [PATCH] Simple implementation of a jwt decoder function
+
+---
+ src/functions/build.gradle.kts                |   1 +
+ .../jmeter/functions/JwtDecodeFunction.java   | 122 ++++++++++++++++++
+ .../functions/JwtDecodeFunctionTest.java      |  83 ++++++++++++
+ 3 files changed, 206 insertions(+)
+ create mode 100644 src/functions/src/main/java/org/apache/jmeter/functions/JwtDecodeFunction.java
+ create mode 100644 src/functions/src/test/java/org/apache/jmeter/functions/JwtDecodeFunctionTest.java
+
+diff --git a/src/functions/build.gradle.kts b/src/functions/build.gradle.kts
+index b26ffcfaa8..52134f1abb 100644
+--- a/src/functions/build.gradle.kts
++++ b/src/functions/build.gradle.kts
+@@ -35,6 +35,7 @@ dependencies {
+     }
+     implementation("com.github.ben-manes.caffeine:caffeine")
+     implementation("oro:oro")
++    implementation("net.minidev:json-smart")
+     testImplementation("org.hamcrest:hamcrest-core")
+     testImplementation("org.exparity:hamcrest-date")
+ }
+diff --git a/src/functions/src/main/java/org/apache/jmeter/functions/JwtDecodeFunction.java b/src/functions/src/main/java/org/apache/jmeter/functions/JwtDecodeFunction.java
+new file mode 100644
+index 0000000000..faa9bc3b10
+--- /dev/null
++++ b/src/functions/src/main/java/org/apache/jmeter/functions/JwtDecodeFunction.java
+@@ -0,0 +1,122 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import java.nio.charset.StandardCharsets;
++import java.security.InvalidKeyException;
++import java.security.NoSuchAlgorithmException;
++import java.util.Arrays;
++import java.util.Collection;
++import java.util.List;
++
++import javax.crypto.Mac;
++import javax.crypto.spec.SecretKeySpec;
++
++import org.apache.commons.codec.binary.Base64;
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.util.JMeterUtils;
++
++import net.minidev.json.JSONObject;
++import net.minidev.json.parser.JSONParser;
++import net.minidev.json.parser.ParseException;
++
++public class JwtDecodeFunction extends AbstractFunction {
++
++    private static final String KEY = "__jwtDecode";
++    private static final List<String> DESC = Arrays.asList(JMeterUtils.getResString("jwtToken"),
++            JMeterUtils.getResString("jwtSecret"));
++    private static final int MIN_PARAMETER_COUNT = 1;
++    private static final int MAX_PARAMETER_COUNT = 2;
++    private CompoundVariable[] values;
++
++    @Override
++    public List<String> getArgumentDesc() {
++        return DESC;
++    }
++
++    @Override
++    public String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++        String jwtToken = values[0].execute();
++        byte[] jwtSecret = values[1].execute().getBytes();
++        String[] jwtParts = jwtToken.split("\\.");
++        String jwtHeader = new String(Base64.decodeBase64(jwtParts[0]), StandardCharsets.UTF_8);
++        JSONObject jsonHeader;
++        try {
++            jsonHeader = (JSONObject) new JSONParser(JSONParser.MODE_PERMISSIVE).parse(jwtHeader);
++        } catch (ParseException e) {
++            return "INVALID_HEADER";
++        }
++        if (!jsonHeader.getAsString("typ").equalsIgnoreCase("JWT")) {
++            return "NO_JWT_TYP";
++        }
++        String jwtAlgorithm = jsonHeader.getAsString("alg");
++        String jwtPayload = new String(Base64.decodeBase64(jwtParts[1]), StandardCharsets.UTF_8);
++        String sigStatus = checkSignature(jwtParts, jwtAlgorithm, jwtSecret);
++        JMeterContextService.getContext().getVariables().put("JWT_SIGNATURE_STATUS", sigStatus);
++        return jwtPayload;
++    }
++
++    private String checkSignature(String[] jwtParts, String jwtAlgorithm, byte[] jwtSecret) {
++        String hmacAlgorithm;
++        switch (jwtAlgorithm) {
++        case "HS256":
++            hmacAlgorithm = "HmacSHA256";
++            break;
++        case "HS384":
++            hmacAlgorithm = "HmacSHA384";
++            break;
++        case "HS512":
++            hmacAlgorithm = "HmacSHA512";
++            break;
++        default:
++            return "UNKNOWN_HMAC_ALGORITHM";
++        }
++        Mac instance;
++        try {
++            instance = Mac.getInstance(hmacAlgorithm);
++        } catch (NoSuchAlgorithmException e) {
++            return "NO_HMAC_FOUND";
++        }
++        try {
++            instance.init(new SecretKeySpec(jwtSecret, hmacAlgorithm));
++        } catch (InvalidKeyException e) {
++            return "KEY_INVALID";
++        }
++        byte[] computedChecksum = instance.doFinal((jwtParts[0] + "." + jwtParts[1]).getBytes());
++        if (Arrays.equals(Base64.decodeBase64(jwtParts[2]), computedChecksum)) {
++            return "JWT_VALID";
++        }
++        return "JWT_NOT_VALID";
++    }
++
++    @Override
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++        checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
++        values = parameters.toArray(new CompoundVariable[parameters.size()]);
++    }
++
++    @Override
++    public String getReferenceKey() {
++        return KEY;
++    }
++
++}
+diff --git a/src/functions/src/test/java/org/apache/jmeter/functions/JwtDecodeFunctionTest.java b/src/functions/src/test/java/org/apache/jmeter/functions/JwtDecodeFunctionTest.java
+new file mode 100644
+index 0000000000..ebead5952c
+--- /dev/null
++++ b/src/functions/src/test/java/org/apache/jmeter/functions/JwtDecodeFunctionTest.java
+@@ -0,0 +1,83 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import static org.junit.Assert.assertThat;
++import static org.apache.jmeter.functions.FunctionTestHelper.makeParams;
++import static org.hamcrest.CoreMatchers.is;
++
++import java.util.Collection;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++
++class JwtDecodeFunctionTest extends JMeterTestCase {
++
++    @BeforeEach
++    public void setup() {
++        JMeterContextService.getContext().setVariables(new JMeterVariables());
++    }
++
++    @AfterEach
++    public void tearDown() {
++        JMeterContextService.getContext().clear();
++    }
++
++    @Test
++    void testValidDecodeHS256() throws InvalidVariableException {
++        Collection<CompoundVariable> params = makeParams("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + "."
++                + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlNvbWUgTmFtZSIsImlhdCI6MTUxNjIzOTAyMn0" + "."
++                + "b5ECSxjXl-cb9uecUwmCMbrAoH6m-5vxNkMDpEEa2tc", "SomethingHardToGuessLikeAnSecret");
++        JwtDecodeFunction jwtDecoder = new JwtDecodeFunction();
++        jwtDecoder.setParameters(params);
++        String result = jwtDecoder.execute(null, null);
++        assertThat(result, is("{\"sub\":\"1234567890\",\"name\":\"Some Name\",\"iat\":1516239022}"));
++        assertThat(JMeterContextService.getContext().getVariables().get("JWT_SIGNATURE_STATUS"), is("JWT_VALID"));
++    }
++
++    @Test
++    void testInvalidSecretDecodeHS256() throws InvalidVariableException {
++        Collection<CompoundVariable> params = makeParams("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + "."
++                + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlNvbWUgTmFtZSIsImlhdCI6MTUxNjIzOTAyMn0" + "."
++                + "b5ECSxjXl-cb9uecUwmCMbrAoH6m-5vxNkMDpEEa2tc", "wrongSecret");
++        JwtDecodeFunction jwtDecoder = new JwtDecodeFunction();
++        jwtDecoder.setParameters(params);
++        String result = jwtDecoder.execute(null, null);
++        assertThat(result, is("{\"sub\":\"1234567890\",\"name\":\"Some Name\",\"iat\":1516239022}"));
++        assertThat(JMeterContextService.getContext().getVariables().get("JWT_SIGNATURE_STATUS"), is("JWT_NOT_VALID"));
++    }
++
++    @Test
++    void testInvalidAlgDecodeHS256() throws InvalidVariableException {
++        Collection<CompoundVariable> params = makeParams("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9" + "."
++                + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlNvbWUgTmFtZSIsImlhdCI6MTUxNjIzOTAyMn0" + "."
++                + "b5ECSxjXl-cb9uecUwmCMbrAoH6m-5vxNkMDpEEa2tc", "wrongSecret");
++        JwtDecodeFunction jwtDecoder = new JwtDecodeFunction();
++        jwtDecoder.setParameters(params);
++        String result = jwtDecoder.execute(null, null);
++        assertThat(result, is("{\"sub\":\"1234567890\",\"name\":\"Some Name\",\"iat\":1516239022}"));
++        assertThat(JMeterContextService.getContext().getVariables().get("JWT_SIGNATURE_STATUS"), is("UNKNOWN_HMAC_ALGORITHM"));
++    }
++
++}
+-- 
+2.17.1
+

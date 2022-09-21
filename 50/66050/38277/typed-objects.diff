@@ -1,0 +1,60 @@
+diff --git a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+index 2282216b1f..744a103a03 100644
+--- a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
++++ b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+@@ -588,17 +588,14 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+         Map<String, Object> row = null;
+         currentIterationIndex++;
+         for (int i = 1; i <= numColumns; i++) {
+-            Object o = rs.getObject(i);
+-            if(results != null) {
+-                if(row == null) {
++            Object o = getTypedObject(rs, i);
++            if (results != null) {
++                if (row == null) {
+                     row = new HashMap<>(numColumns);
+                     results.add(row);
+                 }
+                 row.put(meta.getColumnLabel(i), o);
+             }
+-            if (o instanceof byte[]) {
+-                o = new String((byte[]) o, ENCODING);
+-            }
+             sb.append(o);
+             if (i==numColumns){
+                 sb.append('\n');
+@@ -607,7 +604,7 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+             }
+             if (i <= varNames.length) { // i starts at 1
+                 String name = varNames[i - 1].trim();
+-                if (name.length()>0){ // Save the value in the variable if present
++                if (!name.isEmpty()) { // Save the value in the variable if present
+                     jmvars.put(name+UNDERSCORE+currentIterationIndex, o == null ? null : o.toString());
+                 }
+             }
+@@ -615,6 +612,25 @@ public abstract class AbstractJDBCTestElement extends AbstractTestElement implem
+         return currentIterationIndex;
+     }
+ 
++    private Object getTypedObject(ResultSet rs, int i) throws SQLException {
++        int columnType = rs.getMetaData().getColumnType(i);
++        Object result;
++        switch (columnType) {
++            case Types.FLOAT:
++                result = rs.getFloat(i);
++                break;
++            case Types.DOUBLE:
++                result = rs.getDouble(i);
++                break;
++            default:
++                result = rs.getObject(i);
++        }
++        if (o instanceof byte[]) {
++            o = new String((byte[]) o, ENCODING);
++        }
++        return result;
++    }
++
+     public static void close(Connection c) {
+         try {
+             if (c != null) {

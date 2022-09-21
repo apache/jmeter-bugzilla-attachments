@@ -1,0 +1,75 @@
+Index: JMeterTreeNode.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/tree/JMeterTreeNode.java,v
+retrieving revision 1.10
+diff -u -r1.10 JMeterTreeNode.java
+--- JMeterTreeNode.java	29 May 2003 13:33:56 -0000	1.10
++++ JMeterTreeNode.java	9 Jun 2003 00:38:33 -0000
+@@ -54,12 +54,15 @@
+  */
+ package org.apache.jmeter.gui.tree;
+ 
++import java.lang.reflect.InvocationTargetException;
++import java.lang.reflect.Method;
+ import java.util.Collection;
+ 
+ import javax.swing.ImageIcon;
+ import javax.swing.JPopupMenu;
+ import javax.swing.tree.DefaultMutableTreeNode;
+ 
++import org.apache.jmeter.gui.AbstractJMeterGuiComponent;
+ import org.apache.jmeter.gui.GUIFactory;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.JMeterGUIComponent;
+@@ -69,7 +72,8 @@
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.log.Hierarchy;
+ import org.apache.log.Logger;
+-
++import org.apache.jmeter.assertions.AssertionResult;
++import org.apache.jmeter.assertions.gui.*;
+ /************************************************************
+  *  Title: JMeter Description: Copyright: Copyright (c) 2000 Company: Apache
+  *
+@@ -166,9 +170,38 @@
+ 		return (TestElement)getUserObject();
+ 	}
+ 
+-	public String getStaticLabel()
+-	{
+-		return ((TestElement)getUserObject()).getPropertyAsString(TestElement.NAME);
++	/**
++	 * Get the static label associated with the GUI element, which in turn comes from the
++	 * property file for the current language.
++	 * 
++	 * Note that this string is used by the Help module to find the appropriate entry
++	 * in component_reference.html.
++	 *
++	 * @return String - the label, or empty string if not found
++	 */
++	public String getStaticLabel()//TODO better implementation needed if possible
++	{
++		/* The class returned by (TestElement)getUserObject() unfortunately does not implement
++		 * the getStaticLabel() method; that is implemented by the corresponding GUI class
++		 * For some reason, the method is not static, though it probably could be ...
++		 * 
++		 * So to get the fixed label (rather than the user-modifiable name) it looks like one
++		 * needs to instantiate an example of the GUI class and then invoke the method
++		 * (at least if the method were static, there would be no need to instantiate it)
++		 * Presumably the Gui class object is held somewhere, but did not know where to find it...
++		 */
++		
++		String guiName = ((TestElement)getUserObject()).getPropertyAsString(TestElement.GUI_CLASS);
++		String staticLabel="";
++		try {
++			Class cl = Class.forName(guiName);
++			Method mt=cl.getMethod("getStaticLabel", null);
++			staticLabel=(String) mt.invoke(cl.newInstance(),null);
++		} catch (Exception e1) {
++		}
++		return staticLabel;
++		
++		//was: return ((TestElement)getUserObject()).getPropertyAsString(TestElement.NAME);
+ 	}
+ 
+ 	/************************************************************

@@ -1,0 +1,70 @@
+From 2c4c8983cc85609747a3cf906bef619806b165d5 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Mon, 20 Aug 2018 17:33:56 +0200
+Subject: [PATCH 2/2] Allow Long.MAX_VALUE as value for initialDelay
+
+---
+ .../apache/jmeter/timers/TimerService.java    |  2 +-
+ .../jmeter/timers/TimerServiceTest.java       | 37 +++++++++++++++++++
+ 2 files changed, 38 insertions(+), 1 deletion(-)
+ create mode 100644 test/src/org/apache/jmeter/timers/TimerServiceTest.java
+
+diff --git a/src/core/org/apache/jmeter/timers/TimerService.java b/src/core/org/apache/jmeter/timers/TimerService.java
+index c9447fc37..15d7df9fd 100644
+--- a/src/core/org/apache/jmeter/timers/TimerService.java
++++ b/src/core/org/apache/jmeter/timers/TimerService.java
+@@ -65,7 +65,7 @@ public class TimerService {
+     public long adjustDelay(final long initialDelay, long endTime) {
+         if (endTime > 0) {
+             long now = System.currentTimeMillis();
+-            if(now + initialDelay > endTime) {
++            if (initialDelay > endTime - now) {
+                 return endTime - now;
+             }
+         }
+diff --git a/test/src/org/apache/jmeter/timers/TimerServiceTest.java b/test/src/org/apache/jmeter/timers/TimerServiceTest.java
+new file mode 100644
+index 000000000..652c8d38d
+--- /dev/null
++++ b/test/src/org/apache/jmeter/timers/TimerServiceTest.java
+@@ -0,0 +1,37 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.timers;
++
++import org.hamcrest.CoreMatchers;
++import org.junit.Assert;
++import org.junit.Test;
++
++public class TimerServiceTest {
++
++    TimerService sut = TimerService.getInstance();
++
++    @Test
++    public void testBigInitialDelay() {
++        long now = System.currentTimeMillis();
++        long adjustedDelay = sut.adjustDelay(Long.MAX_VALUE, now + 1000L);
++        // As #adjustDelay uses System#currentTimeMillis we can't be sure, that the value is exact 1000L
++        Assert.assertThat(Math.abs(adjustedDelay - 1000L) < 150L, CoreMatchers.is(true));
++    }
++
++}
+-- 
+2.17.1
+

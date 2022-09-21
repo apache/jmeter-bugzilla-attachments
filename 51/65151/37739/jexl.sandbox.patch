@@ -1,0 +1,352 @@
+diff --git a/bin/jmeter.properties b/bin/jmeter.properties
+index 4953cbd9a..d917d5299 100644
+--- a/bin/jmeter.properties
++++ b/bin/jmeter.properties
+@@ -1354,3 +1354,23 @@ jmeter.reportgenerator.apdex_tolerated_threshold=1500
+ # Path to XSL file used to generate Schematic View of Test Plan
+ # When empty, JMeter will use the embedded one in src/core/org/apache/jmeter/gui/action/schematic.xsl
+ #docgeneration.schematic_xsl=
++
++#---------------------------------------------------------------------------
++# JEXL configuration
++#---------------------------------------------------------------------------
++
++# If set to true, then JEXL functions are allowed to access any class by default
++jexl.allow.by.default=false
++
++# A list of comma-separated patterns that tells which methods JEXL functions are allowed to call
++#   Examples:
++#     "org.apache.jmeter." allows access to all classes in the org.apache.jmeter package
++#     "java.lang.String" allows access to all methods in the String class
++#     "foo.bar.MyClass.doSomething" allows access to the doSomething() method in the foo.bar.MyClass class
++jexl.allowed.classes=org.apache.jmeter.,\
++  java.lang.String,java.lang.Boolean,java.lang.Math,\
++  java.lang.Integer,java.lang.Double,java.lang.Byte,java.lang.Float,java.lang.Number,java.lang.Long,java.lang.Short
++
++# A list of comma-separated patterns that tells which methods JEXL functions are not allowed to call
++# The syntax is the same as for the "jexl.allowed.classes" property
++jexl.disallowed.classes=
+diff --git a/src/functions/src/main/java/org/apache/jmeter/functions/Jexl2Function.java b/src/functions/src/main/java/org/apache/jmeter/functions/Jexl2Function.java
+index 7b6c185b2..75016d629 100644
+--- a/src/functions/src/main/java/org/apache/jmeter/functions/Jexl2Function.java
++++ b/src/functions/src/main/java/org/apache/jmeter/functions/Jexl2Function.java
+@@ -17,14 +17,23 @@
+
+ package org.apache.jmeter.functions;
+
++import java.lang.reflect.Constructor;
++import java.security.AccessControlException;
+ import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.Iterator;
+ import java.util.List;
+
+ import org.apache.commons.jexl2.JexlContext;
+ import org.apache.commons.jexl2.JexlEngine;
++import org.apache.commons.jexl2.JexlInfo;
+ import org.apache.commons.jexl2.MapContext;
+ import org.apache.commons.jexl2.Script;
++import org.apache.commons.jexl2.introspection.JexlMethod;
++import org.apache.commons.jexl2.introspection.JexlPropertyGet;
++import org.apache.commons.jexl2.introspection.JexlPropertySet;
++import org.apache.commons.jexl2.introspection.Uberspect;
++import org.apache.commons.jexl2.introspection.UberspectImpl;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+@@ -115,7 +124,7 @@ public class Jexl2Function extends AbstractFunction implements ThreadListener {
+     private static JexlEngine getJexlEngine() {
+         JexlEngine engine = threadLocalJexl.get();
+         if(engine == null) {
+-            engine = new JexlEngine();
++            engine = new JexlEngine(Sandbox.INSTANCE, null, null, null);
+             engine.setCache(512);
+             engine.setLenient(false);
+             engine.setSilent(false);
+@@ -160,4 +169,57 @@ public class Jexl2Function extends AbstractFunction implements ThreadListener {
+         }
+     }
+
++    /**
++     * The class implements a sandbox for JEXL functions.
++     * The sandbox defines which methods are allowed to call.
++     */
++    private static class Sandbox implements Uberspect {
++
++        static final Sandbox INSTANCE = new Sandbox();
++
++        private final Uberspect uberspect = new UberspectImpl(null);
++
++        private Sandbox() {}
++
++        @Override
++        public void setClassLoader(ClassLoader loader) {
++            uberspect.setClassLoader(loader);
++        }
++
++        @Override
++        @SuppressWarnings("deprecation")
++        public Constructor<?> getConstructor(Object ctorHandle, Object[] args, JexlInfo info) {
++            return uberspect.getConstructor(ctorHandle, args, info);
++        }
++
++        @Override
++        public JexlMethod getConstructorMethod(Object ctorHandle, Object[] args, JexlInfo info) {
++            return uberspect.getConstructorMethod(ctorHandle, args, info);
++        }
++
++        @Override
++        public JexlMethod getMethod(Object obj, String method, Object[] args, JexlInfo info) {
++            String call = String.format("%s.%s", obj.getClass().getCanonicalName(), method);
++            if (!JexlFunctionAccessController.INSTANCE.isAllowed(call)) {
++                throw new AccessControlException("Not allowed");
++            }
++            return uberspect.getMethod(obj, method, args, info);
++        }
++
++        @Override
++        public JexlPropertyGet getPropertyGet(Object obj, Object identifier, JexlInfo info) {
++            return uberspect.getPropertyGet(obj, identifier, info);
++        }
++
++        @Override
++        public JexlPropertySet getPropertySet(Object obj, Object identifier, Object arg, JexlInfo info) {
++            return uberspect.getPropertySet(obj, identifier, arg, info);
++        }
++
++        @Override
++        public Iterator<?> getIterator(Object obj, JexlInfo info) {
++            return uberspect.getIterator(obj, info);
++        }
++    }
++
+ }
+diff --git a/src/functions/src/main/java/org/apache/jmeter/functions/Jexl3Function.java b/src/functions/src/main/java/org/apache/jmeter/functions/Jexl3Function.java
+index ac74281d4..483cff03b 100644
+--- a/src/functions/src/main/java/org/apache/jmeter/functions/Jexl3Function.java
++++ b/src/functions/src/main/java/org/apache/jmeter/functions/Jexl3Function.java
+@@ -17,15 +17,23 @@
+
+ package org.apache.jmeter.functions;
+
++import java.security.AccessControlException;
+ import java.util.ArrayList;
+ import java.util.Collection;
++import java.util.Iterator;
+ import java.util.List;
+
++import org.apache.commons.jexl3.JexlArithmetic;
+ import org.apache.commons.jexl3.JexlBuilder;
+ import org.apache.commons.jexl3.JexlContext;
+ import org.apache.commons.jexl3.JexlEngine;
++import org.apache.commons.jexl3.JexlOperator;
+ import org.apache.commons.jexl3.JexlScript;
+ import org.apache.commons.jexl3.MapContext;
++import org.apache.commons.jexl3.introspection.JexlMethod;
++import org.apache.commons.jexl3.introspection.JexlPropertyGet;
++import org.apache.commons.jexl3.introspection.JexlPropertySet;
++import org.apache.commons.jexl3.introspection.JexlUberspect;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+@@ -110,6 +118,7 @@ public class Jexl3Function extends AbstractFunction implements ThreadListener {
+
+     private static JexlEngine createJexlEngine() {
+         return new JexlBuilder()
++                .uberspect(Sandbox.INSTANCE)
+                 .cache(512)
+                 .silent(true)
+                 .strict(true)
+@@ -157,4 +166,76 @@ public class Jexl3Function extends AbstractFunction implements ThreadListener {
+         }
+     }
+
++    /**
++     * The class implements a sandbox for JEXL functions.
++     * The sandbox defines which methods are allowed to call.
++     */
++    private static class Sandbox implements JexlUberspect {
++
++        static final Sandbox INSTANCE = new Sandbox();
++
++        private final JexlUberspect uberspect = new JexlBuilder().create().getUberspect();
++
++        private Sandbox() {}
++
++        @Override
++        public List<PropertyResolver> getResolvers(JexlOperator op, Object obj) {
++            return uberspect.getResolvers(op, obj);
++        }
++
++        @Override
++        public void setClassLoader(ClassLoader loader) {
++            uberspect.setClassLoader(loader);
++        }
++
++        @Override
++        public int getVersion() {
++            return uberspect.getVersion();
++        }
++
++        @Override
++        public JexlMethod getConstructor(Object ctorHandle, Object... args) {
++            return null;
++        }
++
++        @Override
++        public JexlMethod getMethod(Object obj, String method, Object... args) {
++            String call = String.format("%s.%s", obj.getClass().getCanonicalName(), method);
++            if (!JexlFunctionAccessController.INSTANCE.isAllowed(call)) {
++                throw new AccessControlException("Not allowed");
++            }
++            return uberspect.getMethod(obj, method, args);
++        }
++
++        @Override
++        public JexlPropertyGet getPropertyGet(Object obj, Object identifier) {
++            return uberspect.getPropertyGet(obj, identifier);
++        }
++
++        @Override
++        public JexlPropertyGet getPropertyGet(List<PropertyResolver> resolvers, Object obj, Object identifier) {
++            return uberspect.getPropertyGet(resolvers, obj, identifier);
++        }
++
++        @Override
++        public JexlPropertySet getPropertySet(Object obj, Object identifier, Object arg) {
++            return uberspect.getPropertySet(obj, identifier, arg);
++        }
++
++        @Override
++        public JexlPropertySet getPropertySet(List<PropertyResolver> resolvers, Object obj, Object identifier, Object arg) {
++            return uberspect.getPropertySet(resolvers, obj, identifier, arg);
++        }
++
++        @Override
++        public Iterator<?> getIterator(Object obj) {
++            return uberspect.getIterator(obj);
++        }
++
++        @Override
++        public JexlArithmetic.Uberspect getArithmetic(JexlArithmetic arithmetic) {
++            return uberspect.getArithmetic(arithmetic);
++        }
++    }
++
+ }
+diff --git a/src/functions/src/main/java/org/apache/jmeter/functions/JexlFunctionAccessController.java b/src/functions/src/main/java/org/apache/jmeter/functions/JexlFunctionAccessController.java
+index 8541390fe..642a5143c 100644
+--- a/src/functions/src/main/java/org/apache/jmeter/functions/JexlFunctionAccessController.java
++++ b/src/functions/src/main/java/org/apache/jmeter/functions/JexlFunctionAccessController.java
+@@ -17,5 +17,86 @@
+
+ package org.apache.jmeter.functions;
+
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Properties;
++
++import org.apache.jmeter.util.JMeterUtils;
++
+ public class JexlFunctionAccessController {
++
++    static final JexlFunctionAccessController INSTANCE;
++
++    static {
++        Properties properties = JMeterUtils.getJMeterProperties();
++
++        boolean allowedByDefault = Boolean.parseBoolean(properties.getProperty(
++                "jexl.allow.by.default", "false"));
++        List<String> allowedList = new ArrayList<>();
++        List<String> disallowedList = new ArrayList<>();
++
++        String[] tokens = properties.getProperty(
++                "jexl.allowed.classes", "").split(",");
++
++        for (String token : tokens) {
++            String pattern = token.trim();
++            if (!token.isEmpty()) {
++                allowedList.add(pattern);
++            }
++        }
++
++        tokens = properties.getProperty(
++                "jexl.disallowed.classes", "").split(",");
++        for (String token : tokens) {
++            String pattern = token.trim();
++            if (!pattern.isEmpty()) {
++                disallowedList.add(pattern);
++            }
++        }
++
++        INSTANCE = new JexlFunctionAccessController(allowedByDefault, allowedList, disallowedList);
++    }
++
++    private final boolean allowedByDefault;
++    private final List<String> allowedList;
++    private final List<String> disallowedList;
++
++    private JexlFunctionAccessController(
++            boolean allowedByDefault, List<String> allowedList, List<String> disallowedList) {
++
++        this.allowedByDefault = allowedByDefault;
++        this.allowedList = allowedList;
++        this.disallowedList = disallowedList;
++    }
++
++    public boolean isAllowed(String name) {
++        if (inDisallowedList(name)) {
++            return false;
++        }
++
++        if (inAllowedList(name)) {
++            return true;
++        }
++
++        return allowedByDefault;
++    }
++
++    private boolean inAllowedList(String name) {
++        return inList(name, allowedList);
++    }
++
++    private boolean inDisallowedList(String name) {
++        return inList(name, disallowedList);
++    }
++
++    private static boolean inList(String name, List<String> patterns) {
++        for (String pattern : patterns) {
++            if (name.startsWith(pattern)) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
+ }
+diff --git a/src/functions/src/test/java/org/apache/jmeter/functions/TestJexl2Function.java b/src/functions/src/test/java/org/apache/jmeter/functions/TestJexl2Function.java
+index af647d0e9..170ef9f36 100644
+--- a/src/functions/src/test/java/org/apache/jmeter/functions/TestJexl2Function.java
++++ b/src/functions/src/test/java/org/apache/jmeter/functions/TestJexl2Function.java
+@@ -18,6 +18,7 @@
+ package org.apache.jmeter.functions;
+
+ import static org.junit.Assert.assertEquals;
++import static org.junit.Assert.assertNotEquals;
+
+ import java.util.Collection;
+ import java.util.LinkedList;
+@@ -102,4 +103,12 @@ public class TestJexl2Function extends JMeterTestCase {
+         String ret = function.execute(result, null);
+         assertEquals("6", ret);
+     }
++
++    @Test
++    public void testNoAccessToRuntime() throws Exception {
++        params.add(new CompoundVariable(
++                "sampleResult.getClass().forName('java.lang.Runtime').getCanonicalName()"));
++        function.setParameters(params);
++        assertNotEquals("java.lang.Runtime", function.execute(result, null));
++    }
+ }

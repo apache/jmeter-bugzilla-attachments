@@ -1,0 +1,1194 @@
+Index: src/components/org/apache/jmeter/visualizers/AxisGraph.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/AxisGraph.java	(revision 1229957)
++++ src/components/org/apache/jmeter/visualizers/AxisGraph.java	(working copy)
+@@ -19,6 +19,7 @@
+ 
+ import java.awt.Color;
+ import java.awt.Dimension;
++import java.awt.Font;
+ import java.awt.Graphics;
+ import java.awt.Graphics2D;
+ import java.awt.LayoutManager;
+@@ -27,6 +28,7 @@
+ 
+ import javax.swing.JPanel;
+ 
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ import org.jCharts.axisChart.AxisChart;
+@@ -42,6 +44,7 @@
+ import org.jCharts.properties.LabelAxisProperties;
+ import org.jCharts.properties.LegendProperties;
+ import org.jCharts.properties.PropertyException;
++import org.jCharts.properties.util.ChartFont;
+ import org.jCharts.types.ChartType;
+ 
+ /**
+@@ -64,6 +67,20 @@
+     protected String[] xAxisLabels;
+     protected int width, height;
+ 
++    protected Font titleFont;
++
++    protected Font legendFont;
++
++    protected Color color;
++
++    protected Color foreColor;
++
++    protected boolean outlinesBarFlag = false;
++
++    protected boolean showGrouping = true;
++
++    protected int legendPlacement = LegendProperties.BOTTOM;
++
+     /**
+      *
+      */
+@@ -122,13 +139,111 @@
+         this.height = h;
+     }
+ 
++    /**
++     * @return the color
++     */
++    public Color getColor() {
++        return color;
++    }
++
++    /**
++     * @param color the color to set
++     */
++    public void setColor(Color color) {
++        this.color = color;
++    }
++
++    /**
++     * @return the foreColor
++     */
++    public Color getForeColor() {
++        return foreColor;
++    }
++
++    /**
++     * @param foreColor the foreColor to set
++     */
++    public void setForeColor(Color foreColor) {
++        this.foreColor = foreColor;
++    }
++
++    /**
++     * @return the titleFont
++     */
++    public Font getTitleFont() {
++        return titleFont;
++    }
++
++    /**
++     * @param titleFont the titleFont to set
++     */
++    public void setTitleFont(Font titleFont) {
++        this.titleFont = titleFont;
++    }
++
++    /**
++     * @return the legendFont
++     */
++    public Font getLegendFont() {
++        return legendFont;
++    }
++
++    /**
++     * @param legendFont the legendFont to set
++     */
++    public void setLegendFont(Font legendFont) {
++        this.legendFont = legendFont;
++    }
++
++    /**
++     * @return the legendPlacement
++     */
++    public int getLegendPlacement() {
++        return legendPlacement;
++    }
++
++    /**
++     * @param legendPlacement the legendPlacement to set
++     */
++    public void setLegendPlacement(int legendPlacement) {
++        this.legendPlacement = legendPlacement;
++    }
++
++    /**
++     * @return the outlinesBarFlag
++     */
++    public boolean isOutlinesBarFlag() {
++        return outlinesBarFlag;
++    }
++
++    /**
++     * @param outlinesBarFlag the outlinesBarFlag to set
++     */
++    public void setOutlinesBarFlag(boolean outlinesBarFlag) {
++        this.outlinesBarFlag = outlinesBarFlag;
++    }
++
++    /**
++     * @return the showGrouping
++     */
++    public boolean isShowGrouping() {
++        return showGrouping;
++    }
++
++    /**
++     * @param showGrouping the showGrouping to set
++     */
++    public void setShowGrouping(boolean showGrouping) {
++        this.showGrouping = showGrouping;
++    }
++
+     @Override
+-    public void paintComponent(Graphics g) {
++    public void paintComponent(Graphics graphics) {
+         if (data != null && this.title != null && this.xAxisLabels != null &&
+                 this.xAxisTitle != null && this.yAxisLabel != null &&
+                 this.yAxisTitle != null) {
+             drawSample(this.title,this.maxLength,this.xAxisLabels,this.xAxisTitle,
+-                this.yAxisTitle,this.data,this.width,this.height,g);
++                this.yAxisTitle,this.data,this.width,this.height,this.color,this.legendFont,graphics);
+         }
+     }
+ 
+@@ -154,7 +269,7 @@
+     }
+ 
+     private void drawSample(String _title, int _maxLength, String[] _xAxisLabels, String _xAxisTitle,
+-            String _yAxisTitle, double[][] _data, int _width, int _height, Graphics g) {
++            String _yAxisTitle, double[][] _data, int _width, int _height, Color color, Font font, Graphics g) {
+         double max = findMax(_data);
+         try {
+             /** These controls are already done in StatGraphVisualizer
+@@ -170,7 +285,7 @@
+             }
+             // if the "Title of Graph" is empty, we can assume some default
+             if (_title.length() == 0 ) {
+-                _title = "Graph";
++                _title = JMeterUtils.getResString("aggregate_graph_title"); //$NON-NLS-1$
+             }
+             // if the labels are too long, they'll be "squeezed" to make the chart viewable.
+             for (int i = 0; i < _xAxisLabels.length; i++) {
+@@ -181,12 +296,19 @@
+             DataSeries dataSeries = new DataSeries( _xAxisLabels, _xAxisTitle, _yAxisTitle, _title );
+ 
+             String[] legendLabels= { yAxisLabel };
+-            Paint[] paints= new Paint[] { Color.yellow };
++
+             BarChartProperties barChartProperties= new BarChartProperties();
+-            ValueLabelRenderer valueLabelRenderer = new ValueLabelRenderer(false, false, true, 0);
++            barChartProperties.setShowOutlinesFlag(outlinesBarFlag);
++            ValueLabelRenderer valueLabelRenderer = new ValueLabelRenderer(false, false, showGrouping, 0);
+             valueLabelRenderer.setValueLabelPosition(ValueLabelPosition.AT_TOP);
+             valueLabelRenderer.useVerticalLabels(true);
++            if (legendFont != null) {
++                valueLabelRenderer.setValueChartFont(new ChartFont(legendFont, new Color(foreColor.getRGB())));
++            }
++            
+             barChartProperties.addPostRenderEventListener(valueLabelRenderer);
++
++            Paint[] paints = new Paint[] { color };
+             AxisChartDataSet axisChartDataSet =
+                 new AxisChartDataSet(
+                         _data, legendLabels, paints, ChartType.BAR, barChartProperties );
+@@ -195,6 +317,15 @@
+             ChartProperties chartProperties= new ChartProperties();
+             LabelAxisProperties xaxis = new LabelAxisProperties();
+             DataAxisProperties yaxis = new DataAxisProperties();
++            yaxis.setUseCommas(showGrouping);
++
++            if (legendFont != null) {
++                yaxis.setAxisTitleChartFont(new ChartFont(legendFont, new Color(20)));
++                xaxis.setAxisTitleChartFont(new ChartFont(legendFont, new Color(20)));
++            }
++            if (titleFont != null) {
++                chartProperties.setTitleFont(new ChartFont(titleFont, new Color(0)));
++            }
+ 
+             try {
+                 BigDecimal round = new BigDecimal(max / 1000d);
+@@ -210,6 +341,11 @@
+             AxisProperties axisProperties= new AxisProperties(xaxis, yaxis);
+             axisProperties.setXAxisLabelsAreVertical(true);
+             LegendProperties legendProperties= new LegendProperties();
++            legendProperties.setBorderStroke(null);
++            legendProperties.setPlacement(legendPlacement);
++            if (legendFont != null) {
++                legendProperties.setFont(legendFont); //new Font("SansSerif", Font.PLAIN, 10)
++            }
+             AxisChart axisChart = new AxisChart(
+                     dataSeries, chartProperties, axisProperties,
+                     legendProperties, _width, _height );
+Index: src/components/org/apache/jmeter/visualizers/StatGraphProperties.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatGraphProperties.java	(revision 0)
++++ src/components/org/apache/jmeter/visualizers/StatGraphProperties.java	(revision 0)
+@@ -0,0 +1,56 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.visualizers;
++
++import java.awt.Font;
++import java.util.HashMap;
++import java.util.Map;
++
++import org.apache.jmeter.util.JMeterUtils;
++import org.jCharts.properties.LegendProperties;
++
++public class StatGraphProperties {
++
++    public static final String[] fontSize = { "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "32"};
++
++    public static Map<String, String> getFontNameMap() {
++        Map<String, String> fontNameMap = new HashMap<String, String>();
++        fontNameMap.put(JMeterUtils.getResString("font.sansserif"), "SansSerif");
++        fontNameMap.put(JMeterUtils.getResString("font.serif"), "Serif");
++        return fontNameMap;
++    }
++
++    public static Map<String, Integer> getFontStyleMap() {
++        Map<String, Integer> fontStyleMap = new HashMap<String, Integer>();
++        fontStyleMap.put(JMeterUtils.getResString("fontstyle.normal"), Font.PLAIN);
++        fontStyleMap.put(JMeterUtils.getResString("fontstyle.bold"), Font.BOLD);
++        fontStyleMap.put(JMeterUtils.getResString("fontstyle.italic"), Font.ITALIC);
++        return fontStyleMap;
++    }
++
++    public static Map<String, Integer> getPlacementNameMap() {
++        Map<String, Integer> placementNameMap = new HashMap<String, Integer>();
++        placementNameMap.put(JMeterUtils.getResString("aggregate_graph_legend.placement.bottom"), LegendProperties.BOTTOM);
++        placementNameMap.put(JMeterUtils.getResString("aggregate_graph_legend.placement.right"), LegendProperties.RIGHT);
++        placementNameMap.put(JMeterUtils.getResString("aggregate_graph_legend.placement.left"), LegendProperties.LEFT);
++        placementNameMap.put(JMeterUtils.getResString("aggregate_graph_legend.placement.top"), LegendProperties.TOP);
++        return placementNameMap;
++    }
++}
+Index: src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(revision 1229957)
++++ src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(working copy)
+@@ -19,7 +19,10 @@
+ package org.apache.jmeter.visualizers;
+ 
+ import java.awt.BorderLayout;
++import java.awt.Color;
+ import java.awt.Dimension;
++import java.awt.FlowLayout;
++import java.awt.Font;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.io.FileNotFoundException;
+@@ -29,17 +32,26 @@
+ import java.util.List;
+ import java.util.Map;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++import java.util.regex.PatternSyntaxException;
+ 
++import javax.swing.BorderFactory;
++import javax.swing.Box;
+ import javax.swing.BoxLayout;
+ import javax.swing.JButton;
+ import javax.swing.JCheckBox;
++import javax.swing.JColorChooser;
++import javax.swing.JComboBox;
+ import javax.swing.JComponent;
+ import javax.swing.JFileChooser;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+ import javax.swing.JSplitPane;
++import javax.swing.JTabbedPane;
+ import javax.swing.JTable;
++import javax.swing.JTextField;
+ import javax.swing.border.Border;
+ import javax.swing.border.EmptyBorder;
+ import javax.swing.table.TableCellRenderer;
+@@ -48,14 +60,13 @@
+ import org.apache.jmeter.gui.action.ActionRouter;
+ import org.apache.jmeter.gui.action.SaveGraphics;
+ import org.apache.jmeter.gui.util.FileDialoger;
+-import org.apache.jmeter.gui.util.HorizontalPanel;
++import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.samplers.Clearable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.save.CSVSaveService;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+-import org.apache.jorphan.gui.JLabeledChoice;
+ import org.apache.jorphan.gui.JLabeledTextField;
+ import org.apache.jorphan.gui.NumberRenderer;
+ import org.apache.jorphan.gui.ObjectTableModel;
+@@ -97,6 +108,8 @@
+ 
+     private final String TOTAL_ROW_LABEL =
+         JMeterUtils.getResString("aggregate_report_total_label");       //$NON-NLS-1$
++    
++    private final Border MARGIN = new EmptyBorder(0, 5, 0, 5);
+ 
+     private JTable myJTable;
+ 
+@@ -114,17 +127,14 @@
+ 
+     private AxisGraph graphPanel = null;
+ 
+-    private VerticalPanel graph = null;
+-
+-    private JScrollPane graphScroll = null;
++    private JPanel settingsPane = null;
+ 
+     private JSplitPane spane = null;
+ 
+-    private JLabeledChoice columns =
+-        new JLabeledChoice(JMeterUtils.getResString("aggregate_graph_column"),GRAPH_COLUMNS);//$NON-NLS-1$
+-
+     //NOT USED protected double[][] data = null;
+ 
++    private JTabbedPane tabbedGraph = new JTabbedPane(JTabbedPane.TOP);
++
+     private JButton displayButton =
+         new JButton(JMeterUtils.getResString("aggregate_graph_display"));                //$NON-NLS-1$
+ 
+@@ -134,6 +144,15 @@
+     private JButton saveTable =
+         new JButton(JMeterUtils.getResString("aggregate_graph_save_table"));            //$NON-NLS-1$
+ 
++    private JButton chooseBarColor =
++        new JButton(JMeterUtils.getResString("aggregate_graph_choose_bar_color"));            //$NON-NLS-1$
++
++    private JButton chooseForeColor =
++        new JButton(JMeterUtils.getResString("aggregate_graph_choose_foreground_color"));            //$NON-NLS-1$
++
++    private JButton syncWithName =
++        new JButton(JMeterUtils.getResString("aggregate_graph_sync_with_name"));            //$NON-NLS-1$
++
+     private JCheckBox saveHeaders = // should header be saved with the data?
+         new JCheckBox(JMeterUtils.getResString("aggregate_graph_save_table_header"));    //$NON-NLS-1$
+ 
+@@ -143,6 +162,11 @@
+     private JLabeledTextField maxLengthXAxisLabel =
+         new JLabeledTextField(JMeterUtils.getResString("aggregate_graph_max_length_xaxis_label"));//$NON-NLS-1$
+ 
++    /**
++     * checkbox for use dynamic graph size
++     */
++    private JCheckBox dynamicGraphSize = new JCheckBox(JMeterUtils.getResString("aggregate_graph_dynamic_size")); // $NON-NLS-1$
++    
+     private JLabeledTextField graphWidth =
+         new JLabeledTextField(JMeterUtils.getResString("aggregate_graph_width"));        //$NON-NLS-1$
+     private JLabeledTextField graphHeight =
+@@ -158,6 +182,42 @@
+ 
+     private int defaultHeight = 300;
+ 
++    private JLabel currentColor = new JLabel(JMeterUtils.getResString("aggregate_graph_current_colors"));   //$NON-NLS-1$
++
++    private JComboBox columnsList = new JComboBox(GRAPH_COLUMNS);
++
++    private JCheckBox columnSelection = new JCheckBox(JMeterUtils.getResString("aggregate_graph_column_selection"), false); //$NON-NLS-1$
++
++    private JTextField columnMatchLabel = new JTextField();
++
++    private JButton reloadButton = new JButton(JMeterUtils.getResString("aggregate_graph_reload_data")); // $NON-NLS-1$
++
++    private JCheckBox caseChkBox = new JCheckBox(JMeterUtils.getResString("search_text_chkbox_case"), false); // $NON-NLS-1$
++
++    private JCheckBox regexpChkBox = new JCheckBox(JMeterUtils.getResString("search_text_chkbox_regexp"), true); // $NON-NLS-1$
++
++    private JComboBox titleFontNameList = new JComboBox(StatGraphProperties.getFontNameMap().keySet().toArray());
++
++    private JComboBox titleFontSizeList = new JComboBox(StatGraphProperties.fontSize);
++
++    private JComboBox titleFontStyleList = new JComboBox(StatGraphProperties.getFontStyleMap().keySet().toArray());
++
++    private JComboBox fontNameList = new JComboBox(StatGraphProperties.getFontNameMap().keySet().toArray());
++
++    private JComboBox fontSizeList = new JComboBox(StatGraphProperties.fontSize);
++
++    private JComboBox fontStyleList = new JComboBox(StatGraphProperties.getFontStyleMap().keySet().toArray());
++
++    private JComboBox legendPlacementList = new JComboBox(StatGraphProperties.getPlacementNameMap().keySet().toArray());
++
++    private JCheckBox drawOutlinesBar = new JCheckBox(JMeterUtils.getResString("aggregate_graph_draw_outlines"), true); // Default checked // $NON-NLS-1$
++
++    private JCheckBox numberShowGrouping = new JCheckBox(JMeterUtils.getResString("aggregate_graph_number_grouping"), true); // Default checked // $NON-NLS-1$
++
++    private Color colorBarGraph = Color.YELLOW;
++
++    private Color colorForeGraph = Color.BLACK;
++
+     public StatGraphVisualizer() {
+         super();
+         model = new ObjectTableModel(COLUMNS,
+@@ -208,17 +268,24 @@
+     public void add(SampleResult res) {
+         SamplingStatCalculator row = null;
+         final String sampleLabel = res.getSampleLabel();
+-        synchronized (lock) {
+-            row = tableRows.get(sampleLabel);
+-            if (row == null) {
+-                row = new SamplingStatCalculator(sampleLabel);
+-                tableRows.put(row.getLabel(), row);
+-                model.insertRow(row, model.getRowCount() - 1);
++        Matcher matcher = null;
++        if (columnSelection.isSelected() && columnMatchLabel.getText() != null && columnMatchLabel.getText().length() > 0) {
++                Pattern pattern = createPattern(columnMatchLabel.getText());
++                matcher = pattern.matcher(sampleLabel);
++        }
++        if ((matcher == null) || (matcher.find())) {
++            synchronized (lock) {
++                row = tableRows.get(sampleLabel);
++                if (row == null) {
++                    row = new SamplingStatCalculator(sampleLabel);
++                    tableRows.put(row.getLabel(), row);
++                    model.insertRow(row, model.getRowCount() - 1);
++                }
+             }
++            row.addSample(res);
++            tableRows.get(TOTAL_ROW_LABEL).addSample(res);
++            model.fireTableDataChanged();
+         }
+-        row.addSample(res);
+-        tableRows.get(TOTAL_ROW_LABEL).addSample(res);
+-        model.fireTableDataChanged();
+     }
+ 
+     /**
+@@ -253,82 +320,80 @@
+         RendererUtils.applyRenderers(myJTable, RENDERERS);
+         myScrollPane = new JScrollPane(myJTable);
+ 
+-        graph = new VerticalPanel();
+-        graph.setBorder(margin2);
++        settingsPane = new VerticalPanel();
++        settingsPane.setBorder(margin2);
+ 
+-
+-        JLabel graphLabel = new JLabel(JMeterUtils.getResString("aggregate_graph")); //$NON-NLS-1$
+         graphPanel = new AxisGraph();
+-        graphPanel.setPreferredSize(new Dimension(defaultWidth,defaultHeight));
++        graphPanel.setPreferredSize(new Dimension(defaultWidth, defaultHeight));
+ 
+-        // horizontal panel for the buttons
+-        HorizontalPanel buttonpanel = new HorizontalPanel();
+-        buttonpanel.add(columns);
+-        buttonpanel.add(displayButton);
+-        buttonpanel.add(saveGraph);
+-        buttonpanel.add(saveTable);
+-        buttonpanel.add(saveHeaders);
++        settingsPane.add(createGraphActionsPane());
++        settingsPane.add(createGraphColumnPane());
++        settingsPane.add(createGraphTitlePane());
++        settingsPane.add(createGraphDimensionPane());
++        settingsPane.add(createGraphXAxisPane());
++        settingsPane.add(createLegendPane());
+ 
+-        graph.add(graphLabel);
+-        graph.add(graphTitle);
+-        graph.add(maxLengthXAxisLabel);
+-        graph.add(graphWidth);
+-        graph.add(graphHeight);
+-        graph.add(buttonpanel);
+-        graph.add(graphPanel);
+-
+-        displayButton.addActionListener(this);
+-        saveGraph.addActionListener(this);
+-        saveTable.addActionListener(this);
+-        graphScroll = new JScrollPane(graph);
+-        graphScroll.setAutoscrolls(true);
++        tabbedGraph.addTab(JMeterUtils.getResString("aggregate_graph_tab_settings"), settingsPane); //$NON-NLS-1$
++        tabbedGraph.addTab(JMeterUtils.getResString("aggregate_graph_tab_graph"), graphPanel); //$NON-NLS-1$
+ 
+         spane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+         spane.setLeftComponent(myScrollPane);
+-        spane.setRightComponent(graphScroll);
++        spane.setRightComponent(tabbedGraph);
+         spane.setResizeWeight(.2);
+         spane.setContinuousLayout(true);
+ 
+         this.add(mainPanel, BorderLayout.NORTH);
+-        this.add(spane,BorderLayout.CENTER);
++        this.add(spane, BorderLayout.CENTER);
+     }
+ 
+     public void makeGraph() {
++        Dimension size = graphPanel.getSize();
+         String wstr = graphWidth.getText();
+         String hstr = graphHeight.getText();
+         String lstr = maxLengthXAxisLabel.getText();
+-        if (wstr.length() == 0) {
+-            wstr = "450";//$NON-NLS-1$
++        int width = (int) size.getWidth();
++        if (wstr.length() != 0) {
++            width = Integer.parseInt(wstr);
+         }
+-        if (hstr.length() == 0) {
+-            hstr = "250";//$NON-NLS-1$
++        int height = (int) size.getHeight();
++        if (hstr.length() != 0) {
++            height = Integer.parseInt(hstr);
+         }
+         if (lstr.length() == 0) {
+             lstr = "20";//$NON-NLS-1$
+         }
+-        int width = Integer.parseInt(wstr);
+-        int height = Integer.parseInt(hstr);
+         int maxLength = Integer.parseInt(lstr);
+ 
+         graphPanel.setData(this.getData());
+-        graphPanel.setHeight(height);
+-        graphPanel.setWidth(width);
+         graphPanel.setTitle(graphTitle.getText());
+         graphPanel.setMaxLength(maxLength);
+         graphPanel.setXAxisLabels(getAxisLabels());
+-        graphPanel.setXAxisTitle(columns.getText());
++        graphPanel.setXAxisTitle((String) columnsList.getSelectedItem());
+         graphPanel.setYAxisLabels(this.yAxisLabel);
+         graphPanel.setYAxisTitle(this.yAxisTitle);
++        graphPanel.setColor(colorBarGraph);
++        graphPanel.setForeColor(colorForeGraph);
++        graphPanel.setOutlinesBarFlag(drawOutlinesBar.isSelected());
++        graphPanel.setShowGrouping(numberShowGrouping.isSelected());
++        graphPanel.setLegendPlacement(StatGraphProperties.getPlacementNameMap()
++                .get(legendPlacementList.getSelectedItem()));
++
++        graphPanel.setTitleFont(new Font(StatGraphProperties.getFontNameMap().get(titleFontNameList.getSelectedItem()),
++                StatGraphProperties.getFontStyleMap().get(titleFontStyleList.getSelectedItem()),
++                Integer.parseInt((String) titleFontSizeList.getSelectedItem())));
++        graphPanel.setLegendFont(new Font(StatGraphProperties.getFontNameMap().get(fontNameList.getSelectedItem()),
++                StatGraphProperties.getFontStyleMap().get(fontStyleList.getSelectedItem()),
++                Integer.parseInt((String) fontSizeList.getSelectedItem())));
+ 
+-        graphPanel.setPreferredSize(new Dimension(width,height));
+-        graph.setSize(new Dimension(graph.getWidth(), height + 120));
++        graphPanel.setHeight(height);
++        graphPanel.setWidth(width);
+         spane.repaint();
+     }
+ 
+     public double[][] getData() {
+         if (model.getRowCount() > 1) {
+             int count = model.getRowCount() -1;
+-            int col = model.findColumn(columns.getText());
++            int col = model.findColumn((String) columnsList.getSelectedItem());
+             double[][] data = new double[1][count];
+             for (int idx=0; idx < count; idx++) {
+                 data[0][idx] = ((Number)model.getValueAt(idx,col)).doubleValue();
+@@ -373,9 +438,11 @@
+     }
+ 
+     public void actionPerformed(ActionEvent event) {
+-        if (event.getSource() == displayButton) {
++        final Object eventSource = event.getSource();
++        if (eventSource == displayButton) {
+             makeGraph();
+-        } else if (event.getSource() == saveGraph) {
++            tabbedGraph.setSelectedIndex(1);
++        } else if (eventSource == saveGraph) {
+             saveGraphToFile = true;
+             try {
+                 ActionRouter.getInstance().getAction(
+@@ -384,7 +451,7 @@
+             } catch (Exception e) {
+                 log.error(e.getMessage());
+             }
+-        } else if (event.getSource() == saveTable) {
++        } else if (eventSource == saveTable) {
+             JFileChooser chooser = FileDialoger.promptToSaveFile("statistics.csv");    //$NON-NLS-1$
+             if (chooser == null) {
+                 return;
+@@ -400,6 +467,47 @@
+             } finally {
+                 JOrphanUtils.closeQuietly(writer);
+             }
++        } else if (eventSource == chooseBarColor) {
++            colorBarGraph = JColorChooser.showDialog(
++                    null,
++                    JMeterUtils.getResString("aggregate_graph_choose_color"), //$NON-NLS-1$
++                    colorBarGraph);
++            currentColor.setBackground(colorBarGraph);
++        } else if (eventSource == chooseForeColor) {
++            colorForeGraph = JColorChooser.showDialog(
++                    null,
++                    JMeterUtils.getResString("aggregate_graph_choose_color"), //$NON-NLS-1$
++                    colorBarGraph);
++            currentColor.setForeground(colorForeGraph);
++        } else if (eventSource == syncWithName) {
++            graphTitle.setText(namePanel.getName());
++        } else if (eventSource == dynamicGraphSize) {
++            // if use dynamic graph size is checked, we disable the dimension fields
++            if (dynamicGraphSize.isSelected()) {
++                graphWidth.setEnabled(false);
++                graphHeight.setEnabled(false);
++            } else {
++                graphWidth.setEnabled(true);
++                graphHeight.setEnabled(true);
++            }
++        } else if (eventSource == columnSelection) {
++            if (columnSelection.isSelected()) {
++                columnMatchLabel.setEnabled(true);
++                reloadButton.setEnabled(true);
++                caseChkBox.setEnabled(true);
++                regexpChkBox.setEnabled(true);
++            } else {
++                columnMatchLabel.setEnabled(false);
++                reloadButton.setEnabled(false);
++                caseChkBox.setEnabled(false);
++                regexpChkBox.setEnabled(false);
++            }
++        } else if (eventSource == reloadButton) {
++            if (getFile() != null && getFile().length() > 0) {
++                clearData();
++                FilePanel filePanel = (FilePanel) getFilePanel();
++                filePanel.actionPerformed(event);
++            }
+         }
+     }
+ 
+@@ -413,4 +521,199 @@
+         }
+         return this;
+     }
++
++    private JPanel createGraphActionsPane() {
++        JPanel buttonPanel = new JPanel(new BorderLayout());
++        JPanel displayPane = new JPanel();
++        displayPane.add(displayButton);
++        displayButton.addActionListener(this);
++        buttonPanel.add(displayPane, BorderLayout.WEST);
++
++        JPanel savePane = new JPanel();
++        savePane.add(saveGraph);
++        savePane.add(saveTable);
++        savePane.add(saveHeaders);
++        saveGraph.addActionListener(this);
++        saveTable.addActionListener(this);
++        syncWithName.addActionListener(this);
++        buttonPanel.add(savePane, BorderLayout.EAST);
++
++        return buttonPanel;
++    }
++
++    private JPanel createGraphColumnPane() {
++        JPanel barPanel = new JPanel();
++        barPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++
++        barPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_column"), //$NON-NLS-1$
++                columnsList));
++
++        currentColor.setBorder(new EmptyBorder(2, 5, 2, 5));
++        currentColor.setOpaque(true);
++        currentColor.setBackground(colorBarGraph);
++
++        barPanel.add(Box.createRigidArea(new Dimension(5,0)));
++        barPanel.add(currentColor);
++        barPanel.add(Box.createRigidArea(new Dimension(5,0)));
++        barPanel.add(chooseBarColor);
++        chooseBarColor.addActionListener(this);
++        barPanel.add(Box.createRigidArea(new Dimension(5,0)));
++        barPanel.add(chooseForeColor);
++        chooseForeColor.addActionListener(this);
++
++        barPanel.add(drawOutlinesBar);
++        barPanel.add(numberShowGrouping);
++
++        JPanel columnPane = new JPanel(new BorderLayout());
++        columnPane.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("aggregate_graph_column_settings"))); // $NON-NLS-1$
++        columnPane.add(barPanel, BorderLayout.NORTH);
++        columnPane.add(Box.createRigidArea(new Dimension(5,0)), BorderLayout.CENTER);
++        columnPane.add(createGraphSelectionSubPane(), BorderLayout.SOUTH);
++        
++        return columnPane;
++    }
++    
++    private JPanel createGraphSelectionSubPane() {
++        Font font = new Font("SansSerif", Font.PLAIN, 10);
++        // Search field
++        JPanel searchPanel = new JPanel();
++        searchPanel.setLayout(new BoxLayout(searchPanel, BoxLayout.X_AXIS));
++        searchPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
++
++        searchPanel.add(columnSelection);
++        columnMatchLabel.setEnabled(false);
++        reloadButton.setEnabled(false);
++        caseChkBox.setEnabled(false);
++        regexpChkBox.setEnabled(false);
++        columnSelection.addActionListener(this);
++
++        searchPanel.add(columnMatchLabel);
++        searchPanel.add(Box.createRigidArea(new Dimension(5,0)));
++
++        // Button
++        reloadButton.setFont(font);
++        reloadButton.addActionListener(this);
++        searchPanel.add(reloadButton);
++
++        // checkboxes
++        caseChkBox.setFont(font);
++        searchPanel.add(caseChkBox);
++        regexpChkBox.setFont(font);
++        searchPanel.add(regexpChkBox);
++
++        return searchPanel;
++    }
++
++    private JPanel createGraphTitlePane() {
++        JPanel titleNamePane = new JPanel(new BorderLayout());
++        syncWithName.setFont(new Font("SansSerif", Font.PLAIN, 10));
++        titleNamePane.add(graphTitle, BorderLayout.CENTER);
++        titleNamePane.add(syncWithName, BorderLayout.EAST);
++        
++        JPanel titleStylePane = new JPanel();
++        titleStylePane.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 5));
++        titleStylePane.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_font"), //$NON-NLS-1$
++                titleFontNameList));
++        titleFontNameList.setSelectedIndex(0); // default: sans serif
++        titleStylePane.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_size"), //$NON-NLS-1$
++                titleFontSizeList));
++        titleFontSizeList.setSelectedItem(StatGraphProperties.fontSize[6]); // default: 16
++        titleStylePane.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_style"), //$NON-NLS-1$
++                titleFontStyleList));
++        titleFontStyleList.setSelectedItem(JMeterUtils.getResString("fontstyle.bold")); // default: bold
++
++        JPanel titlePane = new JPanel(new BorderLayout());
++        titlePane.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("aggregate_graph_title_group"))); // $NON-NLS-1$
++        titlePane.add(titleNamePane, BorderLayout.NORTH);
++        titlePane.add(titleStylePane, BorderLayout.SOUTH);
++        return titlePane;
++    }
++
++    private JPanel createGraphDimensionPane() {
++        JPanel dimensionPane = new JPanel();
++        dimensionPane.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++        dimensionPane.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("aggregate_graph_dimension"))); // $NON-NLS-1$
++
++        dimensionPane.add(dynamicGraphSize);
++        dynamicGraphSize.setSelected(true); // default option
++        graphWidth.setEnabled(false);
++        graphHeight.setEnabled(false);
++        dynamicGraphSize.addActionListener(this);
++        dimensionPane.add(Box.createRigidArea(new Dimension(10,0)));
++        dimensionPane.add(graphWidth);
++        dimensionPane.add(Box.createRigidArea(new Dimension(5,0)));
++        dimensionPane.add(graphHeight);
++        return dimensionPane;
++    }
++
++    private JPanel createGraphXAxisPane() {
++        JPanel xAxisPane = new JPanel();
++        xAxisPane.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++        xAxisPane.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("aggregate_graph_xaxis_group"))); // $NON-NLS-1$
++        xAxisPane.add(maxLengthXAxisLabel);
++        return xAxisPane;
++    }
++
++    /**
++     * Create pane for legend settings
++     * @return Legend pane
++     */
++    private JPanel createLegendPane() {
++        JPanel legendPanel = new JPanel();
++        legendPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++        legendPanel.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("aggregate_graph_legend"))); // $NON-NLS-1$
++
++        legendPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_legend_placement"), //$NON-NLS-1$
++                legendPlacementList));
++        legendPlacementList.setSelectedItem(JMeterUtils.getResString("aggregate_graph_legend.placement.right")); // default: right
++        legendPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_font"), //$NON-NLS-1$
++                fontNameList));
++        fontNameList.setSelectedIndex(0); // default: sans serif
++        legendPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_size"), //$NON-NLS-1$
++                fontSizeList));
++        fontSizeList.setSelectedItem(StatGraphProperties.fontSize[2]); // default: 10
++        legendPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_style"), //$NON-NLS-1$
++                fontStyleList));
++        fontStyleList.setSelectedItem(JMeterUtils.getResString("fontstyle.normal")); // default: normal
++
++        return legendPanel;
++    }
++
++    private JComponent createLabelCombo(String label, JComboBox comboBox) {
++        JPanel labelCombo = new JPanel();
++        labelCombo.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++        JLabel caption = new JLabel(label);//$NON-NLS-1$
++        caption.setBorder(MARGIN);
++        labelCombo.add(caption);
++        labelCombo.add(comboBox);
++        return labelCombo;
++    }
++
++    private Pattern createPattern(String textToFind) {
++        // desactivate or not specials regexp char
++        String textToFindQ = Pattern.quote(textToFind);
++        if (regexpChkBox.isSelected()) {
++            textToFindQ = textToFind;
++        }
++        Pattern pattern = null;
++        try {
++            if (caseChkBox.isSelected()) {
++                pattern = Pattern.compile(textToFindQ);
++            } else {
++                pattern = Pattern
++                        .compile(textToFindQ, Pattern.CASE_INSENSITIVE);
++            }
++        } catch (PatternSyntaxException pse) {
++            return null;
++        }
++        return pattern;
++    }
+ }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1229957)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -31,19 +31,45 @@
+ add_value=Add Value
+ addtest=Add test
+ aggregate_graph=Statistical Graphs
+-aggregate_graph_column=Column
++aggregate_graph_choose_bar_color=Bar color
++aggregate_graph_choose_color=Choose color
++aggregate_graph_choose_foreground_color=Foreground color
++aggregate_graph_color_bar=Color\:
++aggregate_graph_column=Column\:
++aggregate_graph_column_selection=Column label selection\:
++aggregate_graph_column_settings=Column settings
++aggregate_graph_current_colors=Current colors
++aggregate_graph_dimension=Graph size
++aggregate_graph_draw_outlines=Draw outlines bar?
++aggregate_graph_dynamic_size=Dynamic graph size
+ aggregate_graph_display=Display Graph
+-aggregate_graph_height=Height
+-aggregate_graph_max_length_xaxis_label=Max length of x-axis label
++aggregate_graph_font=Font\:
++aggregate_graph_height=Height\:
++aggregate_graph_legend=Legend
++aggregate_graph_legend_placement=Placement\:
++aggregate_graph_legend.placement.bottom=Bottom
++aggregate_graph_legend.placement.right=Right
++aggregate_graph_legend.placement.left=Left
++aggregate_graph_legend.placement.top=Top
++aggregate_graph_max_length_xaxis_label=Max length of x-axis label\:
+ aggregate_graph_ms=Milliseconds
++aggregate_graph_number_grouping=Show number grouping?
+ aggregate_graph_response_time=Response Time
++aggregate_graph_reload_data=Reload data
+ aggregate_graph_save=Save Graph
+ aggregate_graph_save_table=Save Table Data
+ aggregate_graph_save_table_header=Save Table Header
++aggregate_graph_size=Size\:
++aggregate_graph_style=Style\:
++aggregate_graph_sync_with_name=Synchronize with name
++aggregate_graph_tab_graph=Graph
++aggregate_graph_tab_settings=Settings
+ aggregate_graph_title=Aggregate Graph
++aggregate_graph_title_group=Title
+ aggregate_graph_use_group_name=Include group name in label?
+-aggregate_graph_user_title=Title for Graph
+-aggregate_graph_width=Width
++aggregate_graph_user_title=Graph title\:
++aggregate_graph_width=Width\:
++aggregate_graph_xaxis_group=X Axis
+ aggregate_report=Aggregate Report
+ aggregate_report_90=90%
+ aggregate_report_90%_line=90% Line
+@@ -237,6 +263,11 @@
+ filename=File Name
+ follow_redirects=Follow Redirects
+ follow_redirects_auto=Redirect Automatically
++font.sansserif=Sans Serif
++font.serif=Serif
++fontstyle.bold=Bold
++fontstyle.italic=Italic
++fontstyle.normal=Normal
+ foreach_controller_title=ForEach Controller
+ foreach_input=Input variable prefix
+ foreach_output=Output variable name
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1229957)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -25,19 +25,45 @@
+ add_value=Ajouter valeur
+ addtest=Ajout
+ aggregate_graph=Graphique des statistiques
++aggregate_graph_choose_bar_color=Couleur barre
++aggregate_graph_choose_color=Choisir couleur
++aggregate_graph_choose_foreground_color=Couleur valeur
++aggregate_graph_color_bar=Couleur \:
+ aggregate_graph_column=Colonne
++aggregate_graph_column_selection=S\u00E9lection de colonnes par libell\u00E9 \:
++aggregate_graph_column_settings=Param\u00E8tres colonne
++aggregate_graph_current_colors=Couleurs courantes
++aggregate_graph_dimension=Taille graphique
+ aggregate_graph_display=G\u00E9n\u00E9rer le graphique
++aggregate_graph_draw_outlines=Bordures barre ?
++aggregate_graph_dynamic_size=Taille de graphique dynamique
++aggregate_graph_font=Police \:
+ aggregate_graph_height=Hauteur \:
++aggregate_graph_legend=L\u00E9gende
++aggregate_graph_legend.placement.bottom=Bas
++aggregate_graph_legend.placement.left=Gauche
++aggregate_graph_legend.placement.right=Droite
++aggregate_graph_legend.placement.top=Haut
++aggregate_graph_legend_placement=Position \:
+ aggregate_graph_max_length_xaxis_label=Longueur maximum du libell\u00E9 de l'axe des abscisses \:
+ aggregate_graph_ms=Millisecondes
++aggregate_graph_number_grouping=S\u00E9parateur de milliers ?
++aggregate_graph_reload_data=Recharger les donn\u00E9es
+ aggregate_graph_response_time=Temps de r\u00E9ponse
+ aggregate_graph_save=Enregistrer le graphique
+ aggregate_graph_save_table=Enregistrer le tableau de donn\u00E9es
+ aggregate_graph_save_table_header=Inclure l'ent\u00EAte du tableau
++aggregate_graph_size=Taille \:
++aggregate_graph_style=Style \:
++aggregate_graph_sync_with_name=Synchroniser avec nom
++aggregate_graph_tab_graph=Graphique
++aggregate_graph_tab_settings=Param\u00E8tres
+ aggregate_graph_title=Graphique agr\u00E9g\u00E9
++aggregate_graph_title_group=Titre
+ aggregate_graph_use_group_name=Ajouter le nom du groupe aux libell\u00E9s
+ aggregate_graph_user_title=Titre du graphique \:
+ aggregate_graph_width=Largeur \:
++aggregate_graph_xaxis_group=Abscisses
+ aggregate_report=Rapport agr\u00E9g\u00E9
+ aggregate_report_90=90%
+ aggregate_report_90%_line=90e centile
+@@ -46,8 +72,8 @@
+ aggregate_report_error=Erreur
+ aggregate_report_error%=% Erreur
+ aggregate_report_max=Max
+-aggregate_report_min=Min
+ aggregate_report_median=M\u00E9diane
++aggregate_report_min=Min
+ aggregate_report_rate=D\u00E9bit
+ aggregate_report_stddev=Ecart type
+ aggregate_report_total_label=TOTAL
+@@ -113,7 +139,7 @@
+ cancel_new_to_save=Il y a des \u00E9l\u00E9ments qui n'ont pas \u00E9t\u00E9 sauv\u00E9s. Voulez-vous enregistrer avant de nettoyer le plan de test ?
+ cancel_revert_project=Il y a des \u00E9l\u00E9ments qui n'ont pas \u00E9t\u00E9 sauv\u00E9s. Annuler les changements et revenir \u00E0 la derni\u00E8re sauvegarde du plan de test ?
+ change_parent=Changer le contr\u00F4leur
+-char_value=Caract\u221a\u00aere num\u221a\u00a9rique Unicode (d\u221a\u00a9cimal or 0xhex)
++char_value=Caract\u221A\u00AEre num\u221A\u00A9rique Unicode (d\u221A\u00A9cimal or 0xhex)
+ choose_function=Choisir une fonction
+ choose_language=Choisir une langue
+ clear=Nettoyer
+@@ -130,7 +156,7 @@
+ comparison_regex_string=Expression r\u00E9guli\u00E8re
+ comparison_regex_substitution=Substitution
+ comparison_response_time=Temps de r\u00E9ponse \: 
+-comparison_unit= ms
++comparison_unit=ms
+ comparison_visualizer_title=R\u00E9cepteur d'assertions de comparaison
+ config_element=El\u00E9ment de configuration
+ config_save_settings=Configurer
+@@ -153,17 +179,17 @@
+ csvread_file_file_name=Fichier CSV pour obtenir les valeurs de | *alias
+ cut=Couper
+ cut_paste_function=Fonction de copier/coller de cha\u00EEne de caract\u00E8re
+-database_conn_pool_max_usage=Utilisation max pour chaque connexion:
+-database_conn_pool_props=Pool de connexions \u221a\u2020 la base de donn\u221a\u00a9es
+-database_conn_pool_size=Nombre de Connexions dans le Pool:
+-database_conn_pool_title=Valeurs par d\u221a\u00a9faut du Pool de connexions JDBC
+-database_driver_class=Classe du Driver:
+-database_login_title=Valeurs par d\u221a\u00a9faut de la base de donn\u221a\u00a9es JDBC
++database_conn_pool_max_usage=Utilisation max pour chaque connexion\:
++database_conn_pool_props=Pool de connexions \u221A\u2020 la base de donn\u221A\u00A9es
++database_conn_pool_size=Nombre de Connexions dans le Pool\:
++database_conn_pool_title=Valeurs par d\u221A\u00A9faut du Pool de connexions JDBC
++database_driver_class=Classe du Driver\:
++database_login_title=Valeurs par d\u221A\u00A9faut de la base de donn\u221A\u00A9es JDBC
+ database_sql_query_string=Requ\u00EAte SQL \:
+ database_sql_query_title=Requ\u00EAte SQL JDBC par d\u00E9faut
+-database_testing_title=Requ\u221a\u2122te JDBC
+-database_url=URL JDBC:
+-database_url_jdbc_props=URL et driver JDBC de la base de donn\u221a\u00a9es
++database_testing_title=Requ\u221A\u2122te JDBC
++database_url=URL JDBC\:
++database_url_jdbc_props=URL et driver JDBC de la base de donn\u221A\u00A9es
+ ddn=DN \:
+ de=Allemand
+ debug_off=D\u00E9sactiver le d\u00E9bogage
+@@ -231,6 +257,11 @@
+ filename=Nom de fichier \: 
+ follow_redirects=Suivre les redirect.
+ follow_redirects_auto=Rediriger automat.
++font.sansserif=Sans Serif
++font.serif=Serif
++fontstyle.bold=Gras
++fontstyle.italic=Italique
++fontstyle.normal=Normal
+ foreach_controller_title=Contr\u00F4leur Pour chaque (ForEach)
+ foreach_input=Pr\u00E9fixe de la variable d'entr\u00E9e \:
+ foreach_output=Nom de la variable de sortie \:
+@@ -455,8 +486,8 @@
+ logic_controller_title=Contr\u00F4leur Simple
+ login_config=Configuration Identification
+ login_config_element=Configuration Identification 
+-longsum_param_1=Premier long \u221a\u2020 ajouter
+-longsum_param_2=Second long \u221a\u2020 ajouter - les autres longs pourront \u221a\u2122tre cumul\u221a\u00a9s en ajoutant d'autres arguments.
++longsum_param_1=Premier long \u221A\u2020 ajouter
++longsum_param_2=Second long \u221A\u2020 ajouter - les autres longs pourront \u221A\u2122tre cumul\u221A\u00A9s en ajoutant d'autres arguments.
+ loop_controller_title=Contr\u00F4leur Boucle
+ looping_control=Contr\u00F4le de boucle
+ lower_bound=Borne Inf\u00E9rieure
+@@ -535,12 +566,12 @@
+ monitor_label_right_dead=Mort
+ monitor_label_right_healthy=Sant\u00E9
+ monitor_label_right_warning=Attention
+-monitor_load_factor_mem=50
+-monitor_load_factor_thread=50
+ monitor_legend_health=Sant\u00E9
+ monitor_legend_load=Charge
+ monitor_legend_memory_per=M\u00E9moire % (utilis\u00E9e/total)
+ monitor_legend_thread_per=Unit\u00E9 % (occup\u00E9/max)
++monitor_load_factor_mem=50
++monitor_load_factor_thread=50
+ monitor_performance_servers=Serveurs
+ monitor_performance_tab_title=Performance
+ monitor_performance_title=Graphique de performance
+@@ -577,16 +608,15 @@
+ post_body=Donn\u00E9es POST
+ post_body_raw=Donn\u00E9es POST brutes
+ post_thread_group_title=Groupe d'unit\u00E9s de fin
+-property_as_field_label={0}:
++property_as_field_label={0}\:
+ property_default_param=Valeur par d\u00E9faut
+ property_edit=Editer
+ property_editor.value_is_invalid_message=Le texte que vous venez d'entrer n'a pas une valeur valide pour cette propri\u00E9t\u00E9.\nLa propri\u00E9t\u00E9 va revenir \u00E0 sa valeur pr\u00E9c\u00E9dente.
+ property_editor.value_is_invalid_title=Texte saisi invalide
+ property_name_param=Nom de la propri\u00E9t\u00E9
+ property_returnvalue_param=Revenir \u00E0 la valeur originale de la propri\u00E9t\u00E9 (d\u00E9faut non) ?
+-property_tool_tip={0}: {1}
++property_tool_tip={0}\: {1}
+ property_undefined=Non d\u00E9fini
+-provider_url=Provider URL
+ property_value_param=Valeur de propri\u00E9t\u00E9
+ property_visualiser_title=Afficheur de propri\u00E9t\u00E9s
+ protocol=Protocole [http] \:
+@@ -594,6 +624,7 @@
+ protocol_java_classname=Nom de classe \:
+ protocol_java_config_tile=Configurer \u00E9chantillon Java
+ protocol_java_test_title=Test Java
++provider_url=Provider URL
+ proxy_assertions=Ajouter une Assertion R\u00E9ponse
+ proxy_cl_error=Si un serveur proxy est sp\u00E9cifi\u00E9, h\u00F4te et port doivent \u00EAtre donn\u00E9
+ proxy_content_type_exclude=Exclure \:
+@@ -637,13 +668,13 @@
+ regexfunc_param_3=Quelle correspondance utiliser. Un entier 1 ou plus grand, RAND pour indiquer que JMeter doit choisir al\u00E9atoirement , A d\u00E9cimal, ou ALL indique que toutes les correspondances doivent \u00EAtre utilis\u00E9es
+ regexfunc_param_4=Entre le texte. Si ALL est s\u00E9lectionn\u00E9, l'entre-texte sera utilis\u00E9 pour g\u00E9n\u00E9rer les r\u00E9sultats ([""])
+ regexfunc_param_5=Text par d\u00E9faut. Utilis\u00E9 \u00E0 la place du canevas si l'expression r\u00E9guli\u00E8re ne trouve pas de correspondance
+-regexfunc_param_7=Variable en entr\u221a\u00a9e contenant le texte \u221a\u2020 parser ([\u221a\u00a9chantillon pr\u221a\u00a9c\u221a\u00a9dent])
++regexfunc_param_7=Variable en entr\u221A\u00A9e contenant le texte \u221A\u2020 parser ([\u221A\u00A9chantillon pr\u221A\u00A9c\u221A\u00A9dent])
+ regexp_render_no_text=Les donn\u00E9es de r\u00E9ponse ne sont pas du texte.
+ regexp_tester_button_test=Tester
+ regexp_tester_field=Expression r\u00E9guli\u00E8re \:
+ regexp_tester_title=Testeur de RegExp
+ remote_error_init=Erreur lors de l'initialisation du serveur distant
+-remote_error_starting=Erreur lors du d\u221a\u00a9marrage du serveur distant
++remote_error_starting=Erreur lors du d\u221A\u00A9marrage du serveur distant
+ remote_exit=Sortie distante
+ remote_exit_all=Sortie distante de tous
+ remote_shut=Extinction \u00E0 distance
+@@ -655,32 +686,32 @@
+ remove=Supprimer
+ rename=Renommer une entr\u00E9e
+ report=Rapport
+-report_bar_chart=Graphique \u221a\u2020 barres
++report_bar_chart=Graphique \u221A\u2020 barres
+ report_bar_graph_url=URL
+-report_base_directory=R\u221a\u00a9pertoire de Base
+-report_chart_caption=L\u221a\u00a9gende du graph
++report_base_directory=R\u221A\u00A9pertoire de Base
++report_chart_caption=L\u221A\u00A9gende du graph
+ report_chart_x_axis=Axe X
+-report_chart_x_axis_label=Libell\u221a\u00a9 de l'Axe X
++report_chart_x_axis_label=Libell\u221A\u00A9 de l'Axe X
+ report_chart_y_axis=Axe Y
+-report_chart_y_axis_label=Libell\u221a\u00a9 de l'Axe Y
+-report_line_graph=Graphique Lin\u221a\u00a9aire
++report_chart_y_axis_label=Libell\u221A\u00A9 de l'Axe Y
++report_line_graph=Graphique Lin\u221A\u00A9aire
+ report_line_graph_urls=Inclure les URLs
+-report_output_directory=R\u221a\u00a9pertoire de sortie du rapport
++report_output_directory=R\u221A\u00A9pertoire de sortie du rapport
+ report_page=Page de Rapport
+ report_page_element=Page Element
+ report_page_footer=Pied de page
+-report_page_header=Ent\u221a\u2122te de Page
+-report_page_index=Cr\u221a\u00a9er la Page d'Index
++report_page_header=Ent\u221A\u2122te de Page
++report_page_index=Cr\u221A\u00A9er la Page d'Index
+ report_page_intro=Page d'Introduction
+ report_page_style_url=Url de la feuille de style
+ report_page_title=Titre de la Page
+ report_pie_chart=Camembert
+ report_plan=Plan du rapport
+ report_select=Selectionner
+-report_summary=Rapport r\u221a\u00a9sum\u221a\u00a9
++report_summary=Rapport r\u221A\u00A9sum\u221A\u00A9
+ report_table=Table du Rapport
+-report_writer=R\u221a\u00a9dacteur du Rapport
+-report_writer_html=R\u221a\u00a9dacteur de rapport HTML
++report_writer=R\u221A\u00A9dacteur du Rapport
++report_writer_html=R\u221A\u00A9dacteur de rapport HTML
+ request_data=Donn\u00E9e requ\u00EAte
+ reset_gui=R\u00E9initialiser l'\u00E9l\u00E9ment
+ response_save_as_md5=R\u00E9ponse en empreinte MD5
+@@ -688,7 +719,7 @@
+ resultaction_title=Op\u00E9rateur R\u00E9sultats Action
+ resultsaver_addtimestamp=Ajouter un timestamp
+ resultsaver_errors=Enregistrer seulement les r\u00E9ponses en \u00E9checs
+-resultsaver_numberpadlen=Taille minimale du num\u221a\u00a9ro de s\u221a\u00a9quence
++resultsaver_numberpadlen=Taille minimale du num\u221A\u00A9ro de s\u221A\u00A9quence
+ resultsaver_prefix=Pr\u00E9fixe du nom de fichier \: 
+ resultsaver_skipautonumber=Ne pas ajouter de nombre au pr\u00E9fixe
+ resultsaver_skipsuffix=Ne pas ajouter de suffixe
+@@ -867,8 +898,8 @@
+ spline_visualizer_minimum=Minimum \:
+ spline_visualizer_title=Moniteur de courbe (spline)
+ spline_visualizer_waitingmessage=En attente de r\u00E9sultats d'\u00E9chantillons
+-split_function_string=Texte \u00E0 scinder
+ split_function_separator=S\u00E9parateur utilis\u00E9 pour scinder le texte. Par d\u00E9faut , (virgule) est utilis\u00E9.
++split_function_string=Texte \u00E0 scinder
+ ssl_alias_prompt=Veuillez entrer votre alias pr\u00E9f\u00E9r\u00E9
+ ssl_alias_select=S\u00E9lectionner votre alias pour le test
+ ssl_alias_title=Alias du client
+

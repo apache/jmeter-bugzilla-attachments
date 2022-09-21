@@ -1,0 +1,30 @@
+From 84feb76bd420aca390c6116e88d61192ae337a71 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Mon, 18 Sep 2017 20:45:22 +0200
+Subject: [PATCH] Convert AssertionErrors to 'normal' assertion errors.
+
+---
+ src/components/org/apache/jmeter/assertions/JSR223Assertion.java | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/components/org/apache/jmeter/assertions/JSR223Assertion.java b/src/components/org/apache/jmeter/assertions/JSR223Assertion.java
+index 17f123c..0a62878 100644
+--- a/src/components/org/apache/jmeter/assertions/JSR223Assertion.java
++++ b/src/components/org/apache/jmeter/assertions/JSR223Assertion.java
+@@ -44,7 +44,12 @@ public class JSR223Assertion extends JSR223TestElement implements Cloneable, Ass
+             Bindings bindings = scriptEngine.createBindings();
+             bindings.put("SampleResult", response);
+             bindings.put("AssertionResult", result);
+-            processFileOrScript(scriptEngine, bindings);
++            try {
++                processFileOrScript(scriptEngine, bindings);
++            } catch (AssertionError ae) {
++                result.setFailure(true);
++                result.setFailureMessage(ae.toString());
++            }
+             result.setError(false);
+         } catch (IOException | ScriptException e) {
+             log.error("Problem in JSR223 script: {}", getName(), e);
+-- 
+2.7.4
+

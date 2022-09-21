@@ -1,0 +1,191 @@
+Index: StringFromFile.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/functions/org/apache/jmeter/functions/StringFromFile.java,v
+retrieving revision 1.3
+diff -u -r1.3 StringFromFile.java
+--- StringFromFile.java	10 Mar 2003 17:28:11 -0000	1.3
++++ StringFromFile.java	21 Mar 2003 00:28:11 -0000
+@@ -1,3 +1,58 @@
++/*
++ * ====================================================================
++ * The Apache Software License, Version 1.1
++ *
++ * Copyright (c) 2001-2003 The Apache Software Foundation.  All rights
++ * reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ * 1. Redistributions of source code must retain the above copyright
++ * notice, this list of conditions and the following disclaimer.
++ *
++ * 2. Redistributions in binary form must reproduce the above copyright
++ * notice, this list of conditions and the following disclaimer in
++ * the documentation and/or other materials provided with the
++ * distribution.
++ *
++ * 3. The end-user documentation included with the redistribution,
++ * if any, must include the following acknowledgment:
++ * "This product includes software developed by the
++ * Apache Software Foundation (http://www.apache.org/)."
++ * Alternately, this acknowledgment may appear in the software itself,
++ * if and wherever such third-party acknowledgments normally appear.
++ *
++ * 4. The names "Apache" and "Apache Software Foundation" and
++ * "Apache JMeter" must not be used to endorse or promote products
++ * derived from this software without prior written permission. For
++ * written permission, please contact apache@apache.org.
++ *
++ * 5. Products derived from this software may not be called "Apache",
++ * "Apache JMeter", nor may "Apache" appear in their name, without
++ * prior written permission of the Apache Software Foundation.
++ *
++ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
++ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++ * DISCLAIMED.  IN NO EVENT SHALL THE APACHE SOFTWARE FOUNDATION OR
++ * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
++ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
++ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
++ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ * ====================================================================
++ *
++ * This software consists of voluntary contributions made by many
++ * individuals on behalf of the Apache Software Foundation.  For more
++ * information on the Apache Software Foundation, please see
++ * <http://www.apache.org/>.
++ */
++
+ package org.apache.jmeter.functions;
+ 
+ import java.io.BufferedReader;
+@@ -17,18 +72,30 @@
+ 
+ 
+ /**
++ * StringFromFile (Function)
++ * 
+  * @author default
+- *
+- * To change this generated comment edit the template variable "typecomment":
+- * Window>Preferences>Java>Templates.
+- * To enable and disable the creation of type comments go to
+- * Window>Preferences>Java>Code Generation.
++ * @created $Date
++ * @version $Revision
++ * 
++ * Function to read a String from a text file
++ * 
++ * Parameters:
++ * 		- file name
++ * 		- variable name (defaults to StringFromFile_)
++ * 
++ * Returns:
++ * 		- the string
++ * 
++ * The string is saved in the variable for later re-use if required.
++ * 
++ * Ensure that different variable names are used for each call to the function
++ * 
++ * Note:
++ * JMeter instantiates a copy of each function for every reference in a Sampler or elsewhere;
++ * each new copy will open the file again.
++ * 
+  */
+-/*
+- * It appears that JMeter instantiates a new copy of each function for every reference in a Sampler
+- * or elsewhere.
+- */
+-
+ public class StringFromFile extends AbstractFunction implements Serializable
+ {
+ 	transient private static Logger log = Hierarchy.getDefaultHierarchy().getLoggerFor(
+@@ -43,11 +110,12 @@
+ 		desc.add(JMeterUtils.getResString("function_name_param"));
+ 	}
+ 	
+-	private String myValue = "<please supply a file>"; // Default value
+-	private String myName  = "StringFromFile_"; // Name to store value in
++	private String myName  = "StringFromFile_"; // Name of variable to store value in
+ 	private Object[] values;
+-	private BufferedReader myBread; // Buffered reader
+-	private boolean reopenFile=true; // Set from parameter list one day ...
++	private BufferedReader myBread;   // Buffered reader
++	private boolean reopenFile=true; // Set from parameter one day ...
++	private boolean firstTime=true;
++	private String fileName;
+ 	
+ 	public StringFromFile()
+ 	{
+@@ -63,6 +131,7 @@
+ 	    try {
+ 			FileReader fis = new FileReader(fileName);
+ 			myBread = new BufferedReader(fis);
++			log.info("Opened File: "+fileName);
+ 	    } catch (Exception e) {
+ 			log.error("openFile",e);
+ 	    }
+@@ -73,19 +142,21 @@
+ 	 */
+ 	public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
+ 		throws InvalidVariableException {
+-		
+-		JMeterVariables vars = getVariables();
+ 
+-		String fileName = ((CompoundVariable)values[0]).execute();
+-		myName = ((CompoundVariable)values[1]).execute();
++		JMeterVariables vars = getVariables();
+ 
+-		openFile(fileName);
++		if (firstTime) {
++			openFile(fileName);
++			firstTime=false;
++		}
+ 
+-		myValue="**ERR**";
++		String myValue="**ERR**"; // In case cannot read from the file
++		
+ 		if (null != myBread) {// Did we open the file?
+ 		  try {
+ 		    String line = myBread.readLine();
+ 		    if (line == null && reopenFile) { // EOF, re-open file
++		    	log.info("Re-opening the file ...");
+ 				myBread.close();
+ 				openFile(fileName);
+ 				line = myBread.readLine();
+@@ -106,11 +177,21 @@
+ 	 */
+ 	public void setParameters(Collection parameters)
+ 		throws InvalidVariableException {
+-			
+ 		values = parameters.toArray();
++
++		log.info("Num parms: "+values.length);
+ 		
+-		if ( values.length > 2 )
++		if (( values.length > 2 ) || (values.length < 1))
+ 			throw new InvalidVariableException();
++
++		fileName = ((CompoundVariable)values[0]).execute();
++		
++		if (values.length > 1 ) { // A variable name was also supplied
++			myName = ((CompoundVariable)values[1]).execute();
++		} 
++		
++		log.info("File Name: "+ fileName);
++		log.info("Variable Name:"+myName);
+ 			
+ 	}
+ 
+@@ -128,4 +209,4 @@
+ 		return desc;
+ 	}
+ 
+-}
++}
+\ No newline at end of file

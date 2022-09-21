@@ -1,0 +1,44 @@
+Index: jakarta-jmeter/src/functions/org/apache/jmeter/functions/FileRowColContainer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/functions/org/apache/jmeter/functions/FileRowColContainer.java,v
+retrieving revision 1.5
+diff -u -r1.5 FileRowColContainer.java
+--- jakarta-jmeter/src/functions/org/apache/jmeter/functions/FileRowColContainer.java	30 Mar 2004 18:07:07 -0000	1.5
++++ jakarta-jmeter/src/functions/org/apache/jmeter/functions/FileRowColContainer.java	6 Jul 2004 13:12:43 -0000
+@@ -161,11 +161,27 @@
+     private static ArrayList splitLine(String theLine,String delim)
+     {
+         ArrayList result = new ArrayList();
+-        StringTokenizer tokener = new StringTokenizer(theLine,delim);
++        StringTokenizer tokener = new StringTokenizer(theLine,delim,true);
++        /* the beginning of the line is a "delimiter" so that 
++           ,a,b,c returns "" "a" "b" "c" */
++        boolean lastWasDelim = true;
+         while(tokener.hasMoreTokens())
+         {
+             String token = tokener.nextToken();
+-            result.add(token);
++            if(token.equals(delim))
++            {
++              if(lastWasDelim)
++              {
++                // two delimiters in a row; add an empty String
++                result.add("");
++              }
++              lastWasDelim = true;
++            }
++            else
++            {
++              lastWasDelim = false;
++              result.add(token);
++            }
+         }
+         return result;
+     }
+@@ -255,4 +271,4 @@
+         return fileName;
+     }
+ 
+-}
+\ No newline at end of file
++}

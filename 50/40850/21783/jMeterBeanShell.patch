@@ -1,0 +1,438 @@
+Index: src/components/org/apache/jmeter/assertions/BeanShellAssertion.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellAssertion.java
+--- src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	3 Apr 2008 15:53:49 -0000	1.1.1.2
++++ src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	4 Apr 2008 16:39:50 -0000
+@@ -42,6 +42,8 @@
+ 	public static final String SCRIPT = "BeanShellAssertion.query"; //$NON-NLS-1$
+ 
+ 	public static final String PARAMETERS = "BeanShellAssertion.parameters"; //$NON-NLS-1$
++    
++    public static final String RESET_INTREPRETER = "BeanShellSampler.resetInterpreter"; //$NON-NLS-1$
+ 
+ 	// can be specified in jmeter.properties
+ 	public static final String INIT_FILE = "beanshell.assertion.init"; //$NON-NLS-1$
+@@ -61,6 +63,10 @@
+ 	public String getParameters() {
+ 		return getPropertyAsString(PARAMETERS);
+ 	}
++    
++    public boolean isResetInterpreter() {
++        return getPropertyAsBoolean(RESET_INTREPRETER);
++    }
+ 
+ 	/*
+ 	 * (non-Javadoc)
+Index: src/components/org/apache/jmeter/timers/BeanShellTimerResources.properties
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/components/org/apache/jmeter/timers/BeanShellTimerResources.properties,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellTimerResources.properties
+--- src/components/org/apache/jmeter/timers/BeanShellTimerResources.properties	3 Apr 2008 15:53:49 -0000	1.1.1.2
++++ src/components/org/apache/jmeter/timers/BeanShellTimerResources.properties	4 Apr 2008 16:39:50 -0000
+@@ -2,6 +2,8 @@
+ scripting.displayName=Script (variables: ctx vars log)
+ script.displayName=
+ script.shortDescription=Beanshell script to generate delay
++resetGroup.displayName=Reset bsh.Interpreter before each call
++resetInterpreter.displayName=Reset Interpreter
+ parameterGroup.displayName=Parameters to be passed to BeanShell (=> String Parameters and String []bsh.args)
+ parameters.displayName=Parameters
+ parameters.shortDescription=Parameters to be passed to BeanShell (file or script)
+Index: src/components/org/apache/jmeter/visualizers/BeanShellListenerResources.properties
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/BeanShellListenerResources.properties,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellListenerResources.properties
+--- src/components/org/apache/jmeter/visualizers/BeanShellListenerResources.properties	3 Apr 2008 15:53:49 -0000	1.1.1.2
++++ src/components/org/apache/jmeter/visualizers/BeanShellListenerResources.properties	4 Apr 2008 16:39:50 -0000
+@@ -2,6 +2,8 @@
+ scripting.displayName=Script (variables: ctx vars sampleEvent sampleResult log)
+ script.displayName=
+ script.shortDescription=Beanshell script
++resetGroup.displayName=Reset bsh.Interpreter before each call
++resetInterpreter.displayName=Reset Interpreter
+ parameterGroup.displayName=Parameters to be passed to BeanShell (=> String Parameters and String []bsh.args)
+ parameters.displayName=Parameters
+ parameters.shortDescription=Parameters to be passed to BeanShell (file or script)
+Index: src/core/org/apache/jmeter/util/BeanShellTestElement.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/core/org/apache/jmeter/util/BeanShellTestElement.java,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 BeanShellTestElement.java
+--- src/core/org/apache/jmeter/util/BeanShellTestElement.java	3 Apr 2008 15:53:48 -0000	1.1.1.1
++++ src/core/org/apache/jmeter/util/BeanShellTestElement.java	4 Apr 2008 16:39:50 -0000
+@@ -44,6 +44,8 @@
+ 	private String filename; // file to source (overrides script)
+ 
+ 	private String script; // script (if file not provided)
++	
++	private boolean resetInterpreter = false;
+ 	//-- For TestBean implementations only
+ 
+     
+@@ -59,6 +61,14 @@
+     protected abstract String getInitFileProperty();
+ 
+     protected BeanShellInterpreter getBeanShellInterpreter() {
++        if (isResetInterpreter()) {
++            try {
++                bshInterpreter.reset();
++            } catch (ClassNotFoundException e) {
++                log.error("Cannot find BeanShell: "+e.toString());
++            }
++        }
++
+         return bshInterpreter;
+     }
+ 
+@@ -203,5 +213,13 @@
+ 
+ 	public void setFilename(String s) {
+ 		filename = s;
++	}
++	
++	public boolean isResetInterpreter() {
++	    return resetInterpreter;
++	}
++	
++	public void setResetInterpreter(boolean b) {
++	    resetInterpreter = b;
+ 	}
+ }
+Index: src/core/org/apache/jmeter/util/BeanShellBeanInfoSupport.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/core/org/apache/jmeter/util/BeanShellBeanInfoSupport.java,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 BeanShellBeanInfoSupport.java
+--- src/core/org/apache/jmeter/util/BeanShellBeanInfoSupport.java	3 Apr 2008 15:53:48 -0000	1.1.1.1
++++ src/core/org/apache/jmeter/util/BeanShellBeanInfoSupport.java	4 Apr 2008 16:39:50 -0000
+@@ -32,6 +32,14 @@
+ 		super(beanClass);
+ 		PropertyDescriptor p;
+ 		
++        p = property("resetInterpreter");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, Boolean.FALSE);
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setValue(NOT_OTHER, Boolean.TRUE);
++        
++        createPropertyGroup("resetGroup", new String[] { "resetInterpreter" });
++		
+ 		p = property("parameters");
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, "");
+Index: src/core/org/apache/jmeter/util/BeanShellInterpreter.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/core/org/apache/jmeter/util/BeanShellInterpreter.java,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellInterpreter.java
+--- src/core/org/apache/jmeter/util/BeanShellInterpreter.java	3 Apr 2008 15:53:48 -0000	1.1.1.2
++++ src/core/org/apache/jmeter/util/BeanShellInterpreter.java	4 Apr 2008 16:39:50 -0000
+@@ -89,20 +89,14 @@
+ 
+ 	// This class is not serialised
+ 	private Object bshInstance = null; // The interpreter instance for this class
++	
++	private String initFile; // Script file to initialize the Interpreter with
++	
++	private Logger initLog; // Logger to use during initialization and script run
++	
+ 
+ 	public BeanShellInterpreter() throws ClassNotFoundException {
+-		if (bshClass == null) {
+-			throw new ClassNotFoundException(BSH_INTERPRETER);
+-		}
+-		try {
+-			bshInstance = bshClass.newInstance();
+-		} catch (InstantiationException e) {
+-			log.error("Can't instantiate BeanShell", e);
+-			throw new ClassNotFoundException("Can't instantiate BeanShell", e);
+-		} catch (IllegalAccessException e) {
+-			log.error("Can't instantiate BeanShell", e);
+-			throw new ClassNotFoundException("Can't instantiate BeanShell", e);
+-		}
++	    reset();
+ 	}
+ 
+ 	public void init(final String initFile, final Object logger) throws IOException, JMeterException {
+@@ -140,14 +134,10 @@
+      * @param _log logger to pass to interpreter; also used to log errors in this method
+      */
+     public BeanShellInterpreter(String init, Logger _log)  throws ClassNotFoundException {
+-        this();
+-        try {
+-            this.init(init, _log);
+-        } catch (IOException e) {
+-			_log.warn("Could not initialise interpreter: "+e.toString()); // no need for stack trace
+-        } catch (JMeterException e) {
+-			_log.warn("Could not initialise interpreter: "+e.toString()); // no need for stack trace
+-        }
++        initFile = init;
++        initLog = _log;
++
++        reset();
+     }
+ 
+     private Object bshInvoke(Method m, Object[] o, boolean shouldLog) throws JMeterException {
+@@ -178,6 +168,31 @@
+             throw new JMeterException(message, e);
+         }
+         return r;
++    }
++    
++    public void reset() throws ClassNotFoundException {
++        if (bshClass == null) {
++            throw new ClassNotFoundException(BSH_INTERPRETER);
++        }
++        try {
++            bshInstance = bshClass.newInstance();
++        } catch (InstantiationException e) {
++            log.error("Can't instantiate BeanShell", e);
++            throw new ClassNotFoundException("Can't instantiate BeanShell", e);
++        } catch (IllegalAccessException e) {
++            log.error("Can't instantiate BeanShell", e);
++            throw new ClassNotFoundException("Can't instantiate BeanShell", e);
++        }
++        
++        if (initFile != null) {
++            try {
++                this.init(initFile, initLog);
++            } catch (IOException e) {
++                initLog.warn("Could not initialise interpreter: "+e.toString()); // no need for stack trace
++            } catch (JMeterException e) {
++                initLog.warn("Could not initialise interpreter: "+e.toString()); // no need for stack trace
++            }
++        }
+     }
+ 
+ 	public Object eval(String s) throws JMeterException {
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 messages.properties
+--- src/core/org/apache/jmeter/resources/messages.properties	3 Apr 2008 15:53:48 -0000	1.1.1.2
++++ src/core/org/apache/jmeter/resources/messages.properties	4 Apr 2008 16:39:50 -0000
+@@ -82,6 +82,7 @@
+ bsh_script_variables=The following variables are defined for the script:\nSampleResult, ResponseCode, ResponseMessage, IsSuccess, Label, FileName, ctx, vars, log
+ bsh_script_file=Script file
+ bsh_script_parameters=Parameters (-> String Parameters and String []bsh.args)
++bsh_script_reset_interpreter=Reset bsh.Interpreter before each call
+ busy_testing=I'm busy testing, please stop the test before changing settings
+ cache_session_id=Cache Session Id?
+ cancel=Cancel
+Index: src/components/org/apache/jmeter/extractor/BeanShellPostProcessorResources.properties
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/components/org/apache/jmeter/extractor/BeanShellPostProcessorResources.properties,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellPostProcessorResources.properties
+--- src/components/org/apache/jmeter/extractor/BeanShellPostProcessorResources.properties	3 Apr 2008 15:53:49 -0000	1.1.1.2
++++ src/components/org/apache/jmeter/extractor/BeanShellPostProcessorResources.properties	4 Apr 2008 16:39:50 -0000
+@@ -2,6 +2,8 @@
+ scripting.displayName=Script (variables: ctx vars prev data log)
+ script.displayName=
+ script.shortDescription=Beanshell script
++resetGroup.displayName=Reset bsh.Interpreter before each call
++resetInterpreter.displayName=Reset Interpreter
+ parameterGroup.displayName=Parameters to be passed to BeanShell (=> String Parameters and String []bsh.args)
+ parameters.displayName=Parameters
+ parameters.shortDescription=Parameters to be passed to BeanShell (file or script)
+Index: src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellSampler.java
+--- src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java	3 Apr 2008 15:53:48 -0000	1.1.1.2
++++ src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java	4 Apr 2008 16:39:50 -0000
+@@ -48,6 +48,8 @@
+ 
+ 	public static final String INIT_FILE = "beanshell.sampler.init"; //$NON-NLS-1$
+     
++	public static final String RESET_INTREPRETER = "BeanShellSampler.resetInterpreter"; //$NON-NLS-1$
++
+     protected String getInitFileProperty() {
+         return INIT_FILE;
+     }
+@@ -73,6 +75,10 @@
+ 	public String getParameters() {
+ 		return getPropertyAsString(PARAMETERS);
+ 	}
++	
++    public boolean isResetInterpreter() {
++        return getPropertyAsBoolean(RESET_INTREPRETER);
++    }
+ 
+ 	public SampleResult sample(Entry e)// Entry tends to be ignored ...
+ 	{
+Index: src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellAssertionGui.java
+--- src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java	3 Apr 2008 15:53:49 -0000	1.1.1.2
++++ src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java	4 Apr 2008 16:39:50 -0000
+@@ -21,6 +21,7 @@
+ import java.awt.BorderLayout;
+ 
+ import javax.swing.Box;
++import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+@@ -28,11 +29,15 @@
+ import javax.swing.JTextField;
+ 
+ import org.apache.jmeter.assertions.BeanShellAssertion;
++import org.apache.jmeter.protocol.java.sampler.BeanShellSampler;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ public class BeanShellAssertionGui extends AbstractAssertionGui {
+ 
++    private JCheckBox resetInterpreter;// reset the bsh.Interpreter before each execution
++
+ 	private JTextField filename;// script file name (if present)
+ 
+ 	private JTextField parameters;// parameters to pass to script file (or script)
+@@ -47,6 +52,7 @@
+ 		scriptField.setText(element.getPropertyAsString(BeanShellAssertion.SCRIPT));
+ 		filename.setText(element.getPropertyAsString(BeanShellAssertion.FILENAME));
+ 		parameters.setText(element.getPropertyAsString(BeanShellAssertion.PARAMETERS));
++        resetInterpreter.setSelected(element.getPropertyAsBoolean(BeanShellSampler.RESET_INTREPRETER));
+ 		super.configure(element);
+ 	}
+ 
+@@ -67,6 +73,7 @@
+ 		te.setProperty(BeanShellAssertion.SCRIPT, scriptField.getText());
+ 		te.setProperty(BeanShellAssertion.FILENAME, filename.getText());
+ 		te.setProperty(BeanShellAssertion.PARAMETERS, parameters.getText());
++        te.setProperty(new BooleanProperty(BeanShellAssertion.RESET_INTREPRETER, resetInterpreter.isSelected()));
+ 	}
+ 
+ 	public String getLabelResource() {
+@@ -87,6 +94,15 @@
+ 		return filenamePanel;
+ 	}
+ 
++    private JPanel createResetPanel() {
++        resetInterpreter = new JCheckBox(JMeterUtils.getResString("bsh_script_reset_interpreter")); // $NON-NLS-1$
++        resetInterpreter.setName(BeanShellSampler.PARAMETERS);
++
++        JPanel resetInterpreterPanel = new JPanel(new BorderLayout());
++        resetInterpreterPanel.add(resetInterpreter, BorderLayout.WEST);
++        return resetInterpreterPanel;
++	}
++
+ 	private JPanel createParameterPanel() {
+ 		JLabel label = new JLabel(JMeterUtils.getResString("bsh_script_parameters")); //$NON-NLS-1$
+ 
+@@ -106,6 +122,7 @@
+ 
+ 		Box box = Box.createVerticalBox();
+ 		box.add(makeTitlePanel());
++		box.add(createResetPanel());
+ 		box.add(createParameterPanel());
+ 		box.add(createFilenamePanel());
+ 		add(box, BorderLayout.NORTH);
+@@ -143,5 +160,6 @@
+ 		filename.setText(""); // $NON-NLS-1$
+ 		parameters.setText(""); // $NON-NLS-1$
+ 		scriptField.setText(""); // $NON-NLS-1$
++        resetInterpreter.setSelected(false);
+ 	}
+ }
+Index: src/components/org/apache/jmeter/modifiers/BeanShellPreProcessorResources.properties
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/components/org/apache/jmeter/modifiers/BeanShellPreProcessorResources.properties,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellPreProcessorResources.properties
+--- src/components/org/apache/jmeter/modifiers/BeanShellPreProcessorResources.properties	3 Apr 2008 15:53:49 -0000	1.1.1.2
++++ src/components/org/apache/jmeter/modifiers/BeanShellPreProcessorResources.properties	4 Apr 2008 16:39:50 -0000
+@@ -2,6 +2,8 @@
+ scripting.displayName=Script (variables: ctx vars prev sampler log)
+ script.displayName=
+ script.shortDescription=Beanshell script
++resetGroup.displayName=Reset bsh.Interpreter before each call
++resetInterpreter.displayName=Reset Interpreter
+ parameterGroup.displayName=Parameters to be passed to BeanShell (=> String Parameters and String []bsh.args)
+ parameters.displayName=Parameters
+ parameters.shortDescription=Parameters to be passed to BeanShell (file or script)
+Index: src/protocol/java/org/apache/jmeter/protocol/java/control/gui/BeanShellSamplerGui.java
+===================================================================
+RCS file: /apps/my/CVS/jakarta-jmeter/src/protocol/java/org/apache/jmeter/protocol/java/control/gui/BeanShellSamplerGui.java,v
+retrieving revision 1.1.1.2
+diff -u -r1.1.1.2 BeanShellSamplerGui.java
+--- src/protocol/java/org/apache/jmeter/protocol/java/control/gui/BeanShellSamplerGui.java	3 Apr 2008 15:53:48 -0000	1.1.1.2
++++ src/protocol/java/org/apache/jmeter/protocol/java/control/gui/BeanShellSamplerGui.java	4 Apr 2008 16:39:50 -0000
+@@ -21,6 +21,7 @@
+ import java.awt.BorderLayout;
+ 
+ import javax.swing.Box;
++import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+@@ -30,9 +31,12 @@
+ import org.apache.jmeter.protocol.java.sampler.BeanShellSampler;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ public class BeanShellSamplerGui extends AbstractSamplerGui {
++    
++    private JCheckBox resetInterpreter;// reset the bsh.Interpreter before each execution
+ 
+ 	private JTextField filename;// script file name (if present)
+ 
+@@ -48,6 +52,7 @@
+ 		scriptField.setText(element.getPropertyAsString(BeanShellSampler.SCRIPT));
+ 		filename.setText(element.getPropertyAsString(BeanShellSampler.FILENAME));
+ 		parameters.setText(element.getPropertyAsString(BeanShellSampler.PARAMETERS));
++		resetInterpreter.setSelected(element.getPropertyAsBoolean(BeanShellSampler.RESET_INTREPRETER));
+ 		super.configure(element);
+ 	}
+ 
+@@ -68,6 +73,7 @@
+ 		te.setProperty(BeanShellSampler.SCRIPT, scriptField.getText());
+ 		te.setProperty(BeanShellSampler.FILENAME, filename.getText());
+ 		te.setProperty(BeanShellSampler.PARAMETERS, parameters.getText());
++		te.setProperty(new BooleanProperty(BeanShellSampler.RESET_INTREPRETER, resetInterpreter.isSelected()));
+ 	}
+     
+     /**
+@@ -79,6 +85,7 @@
+         filename.setText(""); //$NON-NLS-1$
+         parameters.setText(""); //$NON-NLS-1$
+         scriptField.setText(""); //$NON-NLS-1$
++        resetInterpreter.setSelected(false);
+     }    
+ 
+ 	public String getLabelResource() {
+@@ -112,12 +119,22 @@
+ 		return parameterPanel;
+ 	}
+ 
++    private JPanel createResetPanel() {
++        resetInterpreter = new JCheckBox(JMeterUtils.getResString("bsh_script_reset_interpreter")); // $NON-NLS-1$
++        resetInterpreter.setName(BeanShellSampler.PARAMETERS);
++
++        JPanel resetInterpreterPanel = new JPanel(new BorderLayout());
++        resetInterpreterPanel.add(resetInterpreter, BorderLayout.WEST);
++        return resetInterpreterPanel;
++    }
++
+ 	private void init() {
+ 		setLayout(new BorderLayout(0, 5));
+ 		setBorder(makeBorder());
+ 
+ 		Box box = Box.createVerticalBox();
+ 		box.add(makeTitlePanel());
++		box.add(createResetPanel());
+ 		box.add(createParameterPanel());
+ 		box.add(createFilenamePanel());
+ 		add(box, BorderLayout.NORTH);

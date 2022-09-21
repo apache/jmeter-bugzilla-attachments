@@ -1,0 +1,114 @@
+Index: ArgumentsPanel.java
+===================================================================
+--- ArgumentsPanel.java	(revision 1188913)
++++ ArgumentsPanel.java	(working copy)
+@@ -334,10 +334,16 @@
+     private void moveDown() {
+         cancelEditing();
+ 
+-        int rowSelected = table.getSelectedRow();
+-        if (rowSelected >=0 && rowSelected < table.getRowCount()-1) {
+-            tableModel.moveRow(rowSelected, rowSelected+1, rowSelected+1);
+-            table.setRowSelectionInterval(rowSelected+1, rowSelected+1);
++        int[] rowsSelected = table.getSelectedRows();
++        if (rowsSelected.length > 0 && rowsSelected[rowsSelected.length - 1] < table.getRowCount() - 1) {
++            table.clearSelection();
++            for (int i = rowsSelected.length - 1; i >= 0; i--) {
++                int rowSelected = rowsSelected[i];
++                tableModel.moveRow(rowSelected, rowSelected + 1, rowSelected + 1);
++            }
++            for (int rowSelected : rowsSelected) {
++                table.addRowSelectionInterval(rowSelected + 1, rowSelected + 1);
++            }
+         }
+     }
+ 
+@@ -347,11 +353,16 @@
+     private void moveUp() {
+         cancelEditing();
+ 
+-        int rowSelected = table.getSelectedRow();
+-        if (rowSelected > 0) {
+-            tableModel.moveRow(rowSelected, rowSelected+1, rowSelected-1);
+-            table.setRowSelectionInterval(rowSelected-1, rowSelected-1);
+-        } 
++        int[] rowsSelected = table.getSelectedRows();
++        if (rowsSelected.length > 0 && rowsSelected[0] > 0) {
++            table.clearSelection();
++            for (int rowSelected : rowsSelected) {
++                tableModel.moveRow(rowSelected, rowSelected + 1, rowSelected - 1);
++            }
++            for (int rowSelected : rowsSelected) {
++                table.addRowSelectionInterval(rowSelected - 1, rowSelected - 1);
++            }
++        }
+     }
+ 
+     /**
+@@ -360,32 +371,31 @@
+     protected void deleteArgument() {
+         cancelEditing();
+ 
+-        int rowSelected = table.getSelectedRow();
+-        if (rowSelected >= 0) {
+-            tableModel.removeRow(rowSelected);
+-            tableModel.fireTableDataChanged();
++        int[] rowsSelected = table.getSelectedRows();
++        int anchorSelection = table.getSelectionModel().getAnchorSelectionIndex();
++        table.clearSelection();
++        if (rowsSelected.length > 0) {
++            for (int i = rowsSelected.length - 1; i >= 0; i--) {
++                tableModel.removeRow(rowsSelected[i]);
++            }
+ 
+             // Disable DELETE if there are no rows in the table to delete.
+             if (tableModel.getRowCount() == 0) {
+                 delete.setEnabled(false);
+             }
++            // Table still contains one or more rows, so highlight (select)
++            // the appropriate one.
++            else if (tableModel.getRowCount() > 0) {
++                if (anchorSelection >= tableModel.getRowCount()) {
++                    anchorSelection = tableModel.getRowCount() - 1;
++                }
++                table.setRowSelectionInterval(anchorSelection, anchorSelection);
++            }
+             
+             if(enableUpDown && tableModel.getRowCount()>1) {
+                 up.setEnabled(true);
+                 down.setEnabled(true);
+             }
+-
+-            // Table still contains one or more rows, so highlight (select)
+-            // the appropriate one.
+-            else {
+-                int rowToSelect = rowSelected;
+-
+-                if (rowSelected >= tableModel.getRowCount()) {
+-                    rowToSelect = rowSelected - 1;
+-                }
+-
+-                table.setRowSelectionInterval(rowToSelect, rowToSelect);
+-            }
+         }
+     }
+ 
+@@ -456,8 +466,8 @@
+                 new Functor("setName"), // $NON-NLS-1$
+                 new Functor("setValue") }, // $NON-NLS-1$
+                 new Class[] { String.class, String.class });
+-    	}
+     }
++    }
+ 
+     public static boolean testFunctors(){
+         ArgumentsPanel instance = new ArgumentsPanel();
+@@ -483,7 +493,7 @@
+         initializeTableModel();
+         table = new JTable(tableModel);
+         table.getTableHeader().setDefaultRenderer(new HeaderAsPropertyRenderer());
+-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
++        table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+         if (this.background != null) {
+             table.setBackground(this.background);
+         }

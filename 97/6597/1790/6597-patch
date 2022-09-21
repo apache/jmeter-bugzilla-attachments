@@ -1,0 +1,559 @@
+Index: NonGuiDriver.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/NonGuiDriver.java,v
+retrieving revision 1.2
+diff -u -r1.2 NonGuiDriver.java
+--- NonGuiDriver.java	26 Jul 2001 00:34:43 -0000	1.2
++++ NonGuiDriver.java	6 May 2002 00:20:03 -0000
+@@ -91,7 +91,7 @@
+ 
+ 	public static void main(String arg[]){
+ 		if(arg.length != 2){
+-			System.out.println("Non GUI Driver for JMeter Run. \nUsage:java org.apache.jmeter.NonGuiDriver <propery file> <source file>");
++			System.out.println("Non GUI Driver for JMeter Run. \nUsage:java org.apache.jmeter.NonGuiDriver <property file> <source file>");
+ 			System.exit(1);
+ 		}
+ 		JMeterUtils.getProperties(arg[0]);
+@@ -127,6 +127,7 @@
+ 
+ 			Collection groups = tp.getThreadGroups();
+ 			StandardJMeterEngine engine = new StandardJMeterEngine();
++			engine.setCommandLine(true);
+ 			for (Iterator i = groups.iterator(); i.hasNext(); ) {
+ 				println("Adding a threadgroup");
+ 				engine.addThreadGroup((ThreadGroup) i.next());
+@@ -144,4 +145,4 @@
+ 		System.out.println(str);
+ 	}
+ 
+-}
+\ No newline at end of file
++}
+Index: engine/ClientJMeterEngine.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/engine/ClientJMeterEngine.java,v
+retrieving revision 1.9
+diff -u -r1.9 ClientJMeterEngine.java
+--- engine/ClientJMeterEngine.java	30 Aug 2001 17:19:01 -0000	1.9
++++ engine/ClientJMeterEngine.java	6 May 2002 00:20:04 -0000
+@@ -128,6 +128,10 @@
+ 		}
+ 	}
+ 
++	public synchronized void callback (JMeterThread jmt, int op)
++	{
++	}
++
+ 	/************************************************************
+ 	 *  !ToDo (Method description)
+ 	 ***********************************************************/
+Index: engine/IncrementalJMeterEngine.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/engine/IncrementalJMeterEngine.java,v
+retrieving revision 1.1
+diff -u -r1.1 IncrementalJMeterEngine.java
+--- engine/IncrementalJMeterEngine.java	29 Aug 2001 11:41:34 -0000	1.1
++++ engine/IncrementalJMeterEngine.java	6 May 2002 00:20:05 -0000
+@@ -162,7 +162,7 @@
+         threadList = new Thread[threadCount];
+         for(int i = 0; i < threads.length; i++)
+         {
+-          threads[i] = new JMeterThread(group);
++          threads[i] = new JMeterThread(this, i+1, group);
+           threadList[i] = new Thread(threads[i], 
+             "Total Thread : " + threadCount + " ; Thead No. : " + i);
+           allThreads.add(threads[i]);
+Index: engine/JMeterEngine.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/engine/JMeterEngine.java,v
+retrieving revision 1.7
+diff -u -r1.7 JMeterEngine.java
+--- engine/JMeterEngine.java	26 Jul 2001 00:34:44 -0000	1.7
++++ engine/JMeterEngine.java	6 May 2002 00:20:05 -0000
+@@ -54,23 +54,67 @@
+  */
+ package org.apache.jmeter.engine;
+ 
++import org.apache.jmeter.threads.JMeterThread;
+ import org.apache.jmeter.threads.ThreadGroup;
+ 
+ /************************************************************
++ * This interface defines the contract which all <b>engine</b>
++ * classes for the application must fulfill.
++ * <p>
+  *  Title: JMeter Description: Copyright: Copyright (c) 2000 Company: Apache
+  *
+  *@author     Michael Stover
+  *@created    $Date: 2001/07/26 00:34:44 $
+  *@version    1.0
+  ***********************************************************/
+-
+ public interface JMeterEngine
+ {
++	/** Use this to indicate the completion of a test loop. */
++	static int ITERATION = 1;
++	/** Use this to indicate the completion of a test thread. */
++	static int FINISHED  = 3;
++
++	/**
++	 * This method is used to add {@link org.apache.jmeter.threads.ThreadGroup
++	 * threadgroups} to the current test.
++	 * <p>
++	 * @param tGroup This is the TreadGroup which is to added.
++	 */
+ 	void addThreadGroup(ThreadGroup tGroup);
+ 
++	/**
++	 * This method runs the current test. To do so, it configures and
++	 * starts all of the required
++	 * {@link org.apache.jmeter.threads.JMeterThread threads}.
++	 */
+ 	void runTest();
+ 
++	/**
++	 * This method is provided so that {@link org.apache.jmeter.threads.JMeterThread
++	 * worker threads} may report back on their completion status.
++	 * <p>
++	 * @param jmt  This identifies the thread reporting back. It also allows
++	 *             the reference to the worker thread to be dropped, enabling
++	 *             the Garbage Collector to garbage collect the thread.
++	 *             Note that the worker thread will not be GC'd until it
++	 *             completes.
++	 * @param op   This parameter identifies the operation that the
++	 *             worker thread is reporting on. Acceptable values are
++	 *             defined as constants here ({@link #ITERATION ITERATION},
++	 *             etc).
++	 */
++	void callback(JMeterThread jmt, int op);
++
++	/**
++	 * This method resets the current test. If the test is <b>running</b>,
++	 * it also stops all of the currently running
++	 * {@link org.apache.jmeter.threads.JMeterThread threads}.
++	 */
+ 	void stopTest();
+ 
++	/**
++	 * This method stops all of the currently running
++	 * {@link org.apache.jmeter.threads.JMeterThread threads}.
++	 */
+ 	void reset();
+ }
+Index: engine/ReflectionJMeterEngine.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/engine/ReflectionJMeterEngine.java,v
+retrieving revision 1.1
+diff -u -r1.1 ReflectionJMeterEngine.java
+--- engine/ReflectionJMeterEngine.java	19 Jan 2002 04:35:52 -0000	1.1
++++ engine/ReflectionJMeterEngine.java	6 May 2002 00:20:07 -0000
+@@ -156,7 +156,7 @@
+           thisThreadGroup.setSamplerController(lc);
+         }
+         runThis = false;
+-        jMeterThread = new JMeterThread(thisThreadGroup);
++        jMeterThread = new JMeterThread(this, 1, thisThreadGroup);
+         Thread newThread = new Thread(jMeterThread);
+         newThread.start();
+         try
+Index: engine/StandardJMeterEngine.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/engine/StandardJMeterEngine.java,v
+retrieving revision 1.8
+diff -u -r1.8 StandardJMeterEngine.java
+--- engine/StandardJMeterEngine.java	30 Aug 2001 17:19:01 -0000	1.8
++++ engine/StandardJMeterEngine.java	6 May 2002 00:20:08 -0000
+@@ -54,14 +54,30 @@
+  */
+ package org.apache.jmeter.engine;
+ 
++import java.text.*;
+ import java.util.*;
++
++import javax.swing.JOptionPane;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.MainFrame;
+ import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.threads.JMeterThread;
+ import org.apache.jmeter.threads.ThreadGroup;
+ import org.apache.jmeter.timers.Timer;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /************************************************************
+- *  !ToDo (Class description)
++ * This class is the main <b>engine</b> for the application.
++ * <p>
++ * Its main function is manage the life-cycle of the testing
++ * {@link org.apache.jmeter.threads.JMeterThread threads}.
++ * <p>
++ * Note that the actual configuration details and state of these
++ * threads are <u>not</u> contained in this class. These can be
++ * found in the {@link org.apache.jmeter.threads.ThreadGroup
++ * threadgroup} objects.
++ * <p>
++ * This class also produces progress reports as the test takes place.
+  *
+  *@author     $Author: mstover1 $
+  *@created    $Date: 2001/08/30 17:19:01 $
+@@ -69,58 +85,105 @@
+  ***********************************************************/
+ public class StandardJMeterEngine implements JMeterEngine
+ {
++	boolean commandLine = false;
+ 	Collection threadGroups;
+ 	Collection allThreads;
+ 	boolean running = false;
+ 
+-	/************************************************************
+-	 *  !ToDo (Constructor description)
+-	 ***********************************************************/
++	/**
++	 * This is the default Constructor.
++	 */
+ 	public StandardJMeterEngine()
+ 	{
+ 		threadGroups = new LinkedList();
+ 		allThreads = new LinkedList();
+ 	}
+ 
+-	/************************************************************
+-	 *  !ToDo
+-	 *
+-	 *@param  tGroup  !ToDo
+-	 ***********************************************************/
+ 	public void addThreadGroup(ThreadGroup tGroup)
+ 	{
+ 		threadGroups.add(tGroup);
+ 	}
+ 
+-	/************************************************************
+-	 *  !ToDo (Method description)
+-	 ***********************************************************/
++	/**
++	 * This method is provided so that {@link org.apache.jmeter.NonGuiDriver
++	 * non-GUI drivers} can indicate to this class that it has been invoked
++	 * from a command line driver.
++	 * <p>
++	 * @param commandLine	This parameter indicates whether or not this object
++	 *			has been invoked from a command line driver.
++	 */
++	public void setCommandLine(boolean commandLine)
++	{
++		this.commandLine = commandLine;
++	}
++
+ 	public void runTest()
+ 	{
+ 		running = true;
+-		//for each thread group, generate threads
+-		// hand each thread the sampler controller
+-		// and the listeners, and the timer
+-		JMeterThread[] threads;
++		//for each thread group, configure and start threads
+ 		Iterator iter = threadGroups.iterator();
+ 		while(iter.hasNext())
+ 		{
+ 			ThreadGroup group = (ThreadGroup)iter.next();
+-			group.resetThreadCount();
+-			threads = new JMeterThread[group.getNumThreads()];
+-			for(int i = 0; i < threads.length; i++)
++			String name = "JMeterThread[" + group.getName() + "]-";
++			int size = group.getNumThreads();
++			for(int i = 0; running && i < size; i++)
+ 			{
+-				threads[i] = new JMeterThread(group);
+-				Thread newThread = new Thread(threads[i]);
+-				allThreads.add(threads[i]);
++				JMeterThread t = new JMeterThread(this, i+1, group);
++				allThreads.add(t);
++				Thread newThread = new Thread(t);
++				newThread.setName(name + (i + 1));
+ 				newThread.start();
+ 			}
+ 		}
+ 	}
+ 
+-	/************************************************************
+-	 *  !ToDo (Method description)
+-	 ***********************************************************/
++	public synchronized void callback (JMeterThread jmt, int op)
++	{
++
++		String name = Thread.currentThread().getName();
++		String message = null;
++
++		if (op == JMeterEngine.ITERATION)
++		{
++			if (commandLine)
++			{
++				message = JMeterUtils.getResString("feedback_thread_loop");
++				Object[] args = {name};
++				MessageFormat formatter = new MessageFormat(""); 
++				formatter.applyPattern(message);
++				System.out.println(formatter.format(args));
++			}
++		}
++
++		if (op == JMeterEngine.FINISHED)
++		{
++			allThreads.remove((Object)jmt);
++			if (commandLine)
++			{
++				message = JMeterUtils.getResString("feedback_thread_ended");
++				Object[] args = {name};
++				MessageFormat formatter = new MessageFormat(""); 
++				formatter.applyPattern(message);
++				System.out.println(formatter.format(args));
++			}
++                	if (allThreads.size() > 0)
++				return;
++			message = JMeterUtils.getResString("feedback_test_finished");
++			if (commandLine)
++			{
++				System.out.println(message);
++				System.exit(0);
++			}
++			MainFrame mf = GuiPackage.getInstance().getMainFrame();
++			mf.setRunning(false);
++			JOptionPane.showMessageDialog(mf,
++						      message,
++						      mf.getTitle(),
++						      JOptionPane.INFORMATION_MESSAGE);
++		}
++	}
++
+ 	public void reset()
+ 	{
+ 		if(running)
+@@ -130,9 +193,6 @@
+ 		threadGroups.clear();
+ 	}
+ 
+-	/************************************************************
+-	 *  !ToDo (Method description)
+-	 ***********************************************************/
+ 	public void stopTest()
+ 	{
+ 		Iterator iter = allThreads.iterator();
+Index: resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.50
+diff -u -r1.50 messages.properties
+--- resources/messages.properties	2 May 2002 22:54:57 -0000	1.50
++++ resources/messages.properties	6 May 2002 00:20:09 -0000
+@@ -6,6 +6,7 @@
+ open=Open...
+ edit=Edit
+ exit=Exit
++exit?=Are you sure you want to exit without saving your test plan?
+ start=Start
+ stop=Stop
+ clear=Clear
+@@ -205,4 +206,7 @@
+ upper_bound=Upper Bound
+ increment=Increment
+ http_user_parameter_modifier=HTTP User Parameter Modifier
+-user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
+\ No newline at end of file
++user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
++feedback_thread_loop={0} loop completed
++feedback_thread_ended={0} completed
++feedback_test_finished=The test is complete!
+Index: resources/messages_ja.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/resources/messages_ja.properties,v
+retrieving revision 1.10
+diff -u -r1.10 messages_ja.properties
+--- resources/messages_ja.properties	2 May 2002 22:54:57 -0000	1.10
++++ resources/messages_ja.properties	6 May 2002 00:20:11 -0000
+@@ -6,6 +6,7 @@
+ open=\u958b\u304f
+ edit=\u7de8\u96c6
+ exit=\u7d42\u4e86
++exit?=Are you sure you want to exit without saving your test plan?
+ start=\u958b\u59cb
+ stop=\u505c\u6b62
+ clear=\u6d88\u53bb
+@@ -190,4 +191,7 @@
+ url=URL
+ success?=Success?
+ http_user_parameter_modifier=HTTP User Parameter Modifier
+-user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
+\ No newline at end of file
++user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
++feedback_thread_loop={0} loop completed
++feedback_thread_ended={0} completed
++feedback_test_finished=The test is complete!
+Index: resources/messages_ja_JP.eucJP.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/resources/messages_ja_JP.eucJP.properties,v
+retrieving revision 1.4
+diff -u -r1.4 messages_ja_JP.eucJP.properties
+--- resources/messages_ja_JP.eucJP.properties	4 Mar 2002 23:08:54 -0000	1.4
++++ resources/messages_ja_JP.eucJP.properties	6 May 2002 00:20:11 -0000
+@@ -4,6 +4,7 @@
+ load=ÆÉ¹?open=³«¤¯
+ edit=ÊÔ½¸
+ exit=½ªÎ»
++exit?=Are you sure you want to exit without saving your test plan?
+ start=³«»Ï
+ stop=Ää»ß
+ clear=¾Ãµ?report=¥?Ý¡¼¥È
+@@ -40,3 +41,6 @@
+ mimetype=Mime¥¿¥¤¥×
+ patterns_to_include=ÁÞÆ?Ñ¥¿¡¼¥?patterns_to_exclude=½?°¥Ñ¥¿¡¼¥?add_pattern=¥Ñ¥¿¡¼¥óÄÉ²Ã
+ amp_up=Ramp-Up Period (sec
++feedback_thread_loop={0} loop completed
++feedback_thread_ended={0} completed
++feedback_test_finished=The test is complete!
+Index: resources/messages_no.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/resources/messages_no.properties,v
+retrieving revision 1.6
+diff -u -r1.6 messages_no.properties
+--- resources/messages_no.properties	2 May 2002 22:54:57 -0000	1.6
++++ resources/messages_no.properties	6 May 2002 00:20:12 -0000
+@@ -6,6 +6,7 @@
+ open=Åpne...
+ edit=Rediger
+ exit=Avslutt
++exit?=Are you sure you want to exit without saving your test plan?
+ start=Start
+ stop=Stopp
+ clear=Nullstill
+@@ -181,4 +182,7 @@
+ url=URL
+ success?=Success?
+ http_user_parameter_modifier=HTTP User Parameter Modifier
+-user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
+\ No newline at end of file
++user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
++feedback_thread_loop={0} loop completed
++feedback_thread_ended={0} completed
++feedback_test_finished=The test is complete!
+Index: threads/JMeterThread.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/threads/JMeterThread.java,v
+retrieving revision 1.17
+diff -u -r1.17 JMeterThread.java
+--- threads/JMeterThread.java	16 Feb 2002 03:21:42 -0000	1.17
++++ threads/JMeterThread.java	6 May 2002 00:20:14 -0000
+@@ -58,6 +58,7 @@
+ 
+ import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.control.NoEntryException;
++import org.apache.jmeter.engine.*;
+ import org.apache.jmeter.timers.Timer;
+ import org.apache.jmeter.control.SamplerController;
+ import org.apache.jmeter.samplers.SampleEvent;
+@@ -77,17 +78,19 @@
+ public class JMeterThread implements Runnable, java.io.Serializable
+ {
+ 
++	JMeterEngine engine;
++	int id = 0;
+ 	ThreadGroup group;
+ 	Collection listeners;
+ 	List timers;
+ 	SamplerController controller;
++	/** This is used to avoid the deprecated <b>thread.stop()</b> method. */
+ 	private boolean running;
+-	private int threadNumberInGroup;
+ 	static Map samplers = new HashMap();
+ 
+-	/************************************************************
+-	 *  !ToDo (Constructor description)
+-	 ***********************************************************/
++	/**
++	 * This is the default Constructor.
++	 */
+ 	public JMeterThread()
+ 	{
+ 	}
+@@ -97,11 +100,12 @@
+ 	 *
+ 	 *@param  group  !ToDo (Parameter description)
+ 	 ***********************************************************/
+-	public JMeterThread(ThreadGroup group)
++	public JMeterThread(JMeterEngine jme, int id, ThreadGroup group)
+ 	{
++		engine = jme;
++		this.id = id;
+ 		this.group = group;
+ 		running = true;
+-		threadNumberInGroup = group.threadNumber();
+ 	}
+ 
+ 	/************************************************************
+@@ -138,13 +142,15 @@
+ 				SampleResult result = sampler.sample(entry);
+ 				checkAssertions(entry, result);
+ 				notifyListeners(result);
++				engine.callback(this, JMeterEngine.ITERATION);
+ 			}
+ 		}
++		engine.callback(this, JMeterEngine.FINISHED);
+ 	}
+ 
+-	/************************************************************
+-	 *  !ToDo (Method description)
+-	 ***********************************************************/
++	/**
++	 * This method overrides the deprecated <b>thread.stop()</b> method.
++	 */
+ 	public void stop()
+ 	{
+ 		running = false;
+@@ -213,11 +219,11 @@
+ 		if (rampUpMs > 0 && threads > 0)
+ 		{
+ 			int delayPerThread = rampUpMs / threads;
+-			int initialDelay = delayPerThread * threadNumberInGroup;
++			int initialDelay = delayPerThread * id;
+ 			try
+ 			{
+ 				Thread.sleep(initialDelay);
+-				System.out.println("Thread #" + (threadNumberInGroup + 1) + " of " + threads + " now active.");
++				System.out.println("Thread #" + id + " of " + threads + " now active.");
+ 			}
+ 			catch (InterruptedException e)
+ 			{
+Index: threads/ThreadGroup.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/threads/ThreadGroup.java,v
+retrieving revision 1.19
+diff -u -r1.19 ThreadGroup.java
+--- threads/ThreadGroup.java	4 Mar 2002 23:08:55 -0000	1.19
++++ threads/ThreadGroup.java	6 May 2002 00:20:15 -0000
+@@ -91,7 +91,6 @@
+ 	private String name;
+ 	private SampleQueue queue = null;
+ 	int rampUp = DEFAULT_RAMP_UP;
+-	private int threadsStarted = 0;
+ 
+ 	private static List addableList;
+ 
+@@ -173,11 +172,6 @@
+ 		return this.rampUp;
+ 	}
+ 
+-	public synchronized int threadNumber()
+-	{
+-		return threadsStarted++;
+-	}
+-
+ 	/************************************************************
+ 	 *  !ToDoo (Method description)
+ 	 *
+@@ -223,11 +217,6 @@
+ 	{
+ 		return this.DEFAULT_RAMP_UP;
+ 	}
+-
+-	public synchronized void resetThreadCount()
+-		{
+-		threadsStarted = 0;
+-		}
+ 
+ 	/************************************************************
+ 	 *  !ToDoo (Method description)

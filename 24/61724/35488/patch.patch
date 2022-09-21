@@ -1,0 +1,376 @@
+Index: src/core/org/apache/jmeter/functions/AbstractFunction.java
+===================================================================
+--- src/core/org/apache/jmeter/functions/AbstractFunction.java	(revision 1813248)
++++ src/core/org/apache/jmeter/functions/AbstractFunction.java	(working copy)
+@@ -20,6 +20,7 @@
+ 
+ import java.util.Collection;
+ 
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+@@ -31,6 +32,8 @@
+  * Provides common methods for all functions
+  */
+ public abstract class AbstractFunction implements Function {
++	
++	private static final String SHOULD_DO_UPPERCASE = "true";
+ 
+     /**
+      * <p><b>
+@@ -140,4 +143,40 @@
+                    );
+         }
+     }
++    
++    /**
++     * Utility method to add variable value by variable name
++     * 
++     * @param variableName variable name to put
++     * @param value variable value to put 
++     */
++	protected void addVariableValue(String value, CompoundVariable[] values, int index) {
++		if (values.length > index) {
++			String variableName = values[index].execute();
++			if (StringUtils.isNotEmpty(variableName)) {
++				JMeterVariables vars = getVariables();
++				if (vars != null) {
++					vars.put(variableName, value);
++				}
++			}
++		}
++	}
++	
++
++	/**
++	 * Upper case value if optional parameter value is true 
++	 * @param encodedString
++	 * @param index
++	 * @return
++	 */
++	protected String upperCase(String encodedString, CompoundVariable[] values, int index) {
++		if (values.length > index) {
++			String shouldUpperCase = values[index].execute();
++			boolean shouldDoUpperCase = SHOULD_DO_UPPERCASE.equalsIgnoreCase(shouldUpperCase);
++			if (shouldDoUpperCase) {
++				encodedString = encodedString.toUpperCase();
++			}
++		}
++		return encodedString;
++	}
+ }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1813248)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -933,6 +933,7 @@
+ running_test=Running test
+ runtime_controller_title=Runtime Controller
+ runtime_seconds=Runtime (seconds)
++salt_string=Salt to be used for encoding
+ sample_result_save_configuration=Sample Result Save Configuration
+ sample_scope=Apply to:
+ sample_scope_all=Main sample and sub-samples
+@@ -1023,6 +1024,7 @@
+ servername=Servername \:
+ session_argument_name=Session Argument Name
+ setup_thread_group_title=setUp Thread Group
++sha_string=String to be encoded
+ should_save=You should save your test plan before running it.  \nIf you are using supporting data files (ie, for CSV Data Set or __StringFromFile), \nthen it is particularly important to first save your test script. \nDo you want to save your test plan first?
+ shutdown=Shutdown
+ simple_config_element=Simple Config Element
+@@ -1224,6 +1226,7 @@
+ update_per_iter=Update Once Per Iteration
+ upload=File Upload
+ upper_bound=Upper Bound
++upper_case=Upper case result - default false (optional)
+ url=URL
+ url_config_get=GET
+ url_config_http=HTTP
+Index: src/functions/org/apache/jmeter/functions/Sha1Encode.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/Sha1Encode.java	(revision 0)
++++ src/functions/org/apache/jmeter/functions/Sha1Encode.java	(working copy)
+@@ -0,0 +1,62 @@
++package org.apache.jmeter.functions;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.functions.AbstractFunction;
++import org.apache.jmeter.functions.InvalidVariableException;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.commons.codec.digest.DigestUtils;
++import java.util.Collection;
++import java.util.LinkedList;
++import java.util.List;
++
++/**
++ * 
++ * Sha1 Encode Function Optional Upper case value and save to variable name
++ * 
++ * @author orim
++ *
++ */
++public class Sha1Encode extends AbstractFunction {
++
++	private static final List<String> desc = new LinkedList<String>();
++	private static final String KEY = "__sha1";
++
++	// Number of parameters expected - used to reject invalid calls
++	private static final int MIN_PARAMETER_COUNT = 1;
++	private static final int MAX_PARAMETER_COUNT = 3;
++
++	static {
++		desc.add(JMeterUtils.getResString("sha_string"));
++		desc.add(JMeterUtils.getResString("upper_case"));
++		desc.add(JMeterUtils.getResString("function_name_paropt"));
++	}
++
++	private CompoundVariable[] values;
++
++	@Override
++	public synchronized String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++		String stringToEncode = values[0].execute();
++		String encodedString = DigestUtils.sha1Hex(stringToEncode);
++		encodedString = upperCase(encodedString, values, 1);
++		addVariableValue(encodedString, values, 2);
++		return encodedString;
++	}
++
++	@Override
++	public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++		checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
++		values = parameters.toArray(new CompoundVariable[parameters.size()]);
++	}
++
++	@Override
++	public String getReferenceKey() {
++		return KEY;
++	}
++
++	@Override
++	public List<String> getArgumentDesc() {
++		return desc;
++	}
++}
+\ No newline at end of file
+Index: src/functions/org/apache/jmeter/functions/Sha512Encode.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/Sha512Encode.java	(revision 0)
++++ src/functions/org/apache/jmeter/functions/Sha512Encode.java	(working copy)
+@@ -0,0 +1,85 @@
++package org.apache.jmeter.functions;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.functions.AbstractFunction;
++import org.apache.jmeter.functions.InvalidVariableException;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.util.JMeterUtils;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++import java.io.UnsupportedEncodingException;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++
++import java.util.Collection;
++import java.util.LinkedList;
++import java.util.List;
++
++/**
++ * 
++ * Sha512 Encode Function Optional Upper case value and save to variable name
++ * 
++ * @author orim
++ *
++ */
++public class Sha512Encode extends AbstractFunction {
++
++	private static final Logger log = LoggerFactory.getLogger(Sha512Encode.class);
++	private static final String UTF_8 = "UTF-8";
++	private static final String SHA_512 = "SHA-512";
++	private static final List<String> desc = new LinkedList<String>();
++	private static final String KEY = "__sha512";
++
++	// Number of parameters expected - used to reject invalid calls
++	private static final int MIN_PARAMETER_COUNT = 2;
++	private static final int MAX_PARAMETER_COUNT = 4;
++
++	static {
++		desc.add(JMeterUtils.getResString("sha_string"));
++		desc.add(JMeterUtils.getResString("salt_string"));
++		desc.add(JMeterUtils.getResString("upper_case"));
++		desc.add(JMeterUtils.getResString("function_name_paropt"));
++	}
++
++	private CompoundVariable[] values;
++
++	@Override
++	public synchronized String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++		String encodedString = null;
++		String stringToEncode = values[0].execute();
++		String salt = values[1].execute();
++		try {
++			MessageDigest md = MessageDigest.getInstance(SHA_512);
++			md.update(salt.getBytes(UTF_8));
++			byte[] bytes = md.digest(stringToEncode.getBytes(UTF_8));
++			StringBuilder sb = new StringBuilder();
++			for (int i = 0; i < bytes.length; i++) {
++				sb.append(Integer.toString((bytes[i] & 0xff) + 0x100, 16).substring(1));
++			}
++			encodedString = upperCase(sb.toString(), values, 2);
++			addVariableValue(encodedString, values, 3);
++
++		} catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
++			log.warn("Error executing SHA512", e);
++		}
++		return encodedString;
++	}
++
++	@Override
++	public synchronized void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++		checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
++		values = parameters.toArray(new CompoundVariable[parameters.size()]);
++	}
++
++	@Override
++	public String getReferenceKey() {
++		return KEY;
++	}
++
++	@Override
++	public List<String> getArgumentDesc() {
++		return desc;
++	}
++}
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/functions/TestShaFunction.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestShaFunction.java	(revision 0)
++++ test/src/org/apache/jmeter/functions/TestShaFunction.java	(working copy)
+@@ -0,0 +1,122 @@
++package org.apache.jmeter.functions;
++
++import static org.junit.Assert.assertEquals;
++
++import java.util.Collection;
++import java.util.LinkedList;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.Before;
++import org.junit.Test;
++/**
++ * Test Sha1 and Sha512 functions
++ * 
++ * @author orim
++ *
++ */
++public class TestShaFunction extends JMeterTestCase {
++	protected AbstractFunction sha512;
++	protected AbstractFunction sha1;
++
++    private SampleResult result;
++
++    private Collection<CompoundVariable> params;
++
++    private JMeterVariables vars;
++
++    private JMeterContext jmctx;
++
++    @Before
++    public void setUp() {
++    	sha512 = new Sha512Encode();
++        sha1 = new Sha1Encode();
++        result = new SampleResult();
++        jmctx = JMeterContextService.getContext();
++        String data = "dummy data";
++        result.setResponseData(data, null);
++        vars = new JMeterVariables();
++        jmctx.setVariables(vars);
++        jmctx.setPreviousResult(result);
++        params = new LinkedList<>();
++    }
++    
++    
++    @Test
++    public void testParameterCount512() throws Exception {
++    	checkInvalidParameterCounts(sha512, 2, 4);
++    }
++
++    @Test
++    public void testParameterCount1() throws Exception {
++        checkInvalidParameterCounts(sha1, 1, 2);
++    }
++    
++    @Test
++    public void testSha512() throws Exception {
++    	params.add(new CompoundVariable("nofile"));
++    	params.add(new CompoundVariable("nofile"));
++    	sha512.setParameters(params);
++    	String returnValue = sha512.execute(result, null);
++    	assertEquals("0a76f7cd4f3cd9bec27146c32a8cad3de865a48d07ff6a2a40f18f2b3307fef4d0de695d14c90234bd453b375aa2974ba17743564bc782ad1d6cf8b3f4db72a4", returnValue);
++    }      
++    
++    @Test
++    public void testSha1() throws Exception {
++    	params.add(new CompoundVariable("nofile"));    	
++    	sha1.setParameters(params);
++    	String returnValue = sha1.execute(result, null);
++    	assertEquals("4ea2ced10057872be25371cfe638d3b096c58f2f", returnValue);
++    }
++    @Test
++    public void testSha1Variable() throws Exception {
++    	params.add(new CompoundVariable("nofile"));  
++    	params.add(new CompoundVariable("true"));
++    	params.add(new CompoundVariable("newVar"));  	
++    	sha1.setParameters(params);
++    	String returnValue = sha1.execute(result, null);
++    	assertEquals("4EA2CED10057872BE25371CFE638D3B096C58F2F", returnValue);
++    }
++
++    @Test
++    public void testSha512Variable() throws Exception {
++    	params.add(new CompoundVariable("nofile"));
++    	params.add(new CompoundVariable("nofile"));
++    	params.add(new CompoundVariable("true"));
++    	params.add(new CompoundVariable("newVar"));
++        sha512.setParameters(params);
++        String returnValue = sha512.execute(result, null);
++        assertEquals("0A76F7CD4F3CD9BEC27146C32A8CAD3DE865A48D07FF6A2A40F18F2B3307FEF4D0DE695D14C90234BD453B375AA2974BA17743564BC782AD1D6CF8B3F4DB72A4", returnValue);
++    }
++    
++    @Test
++    public void testSha512Error() throws Exception {
++    	params.add(new CompoundVariable("nofile"));		
++    	boolean isFailed = false;
++    	try {
++    		sha512.setParameters(params);
++    		sha512.execute(result, null);
++    	} catch (InvalidVariableException e) {
++    		// expect failure
++    		isFailed = true;
++    	}
++    	assertEquals(isFailed, true);
++    }
++    
++    @Test
++	public void testSha1Error() throws Exception {
++		boolean isFailed = false;
++		try {
++			sha1.setParameters(params);
++			sha1.execute(result, null);
++		} catch (InvalidVariableException e) {
++			// expect failure
++			isFailed = true;
++		}
++		assertEquals(isFailed, true);
++	}
++}

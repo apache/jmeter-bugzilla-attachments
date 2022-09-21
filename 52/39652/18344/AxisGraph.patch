@@ -1,0 +1,73 @@
+Index: /workspace/rel-2-1/src/components/org/apache/jmeter/visualizers/AxisGraph.java
+===================================================================
+--- /workspace/rel-2-1/src/components/org/apache/jmeter/visualizers/AxisGraph.java	(revision 408847)
++++ /workspace/rel-2-1/src/components/org/apache/jmeter/visualizers/AxisGraph.java	(working copy)
+@@ -53,6 +53,7 @@
+     
+     protected double[][] data = null;
+     protected String title, xAxisTitle, yAxisTitle, yAxisLabel;
++    protected int maxLenght;
+     protected String[] xAxisLabels;
+     protected int width, height;
+     
+@@ -85,6 +86,10 @@
+     public void setTitle(String title) {
+         this.title = title;
+     }
++
++    public void setMaxLenght(int maxLength) {
++        this.maxLenght = maxLength;
++    }    
+     
+     public void setXAxisTitle(String title) {
+         this.xAxisTitle = title;
+@@ -114,7 +119,7 @@
+         if (data != null && this.title != null && this.xAxisLabels != null &&
+                 this.xAxisTitle != null && this.yAxisLabel != null &&
+                 this.yAxisTitle != null) {
+-            drawSample(this.title,this.xAxisLabels,this.xAxisTitle,
++            drawSample(this.title,this.maxLenght,this.xAxisLabels,this.xAxisTitle,
+                     this.yAxisTitle,this.data,this.width,this.height,g);
+         }
+     }
+@@ -132,16 +137,39 @@
+         return max;
+     }
+     
+-    private void drawSample(String _title, String[] _xAxisLabels, String _xAxisTitle,
++    private String squeeze (String input, int maxLength){
++        if (input.length()>maxLength){
++            String output="";
++            output = input.substring(0,maxLength-3)+"...";
++            return output;
++        }
++        else return input;
++    }
++    
++    private void drawSample(String _title, int _maxLength, String[] _xAxisLabels, String _xAxisTitle,
+             String _yAxisTitle, double[][] _data, int _width, int _height, Graphics g) {
+         double max = findMax(_data);
+         try {
++            /** These controls are already done in StatGraphVisualizer
+             if (_width == 0) {
+                 _width = 450;
+             }
+             if (_height == 0) {
+                 _height = 250;
+             }
++			**/
++            if (_maxLength < 3) {
++                _maxLength = 3;
++            }
++            // if the "Title of Graph" is empty, we can assume some default
++            if (_title.equals("") ) {
++                _title = "Graph";
++            }
++            // if the labels are too long, they'll be "squeezed" to make the chart viewable.
++            for (int i = 0; i < _xAxisLabels.length; i++) {
++                String label = _xAxisLabels[i];
++                _xAxisLabels[i]=squeeze(label, _maxLength);
++            }
+             this.setPreferredSize(new Dimension(_width,_height));
+             DataSeries dataSeries = new DataSeries( _xAxisLabels, _xAxisTitle, _yAxisTitle, _title );
+             

@@ -1,0 +1,50 @@
+### Eclipse Workspace Patch 1.0
+#P jmeter-mod
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java	(revision 784524)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java	(working copy)
+@@ -184,7 +184,8 @@
+         useNonPersistentDelivery.setSelected(sampler.isNonPersistent());
+         useReqMsgIdAsCorrelId.setSelected(sampler.isUseReqMsgIdAsCorrelId());
+         
+-        timeout.setText(String.valueOf(sampler.getTimeout()));
++//        timeout.setText(String.valueOf(sampler.getTimeout()));
++        timeout.setText(sampler.getTimeout());
+         soapXml.setText(sampler.getContent());
+         initialContextFactory.setText(sampler.getInitialContextFactory());
+         providerUrl.setText(sampler.getContextProvider());
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(revision 784524)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(working copy)
+@@ -340,7 +340,7 @@
+                     if (isNonPersistent()) {
+                         producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
+                     }
+-                    executor = new FixedQueueExecutor(producer, getTimeout(), isUseReqMsgIdAsCorrelId());
++                    executor = new FixedQueueExecutor(producer, getTimeoutAsInt(), isUseReqMsgIdAsCorrelId());
+                 }
+             }
+             if (LOGGER.isDebugEnabled()) {
+@@ -424,12 +424,19 @@
+         }
+     }
+ 
+-    public int getTimeout() {
++    private int getTimeoutAsInt() {
+         if (getPropertyAsInt(TIMEOUT) < 1) {
+             return DEFAULT_TIMEOUT;
+         }
+         return getPropertyAsInt(TIMEOUT);
+     }
++    
++    public String getTimeout() {
++        if (getPropertyAsString(TIMEOUT).equals("") ) {
++            return ""+DEFAULT_TIMEOUT;
++        }
++        return getPropertyAsString(TIMEOUT);
++    }
+ 
+     /*
+      * (non-Javadoc)

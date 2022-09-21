@@ -1,0 +1,111 @@
+Index: src/components/org/apache/jmeter/control/InterleaveControl.java
+===================================================================
+--- src/components/org/apache/jmeter/control/InterleaveControl.java	(revision 1761202)
++++ src/components/org/apache/jmeter/control/InterleaveControl.java	(working copy)
+@@ -22,15 +22,19 @@
+ 
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.IntegerProperty;
+ 
+ /**
+  * Alternate among each of the children controllers or samplers for each loop iteration
+  */
+ public class InterleaveControl extends GenericController implements Serializable {
+-    private static final long serialVersionUID = 233L;
++    
++    private static final long serialVersionUID = 234L;
+ 
+     private static final String STYLE = "InterleaveControl.style";// $NON-NLS-1$
++    
++    private static final String ACCROSS_THREADS = "InterleaveControl.accrossThreads";// $NON-NLS-1$
+ 
+     public static final int IGNORE_SUB_CONTROLLERS = 0;
+ 
+@@ -71,6 +75,14 @@
+     public int getStyle() {
+         return getPropertyAsInt(STYLE);
+     }
++    
++    public void setInterleaveAccrossThreads(boolean accrossThreads) {
++        setProperty(new BooleanProperty(ACCROSS_THREADS, accrossThreads));
++    }
++
++    public boolean getInterleaveAccrossThreads() {
++        return getPropertyAsBoolean(ACCROSS_THREADS, false);
++    }
+ 
+     /**
+      * {@inheritDoc}
+@@ -174,4 +186,16 @@
+         stillSame = false;
+         super.incrementCurrent();
+     }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.control.GenericController#initialize()
++     */
++    @Override
++    public void initialize() {
++        super.initialize();
++        // get a different start index
++        if(getInterleaveAccrossThreads()) {
++            this.current = getThreadContext().getThreadNum()%getSubControllers().size();
++        }
++    }
+ }
+Index: src/components/org/apache/jmeter/control/gui/InterleaveControlGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/InterleaveControlGui.java	(revision 1761202)
++++ src/components/org/apache/jmeter/control/gui/InterleaveControlGui.java	(working copy)
+@@ -30,6 +30,8 @@
+     private static final long serialVersionUID = 240L;
+ 
+     private JCheckBox style;
++    
++    private JCheckBox accrossThreads;
+ 
+     public InterleaveControlGui() {
+         init();
+@@ -38,11 +40,13 @@
+     @Override
+     public void configure(TestElement el) {
+         super.configure(el);
+-        if (((InterleaveControl) el).getStyle() == InterleaveControl.IGNORE_SUB_CONTROLLERS) {
++        InterleaveControl controller = (InterleaveControl) el;
++        if (controller.getStyle() == InterleaveControl.IGNORE_SUB_CONTROLLERS) {
+             style.setSelected(true);
+         } else {
+             style.setSelected(false);
+         }
++        accrossThreads.setSelected(controller.getInterleaveAccrossThreads());
+     }
+ 
+     @Override
+@@ -65,6 +69,8 @@
+         } else {
+             ((InterleaveControl) ic).setStyle(InterleaveControl.USE_SUB_CONTROLLERS);
+         }
++        
++        ((InterleaveControl) ic).setInterleaveAccrossThreads(accrossThreads.isSelected());
+     }
+ 
+     /**
+@@ -74,6 +80,7 @@
+     public void clearGui() {
+         super.clearGui();
+         style.setSelected(false);
++        accrossThreads.setSelected(false);
+     }
+ 
+     @Override
+@@ -89,5 +96,8 @@
+ 
+         style = new JCheckBox(JMeterUtils.getResString("ignore_subcontrollers")); // $NON-NLS-1$
+         add(CheckBoxPanel.wrap(style));
++        
++        accrossThreads = new JCheckBox(JMeterUtils.getResString("interleave_accross_threads")); // $NON-NLS-1$
++        add(CheckBoxPanel.wrap(accrossThreads));
+     }
+ }

@@ -1,0 +1,124 @@
+Index: src/core/org/apache/jmeter/control/IfController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/IfController.java	(revision 1569771)
++++ src/core/org/apache/jmeter/control/IfController.java	(working copy)
+@@ -170,16 +170,19 @@
+                     evaluateCondition(getCondition());
+         }
+ 
+-        if (result) {
+-            return super.next();
+-        }
+-        // If-test is false, need to re-initialize indexes
+-        try {
+-            reInitializeSubController(); // Bug 50032 - reinitialize current index element for all sub controller
+-            return nextIsNull();
+-        } catch (NextIsNullException e1) {
+-            return null;
+-        }
++		if (result) {
++			return super.next();
++		} else if (!isFirst()) { // Bug 56160 - don't do reinitializing on the first "iteration" because we won't bother the items inside the if control
++			// If-test is false, need to re-initialize indexes
++			try {
++				reInitializeSubController(); // Bug 50032 - reinitialize current index element for all sub controller
++				return nextIsNull();
++			} catch (NextIsNullException e1) {
++				return null;
++			}
++		} else {
++			return null;
++		}
+     }
+     
+     /**
+Index: test/src/org/apache/jmeter/control/TestIfController.java
+===================================================================
+--- test/src/org/apache/jmeter/control/TestIfController.java	(revision 1569771)
++++ test/src/org/apache/jmeter/control/TestIfController.java	(working copy)
+@@ -173,4 +173,84 @@
+             }
+             assertEquals(counter, 6); 
+         }
++        
++        /**
++         * Test for Fix of Bug 56160 (Don't step into IfController children if condition is false)
++         */
++		public void testNotStepIntoOnFalse() {
++	
++			LoopController controller = new LoopController();
++			controller.setLoops(2);
++			IfController ifCont = new IfController("false==true");
++			ifCont.setFirst(true);
++			controller.addTestElement(ifCont);
++	
++			CountingController whileCont = new CountingController();
++//			whileCont.setCondition("false");
++			ifCont.addTestElement(whileCont);
++	
++			TestSampler sample = new TestSampler("Placeholder");
++			whileCont.addTestElement(sample);
++	
++			controller.setRunningVersion(true);
++			ifCont.setRunningVersion(true);
++			whileCont.setRunningVersion(true);
++	
++			Sampler sampler = null;
++			while ((sampler = controller.next()) != null) {
++				System.out.println("sampler name" + sampler.getName());
++			}
++	
++			assertEquals(
++					"WhileController.next has been evaluated though it's contained in a IfController with condition that is false",
++					0, whileCont.whileNextCalled);
++		}
++	
++		/**
++		 * Test that fix of Bug 56160 doesn't break existing code if condition is true
++		 */
++		public void testStepIntoOnTrue() {
++	
++			LoopController controller = new LoopController();
++			controller.setLoops(2);
++			IfController ifCont = new IfController("true==true");
++			ifCont.setFirst(true);
++			controller.addTestElement(ifCont);
++	
++			CountingController whileCont = new CountingController();
++//			whileCont.setCondition("false");
++			ifCont.addTestElement(whileCont);
++	
++			TestSampler sample = new TestSampler("Placeholder");
++			whileCont.addTestElement(sample);
++	
++			controller.setRunningVersion(true);
++			ifCont.setRunningVersion(true);
++			whileCont.setRunningVersion(true);
++	
++			Sampler sampler = null;
++			while ((sampler = controller.next()) != null) {
++				System.out.println("sampler name" + sampler.getName());
++			}
++	
++			assertTrue("WhileController hasn't been called for ",
++					whileCont.whileNextCalled > 0);
++		}
++	
++		/**
++		 * WhileController impl to count the number of invocations of next()
++		 */
++		private class CountingController extends GenericController {
++	
++			/* generated */
++			private static final long serialVersionUID = 2752049459477428418L;
++	
++			int whileNextCalled = 0;
++	
++			@Override
++			public Sampler next() {
++				whileNextCalled++;
++				return super.next();
++			}
++		}
+ }
+\ No newline at end of file

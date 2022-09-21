@@ -1,0 +1,165 @@
+Index: docs/usermanual/component_reference.html
+===================================================================
+--- docs/usermanual/component_reference.html	(revision 1657513)
++++ docs/usermanual/component_reference.html	(working copy)
+@@ -4353,6 +4353,12 @@
+ <br>
+ 
+ 
++        Secure sockets (<tt>javax.net.ssl.SSLSocket</tt>) are supported. When "SSL" is selected, the socket will be opened
++        as a SSLSocket. When SSL is used, JMeter must be configured with appropriate <tt>javax.net.ssl.*</tt> system properties.
++        
++<br>
++
++
+         If "Re-use connection" is selected, connections are shared between Samplers in the same thread,
+         provided that the exact same host name string and port are used. 
+         Different hosts/port combinations will use different connections, as will different threads. 
+@@ -4600,6 +4606,14 @@
+ </td>
+ </tr>
+ <tr>
++<td>SSL</td>
++<td>If selected, the connection is opened using <tt>javax.net.ssl.SSLSocket</tt>. Otherwise <tt>java.net.Socket</tt> is used.
++</td>
++<td>
++No
++</td>
++</tr>
++<tr>
+ <td>Re-use connection</td>
+ <td>If selected, the connection is kept open. Otherwise it is closed when the data has been read.
+ </td>
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1657513)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -1183,6 +1183,7 @@
+ userdn=Username
+ username=Username
+ userpw=Password
++usessl=SSL
+ value=Value
+ value_to_quote_meta=Value to escape from ORO Regexp meta chars
+ var_name=Reference Name
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	(revision 1657513)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	(working copy)
+@@ -52,6 +52,8 @@
+     private JLabeledTextField classname;
+ 
+     private JCheckBox reUseConnection;
++    
++    private JCheckBox useSsl;
+ 
+     // NOTUSED yet private JTextField filename;
+ 
+@@ -89,6 +91,7 @@
+         serverPanel.setServer(element.getPropertyAsString(TCPSampler.SERVER));
+         // Default to original behaviour, i.e. re-use connection
+         reUseConnection.setSelected(element.getPropertyAsBoolean(TCPSampler.RE_USE_CONNECTION, TCPSampler.RE_USE_CONNECTION_DEFAULT));
++        useSsl.setSelected(element.getPropertyAsBoolean(TCPSampler.USE_SSL, TCPSampler.USE_SSL_DEFAULT));
+         serverPanel.setPort(element.getPropertyAsString(TCPSampler.PORT));
+         // filename.setText(element.getPropertyAsString(TCPSampler.FILENAME));
+         serverPanel.setResponseTimeout(element.getPropertyAsString(TCPSampler.TIMEOUT));
+@@ -122,6 +125,7 @@
+         element.setProperty(TCPSampler.CLASSNAME, classname.getText(), "");
+         element.setProperty(TCPSampler.SERVER, serverPanel.getServer());
+         element.setProperty(TCPSampler.RE_USE_CONNECTION, reUseConnection.isSelected());
++        element.setProperty(TCPSampler.USE_SSL, useSsl.isSelected());
+         element.setProperty(TCPSampler.PORT, serverPanel.getPort());
+         // element.setProperty(TCPSampler.FILENAME, filename.getText());
+         setNoDelay.setPropertyFromTristate(element, TCPSampler.NODELAY);
+@@ -146,6 +150,7 @@
+         classname.setText(""); //$NON-NLS-1$
+         requestData.setInitialText(""); //$NON-NLS-1$
+         reUseConnection.setSelected(true);
++        useSsl.setSelected(false);
+         setNoDelay.setSelected(false); // TODO should this be indeterminate?
+         closeConnection.setSelected(TCPSampler.CLOSE_CONNECTION_DEFAULT); // TODO should this be indeterminate?
+         soLinger.setText(""); //$NON-NLS-1$
+@@ -186,6 +191,28 @@
+         closePortPanel.add(reUseConnection);
+         return closePortPanel;
+     }
++    
++    private JPanel createUseSslPanel() {
++        JLabel label = new JLabel(JMeterUtils.getResString("usessl")); //$NON-NLS-1$
++
++        useSsl = new JCheckBox("", true);
++//        useSsl.addItemListener(new ItemListener() {
++//            @Override
++//            public void itemStateChanged(final ItemEvent e) {
++//                if (e.getStateChange() == ItemEvent.SELECTED) {
++//                    closeConnection.setEnabled(true);
++//                } else {
++//                    closeConnection.setEnabled(false);
++//                }
++//            }
++//        });
++        label.setLabelFor(useSsl);
++
++        JPanel panel = new JPanel(new FlowLayout());
++        panel.add(label);
++        panel.add(useSsl);
++        return panel;
++    }
+ 
+     private JPanel createCloseConnectionPanel() {
+         JLabel label = new JLabel(JMeterUtils.getResString("closeconnection")); // $NON-NLS-1$
+@@ -272,6 +299,7 @@
+         HorizontalPanel optionsPanel = new HorizontalPanel();
+         optionsPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder()));
+         optionsPanel.add(createClosePortPanel());
++        optionsPanel.add(createUseSslPanel());
+         optionsPanel.add(createCloseConnectionPanel());
+         optionsPanel.add(createNoDelayPanel());
+         optionsPanel.add(createSoLingerOption());
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	(revision 1657513)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	(working copy)
+@@ -36,6 +36,8 @@
+ import java.util.Properties;
+ import java.util.Set;
+ 
++import javax.net.ssl.SSLSocketFactory;
++
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.samplers.AbstractSampler;
+@@ -84,6 +86,9 @@
+     public static final String RE_USE_CONNECTION = "TCPSampler.reUseConnection"; //$NON-NLS-1$
+     public static final boolean RE_USE_CONNECTION_DEFAULT = true;
+ 
++    public static final String USE_SSL = "TCPSampler.useSsl"; //$NON-NLS-1$
++    public static final boolean USE_SSL_DEFAULT = false;
++
+     public static final String CLOSE_CONNECTION = "TCPSampler.closeConnection"; //$NON-NLS-1$
+     public static final boolean CLOSE_CONNECTION_DEFAULT = false;
+ 
+@@ -176,7 +181,11 @@
+             try {
+                 closeSocket(socketKey); // Bug 44910 - close previous socket (if any)
+                 SocketAddress sockaddr = new InetSocketAddress(getServer(), getPort());
+-                con = new Socket();
++                if (getPropertyAsBoolean(USE_SSL)) {
++                    con = SSLSocketFactory.getDefault().createSocket();
++                } else {
++                    con = new Socket();
++                }
+                 if (getPropertyAsString(SO_LINGER,"").length() > 0){
+                     con.setSoLinger(true, getSoLinger());
+                 }
+@@ -236,6 +245,10 @@
+         return getPropertyAsBoolean(RE_USE_CONNECTION, RE_USE_CONNECTION_DEFAULT);
+     }
+ 
++    public boolean isUseSsl() {
++        return getPropertyAsBoolean(USE_SSL, USE_SSL_DEFAULT);
++    }
++
+     public void setCloseConnection(String close) {
+         this.setProperty(CLOSE_CONNECTION, close, "");
+     }

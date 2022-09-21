@@ -1,0 +1,46 @@
+Index: src/core/org/apache/jmeter/gui/action/Load.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Load.java	(revision f03a8bdbe5ba31d9f42adf816887c714cd8c7dce)
++++ src/core/org/apache/jmeter/gui/action/Load.java	(revision )
+@@ -152,6 +152,7 @@
+             } finally {
+                 JOrphanUtils.closeQuietly(reader);
+             }
++            FileDialoger.setLastJFCDirectory(f.getParentFile().getAbsolutePath());
+             guiPackage.updateCurrentGui();
+             guiPackage.getMainFrame().repaint();
+         }
+Index: src/core/org/apache/jmeter/gui/util/FileDialoger.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/FileDialoger.java	(revision f03a8bdbe5ba31d9f42adf816887c714cd8c7dce)
++++ src/core/org/apache/jmeter/gui/util/FileDialoger.java	(revision )
+@@ -101,8 +101,8 @@
+             jfc.setAcceptAllFileFilterUsed(true);
+             jfc.setFileFilter(currentFilter);
+         }
++        jfc.setCurrentDirectory(new File(lastJFCDirectory));
+         int retVal = jfc.showOpenDialog(GuiPackage.getInstance().getMainFrame());
+-        lastJFCDirectory = jfc.getCurrentDirectory().getAbsolutePath();
+ 
+         if (retVal == JFileChooser.APPROVE_OPTION) {
+             return jfc;
+@@ -173,5 +173,13 @@
+             return jfc;
+         }
+         return null;
++    }
++
++    public static String getLastJFCDirectory() {
++        return lastJFCDirectory;
++    }
++
++    public static void setLastJFCDirectory(String lastJFCDirectory) {
++        FileDialoger.lastJFCDirectory = lastJFCDirectory;
+     }
+ }

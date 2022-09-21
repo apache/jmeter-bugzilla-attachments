@@ -1,0 +1,68 @@
+From 2c780eb1370b1033f4bd1e13c86f4589c275f40c Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Fri, 31 Jul 2015 20:45:05 +0200
+Subject: [PATCH] make usage of host header consistent. Use port from header
+ when available
+
+---
+ .../jmeter/protocol/http/sampler/HTTPHC3Impl.java  |  1 -
+ .../jmeter/protocol/http/sampler/HTTPHC4Impl.java  | 24 +++++++++++++++++++++-
+ 2 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+index fa2f478..03ba8f8 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+@@ -634,7 +634,6 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+                     if (! HTTPConstants.HEADER_CONTENT_LENGTH.equalsIgnoreCase(n)){
+                         String v = header.getValue();
+                         if (HTTPConstants.HEADER_HOST.equalsIgnoreCase(n)) {
+-                            v = v.replaceFirst(":\\d+$",""); // remove any port specification // $NON-NLS-1$ $NON-NLS-2$
+                             method.getParams().setVirtualHost(v);
+                         } else {
+                             method.addRequestHeader(n, v);
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+index 5cc19bc..76e5bb0 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+@@ -882,7 +882,7 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+                     if (! HTTPConstants.HEADER_CONTENT_LENGTH.equalsIgnoreCase(n)){
+                         String v = header.getValue();
+                         if (HTTPConstants.HEADER_HOST.equalsIgnoreCase(n)) {
+-                            int port = url.getPort();
++                            int port = getPortFromHostHeader(v, url.getPort());
+                             v = v.replaceFirst(":\\d+$",""); // remove any port specification // $NON-NLS-1$ $NON-NLS-2$
+                             if (port != -1) {
+                                 if (port == url.getDefaultPort()) {
+@@ -903,6 +903,28 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+     }
+ 
+     /**
++     * Get port from the value of the Host header, or return the given
++     * defaultValue
++     * 
++     * @param hostHeaderValue
++     *            value of the http Host header
++     * @param defaultValue
++     *            value to be used, when no port could be extracted from
++     *            hostHeaderValue
++     * @return integer representing the port for the host header
++     */
++    private int getPortFromHostHeader(String hostHeaderValue, int defaultValue) {
++        String[] hostParts = hostHeaderValue.split(":");
++        if (hostParts.length > 1) {
++            String portString = hostParts[hostParts.length - 1];
++            if (portString.matches("^\\d+$")) {
++                return Integer.valueOf(portString);
++            }
++        }
++        return defaultValue;
++    }
++
++    /**
+      * Get all the request headers for the <code>HttpMethod</code>
+      *
+      * @param method
+-- 
+1.9.1
+

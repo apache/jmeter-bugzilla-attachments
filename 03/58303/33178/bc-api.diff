@@ -1,0 +1,452 @@
+diff --git a/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java b/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+index 2ea9d0b..b6490de 100644
+--- a/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
++++ b/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+@@ -27,41 +27,45 @@ import java.io.InputStream;
+ import java.math.BigInteger;
+ import java.security.GeneralSecurityException;
+ import java.security.Security;
+-import java.security.cert.CertStore;
+ import java.security.cert.CertificateException;
+ import java.security.cert.CertificateFactory;
+ import java.security.cert.X509Certificate;
+ import java.util.ArrayList;
+-import java.util.Collection;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Properties;
+-import java.util.Vector;
+ 
+ import javax.mail.MessagingException;
+ import javax.mail.Session;
+ import javax.mail.internet.MimeMessage;
+ import javax.mail.internet.MimeMultipart;
+-import javax.security.auth.x500.X500Principal;
+ 
+ import org.apache.commons.io.IOUtils;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
++import org.bouncycastle.asn1.x500.AttributeTypeAndValue;
++import org.bouncycastle.asn1.x500.RDN;
++import org.bouncycastle.asn1.x500.X500Name;
++import org.bouncycastle.asn1.x500.style.BCStyle;
++import org.bouncycastle.asn1.x500.style.IETFUtils;
++import org.bouncycastle.asn1.x509.Extension;
+ import org.bouncycastle.asn1.x509.GeneralName;
+-import org.bouncycastle.asn1.x509.X509Name;
++import org.bouncycastle.asn1.x509.GeneralNames;
++import org.bouncycastle.cert.X509CertificateHolder;
++import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+ import org.bouncycastle.cms.CMSException;
+ import org.bouncycastle.cms.SignerInformation;
+ import org.bouncycastle.cms.SignerInformationStore;
+-import org.bouncycastle.cms.jcajce.JcaX509CertSelectorConverter;
+-import org.bouncycastle.jce.PrincipalUtil;
+-import org.bouncycastle.jce.X509Principal;
++import org.bouncycastle.cms.SignerInformationVerifier;
++import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder;
+ import org.bouncycastle.jce.provider.BouncyCastleProvider;
+ import org.bouncycastle.mail.smime.SMIMEException;
+ import org.bouncycastle.mail.smime.SMIMESignedParser;
++import org.bouncycastle.operator.OperatorCreationException;
+ import org.bouncycastle.operator.bc.BcDigestCalculatorProvider;
+-import org.bouncycastle.x509.extension.X509ExtensionUtil;
++import org.bouncycastle.util.Store;
+ 
+ /**
+  * Helper class which isolates the BouncyCastle code.
+@@ -148,23 +152,29 @@ class SMIMEAssertion {
+         AssertionResult res = new AssertionResult(name);
+ 
+         try {
+-            CertStore certs = s.getCertificatesAndCRLs("Collection", "BC"); // $NON-NLS-1$  // $NON-NLS-2$
++            Store certs = s.getCertificates();
+             SignerInformationStore signers = s.getSignerInfos();
+             Iterator<?> signerIt = signers.getSigners().iterator();
+ 
+             if (signerIt.hasNext()) {
+ 
+                 SignerInformation signer = (SignerInformation) signerIt.next();
+-                Iterator<?> certIt = certs.getCertificates(
+-                        (new JcaX509CertSelectorConverter()).getCertSelector(signer.getSID())).iterator();
++                Iterator<?> certIt = certs.getMatches(signer.getSID()).iterator();
+ 
+                 if (certIt.hasNext()) {
+                     // the signer certificate
+-                    X509Certificate cert = (X509Certificate) certIt.next();
++                    X509CertificateHolder cert = (X509CertificateHolder) certIt.next();
+ 
+                     if (testElement.isVerifySignature()) {
+ 
+-                        if (!signer.verify(cert.getPublicKey(), "BC")) { // $NON-NLS-1$
++                        SignerInformationVerifier verifier = null;
++                        try {
++                            verifier = new JcaSimpleSignerInfoVerifierBuilder().setProvider("BC")
++                                    .build(cert);
++                        } catch (OperatorCreationException e) {
++                            log.error("Can't create a provider", e);
++                        }
++                        if (verifier == null || !signer.verify(verifier)) {
+                             res.setFailure(true);
+                             res.setFailureMessage("Signature is invalid");
+                         }
+@@ -201,10 +211,10 @@ class SMIMEAssertion {
+ 
+                         String subject = testElement.getSignerDn();
+                         if (subject.length() > 0) {
+-                            final X500Principal certPrincipal = cert.getSubjectX500Principal();
+-                            log.debug(certPrincipal.getName(X500Principal.CANONICAL));
+-                            X500Principal principal = new X500Principal(subject);
+-                            log.debug(principal.getName(X500Principal.CANONICAL));
++                            final X500Name certPrincipal = cert.getSubject();
++                            log.debug("DN from cert: " + certPrincipal.toString());
++                            X500Name principal = new X500Name(subject);
++                            log.debug("DN from assertion: " + principal.toString());
+                             if (!principal.equals(certPrincipal)) {
+                                 res.setFailure(true);
+                                 failureMessage
+@@ -215,11 +225,11 @@ class SMIMEAssertion {
+ 
+                         String issuer = testElement.getIssuerDn();
+                         if (issuer.length() > 0) {
+-                            final X500Principal issuerX500Principal = cert.getIssuerX500Principal();
+-                            log.debug(issuerX500Principal.getName(X500Principal.CANONICAL));
+-                            X500Principal principal = new X500Principal(issuer);
+-                            log.debug(principal.getName(X500Principal.CANONICAL));
+-                            if (!principal.equals(issuerX500Principal)) {
++                            final X500Name issuerX500Name = cert.getIssuer();
++                            log.debug("IssuerDN from cert: " + issuerX500Name.toString());
++                            X500Name principal = new X500Name(issuer);
++                            log.debug("IssuerDN from assertion: " + principal);
++                            if (!principal.equals(issuerX500Name)) {
+                                 res.setFailure(true);
+                                 failureMessage
+                                         .append("Issuer distinguished name of signer certificate does not match \"")
+@@ -235,11 +245,11 @@ class SMIMEAssertion {
+                     if (testElement.isSignerCheckByFile()) {
+                         CertificateFactory cf = CertificateFactory
+                                 .getInstance("X.509");
+-                        X509Certificate certFromFile;
++                        X509CertificateHolder certFromFile;
+                         InputStream inStream = null;
+                         try {
+                             inStream = new BufferedInputStream(new FileInputStream(testElement.getSignerCertFile()));
+-                            certFromFile = (X509Certificate) cf.generateCertificate(inStream);
++                            certFromFile = new JcaX509CertificateHolder((X509Certificate) cf.generateCertificate(inStream));
+                         } finally {
+                             IOUtils.closeQuietly(inStream);
+                         }
+@@ -317,28 +327,32 @@ class SMIMEAssertion {
+     /**
+      * Extract email addresses from a certificate
+      * 
+-     * @param cert the X509 certificate
++     * @param cert the X509 certificate holder
+      * @return a List of all email addresses found
+      * @throws CertificateException
+      */
+-    private static List<String> getEmailFromCert(X509Certificate cert)
++    private static List<String> getEmailFromCert(X509CertificateHolder cert)
+             throws CertificateException {
+         List<String> res = new ArrayList<>();
+ 
+-        X509Principal subject = PrincipalUtil.getSubjectX509Principal(cert);
+-        Vector<?> addresses = subject.getValues(X509Name.EmailAddress);
+-        for (Object address: addresses) {
+-            res.add((String) address);
++        X500Name subject = cert.getSubject();
++        for (RDN emails : subject.getRDNs(BCStyle.EmailAddress)) {
++            for (AttributeTypeAndValue emailAttr: emails.getTypesAndValues()) {
++                log.debug("Add email from RDN: " + IETFUtils.valueToString(emailAttr.getValue()));
++                res.add(IETFUtils.valueToString(emailAttr.getValue()));
++            }
+         }
+ 
+-        Collection<?> subjectAltNames =
+-            X509ExtensionUtil.getSubjectAlternativeNames(cert);
+-        for (Object altNameObj : subjectAltNames) {
+-            List<?> altName = (List<?>) altNameObj;
+-            Integer type = (Integer) altName.get(0);
+-            if (type.intValue() == GeneralName.rfc822Name) {
+-                String address = (String) altName.get(1);
+-                res.add(address);
++        Extension subjectAlternativeNames = cert
++                .getExtension(Extension.subjectAlternativeName);
++        if (subjectAlternativeNames != null) {
++            for (GeneralName name : GeneralNames.getInstance(
++                    subjectAlternativeNames.getParsedValue()).getNames()) {
++                if (name.getTagNo() == GeneralName.rfc822Name) {
++                    String email = IETFUtils.valueToString(name.getName());
++                    log.debug("Add email from subjectAlternativeName: " + email);
++                    res.add(email);
++                }
+             }
+         }
+ 
+diff --git a/test/src/org/apache/jmeter/assertions/SMIMEAssertionTest.java b/test/src/org/apache/jmeter/assertions/SMIMEAssertionTest.java
+new file mode 100644
+index 0000000..bea7db3
+--- /dev/null
++++ b/test/src/org/apache/jmeter/assertions/SMIMEAssertionTest.java
+@@ -0,0 +1,169 @@
++package org.apache.jmeter.assertions;
++
++import java.io.ByteArrayOutputStream;
++import java.io.IOException;
++import java.util.Properties;
++
++import javax.mail.MessagingException;
++import javax.mail.Session;
++import javax.mail.internet.MimeMessage;
++
++import junit.framework.TestCase;
++
++import org.apache.jmeter.samplers.SampleResult;
++
++/**
++ * Tests for the SMIMEAssertion.
++ * <p>
++ * 
++ * A signed email named {@code signed_email.eml} is needed to complete these
++ * tests. The one included was generated with the following script:
++ * 
++ * <pre>
++ * {@code
++ * # Create a key without a password
++ * openssl genrsa -out email.key 2048 -nodes
++ * 
++ * # Create a config for the certificate request
++ * cat > email.cnf <<EOF
++ * [req]
++ * prompt = no
++ * distinguished_name = dn
++ * req_extensions = ext
++ * 
++ * [dn]
++ * CN = alice example
++ * emailAddress = alice@a.example.com
++ * O = Example Ltd
++ * L = Wherever
++ * C = AU
++ * 
++ * [ext]
++ * subjectAltName = email:alice@a.example.com,email:bob@b.example.com,email:charlie@example.com,DNS:notused.example.com
++ * EOF
++ * 
++ * # Create a certificate request
++ * openssl req -new -config email.cnf -key email.key -out email.csr
++ * 
++ * cat > email.ext <<EOF
++ * subjectAltName = email:alice@a.example.com,email:bob@b.example.com,email:charlie@example.com
++ * EOF
++ * 
++ * # Self-Sign the request and add the subjectAltName
++ * openssl x509 -req -days 365 -in email.csr -signkey email.key -out email.pem -extfile email.ext
++ * 
++ * # Create a simple email text
++ * cat >email.txt <<EOF
++ * Content-type: text/plain
++ * 
++ * This was really written by me.
++ * EOF
++ * 
++ * # Create the smime with the generated key and the simple mail
++ * openssl smime -sign -from bob@b.example.com -to someone@example.com \
++ *               -subject "Signed Message" -signer email.pem \
++ *               -in email.txt -inkey email.key -out signed_email.eml
++ * }
++ * </pre>
++ * 
++ * If a new signed email is generated, the signer key and certificate will
++ * change, and thus the tests will have to be changed as well (serial number!).
++ */
++public class SMIMEAssertionTest extends TestCase {
++
++    private MimeMessage msg;
++    private SampleResult parent;
++
++    public void setUp() throws MessagingException, IOException {
++        Session mailSession = Session.getDefaultInstance(new Properties());
++        msg = new MimeMessage(mailSession, this.getClass().getResourceAsStream(
++                "signed_email.eml"));
++        parent = new SampleResult();
++        parent.sampleStart();
++        parent.addSubResult(createChildSample());
++    }
++
++    public void testSignature() {
++        SMIMEAssertionTestElement testElement = new SMIMEAssertionTestElement();
++        testElement.setVerifySignature(true);
++        AssertionResult result = SMIMEAssertion.getResult(testElement, parent,
++                "Test");
++        assertFalse("Result is not an error", result.isError());
++        assertFalse("Result did not fail: " + result.getFailureMessage(),
++                result.isFailure());
++    }
++
++    public void testSignerEmail() {
++        SMIMEAssertionTestElement testElement = new SMIMEAssertionTestElement();
++        testElement.setSignerCheckConstraints(true);
++        testElement.setSignerEmail("bob@b.example.com");
++        AssertionResult result = SMIMEAssertion.getResult(testElement, parent,
++                "Test");
++        assertFalse("Result is not an error", result.isError());
++        assertFalse("Result did not fail: " + result.getFailureMessage(),
++                result.isFailure());
++    }
++
++    public void testSignerSerial() {
++        SMIMEAssertionTestElement testElement = new SMIMEAssertionTestElement();
++        testElement.setSignerCheckConstraints(true);
++        testElement.setSignerSerial("0xc8c46f8fbf9ebea4");
++        AssertionResult result = SMIMEAssertion.getResult(testElement, parent,
++                "Test");
++        assertFalse("Result is not an error", result.isError());
++        assertFalse("Result did not fail: " + result.getFailureMessage(),
++                result.isFailure());
++    }
++
++    public void testSignerSignerDN() {
++        SMIMEAssertionTestElement testElement = new SMIMEAssertionTestElement();
++        testElement.setSignerCheckConstraints(true);
++        testElement
++                .setSignerDn("CN=alice example, E=alice@a.example.com, O=Example Ltd, L=Wherever, C=AU");
++        AssertionResult result = SMIMEAssertion.getResult(testElement, parent,
++                "Test");
++        assertFalse("Result is not an error", result.isError());
++        assertFalse("Result did not fail: " + result.getFailureMessage(),
++                result.isFailure());
++    }
++
++    public void testSignerIssuerDN() {
++        SMIMEAssertionTestElement testElement = new SMIMEAssertionTestElement();
++        testElement.setSignerCheckConstraints(true);
++        testElement
++                .setIssuerDn("CN=alice example, E=alice@a.example.com, O=Example Ltd, L=Wherever, C=AU");
++        AssertionResult result = SMIMEAssertion.getResult(testElement, parent,
++                "Test");
++        assertFalse("Result is not an error", result.isError());
++        assertFalse("Result did not fail: " + result.getFailureMessage(),
++                result.isFailure());
++    }
++
++    public void testSignerCert() {
++        SMIMEAssertionTestElement testElement = new SMIMEAssertionTestElement();
++        testElement.setSignerCheckConstraints(true);
++        testElement.setSignerCheckByFile(true);
++        testElement.setSignerCertFile(getClass().getResource("email.pem")
++                .getPath());
++        AssertionResult result = SMIMEAssertion.getResult(testElement, parent,
++                "Test");
++        assertFalse("Result is not an error", result.isError());
++        assertFalse("Result did not fail: " + result.getFailureMessage(),
++                result.isFailure());
++    }
++
++    private SampleResult createChildSample() throws MessagingException,
++            IOException {
++        SampleResult child = new SampleResult();
++        child.setSampleLabel("Message " + msg.getMessageNumber());
++        child.setContentType(msg.getContentType());
++        child.setEncodingAndType(msg.getContentType());
++        ByteArrayOutputStream outbuf = new ByteArrayOutputStream();
++        msg.writeTo(outbuf);
++        child.setResponseData(outbuf.toByteArray());
++        child.setDataType(SampleResult.TEXT);
++        child.setResponseOK();
++        return child;
++    }
++
++}
+diff --git a/test/src/org/apache/jmeter/assertions/email.pem b/test/src/org/apache/jmeter/assertions/email.pem
+new file mode 100644
+index 0000000..b302f61
+--- /dev/null
++++ b/test/src/org/apache/jmeter/assertions/email.pem
+@@ -0,0 +1,22 @@
++-----BEGIN CERTIFICATE-----
++MIIDsTCCApmgAwIBAgIJAMjEb4+/nr6kMA0GCSqGSIb3DQEBCwUAMHIxFjAUBgNV
++BAMTDWFsaWNlIGV4YW1wbGUxIjAgBgkqhkiG9w0BCQEWE2FsaWNlQGEuZXhhbXBs
++ZS5jb20xFDASBgNVBAoTC0V4YW1wbGUgTHRkMREwDwYDVQQHEwhXaGVyZXZlcjEL
++MAkGA1UEBhMCQVUwHhcNMTUxMDA4MTcxMzAwWhcNMTYxMDA3MTcxMzAwWjByMRYw
++FAYDVQQDEw1hbGljZSBleGFtcGxlMSIwIAYJKoZIhvcNAQkBFhNhbGljZUBhLmV4
++YW1wbGUuY29tMRQwEgYDVQQKEwtFeGFtcGxlIEx0ZDERMA8GA1UEBxMIV2hlcmV2
++ZXIxCzAJBgNVBAYTAkFVMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
++tvFwdH/wkxMHX4CU8j6nnrH4BOu8aeDfjgE3Bb7S7sgUuouvWzUbLk/QxQzaH0uh
++kkjK6pvYQBnrzvjtWjxE/tgZAY3YYNPux0N1YGcgzsTm8e2b//hXWYZP7+ru4ify
++oMDn8T5H5ZLwuAaKKUJZbg5HbRHZLanEaksXyNIbeeJ1E8VOBsgpYLayrCYCTZeI
++N5S0lat77I6Eak8qxCy4BNBWNZC4CpFPgZ+vanS8ZNHlwWcD05+cgyubSedvCyq1
++UpmHeNs4GrFfJxy7rqMNcDxxqQ+y8sK/kvp/E7EyhUjPct/WJVeyezb7ICqRg/SA
++4iBiBmQw0xsVR98718ePSQIDAQABo0owSDBGBgNVHREEPzA9gRNhbGljZUBhLmV4
++YW1wbGUuY29tgRFib2JAYi5leGFtcGxlLmNvbYETY2hhcmxpZUBleGFtcGxlLmNv
++bTANBgkqhkiG9w0BAQsFAAOCAQEAEa7gGC44HIidRWvCswdKtTvO9yduG7yy1izT
++LBJd3OSuqJ/tcy4QmImcBvtM0p/M0dIegIJBWueiymf4Rj5d/l4Zs4pO0T72e4qG
++tjMIWNShkM1EXHqI4T5bSx8dUstDxyop54WhoriLotxAB4fLbqWcDr9x7PaE9FZ8
++c8O73u3Yo5IgteGJGmSh/SWxFOglDcBkjasNG0LoyC4A8OYtOIZslFDSBBBCovIV
++3VYKwNgczwj2zpHa8jh3GyqBIscTZyKHU79hR1nrUgVzgaBIhiQ0ZLIFar7XuyMC
++xqgk0AeDAAcyqbADF5NfDYgWDIrB4WDgnufwVg9Q5hQi5h6z5w==
++-----END CERTIFICATE-----
+diff --git a/test/src/org/apache/jmeter/assertions/signed_email.eml b/test/src/org/apache/jmeter/assertions/signed_email.eml
+new file mode 100644
+index 0000000..02045ea
+--- /dev/null
++++ b/test/src/org/apache/jmeter/assertions/signed_email.eml
+@@ -0,0 +1,56 @@
++To: someone@example.com
++From: bob@b.example.com
++Subject: Signed Message
++MIME-Version: 1.0
++Content-Type: multipart/signed; protocol="application/x-pkcs7-signature"; micalg="sha-256"; boundary="----5EFD563634B646BB8C420E6DA8819BE6"
++
++This is an S/MIME signed message
++
++------5EFD563634B646BB8C420E6DA8819BE6
++Content-type: text/plain
++
++This was really written by me.
++
++------5EFD563634B646BB8C420E6DA8819BE6
++Content-Type: application/x-pkcs7-signature; name="smime.p7s"
++Content-Transfer-Encoding: base64
++Content-Disposition: attachment; filename="smime.p7s"
++
++MIIGggYJKoZIhvcNAQcCoIIGczCCBm8CAQExDzANBglghkgBZQMEAgEFADALBgkq
++hkiG9w0BBwGgggO1MIIDsTCCApmgAwIBAgIJAMjEb4+/nr6kMA0GCSqGSIb3DQEB
++CwUAMHIxFjAUBgNVBAMTDWFsaWNlIGV4YW1wbGUxIjAgBgkqhkiG9w0BCQEWE2Fs
++aWNlQGEuZXhhbXBsZS5jb20xFDASBgNVBAoTC0V4YW1wbGUgTHRkMREwDwYDVQQH
++EwhXaGVyZXZlcjELMAkGA1UEBhMCQVUwHhcNMTUxMDA4MTcxMzAwWhcNMTYxMDA3
++MTcxMzAwWjByMRYwFAYDVQQDEw1hbGljZSBleGFtcGxlMSIwIAYJKoZIhvcNAQkB
++FhNhbGljZUBhLmV4YW1wbGUuY29tMRQwEgYDVQQKEwtFeGFtcGxlIEx0ZDERMA8G
++A1UEBxMIV2hlcmV2ZXIxCzAJBgNVBAYTAkFVMIIBIjANBgkqhkiG9w0BAQEFAAOC
++AQ8AMIIBCgKCAQEAtvFwdH/wkxMHX4CU8j6nnrH4BOu8aeDfjgE3Bb7S7sgUuouv
++WzUbLk/QxQzaH0uhkkjK6pvYQBnrzvjtWjxE/tgZAY3YYNPux0N1YGcgzsTm8e2b
++//hXWYZP7+ru4ifyoMDn8T5H5ZLwuAaKKUJZbg5HbRHZLanEaksXyNIbeeJ1E8VO
++BsgpYLayrCYCTZeIN5S0lat77I6Eak8qxCy4BNBWNZC4CpFPgZ+vanS8ZNHlwWcD
++05+cgyubSedvCyq1UpmHeNs4GrFfJxy7rqMNcDxxqQ+y8sK/kvp/E7EyhUjPct/W
++JVeyezb7ICqRg/SA4iBiBmQw0xsVR98718ePSQIDAQABo0owSDBGBgNVHREEPzA9
++gRNhbGljZUBhLmV4YW1wbGUuY29tgRFib2JAYi5leGFtcGxlLmNvbYETY2hhcmxp
++ZUBleGFtcGxlLmNvbTANBgkqhkiG9w0BAQsFAAOCAQEAEa7gGC44HIidRWvCswdK
++tTvO9yduG7yy1izTLBJd3OSuqJ/tcy4QmImcBvtM0p/M0dIegIJBWueiymf4Rj5d
++/l4Zs4pO0T72e4qGtjMIWNShkM1EXHqI4T5bSx8dUstDxyop54WhoriLotxAB4fL
++bqWcDr9x7PaE9FZ8c8O73u3Yo5IgteGJGmSh/SWxFOglDcBkjasNG0LoyC4A8OYt
++OIZslFDSBBBCovIV3VYKwNgczwj2zpHa8jh3GyqBIscTZyKHU79hR1nrUgVzgaBI
++hiQ0ZLIFar7XuyMCxqgk0AeDAAcyqbADF5NfDYgWDIrB4WDgnufwVg9Q5hQi5h6z
++5zGCApEwggKNAgEBMH8wcjEWMBQGA1UEAxMNYWxpY2UgZXhhbXBsZTEiMCAGCSqG
++SIb3DQEJARYTYWxpY2VAYS5leGFtcGxlLmNvbTEUMBIGA1UEChMLRXhhbXBsZSBM
++dGQxETAPBgNVBAcTCFdoZXJldmVyMQswCQYDVQQGEwJBVQIJAMjEb4+/nr6kMA0G
++CWCGSAFlAwQCAQUAoIHkMBgGCSqGSIb3DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZI
++hvcNAQkFMQ8XDTE1MTAwODE3MTMwMFowLwYJKoZIhvcNAQkEMSIEIMGcHDb2GAxu
++gaLHZ+WhdwrgMnYTgE58z3xhClvyHMJqMHkGCSqGSIb3DQEJDzFsMGowCwYJYIZI
++AWUDBAEqMAsGCWCGSAFlAwQBFjALBglghkgBZQMEAQIwCgYIKoZIhvcNAwcwDgYI
++KoZIhvcNAwICAgCAMA0GCCqGSIb3DQMCAgFAMAcGBSsOAwIHMA0GCCqGSIb3DQMC
++AgEoMA0GCSqGSIb3DQEBAQUABIIBAAMGc7T6RiYkZ6i50saYRmXKWw04ft4ocdy+
++f/T/bllQ9Evrpl/swWlJSKjhjhRigM2g/l/N1sGeOv5dh4+ElNUCSvMwP4p2U8XE
++MjhPP3UoIkQKC0mYE4oYJttnXrfIPovvOHkqUGBl2XYcNbbVwD41uuq1gP+mOkcW
++oaScHXBz/bOB0k1PJC8VjYCRfZsx+8IpZTcBMGY0Eij32jEy6T5moFL8DLBeM4S/
++0fchDro8qJ2arHQXbMnjdo+pXkQb5wS3yfHCZEFjikrHSSGuISYfX/81aXFhbuVC
++1pwzfLWPX8gV8eU3n9zrf1smiIWw81ujN7aBWi917w9gC6xwim0=
++
++------5EFD563634B646BB8C420E6DA8819BE6--
++

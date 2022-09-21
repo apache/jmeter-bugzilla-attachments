@@ -1,0 +1,90 @@
+From 6ebc6f57c1ef42fef72e5c6b6b554a2e47bcf052 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 16 Jun 2018 16:11:33 +0200
+Subject: [PATCH] Open different RemoteObjects on different ports.
+
+---
+ .../jmeter/samplers/RemoteSampleListenerImpl.java     | 11 +++++++++--
+ .../jmeter/threads/RemoteThreadsListenerImpl.java     | 11 +++++++++--
+ xdocs/usermanual/remote-test.xml                      |  6 +++---
+ 3 files changed, 21 insertions(+), 7 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/samplers/RemoteSampleListenerImpl.java b/src/core/org/apache/jmeter/samplers/RemoteSampleListenerImpl.java
+index 2122863fd..76ec5b73e 100644
+--- a/src/core/org/apache/jmeter/samplers/RemoteSampleListenerImpl.java
++++ b/src/core/org/apache/jmeter/samplers/RemoteSampleListenerImpl.java
+@@ -37,8 +37,8 @@ public class RemoteSampleListenerImpl extends java.rmi.server.UnicastRemoteObjec
+ 
+     private final SampleListener sampleListener;
+     
+-    private static final int DEFAULT_LOCAL_PORT = 
+-        JMeterUtils.getPropDefault("client.rmi.localport", 0); // $NON-NLS-1$
++    private static final int DEFAULT_LOCAL_PORT = addOffset(
++        JMeterUtils.getPropDefault("client.rmi.localport", 0), 2); // $NON-NLS-1$
+ 
+     public RemoteSampleListenerImpl(Object listener) throws RemoteException {
+         super(DEFAULT_LOCAL_PORT, RmiUtils.createClientSocketFactory(),  RmiUtils.createServerSocketFactory());
+@@ -54,6 +54,13 @@ public class RemoteSampleListenerImpl extends java.rmi.server.UnicastRemoteObjec
+         }
+     }
+ 
++    private static int addOffset(int port, int offset) {
++        if (port == 0) {
++            return 0;
++        }
++        return port + offset;
++    }
++
+     @Override
+     public void testStarted() {
+         if (testListener != null) {
+diff --git a/src/core/org/apache/jmeter/threads/RemoteThreadsListenerImpl.java b/src/core/org/apache/jmeter/threads/RemoteThreadsListenerImpl.java
+index d7c2fcf18..5a40c22df 100644
+--- a/src/core/org/apache/jmeter/threads/RemoteThreadsListenerImpl.java
++++ b/src/core/org/apache/jmeter/threads/RemoteThreadsListenerImpl.java
+@@ -49,8 +49,8 @@ public class RemoteThreadsListenerImpl extends UnicastRemoteObject implements
+     /**
+      * 
+      */
+-    private static final int DEFAULT_LOCAL_PORT = 
+-            JMeterUtils.getPropDefault("client.rmi.localport", 0); // $NON-NLS-1$
++    private static final int DEFAULT_LOCAL_PORT = addOffset(
++            JMeterUtils.getPropDefault("client.rmi.localport", 0), 1); // $NON-NLS-1$
+ 
+     /**
+      * @throws RemoteException if failed to export object
+@@ -80,6 +80,13 @@ public class RemoteThreadsListenerImpl extends UnicastRemoteObject implements
+         }
+     }
+ 
++    private static int addOffset(int port, int offset) {
++        if (port == 0) {
++            return 0;
++        }
++        return port + offset;
++    }
++
+     /**
+      * 
+      * @see RemoteThreadsListener#threadStarted()
+diff --git a/xdocs/usermanual/remote-test.xml b/xdocs/usermanual/remote-test.xml
+index 1c1cac60e..3564924af 100644
+--- a/xdocs/usermanual/remote-test.xml
++++ b/xdocs/usermanual/remote-test.xml
+@@ -92,10 +92,10 @@ there is no need to start RMI registry separately.
+ To revert to the previous behaviour, define the JMeter property <source>server.rmi.create=false</source> on the server host systems.
+ </p>
+ <p>
+-By default, RMI uses a dynamic port for the JMeter server engine. This can cause problems for firewalls,
++By default, RMI uses dynamic ports for the JMeter server engine. This can cause problems for firewalls,
+ so you can define the JMeter property <code>server.rmi.localport</code> 
+-to control this port number.
+-If this is non-zero, it will be used as the local port number for the server engine.
++to control this port numbers.
++If this is non-zero, it will be used as the base for local port numbers for the server engine. At the moment JMeter will open up to three ports beginning with the port defined in <code>server.rmi.localport</code>.
+ </p>
+ <p><b>Step 2: Add the server IP to your client's Properties File</b></p>
+ <p>Edit the properties file <i>on the controlling JMeter machine</i>.  In <code>JMETER_HOME/bin/jmeter.properties</code>,
+-- 
+2.17.1
+

@@ -1,0 +1,26 @@
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+index 032ba36..6b09814 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+@@ -299,6 +299,11 @@
+     /** Whether to remove '/pathsegment/..' from redirects; default true */
+     private static final boolean REMOVESLASHDOTDOT =
+             JMeterUtils.getPropDefault("httpsampler.redirect.removeslashdotdot", true);
++
++    // Bug 62584
++    /** Whether to remove '/./' from redirects; default false */
++    private static final boolean REMOVESLASHDOTSLASH =
++            JMeterUtils.getPropDefault("httpsampler.redirect.removeslashdotslash", false);    
+     
+     private static final String HTTP_PREFIX = HTTPConstants.PROTOCOL_HTTP+"://"; // $NON-NLS-1$
+     private static final String HTTPS_PREFIX = HTTPConstants.PROTOCOL_HTTPS+"://"; // $NON-NLS-1$
+@@ -1564,6 +1569,9 @@
+             if (REMOVESLASHDOTDOT) {
+                 location = ConversionUtils.removeSlashDotDot(location);
+             }
++            if (REMOVESLASHDOTSLASH) {
++            	location = location.replaceAll("/./", "/");
++            }
+             // Browsers seem to tolerate Location headers with spaces,
+             // replacing them automatically with %20. We want to emulate
+             // this behaviour.

@@ -1,0 +1,212 @@
+Index: jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+===================================================================
+--- jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(revision 1)
++++ jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(working copy)
+@@ -28,6 +28,8 @@
+ import java.net.HttpURLConnection;
+ import java.net.URL;
+ import java.net.URLConnection;
++import java.net.SocketTimeoutException;
++import java.net.SocketException;
+ 
+ import java.util.Iterator;
+ import java.util.List;
+@@ -52,6 +54,10 @@
+ 
+ import org.apache.log.Logger;
+ 
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterVariables;
++
+ /**
+  * A sampler which understands all the parts necessary to read statistics about
+  * HTTP requests, including cookies and authentication.
+@@ -163,6 +169,16 @@
+         }
+ 		
+         HttpURLConnection conn = (HttpURLConnection) u.openConnection();
++        
++        // Set Connect Timeout
++        conn.setConnectTimeout(JMeterUtils.getPropDefault("httpsampler.timeout.connect", 0));	
++        log.debug("timeout.connect set to " + JMeterUtils.getPropDefault("httpsampler.timeout.connect", 0));        
++        // Set individual Read Timeout
++        String timeout_read = getTimeout();
++        if (timeout_read.equals("")) timeout_read = JMeterUtils.getPropDefault("httpsampler.timeout.read", "0");            
++        conn.setReadTimeout(Integer.parseInt(timeout_read)); //NumberFormatException already caught by HttpTestSampleGui.java
++        log.debug("timeout.read set to " + timeout_read + " for request '" + getName() + "'");        
++        
+         // Update follow redirects setting just for this connection
+         conn.setInstanceFollowRedirects(getAutoRedirects());
+ 
+@@ -538,6 +554,40 @@
+ 
+ 			log.debug("End : sample");
+ 			return res;
++		} catch (SocketTimeoutException e) {
++			res.sampleEnd();					
++			String exType = e.getMessage();		
++			log.debug("SocketTimeoutException occured: " + exType + " for url " + conn.getURL() );			
++			if (exType.equals("Read timed out")) {
++				res.setResponseCode("621");
++			}
++			if (exType.equals("connect timed out")) {
++				res.setResponseCode("620");				
++			}
++			res.setResponseMessage(e.getMessage());			
++			res.setSuccessful(false);									
++			res.setDataType(HTTPSampleResult.TEXT);
++			res.setResponseData(e.getMessage().getBytes());		
++			conn.disconnect();
++			conn = null;								
++			return res;
++		} catch (SocketException e) {
++			String exType = e.getMessage();		
++			res.sampleEnd();							
++			if (exType.equals("Connection reset")) {
++				res.setResponseCode("622");
++			} else if (exType.equals("Connection timed out: connect")) {
++				res.setResponseCode("620");
++			} else {
++				res.setResponseCode("623");
++			}
++			res.setResponseMessage(e.getMessage());
++			res.setSuccessful(false);
++			res.setDataType(HTTPSampleResult.TEXT);
++			res.setResponseData(e.getMessage().getBytes());			
++			conn.disconnect();
++			conn = null;											
++			return res;				
+ 		} catch (IOException e) {
+ 			res.sampleEnd();
+ 			// We don't want to continue using this connection, even if KeepAlive is set
+
+Index: jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 1)
++++ jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -170,6 +170,8 @@
+ 
+ 	public final static String MONITOR = "HTTPSampler.monitor"; // $NON-NLS-1$
+ 
++	public final static String TIMEOUT = "HTTPSampler.timeout"; 
++
+ 	/** A number to indicate that the port has not been set. * */
+ 	public static final int UNSPECIFIED_PORT = 0;
+     public static final String UNSPECIFIED_PORT_AS_STRING = "0";
+@@ -463,6 +465,14 @@
+ 		return this.getPropertyAsBoolean(MONITOR);
+ 	}
+ 
++	public void setTimeout(String value) {
++		this.setProperty(TIMEOUT, value);
++	}
++	
++	public String getTimeout() {
++		return this.getPropertyAsString(TIMEOUT);
++	}
++
+     public void setImplementation(String value) {
+         this.setProperty(IMPLEMENTATION, value);
+     }
+
+Index: jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java
+===================================================================
+--- jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java	(revision 1)
++++ jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java	(working copy)
+@@ -24,6 +24,10 @@
+ import javax.swing.BorderFactory;
+ import javax.swing.JCheckBox;
+ import javax.swing.JPanel;
++import javax.swing.JTextField;
++import javax.swing.InputVerifier;
++import javax.swing.JComponent;
++import javax.swing.JLabel;
+ import org.apache.jmeter.gui.util.HorizontalPanel;
+ import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.protocol.http.config.gui.MultipartUrlConfigGui;
+@@ -47,9 +51,13 @@
+ 	private JCheckBox getImages;
+ 
+ 	private JCheckBox isMon;
++	
++	private JLabeledTextField timeoutField;
+ 
+ 	private JLabeledTextField embeddedRE; // regular expression used to match against embedded resource URLs
+ 	
++	private JPanel timeoutPanel;
++	
+ 	public HttpTestSampleGui() {
+ 		init();
+ 	}
+@@ -60,6 +68,7 @@
+ 		final HTTPSamplerBase samplerBase = (HTTPSamplerBase) element;
+ 		getImages.setSelected(samplerBase.isImageParser());
+ 		isMon.setSelected(samplerBase.isMonitor());
++		timeoutField.setText(samplerBase.getTimeout());
+ 		embeddedRE.setText(samplerBase.getEmbeddedUrlRE());
+ 	}
+ 
+@@ -86,6 +95,7 @@
+ 			sampler.removeProperty(HTTPSamplerBase.IMAGE_PARSER);
+ 		}
+ 		samplerBase.setMonitor(isMon.isSelected());
++		samplerBase.setTimeout(timeoutField.getText());
+ 		samplerBase.setEmbeddedUrlRE(embeddedRE.getText());
+ 		this.configureTestElement(sampler);
+ 	}
+@@ -125,9 +135,22 @@
+ 		// Embedded URL match regex
+ 		embeddedRE = new JLabeledTextField(JMeterUtils.getResString("web_testing_embedded_url_pattern"),30); // $NON-NLS-1$
+ 		optionalTasksPanel.add(embeddedRE);
++		// Timeout panel		
++		timeoutPanel = new JPanel();
++		timeoutField = new JLabeledTextField("Timeout", 12); //$NON-NLS-1$			
++		String timeout_read = JMeterUtils.getPropDefault("httpsampler.timeout.read", "0");
++		JLabel timeoutInfo = new JLabel("(leave empty to use default read-timeout of " + timeout_read + ", use 0 for timeout of infinity)");			
++		timeoutPanel.add(timeoutField);
++		timeoutPanel.add(timeoutInfo);
++		optionalTasksPanel.add(timeoutPanel, BorderLayout.WEST);
++		
+ 		return optionalTasksPanel;
+ 	}
+ 
++	public void setTimeoutPanelVisible(boolean visible) {
++		this.timeoutPanel.setVisible(visible);
++	}
++
+ 	public Dimension getPreferredSize() {
+ 		return getMinimumSize();
+ 	}
+ 	
+Index: jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui2.java
+===================================================================
+--- jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui2.java	(revision 1)
++++ jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui2.java	(working copy)
+@@ -30,6 +30,7 @@
+ 
+ 	public HttpTestSampleGui2() {
+ 		super.init();
++		this.setTimeoutPanelVisible(false);
+ 	}
+ 
+ 	public TestElement createTestElement() { 	
+ 
+Index: jakarta-jmeter-2.3/bin/jmeter.properties
+===================================================================
+--- jakarta-jmeter-2.3/bin/jmeter.properties	(revision 1)
++++ jakarta-jmeter-2.3/bin/jmeter.properties	(working copy)
+@@ -183,6 +183,14 @@
+ #http.java.sampler.retries=10
+ 
+ #---------------------------------------------------------------------------
++# Java HTTPSampler configuration
++#---------------------------------------------------------------------------
++# set default read and connect timeout for HttpSampler
++# if not set, use "0" as default value
++#httpclient.timeout.connect=2000
++#httpclient.timeout.read=5000
++
++#---------------------------------------------------------------------------
+ # HTTPClient configuration
+ #---------------------------------------------------------------------------

@@ -1,0 +1,273 @@
+Index: src/core/org/apache/jmeter/gui/IStopable.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/IStopable.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/IStopable.java	(revision 0)
+@@ -0,0 +1,15 @@
++/**
++ * 
++ */
++package org.apache.jmeter.gui;
++
++/**
++ * Interface that identifies processes to stop on close or load of new project files
++ */
++public interface IStopable {
++
++    /**
++     * Stop server
++     */
++    public void stopServer();
++}
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1166194)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -22,7 +22,11 @@
+ import java.awt.event.MouseEvent;
+ import java.beans.Introspector;
+ import java.io.IOException;
++import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.HashMap;
++import java.util.Iterator;
++import java.util.List;
+ import java.util.Map;
+ 
+ import javax.swing.JOptionPane;
+@@ -579,6 +583,8 @@
+ 
+     private String testPlanFile;
+ 
++    private List<IStopable> stopables = Collections.synchronizedList(new ArrayList<IStopable>());
++
+     /**
+      * Sets the filepath of the current test plan. It's shown in the main frame
+      * title and used on saving.
+@@ -646,4 +652,36 @@
+         });
+ 
+     }
++
++    /**
++     * Unregister stoppable
++     * @param stoppable IStopable
++     */
++    public void unregister(IStopable stoppable) {
++        for (Iterator<IStopable> iterator = stopables .iterator(); iterator.hasNext();) {
++            IStopable stopable = iterator.next();
++            if(stopable == stoppable)
++            {
++                iterator.remove();
++            }
++        }
++    }
++    
++    /**
++     * Register process to stop on reload
++     * @param stoppable
++     */
++    public void register(IStopable stoppable) {
++        stopables.add(stoppable);
++    }
++
++    /**
++     * 
++     * @return List<IStoppable> Copy of IStoppable
++     */
++    public List<IStopable> getIStopables() {
++        ArrayList<IStopable> list = new ArrayList<IStopable>();
++        list.addAll(stopables);
++        return list;
++    }
+ }
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/action/Close.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Close.java	(revision 1166194)
++++ src/core/org/apache/jmeter/gui/action/Close.java	(working copy)
+@@ -87,7 +87,7 @@
+                 return false; // Don't clear the plan
+             }
+         }
+-
++        ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.STOP_THREAD));
+         closeProject(e);
+         return true;
+     }
+Index: src/core/org/apache/jmeter/gui/action/Load.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Load.java	(revision 1166194)
++++ src/core/org/apache/jmeter/gui/action/Load.java	(working copy)
+@@ -91,6 +91,8 @@
+     }
+ 
+     static void loadProjectFile(ActionEvent e, File f, boolean merging) {
++        ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.STOP_THREAD));
++
+         GuiPackage guiPackage = GuiPackage.getInstance();
+         InputStream reader = null;
+         try {
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1166194)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -81,6 +81,7 @@
+     public static final String SUB_TREE_MERGED  = "sub_tree_merged"; // $NON-NLS-1$
+     public static final String SUB_TREE_SAVED   = "sub_tree_saved"; // $NON-NLS-1$
+     public static final String WHAT_CLASS       = "what_class"; // $NON-NLS-1$
++    public static final String STOP_THREAD       = "stop_thread"; // $NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames(){
+Index: src/core/org/apache/jmeter/gui/action/StopStoppables.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/StopStoppables.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/StopStoppables.java	(revision 0)
+@@ -0,0 +1,59 @@
++/**
++ * 
++ */
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.IStopable;
++
++/**
++ * Stops stopables (Proxy, Mirror)
++ * @since 2.5.1
++ */
++public class StopStoppables extends AbstractAction implements ActionListener {
++    private static final Set<String> commands = new HashSet<String>();
++
++    static {
++        commands.add(ActionNames.STOP_THREAD);
++    }
++    
++    /**
++     * 
++     */
++    public StopStoppables() {
++        super();
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.gui.action.AbstractAction#getActionNames()
++     */
++    @Override
++    public Set<String> getActionNames() {
++        return commands;
++    }
++
++    /* (non-Javadoc)
++     * @see java.awt.event.ActionListener#actionPerformed(java.awt.event.ActionEvent)
++     */
++    public void actionPerformed(ActionEvent e) {
++        
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.gui.action.AbstractAction#doAction(java.awt.event.ActionEvent)
++     */
++    @Override
++    public void doAction(ActionEvent e) {
++        List<IStopable> stopables = GuiPackage.getInstance().getIStopables();
++        for (IStopable element : stopables) {
++            element.stopServer();
++            GuiPackage.getInstance().unregister(element);
++        }
++    }
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java	(revision 1166194)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java	(working copy)
+@@ -26,6 +26,7 @@
+ import java.util.HashMap;
+ import java.util.Map;
+ 
++import org.apache.jmeter.gui.IStopable;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+@@ -36,7 +37,7 @@
+  * request.
+  *
+  */
+-public class Daemon extends Thread {
++public class Daemon extends Thread implements IStopable {
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 1166194)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -340,6 +340,7 @@
+         try {
+             server = new Daemon(getPort(), this);
+             server.start();
++            GuiPackage.getInstance().register(server);
+         } catch (IOException e) {
+             log.error("Could not create Proxy daemon", e);
+             throw e;
+@@ -420,6 +421,7 @@
+     public void stopProxy() {
+         if (server != null) {
+             server.stopServer();
++            GuiPackage.getInstance().unregister(server);
+             try {
+                 server.join(1000); // wait for server to stop
+             } catch (InterruptedException e) {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorServer.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorServer.java	(revision 1166194)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorServer.java	(working copy)
+@@ -22,6 +22,7 @@
+ import java.net.ServerSocket;
+ import java.net.Socket;
+ 
++import org.apache.jmeter.gui.IStopable;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+@@ -32,7 +33,7 @@
+  * For each client request, creates a thread to handle the request.
+  *
+  */
+-public class HttpMirrorServer extends Thread {
++public class HttpMirrorServer extends Thread implements IStopable {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     /**
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorControl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorControl.java	(revision 1166194)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/HttpMirrorControl.java	(working copy)
+@@ -18,6 +18,7 @@
+ 
+ package org.apache.jmeter.protocol.http.control;
+ 
++import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.property.IntegerProperty;
+ 
+@@ -75,11 +76,13 @@
+     public void startHttpMirror() {
+         server = new HttpMirrorServer(getPort());
+         server.start();
++        GuiPackage.getInstance().register(server);
+     }
+ 
+     public void stopHttpMirror() {
+         if (server != null) {
+             server.stopServer();
++            GuiPackage.getInstance().unregister(server);
+             try {
+                 server.join(1000); // wait for server to stop
+             } catch (InterruptedException e) {

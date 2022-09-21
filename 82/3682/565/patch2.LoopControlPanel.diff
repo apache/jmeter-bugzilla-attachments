@@ -1,0 +1,66 @@
+--- \jakarta-jmeter-cvs\jakarta-jmeter\src\org\apache\jmeter\gui\LoopControlPanel.java	Fri Aug 31 00:46:44 2001
++++ \jakarta-jmeter-nightly\2001.09.15\jakarta-jmeter\src\org\apache\jmeter\gui\LoopControlPanel.java	Tue Sep 18 13:36:00 2001
+@@ -75,6 +75,7 @@
+ 	LoopController model;
+ 	JCheckBox infinite = new JCheckBox(JMeterUtils.getResString("infinite"));
+ 	JTextField loops = new JTextField(5);
++	JLabel loopsLabel = new JLabel(JMeterUtils.getResString("iterator_num"));
+ 
+ 	private boolean displayName = true;
+ 	private static String INFINITE = "infinite";
+@@ -132,10 +133,12 @@
+ 			loops.setText("");
+ 			model.setLoops(-1);
+ 			loops.setEnabled(false);
++			loopsLabel.setEnabled(false);
+ 		}
+ 		else
+ 		{
+ 			loops.setEnabled(true);
++			loopsLabel.setEnabled(true);
+ 		}
+ 	}
+ 
+@@ -173,12 +176,14 @@
+ 		{
+ 			if(loops.getText().length() > 0)
+ 			{
+-				model.setLoops(-1);
+-				loops.setText("");
+-				loops.setEnabled(false);
+-				infinite.setSelected(true);
++				// We need a standard warning/error dialog. The problem with
++				// having it here is that the dialog is centered over this
++				// LoopControlPanel instead of begin centered in the entire
++				// JMeter GUI window.
+ 				JOptionPane.showMessageDialog(this, "You must enter a valid number",
+ 						"Invalid data", JOptionPane.WARNING_MESSAGE);
++				model.setLoops(-1);
++				loops.setText("");
+ 			}
+ 			else
+ 			{
+@@ -207,7 +212,7 @@
+ 		loopPanel.add(infinite);
+ 		JPanel entryPanel = new JPanel();
+ 		entryPanel.add(Box.createHorizontalStrut(10));
+-		entryPanel.add(new JLabel(JMeterUtils.getResString("iterator_num")));
++		entryPanel.add(loopsLabel);
+ 		loops.setName(LOOPS);
+ 		loops.addKeyListener(this);
+ 		setState();
+@@ -223,12 +228,14 @@
+ 			infinite.setSelected(true);
+ 			loops.setEnabled(false);
+ 			loops.setText("");
++			loopsLabel.setEnabled(false);
+ 		}
+ 		else
+ 		{
+ 			infinite.setSelected(false);
+ 			loops.setEnabled(true);
+ 			loops.setText(""+model.getLoops());
++			loopsLabel.setEnabled(true);
+ 		}
+ 	}
+ }

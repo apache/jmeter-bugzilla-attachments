@@ -1,0 +1,336 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/java/org/apache/jmeter/protocol/java/sampler/BeanShellSampler.java	(working copy)
+@@ -55,9 +55,13 @@
+ 
+ 	transient private BeanShellInterpreter bshInterpreter;
+ 
++	transient private boolean hasInitFile = false;
++
+ 	public BeanShellSampler() {
+ 		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE), log);
++			String initFileName = JMeterUtils.getProperty(INIT_FILE);
++			hasInitFile = initFileName != null;
++			bshInterpreter = new BeanShellInterpreter(initFileName, log);
+ 		} catch (ClassNotFoundException e) {
+ 			log.error("Cannot find BeanShell: "+e.toString());
+ 		}
+@@ -175,7 +179,7 @@
+ 	}
+ 
+ 	public void threadStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -184,7 +188,7 @@
+ 	}
+ 
+ 	public void threadFinished() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -193,7 +197,7 @@
+ 	}
+ 
+ 	public void testEnded() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -202,7 +206,7 @@
+ 	}
+ 
+ 	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog((new StringBuffer("testEnded(")) // $NON-NLS-1$
+ 					.append(host)
+@@ -218,7 +222,7 @@
+ 	}
+ 
+ 	public void testStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -227,7 +231,7 @@
+ 	}
+ 
+ 	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog((new StringBuffer("testStarted(")) // $NON-NLS-1$
+ 					.append(host)
+@@ -237,4 +241,4 @@
+ 			log.debug(ignored.getLocalizedMessage());
+ 		}		
+ 	}
+-}
+\ No newline at end of file
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/modifiers/BeanShellPreProcessor.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/modifiers/BeanShellPreProcessor.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/modifiers/BeanShellPreProcessor.java	(working copy)
+@@ -48,6 +48,8 @@
+     
+     transient private BeanShellInterpreter bshInterpreter = null;
+ 
++    transient private boolean hasInitFile = false;
++
+     // can be specified in jmeter.properties
+     private static final String INIT_FILE = "beanshell.preprocessor.init"; //$NON-NLS-1$
+ 
+@@ -58,7 +60,9 @@
+ 
+ 	private void init() {
+ 		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE),log);
++			String initFileName = JMeterUtils.getProperty(INIT_FILE);
++			hasInitFile = initFileName != null;
++			bshInterpreter = new BeanShellInterpreter(initFileName, log);
+ 		} catch (ClassNotFoundException e) {
+ 			log.error("Cannot find BeanShell: "+e.toString());
+ 		}
+@@ -105,7 +109,7 @@
+     }
+ 
+ 	public void threadStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -114,7 +118,7 @@
+ 	}
+ 
+ 	public void threadFinished() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -123,7 +127,7 @@
+ 	}
+ 
+ 	public void testEnded() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -132,7 +136,7 @@
+ 	}
+ 
+ 	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
+ 					.append(host)
+@@ -148,7 +152,7 @@
+ 	}
+ 
+ 	public void testStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -157,7 +161,7 @@
+ 	}
+ 
+ 	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
+ 					.append(host)
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	(working copy)
+@@ -52,6 +52,8 @@
+ 	// Not serialised - recreated as needed
+ 	transient private BeanShellInterpreter bshInterpreter = null;
+ 
++	transient private boolean hasInitFile = false;
++
+ 	// can be specified in jmeter.properties
+ 	public static final String INIT_FILE = "beanshell.assertion.init"; //$NON-NLS-1$
+ 
+@@ -67,7 +69,9 @@
+ 
+ 	private void init(){
+ 		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE), log);
++			String initFileName = JMeterUtils.getProperty(INIT_FILE);
++			hasInitFile = initFileName != null;
++			bshInterpreter = new BeanShellInterpreter(initFileName, log);
+ 		} catch (ClassNotFoundException e) {
+ 			log.error("Cannot find BeanShell: "+e.toString());
+ 		}		
+@@ -169,7 +173,7 @@
+ 	}
+ 
+ 	public void threadStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -178,7 +182,7 @@
+ 	}
+ 
+ 	public void threadFinished() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -187,7 +191,7 @@
+ 	}
+ 
+ 	public void testEnded() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -196,7 +200,7 @@
+ 	}
+ 
+ 	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
+ 					.append(host)
+@@ -212,7 +216,7 @@
+ 	}
+ 
+ 	public void testStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -221,7 +225,7 @@
+ 	}
+ 
+ 	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
+ 					.append(host)
+@@ -231,4 +235,4 @@
+ 			log.debug(ignored.getLocalizedMessage());
+ 		}		
+ 	}
+-}
+\ No newline at end of file
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/extractor/BeanShellPostProcessor.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/extractor/BeanShellPostProcessor.java	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/extractor/BeanShellPostProcessor.java	(working copy)
+@@ -47,6 +47,8 @@
+     
+     transient private BeanShellInterpreter bshInterpreter = null;
+ 
++    transient private boolean hasInitFile = false;
++
+     // can be specified in jmeter.properties
+     private static final String INIT_FILE = "beanshell.postprocessor.init"; //$NON-NLS-1$
+ 
+@@ -57,7 +59,9 @@
+ 
+ 	private void init() {
+ 		try {
+-			bshInterpreter = new BeanShellInterpreter(JMeterUtils.getProperty(INIT_FILE),log);
++			String initFileName = JMeterUtils.getProperty(INIT_FILE);
++			hasInitFile = initFileName != null;
++			bshInterpreter = new BeanShellInterpreter(initFileName, log);
+ 		} catch (ClassNotFoundException e) {
+ 			log.error("Cannot find BeanShell: "+e.toString());
+ 		}
+@@ -103,7 +107,7 @@
+         script=s;
+     }
+ 	public void threadStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -112,7 +116,7 @@
+ 	}
+ 
+ 	public void threadFinished() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("threadFinished()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -121,7 +125,7 @@
+ 	}
+ 
+ 	public void testEnded() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testEnded()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -130,7 +134,7 @@
+ 	}
+ 
+ 	public void testEnded(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.eval((new StringBuffer("testEnded(")) // $NON-NLS-1$
+ 					.append(host)
+@@ -146,7 +150,7 @@
+ 	}
+ 
+ 	public void testStarted() {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.evalNoLog("testStarted()"); // $NON-NLS-1$
+ 		} catch (JMeterException ignored) {
+@@ -155,7 +159,7 @@
+ 	}
+ 
+ 	public void testStarted(String host) {
+-		if (bshInterpreter == null) return;
++		if (bshInterpreter == null || !hasInitFile) return;
+ 		try {
+ 			bshInterpreter.eval((new StringBuffer("testStarted(")) // $NON-NLS-1$
+ 					.append(host)
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/bin/jmeter.properties
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/bin/jmeter.properties	(revision 548599)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/bin/jmeter.properties	(working copy)
+@@ -428,8 +428,8 @@
+ # Define the intialisation files for BeanShell Sampler, Function and other BeanShell elements
+ #beanshell.sampler.init=BeanShellSampler.bshrc
+ #beanshell.function.init=BeanShellFunction.bshrc
+-#beanshell.assertion.init=etc
+-#beanshell.listener.init=etc
++#beanshell.assertion.init=BeanShellAssertion.bshrc
++#beanshell.listener.init=BeanShellListeners.bshrc
+ #beanshell.postprocessor.init=etc
+ #beanshell.preprocessor.init=etc
+ #beanshell.timer.init=etc

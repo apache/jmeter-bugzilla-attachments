@@ -1,0 +1,208 @@
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(Revision 1860784)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(Arbeitskopie)
+@@ -935,6 +935,15 @@
+         }
+     }
+ 
++    /**
++     * Run all configured timers and sleep the total amount of time.
++     * <p>
++     * If the amount of time would amount to an ending after endTime, then
++     * end the current thread by setting {@code running} to {@code false} and
++     * return immediately.
++     * 
++     * @param timers to be used for calculating the delay
++     */
+     private void delay(List<Timer> timers) {
+         long totalDelay = 0;
+         for (Timer timer : timers) {
+@@ -955,6 +964,11 @@
+                     // We reduce pause to ensure end of test is not delayed by a sleep ending after test scheduled end
+                     // See Bug 60049
+                     totalDelay = TIMER_SERVICE.adjustDelay(totalDelay, endTime);
++                    if (totalDelay < 0) {
++                        log.debug("The delay would be longer than the scheduled period, so stop thread now.");
++                        running = false;
++                        return;
++                    }
+                 }
+                 TimeUnit.MILLISECONDS.sleep(totalDelay);
+             } catch (InterruptedException e) {
+Index: src/core/org/apache/jmeter/timers/TimerService.java
+===================================================================
+--- src/core/org/apache/jmeter/timers/TimerService.java	(Revision 1860783)
++++ src/core/org/apache/jmeter/timers/TimerService.java	(Arbeitskopie)
+@@ -60,13 +60,13 @@
+      * Adjust delay so that initialDelay does not exceed end of test
+      * @param initialDelay initial delay in millis
+      * @param endTime End time of JMeterThread
+-     * @return initialDelay or adjusted delay
++     * @return initialDelay or {@code -1} if delay is too long
+      */
+     public long adjustDelay(final long initialDelay, long endTime) {
+         if (endTime > 0) {
+             long now = System.currentTimeMillis();
+             if (initialDelay > endTime - now) {
+-                return endTime - now;
++                return -1;
+             }
+         }
+         return initialDelay;
+Index: test/src/org/apache/jmeter/threads/TestJMeterThread.java
+===================================================================
+--- test/src/org/apache/jmeter/threads/TestJMeterThread.java	(Revision 1860783)
++++ test/src/org/apache/jmeter/threads/TestJMeterThread.java	(Arbeitskopie)
+@@ -18,7 +18,17 @@
+ 
+ package org.apache.jmeter.threads;
+ 
++import static org.junit.Assert.assertFalse;
++import static org.junit.Assert.assertTrue;
++
++import java.util.Date;
++
++import org.apache.jmeter.control.LoopController;
++import org.apache.jmeter.samplers.AbstractSampler;
++import org.apache.jmeter.samplers.Entry;
++import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.ThreadListener;
++import org.apache.jmeter.timers.ConstantTimer;
+ import org.apache.jorphan.collections.HashTree;
+ import org.junit.Test;
+ 
+@@ -26,6 +36,43 @@
+  * Tests for {@link JMeterThread}
+  */
+ public class TestJMeterThread {
++
++    private static final class DummySampler extends AbstractSampler {
++        private static final long serialVersionUID = 1L;
++        private boolean called = false;
++
++        public boolean isCalled() {
++            return called;
++        }
++
++        @Override
++        public SampleResult sample(Entry e) {
++            called = true;
++            return null;
++        }
++
++        @Override
++        public int hashCode() {
++            final int prime = 31;
++            int result = super.hashCode();
++            result = prime * result + (called ? 1231 : 1237);
++            return result;
++        }
++
++        @Override
++        public boolean equals(Object obj) {
++            if (this == obj)
++                return true;
++            if (!super.equals(obj))
++                return false;
++            if (getClass() != obj.getClass())
++                return false;
++            DummySampler other = (DummySampler) obj;
++            return called == other.called;
++        }
++
++    }
++
+     private static class ThrowingThreadListener implements ThreadListener {
+ 
+         private boolean throwError;
+@@ -71,5 +118,60 @@
+                 new JMeterThread.ThreadListenerTraverser(true);
+         hashTree.traverse(traverser);
+     }
+-    
++
++    @Test
++    public void testBug63490EndTestWhenDelayIsTooLongForScheduler() {
++
++        JMeterContextService.getContext().setVariables(new JMeterVariables());
++
++        HashTree testTree = new HashTree();
++        LoopController samplerController = createLoopController();
++        testTree.add(samplerController);
++        testTree.add(samplerController, createConstantTimer("3000"));
++        DummySampler dummySampler = createSampler();
++        testTree.add(samplerController, dummySampler);
++
++        TestCompiler compiler = new TestCompiler(testTree);
++        testTree.traverse(compiler);
++
++        ThreadGroup threadGroup = new ThreadGroup();
++        threadGroup.setNumThreads(1);
++        long maxDuration = 2000l;
++        threadGroup.setDuration(maxDuration);
++
++        JMeterThread jMeterThread = new JMeterThread(testTree, threadGroup, null);
++        jMeterThread.setScheduled(true);
++        jMeterThread.setEndTime(System.currentTimeMillis() + maxDuration);
++        jMeterThread.setThreadGroup(threadGroup);
++        long startTime = new Date().getTime();
++        jMeterThread.run();
++        long duration = new Date().getTime() - startTime;
++
++        assertFalse("Sampler should not be called", dummySampler.isCalled());
++
++        // the duration of this test plan should currently be around zero seconds,
++        // but it is allowed to take up to maxDuration amount of time
++        assertTrue("Test plan should not run for longer than duration", duration <= maxDuration);
++    }
++
++    private LoopController createLoopController() {
++        LoopController result = new LoopController();
++        result.setLoops(LoopController.INFINITE_LOOP_COUNT);
++        result.setEnabled(true);
++        return result;
++    }
++
++    private DummySampler createSampler() {
++        DummySampler result = new DummySampler();
++        result.setName("Call me");
++        return result;
++    }
++
++    private ConstantTimer createConstantTimer(String delay) {
++        ConstantTimer constantTimer = new ConstantTimer();
++        constantTimer.setEnabled(true);
++        constantTimer.setDelay(delay);
++        constantTimer.setName("Long delay");
++        return constantTimer;
++    }
+ }
+Index: test/src/org/apache/jmeter/timers/TimerServiceTest.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/TimerServiceTest.java	(Revision 1860783)
++++ test/src/org/apache/jmeter/timers/TimerServiceTest.java	(Arbeitskopie)
+@@ -30,8 +30,21 @@
+     public void testBigInitialDelay() {
+         long now = System.currentTimeMillis();
+         long adjustedDelay = sut.adjustDelay(Long.MAX_VALUE, now + 1000L);
+-        // As #adjustDelay uses System#currentTimeMillis we can't be sure, that the value is exact 1000L
+-        Assert.assertThat(Math.abs(adjustedDelay - 1000L) < 150L, CoreMatchers.is(true));
++        Assert.assertThat("TimerService should return -1 as delay would lead to a time after end time",
++                Long.valueOf(adjustedDelay), CoreMatchers.is(Long.valueOf(-1)));
+     }
+ 
++    @Test
++    public void testSmallInitialDelay() {
++        long now = System.currentTimeMillis();
++        Assert.assertThat("TimerService should not change the delay as the end time is far away",
++                Long.valueOf(sut.adjustDelay(1000L, now + 20000L)), CoreMatchers.is(Long.valueOf(1000L)));
++    }
++
++    @Test
++    public void testNegativeEndTime() {
++        Assert.assertThat("TimerService should not change the delay as the indicated end time is far away",
++                Long.valueOf(sut.adjustDelay(1000L, -1)), CoreMatchers.is(Long.valueOf(1000L)));
++    }
++
+ }

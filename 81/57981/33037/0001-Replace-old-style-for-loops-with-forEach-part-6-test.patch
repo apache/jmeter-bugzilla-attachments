@@ -1,0 +1,357 @@
+From 89a51d08db2e2b37028cf759558501cb520e6c27 Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Mon, 24 Aug 2015 22:52:45 +0100
+Subject: [PATCH] Replace old style for loops with forEach part 6 (test)
+
+---
+ .../apache/commons/cli/avalon/ClutilTestCase.java  |  4 +--
+ .../jmeter/assertions/ResponseAssertionTest.java   |  4 +--
+ .../jmeter/control/TestSwitchController.java       |  4 +--
+ .../org/apache/jmeter/functions/PackageTest.java   |  8 ++---
+ .../src/org/apache/jmeter/gui/action/TestLoad.java |  4 +--
+ test/src/org/apache/jmeter/junit/JMeterTest.java   | 40 ++++++++++------------
+ .../org/apache/jmeter/resources/PackageTest.java   | 29 +++++++---------
+ .../org/apache/jmeter/save/TestSaveService.java    | 15 ++++----
+ .../apache/jmeter/testbeans/gui/PackageTest.java   | 29 ++++++++--------
+ 9 files changed, 63 insertions(+), 74 deletions(-)
+
+diff --git a/test/src/org/apache/commons/cli/avalon/ClutilTestCase.java b/test/src/org/apache/commons/cli/avalon/ClutilTestCase.java
+index e79f5d3..1b70775 100644
+--- a/test/src/org/apache/commons/cli/avalon/ClutilTestCase.java
++++ b/test/src/org/apache/commons/cli/avalon/ClutilTestCase.java
+@@ -654,8 +654,8 @@ public final class ClutilTestCase extends TestCase {
+         final int size = clOptions.size();
+ 
+         assertEquals(4, size);
+-        for (int i = 0; i < size; i++) {
+-            assertEquals(DEFINE_OPT, clOptions.get(i).getDescriptor().getId());
++        for (CLOption clOption : clOptions) {
++            assertEquals(DEFINE_OPT, clOption.getDescriptor().getId());
+         }
+ 
+         CLOption option;
+diff --git a/test/src/org/apache/jmeter/assertions/ResponseAssertionTest.java b/test/src/org/apache/jmeter/assertions/ResponseAssertionTest.java
+index c6a080b..db89c8d 100644
+--- a/test/src/org/apache/jmeter/assertions/ResponseAssertionTest.java
++++ b/test/src/org/apache/jmeter/assertions/ResponseAssertionTest.java
+@@ -209,8 +209,8 @@ public class ResponseAssertionTest  extends TestCase {
+             threads[i] = new TestThread(latch);
+         }
+         failed = new AtomicInteger(0);
+-        for (int i = 0; i < threads.length; i++) {
+-            threads[i].start();
++        for (Thread thread : threads) {
++            thread.start();
+         }
+         latch.await();
+         assertEquals(failed.get(), 0);
+diff --git a/test/src/org/apache/jmeter/control/TestSwitchController.java b/test/src/org/apache/jmeter/control/TestSwitchController.java
+index 9b77d10..d4eb8b7 100644
+--- a/test/src/org/apache/jmeter/control/TestSwitchController.java
++++ b/test/src/org/apache/jmeter/control/TestSwitchController.java
+@@ -238,8 +238,8 @@ public class TestSwitchController extends JMeterTestCase {
+             controller.initialize();
+             for (int i = 1; i <= 3; i++) {
+                 assertEquals("Loop:" + i, "before", nextName(controller));
+-                for (int j = 0; j < exp.length; j++) {
+-                    assertEquals("Loop:" + i, exp[j], nextName(controller));
++                for (String anExp : exp) {
++                    assertEquals("Loop:" + i, anExp, nextName(controller));
+                 }
+                 assertEquals("Loop:" + i, "after", nextName(controller));
+             }
+diff --git a/test/src/org/apache/jmeter/functions/PackageTest.java b/test/src/org/apache/jmeter/functions/PackageTest.java
+index 58cb465..bf1972c 100644
+--- a/test/src/org/apache/jmeter/functions/PackageTest.java
++++ b/test/src/org/apache/jmeter/functions/PackageTest.java
+@@ -962,8 +962,8 @@ public class PackageTest extends JMeterTestCase {
+     // Perform a sum and check the results
+     private void checkSum(AbstractFunction func, String value, String [] addends)  throws Exception {
+         Collection<CompoundVariable> parms = new LinkedList<CompoundVariable>();
+-        for (int i=0; i< addends.length; i++){
+-            parms.add(new CompoundVariable(addends[i]));
++        for (String addend : addends) {
++            parms.add(new CompoundVariable(addend));
+         }
+         parms.add(new CompoundVariable("Result"));
+         func.setParameters(parms);
+@@ -973,8 +973,8 @@ public class PackageTest extends JMeterTestCase {
+     // Perform a sum and check the results
+     private void checkSumNoVar(AbstractFunction func, String value, String [] addends)  throws Exception {
+         Collection<CompoundVariable> parms = new LinkedList<CompoundVariable>();
+-        for (int i=0; i< addends.length; i++){
+-            parms.add(new CompoundVariable(addends[i]));
++        for (String addend : addends) {
++            parms.add(new CompoundVariable(addend));
+         }
+         func.setParameters(parms);
+         assertEquals(value,func.execute(null,null));
+diff --git a/test/src/org/apache/jmeter/gui/action/TestLoad.java b/test/src/org/apache/jmeter/gui/action/TestLoad.java
+index cbb6613..ff493d7 100644
+--- a/test/src/org/apache/jmeter/gui/action/TestLoad.java
++++ b/test/src/org/apache/jmeter/gui/action/TestLoad.java
+@@ -80,8 +80,8 @@ public class TestLoad extends JMeterTestCase {
+     private static void scanFiles(TestSuite suite, File parent) {
+         File testFiles[]=parent.listFiles(jmxFilter);
+         String dir = parent.getName();
+-        for (int i=0; i<testFiles.length; i++){
+-            suite.addTest(new TestLoad("checkTestFile",testFiles[i],dir));
++        for (File testFile : testFiles) {
++            suite.addTest(new TestLoad("checkTestFile", testFile, dir));
+         }
+     }
+     
+diff --git a/test/src/org/apache/jmeter/junit/JMeterTest.java b/test/src/org/apache/jmeter/junit/JMeterTest.java
+index 6acabfd..75fb292 100644
+--- a/test/src/org/apache/jmeter/junit/JMeterTest.java
++++ b/test/src/org/apache/jmeter/junit/JMeterTest.java
+@@ -171,14 +171,13 @@ public class JMeterTest extends JMeterTestCase {
+         Element body = root.getChild("body");
+         @SuppressWarnings("unchecked")
+         List<Element> sections = body.getChildren("section");
+-        for (int i = 0; i < sections.size(); i++) {
++        for (Element section : sections) {
+             @SuppressWarnings("unchecked")
+-            List<Element> components = sections.get(i).getChildren("component");
+-            for (int j = 0; j < components.size(); j++) {
+-                Element comp = components.get(j);
+-                String nm=comp.getAttributeValue("name");
+-                if (!nm.equals("SSL Manager")){// Not a true GUI component
+-                    guiTitles.put(nm.replace(' ','_'), Boolean.FALSE);
++            List<Element> components = section.getChildren("component");
++            for (Element comp : components) {
++                String nm = comp.getAttributeValue("name");
++                if (!nm.equals("SSL Manager")) {// Not a true GUI component
++                    guiTitles.put(nm.replace(' ', '_'), Boolean.FALSE);
+                 }
+             }
+         }
+@@ -201,11 +200,10 @@ public class JMeterTest extends JMeterTestCase {
+         Element body = root.getChild("body");
+         @SuppressWarnings("unchecked")
+         List<Element> sections = body.getChildren("section");
+-        for (int i = 0; i < sections.size(); i++) {
++        for (Element section : sections) {
+             @SuppressWarnings("unchecked")
+-            List<Element> components = sections.get(i).getChildren("component");
+-            for (int j = 0; j < components.size(); j++) {
+-                Element comp = components.get(j);
++            List<Element> components = section.getChildren("component");
++            for (Element comp : components) {
+                 guiTags.put(comp.getAttributeValue("tag"), Boolean.FALSE);
+             }
+         }
+@@ -226,15 +224,14 @@ public class JMeterTest extends JMeterTestCase {
+         Element section = body.getChild("section");
+         @SuppressWarnings("unchecked")
+         List<Element> sections = section.getChildren("subsection");
+-        for (int i = 0; i < sections.size(); i++) {
++        for (Element subSection : sections) {
+             @SuppressWarnings("unchecked")
+-            List<Element> components = sections.get(i).getChildren("component");
+-            for (int j = 0; j < components.size(); j++) {
+-                Element comp = components.get(j);
++            List<Element> components = subSection.getChildren("component");
++            for (Element comp : components) {
+                 funcTitles.put(comp.getAttributeValue("name"), Boolean.FALSE);
+                 String tag = comp.getAttributeValue("tag");
+-                if (tag != null){
+-                    funcTitles.put(tag, Boolean.FALSE);                    
++                if (tag != null) {
++                    funcTitles.put(tag, Boolean.FALSE);
+                 }
+             }
+         }
+@@ -619,16 +616,15 @@ public class JMeterTest extends JMeterTestCase {
+         if (objects.size() == 0) {
+             System.out.println("No classes found that extend " + exName + ". Check the following:");
+             System.out.println("Search paths are:");
+-            String ss[] = JMeterUtils.getSearchPaths();
+-            for (int i = 0; i < ss.length; i++) {
+-                System.out.println(ss[i]);
++            for (String sp : JMeterUtils.getSearchPaths()) {
++                System.out.println(sp);
+             }
+             if (!classPathShown) {// Only dump it once
+                 System.out.println("Class path is:");
+                 String cp = System.getProperty("java.class.path");
+                 String cpe[] = JOrphanUtils.split(cp, java.io.File.pathSeparator);
+-                for (int i = 0; i < cpe.length; i++) {
+-                    System.out.println(cpe[i]);
++                for (String path : cpe) {
++                    System.out.println(path);
+                 }
+                 classPathShown = true;
+             }
+diff --git a/test/src/org/apache/jmeter/resources/PackageTest.java b/test/src/org/apache/jmeter/resources/PackageTest.java
+index 285808f..a0dcd0d 100644
+--- a/test/src/org/apache/jmeter/resources/PackageTest.java
++++ b/test/src/org/apache/jmeter/resources/PackageTest.java
+@@ -184,8 +184,7 @@ public class PackageTest extends TestCase {
+ 
+         // Look for duplicate keys in the file
+         String last = "";
+-        for (int i = 0; i < alf.size(); i++) {
+-            String curr = alf.get(i);
++        for (String curr : alf) {
+             if (curr.equals(last)) {
+                 subTestFailures++;
+                 System.out.println("\nDuplicate key =" + curr + " in " + res);
+@@ -361,9 +360,8 @@ public class PackageTest extends TestCase {
+         InputStream inputStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(languageBundle);
+         if(inputStream == null) {
+             Map<String, String> messagesAsProperties = new HashMap<String, String>();
+-            for (Iterator<Map.Entry<Object, Object>> iterator = messages.entrySet().iterator(); iterator.hasNext();) {
+-                Map.Entry<Object, Object> entry = iterator.next();
+-                messagesAsProperties.put((String) entry.getKey(), (String) entry.getValue()); 
++            for (Map.Entry<Object, Object> entry : messages.entrySet()) {
++                messagesAsProperties.put((String) entry.getKey(), (String) entry.getValue());
+             }
+             missingLabelsPerBundle.put(languageBundle, messagesAsProperties);
+             return;
+@@ -371,22 +369,21 @@ public class PackageTest extends TestCase {
+         messagesFr.load(inputStream);
+     
+         Map<String, String> missingLabels = new TreeMap<String,String>();
+-        for (Iterator<Map.Entry<Object,Object>> iterator =  messages.entrySet().iterator(); iterator.hasNext();) {
+-            Map.Entry<Object,Object> entry = iterator.next();
+-            String key = (String)entry.getKey();
++        for (Map.Entry<Object, Object> entry : messages.entrySet()) {
++            String key = (String) entry.getKey();
+             final String I18NString = "[\\d% ]+";// numeric, space and % don't need translation
+-            if(!messagesFr.containsKey(key)) {
++            if (!messagesFr.containsKey(key)) {
+                 String value = (String) entry.getValue();
+                 // TODO improve check of values that don't need translation
+                 if (value.matches(I18NString)) {
+                     // System.out.println("Ignoring missing "+key+"="+value+" in "+languageBundle); // TODO convert to list and display at end
+                 } else {
+-                    missingLabels.put(key,(String) entry.getValue());
++                    missingLabels.put(key, (String) entry.getValue());
+                 }
+             } else {
+                 String value = (String) entry.getValue();
+                 if (value.matches(I18NString)) {
+-                    System.out.println("Unnecessary entry "+key+"="+value+" in "+languageBundle);
++                    System.out.println("Unnecessary entry " + key + "=" + value + " in " + languageBundle);
+                 }
+             }
+         }
+@@ -402,12 +399,10 @@ public class PackageTest extends TestCase {
+      */
+     private String printLabels(Map<String, Map<String, String>> missingLabelsPerBundle) {
+         StringBuilder builder = new StringBuilder();
+-        for (Iterator<Map.Entry<String,Map<String, String>>> iterator =  missingLabelsPerBundle.entrySet().iterator(); iterator.hasNext();) {
+-            Map.Entry<String,Map<String, String>> entry = iterator.next();
+-            builder.append("Missing labels in bundle:"+entry.getKey()+"\r\n");
+-            for (Iterator<Map.Entry<String,String>> it2 =  entry.getValue().entrySet().iterator(); it2.hasNext();) {
+-                Map.Entry<String,String> entry2 = it2.next();
+-                builder.append(entry2.getKey()+"="+entry2.getValue()+"\r\n");
++        for (Map.Entry<String, Map<String, String>> entry : missingLabelsPerBundle.entrySet()) {
++            builder.append("Missing labels in bundle:" + entry.getKey() + "\r\n");
++            for (Map.Entry<String, String> entry2 : entry.getValue().entrySet()) {
++                builder.append(entry2.getKey() + "=" + entry2.getValue() + "\r\n");
+             }
+             builder.append("======================================================\r\n");
+         }
+diff --git a/test/src/org/apache/jmeter/save/TestSaveService.java b/test/src/org/apache/jmeter/save/TestSaveService.java
+index f18ede4..003a603 100644
+--- a/test/src/org/apache/jmeter/save/TestSaveService.java
++++ b/test/src/org/apache/jmeter/save/TestSaveService.java
+@@ -86,8 +86,7 @@ public class TestSaveService extends JMeterTestCase {
+     public void testLoadAndSave() throws Exception {
+         boolean failed = false; // Did a test fail?
+ 
+-        for (int i = 0; i < FILES.length; i++) {
+-            final String fileName = FILES[i];
++        for (final String fileName : FILES) {
+             final File testFile = findTestFile("testfiles/" + fileName);
+             failed |= loadAndSave(testFile, fileName, true);
+         }
+@@ -179,15 +178,15 @@ public class TestSaveService extends JMeterTestCase {
+     }
+ 
+     public void testLoad() throws Exception {
+-        for (int i = 0; i < FILES_LOAD_ONLY.length; i++) {
+-            File file = findTestFile("testfiles/" + FILES_LOAD_ONLY[i]);
++        for (String fileName : FILES_LOAD_ONLY) {
++            File file = findTestFile("testfiles/" + fileName);
+             try {
+-                HashTree tree =SaveService.loadTree(file);
++                HashTree tree = SaveService.loadTree(file);
+                 assertNotNull(tree);
+-            } catch(IllegalArgumentException ex) {
+-                fail("Exception loading "+file.getAbsolutePath());
++            } catch (IllegalArgumentException ex) {
++                fail("Exception loading " + file.getAbsolutePath());
+             }
+-            
++
+         }
+ 
+     }
+diff --git a/test/src/org/apache/jmeter/testbeans/gui/PackageTest.java b/test/src/org/apache/jmeter/testbeans/gui/PackageTest.java
+index cc34e0a..007c0ff 100644
+--- a/test/src/org/apache/jmeter/testbeans/gui/PackageTest.java
++++ b/test/src/org/apache/jmeter/testbeans/gui/PackageTest.java
+@@ -137,29 +137,29 @@ public final class PackageTest extends JMeterTestCase {
+ 
+         // Check for property- and group-related texts:
+         PropertyDescriptor[] descriptors = beanInfo.getPropertyDescriptors();
+-        for (int i = 0; i < descriptors.length; i++) {
++        for (PropertyDescriptor descriptor : descriptors) {
+             // Skip non-editable properties, that is:
+             // Ignore hidden, read-only, and write-only properties
+-            if (descriptors[i].isHidden() || descriptors[i].getReadMethod() == null
+-                    || descriptors[i].getWriteMethod() == null) {
++            if (descriptor.isHidden() || descriptor.getReadMethod() == null
++                    || descriptor.getWriteMethod() == null) {
+                 continue;
+             }
+             // Ignore TestElement properties which don't have an explicit
+             // editor:
+-            if (TestElement.class.isAssignableFrom(descriptors[i].getPropertyType())
+-                    && descriptors[i].getPropertyEditorClass() == null) {
++            if (TestElement.class.isAssignableFrom(descriptor.getPropertyType())
++                    && descriptor.getPropertyEditorClass() == null) {
+                 continue;
+             }
+             // Done -- we're working with an editable property.
+ 
+-            String name = descriptors[i].getName();
++            String name = descriptor.getName();
+ 
+             bundle.getString(name + ".displayName");
+             // bundle.getString(name+".shortDescription"); NOT MANDATORY
+ 
+-            String group = (String) descriptors[i].getValue(GenericTestBeanCustomizer.GROUP);
++            String group = (String) descriptor.getValue(GenericTestBeanCustomizer.GROUP);
+             if (group != null) {
+-                bundle.getString( group + ".displayName");
++                bundle.getString(group + ".displayName");
+             }
+         }
+     }
+@@ -196,13 +196,12 @@ public final class PackageTest extends JMeterTestCase {
+ 
+             suite.addTest(new PackageTest(testBeanClass, defaultLocale, defaultBundle));
+ 
+-            String [] languages = JMeterMenuBar.getLanguages();
+-            for (int i=0; i < languages.length; i++){
+-                final String[] language = languages[i].split("_");
+-                if (language.length == 1){
+-                    suite.addTest(new PackageTest(testBeanClass, new Locale(language[0]), defaultBundle));                                    
+-                } else if (language.length == 2){
+-                    suite.addTest(new PackageTest(testBeanClass, new Locale(language[0], language[1]), defaultBundle));                                                        
++            for (String language : JMeterMenuBar.getLanguages()) {
++                final String[] languageParts = language.split("_");
++                if (languageParts.length == 1) {
++                    suite.addTest(new PackageTest(testBeanClass, new Locale(languageParts[0]), defaultBundle));
++                } else if (languageParts.length == 2) {
++                    suite.addTest(new PackageTest(testBeanClass, new Locale(languageParts[0], languageParts[1]), defaultBundle));
+                 }
+             }
+         }
+-- 
+1.9.1
+

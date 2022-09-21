@@ -1,0 +1,54 @@
+Index: src/core/org/apache/jmeter/control/IfController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/IfController.java	(Revision 1850515)
++++ src/core/org/apache/jmeter/control/IfController.java	(Arbeitskopie)
+@@ -174,7 +174,7 @@
+      * @return the condition associated with this controller
+      */
+     public String getCondition() {
+-        return getPropertyAsString(CONDITION);
++        return getPropertyAsString(CONDITION).trim();
+     }
+ 
+     /**
+Index: test/src/org/apache/jmeter/control/TestIfController.java
+===================================================================
+--- test/src/org/apache/jmeter/control/TestIfController.java	(Revision 1850515)
++++ test/src/org/apache/jmeter/control/TestIfController.java	(Arbeitskopie)
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.control;
+ 
+ import static org.junit.Assert.assertEquals;
++import static org.junit.Assert.assertFalse;
+ import static org.junit.Assert.fail;
+ 
+ import org.apache.jmeter.config.Arguments;
+@@ -294,4 +295,28 @@
+         }
+         assertEquals(counter, 6);
+     }
++    
++    @Test
++    @Ignore
++    public void shouldIgnoreEmptyLastLine() {
++        JMeterVariables vars = new JMeterVariables();
++        JMeterContextService.getContext().setVariables(vars);
++        vars.putObject("VAR1", Long.valueOf(1));
++
++        GenericController controller = new GenericController();
++
++        IfController ifCont = new IfController("${__jexl3(${VAR1} == 1)}");
++        ifCont.setUseExpression(true);
++        ifCont.setEvaluateAll(false);
++
++        ifCont.addTestElement(new TestSampler("sample1"));
++        controller.addTestElement(ifCont);
++
++        controller.initialize();
++        controller.setRunningVersion(true);
++        ifCont.setRunningVersion(true);
++
++        Sampler sampler = controller.next();
++        assertFalse(sampler == null);
++    }
+ }

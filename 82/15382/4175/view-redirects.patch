@@ -1,0 +1,45 @@
+diff -Naur orig/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+--- orig/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	2002-10-29 15:56:26.000000000 +0100
++++ src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	2002-12-16 02:02:50.000000000 +0100
+@@ -138,6 +138,10 @@
+ 			log.debug("updateGui1 : sample result - " + res);
+ 		DefaultMutableTreeNode currNode = new DefaultMutableTreeNode(res);
+ 		treeModel.insertNodeInto(currNode, root, root.getChildCount());
++		addSubResults(currNode, res);
++		log.debug("End : updateGui1");
++	}
++	private void addSubResults(DefaultMutableTreeNode currNode, SampleResult res) {
+ 		SampleResult[] subResults = res.getSubResults();
+ 		if (subResults != null)
+ 		{
+@@ -149,9 +153,9 @@
+ 					log.debug("updateGui1 : child sample result - " + child);
+ 				DefaultMutableTreeNode leafNode = new DefaultMutableTreeNode(child);
+ 				treeModel.insertNodeInto(leafNode, currNode, leafIndex++);
++				addSubResults(leafNode, child);
+ 			}
+ 		}
+-		log.debug("End : updateGui1");
+ 	}
+ 	/****************************************
+ 	 * Clears the visualizer
+diff -Naur orig/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+--- orig/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2002-12-03 23:45:59.000000000 +0100
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2002-12-16 01:39:32.000000000 +0100
+@@ -929,10 +929,13 @@
+ 				}
+ 				else
+ 				{
+-					redirectUrl(conn, u);
+ 					time = System.currentTimeMillis() - time;
+-					res = sample(redirects+1);
+-					time += res.getTime();
++
++					HTTPSampler redirect= (HTTPSampler)this.clone();
++					redirect.redirectUrl(conn, u);
++					SampleResult redirectResult= redirect.sample(redirects+1);
++					res.addSubResult(redirectResult);
++					time += redirectResult.getTime();
+ 				}
+ 			}
+ 			else

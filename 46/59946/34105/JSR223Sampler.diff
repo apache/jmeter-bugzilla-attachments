@@ -1,0 +1,29 @@
+diff --git a/src/protocol/java/org/apache/jmeter/protocol/java/sampler/JSR223Sampler.java b/src/protocol/java/org/apache/jmeter/protocol/java/sampler/JSR223Sampler.java
+index 43caea3..307bc91 100644
+--- a/src/protocol/java/org/apache/jmeter/protocol/java/sampler/JSR223Sampler.java
++++ b/src/protocol/java/org/apache/jmeter/protocol/java/sampler/JSR223Sampler.java
+@@ -46,6 +46,8 @@ public class JSR223Sampler extends JSR223TestElement implements Cloneable, Sampl
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private ScriptEngine scriptEngine = null;
++
+     @Override
+     public SampleResult sample(Entry entry) {
+         SampleResult result = new SampleResult();
+@@ -63,13 +65,14 @@ public class JSR223Sampler extends JSR223TestElement implements Cloneable, Sampl
+         result.setDataType(SampleResult.TEXT);
+         result.sampleStart();
+         try {
+-            ScriptEngine scriptEngine = getScriptEngine();
++            if (scriptEngine == null) scriptEngine = getScriptEngine();
+             Bindings bindings = scriptEngine.createBindings();
+             bindings.put("SampleResult",result);
+             Object ret = processFileOrScript(scriptEngine, bindings);
+             if (ret != null && (result.getResponseData() == null || result.getResponseData()==SampleResult.EMPTY_BA)){
+                 result.setResponseData(ret.toString(), null);
+             }
++            scriptEngine = null;
+         } catch (IOException | ScriptException e) {
+             log.error("Problem in JSR223 script "+getName()+", message:"+e, e);
+             result.setSuccessful(false);

@@ -1,0 +1,67 @@
+Index: src/functions/org/apache/jmeter/functions/Jexl3Function.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/Jexl3Function.java	(revision 1836000)
++++ src/functions/org/apache/jmeter/functions/Jexl3Function.java	(working copy)
+@@ -23,7 +23,7 @@
+ import org.apache.commons.jexl3.JexlBuilder;
+ import org.apache.commons.jexl3.JexlContext;
+ import org.apache.commons.jexl3.JexlEngine;
+-import org.apache.commons.jexl3.JexlExpression;
++import org.apache.commons.jexl3.JexlScript;
+ import org.apache.commons.jexl3.MapContext;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -91,8 +91,8 @@
+             jc.set("OUT", System.out);//$NON-NLS-1$
+ 
+             // Now evaluate the script, getting the result
+-            JexlExpression e = getJexlEngine().createExpression( exp );
+-            Object o = e.evaluate(jc);
++            JexlScript e = getJexlEngine().createScript(exp);
++            Object o = e.execute(jc);
+             if (o != null)
+             {
+                 str = o.toString();
+Index: test/src/org/apache/jmeter/functions/TestJexl3Function.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestJexl3Function.java	(revision 1836000)
++++ test/src/org/apache/jmeter/functions/TestJexl3Function.java	(working copy)
+@@ -18,7 +18,11 @@
+ 
+ package org.apache.jmeter.functions;
+ 
++import static org.junit.Assert.assertEquals;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.junit.Before;
++import org.junit.Test;
+ 
+ public class TestJexl3Function extends TestJexl2Function {
+ 
+@@ -28,4 +32,14 @@
+         super.setUp();
+         function = new Jexl3Function();
+     }
++    
++
++    @Test
++    public void testSum() throws Exception {
++        params.add(new CompoundVariable("var a = 1+2+3"));
++        function.setParameters(params);
++        String ret = function.execute(result, null);
++        assertEquals("6", ret);
++    }
++
+ }
+Index: xdocs/changes.xml
+===================================================================
+--- xdocs/changes.xml	(revision 1836000)
++++ xdocs/changes.xml	(working copy)
+@@ -124,6 +124,7 @@
+     <li><bug>62178</bug>Add default value to <code>__V</code> function. Contributed by orimarko at gmail.com</li>
+     <li><bug>62178</bug>Add function <code>__threadGroupName</code> function to obtain ThreadGroup name. Mainly contributed by orimarko at gmail.com</li>
+     <li><bug>62533</bug>Allow use epoch time as Date String value in function <code>__dateTimeConvert</code> </li>
++    <li><bug>62541</bug>Fix <code>__jexl3</code> function to support new syntax as 'var x;'. Contributed by orimarko at gmail.com</li>
+ </ul>
+ <h3>I18N</h3>
+ <ul>

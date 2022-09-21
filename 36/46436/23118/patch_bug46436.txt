@@ -1,0 +1,103 @@
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 734176)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -156,6 +156,14 @@
+     private boolean samplerDownloadImages;
+ 
+     private boolean regexMatch = false;// Should we match using regexes?
++    
++    /*
++     * Is JMeter running in Gui mode? 
++     * Set by org.apache.jmeter.protocol.http.proxy.gui.ProxyControlGui
++     */
++    private boolean inGuiMode = false;
++    
++    
+ 
+     /**
+      * Tree node where the samples should be stored.
+@@ -955,4 +963,18 @@
+     public boolean canRemove() {
+         return null == server;
+     }
++    
++	/**
++	 * @return the inGuiMode
++	 */
++	public boolean isInGuiMode() {
++		return inGuiMode;
++	}
++
++	/**
++	 * @param inGuiMode the inGuiMode to set
++	 */
++	public void setInGuiMode(boolean inGuiMode) {
++		this.inGuiMode = inGuiMode;
++	}
+ }
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java	(revision 734176)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java	(working copy)
+@@ -19,12 +19,15 @@
+ package org.apache.jmeter.protocol.http.proxy;
+ 
+ import java.io.InterruptedIOException;
++import java.net.BindException;
+ import java.net.ServerSocket;
+ import java.net.Socket;
+ import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
++import javax.swing.JOptionPane;
++
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+@@ -153,6 +156,16 @@
+                 }
+             }
+             log.info("Proxy Server stopped");
++            
++        } catch(BindException e){
++        	// daemon port already in use
++        	log.warn("Proxy Server stopped", e);
++        	log.error("Port " + daemonPort + " already in use. Choose a different one for the proxy.");
++       
++        	//TODO: alert in console mode, too
++        	if(target.isInGuiMode()){
++        		JOptionPane.showMessageDialog(null, "Port " + daemonPort + " already in use. Choose a different one for the proxy.", "Proxy Server Port", JOptionPane.ERROR_MESSAGE);
++        	}
+         } catch (Exception e) {
+             log.warn("Proxy Server stopped", e);
+         } finally {
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 734176)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -196,6 +196,7 @@
+     public TestElement createTestElement() {
+         model = makeProxyControl();
+         log.debug("creating/configuring model = " + model);
++        model.setInGuiMode(true);
+         modifyTestElement(model);
+         return model;
+     }
+@@ -220,6 +221,7 @@
+         configureTestElement(el);
+         if (el instanceof ProxyControl) {
+             model = (ProxyControl) el;
++            model.setInGuiMode(true);
+             model.setPort(portField.getText());
+             setIncludeListInProxyControl(model);
+             setExcludeListInProxyControl(model);
+@@ -371,6 +373,7 @@
+         modifyTestElement(model);
+         try {
+             replacer.replaceValues(model);
++            model.setInGuiMode(true);
+             model.startProxy();
+             start.setEnabled(false);
+             stop.setEnabled(true);

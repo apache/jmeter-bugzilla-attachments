@@ -1,0 +1,501 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java	(revision 520854)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java	(working copy)
+@@ -24,10 +24,13 @@
+ import javax.swing.BorderFactory;
+ import javax.swing.JCheckBox;
+ import javax.swing.JPanel;
++import javax.swing.JTabbedPane;
++
++import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.gui.util.HorizontalPanel;
+ import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.protocol.http.config.gui.MultipartUrlConfigGui;
+-import org.apache.jmeter.protocol.http.config.gui.UrlConfigGui;
++import org.apache.jmeter.protocol.http.config.gui.RequestOptionsConfigGui;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+@@ -42,13 +45,18 @@
+  * 
+  */
+ public class HttpTestSampleGui extends AbstractSamplerGui {
+-	private UrlConfigGui urlConfigGui;
++    private JTabbedPane tabbedPane;
++    
++    private JPanel optionsPane;
+ 
+-	private JCheckBox getImages;
++    private JPanel httpArgumentsPane;
+ 
+-	private JCheckBox isMon;
++    private JPanel fileUploadPane; 
+ 
+-	private JLabeledTextField embeddedRE; // regular expression used to match against embedded resource URLs
++	private MultipartUrlConfigGui urlConfigGui;
++    
++    private RequestOptionsConfigGui requestOptionsConfigGui;        
++
+ 	
+ 	public HttpTestSampleGui() {
+ 		init();
+@@ -57,10 +65,7 @@
+ 	public void configure(TestElement element) {
+ 		super.configure(element);
+ 		urlConfigGui.configure(element);
+-		final HTTPSamplerBase samplerBase = (HTTPSamplerBase) element;
+-		getImages.setSelected(samplerBase.isImageParser());
+-		isMon.setSelected(samplerBase.isMonitor());
+-		embeddedRE.setText(samplerBase.getEmbeddedUrlRE());
++        requestOptionsConfigGui.configure(element);
+ 	}
+ 
+ 	public TestElement createTestElement() {
+@@ -75,9 +80,14 @@
+ 	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
+ 	 */
+ 	public void modifyTestElement(TestElement sampler) {
++        ConfigTestElement element = new ConfigTestElement();
++        
++/*        
+ 		TestElement el = urlConfigGui.createTestElement();
+ 		sampler.clear();
+ 		sampler.addTestElement(el);
++*/        
++/*        
+ 		final HTTPSamplerBase samplerBase = (HTTPSamplerBase) sampler;
+ 		if (getImages.isSelected()) {
+ 			samplerBase.setImageParser(true);
+@@ -87,6 +97,7 @@
+ 		}
+ 		samplerBase.setMonitor(isMon.isSelected());
+ 		samplerBase.setEmbeddedUrlRE(embeddedRE.getText());
++*/        
+ 		this.configureTestElement(sampler);
+ 	}
+ 
+@@ -100,34 +111,29 @@
+ 
+ 		add(makeTitlePanel(), BorderLayout.NORTH);
+ 
+-		// URL CONFIG
+-		urlConfigGui = new MultipartUrlConfigGui();
+-		add(urlConfigGui, BorderLayout.CENTER);
+-
+-		// OPTIONAL TASKS
+-		add(createOptionalTasksPanel(), BorderLayout.SOUTH);
++        urlConfigGui = new MultipartUrlConfigGui();
++        requestOptionsConfigGui = new RequestOptionsConfigGui();        
++        
++        JPanel mainPanel = new JPanel(new BorderLayout(0, 5));
++        
++        // Add the request gui
++        mainPanel.add(urlConfigGui.getRequestPanel(), BorderLayout.NORTH);
++        
++        // Create a tabbed pane, which will contain settings for different
++        // parts of a http request
++        tabbedPane = new JTabbedPane();
++        // Options
++        tabbedPane.add(requestOptionsConfigGui, "Options");
++        // Arguments
++        tabbedPane.add(urlConfigGui.getArgumentPanel(), "Arguments");        
++        // File upload
++        tabbedPane.add(urlConfigGui.getFilePanel(), "File upload");
++        mainPanel.add(tabbedPane, BorderLayout.CENTER);
++        
++		add(mainPanel, BorderLayout.CENTER);
+ 	}
+ 
+-	private JPanel createOptionalTasksPanel() {
+-		// OPTIONAL TASKS
+-	    JPanel optionalTasksPanel = new VerticalPanel();
+-		optionalTasksPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils
+-				.getResString("optional_tasks"))); // $NON-NLS-1$
+ 
+-		JPanel checkBoxPanel = new HorizontalPanel();
+-		// RETRIEVE IMAGES
+-		getImages = new JCheckBox(JMeterUtils.getResString("web_testing_retrieve_images")); // $NON-NLS-1$
+-		// Is monitor
+-		isMon = new JCheckBox(JMeterUtils.getResString("monitor_is_title")); // $NON-NLS-1$
+-		checkBoxPanel.add(getImages);
+-		checkBoxPanel.add(isMon);
+-		optionalTasksPanel.add(checkBoxPanel);
+-		// Embedded URL match regex
+-		embeddedRE = new JLabeledTextField(JMeterUtils.getResString("web_testing_embedded_url_pattern"),30); // $NON-NLS-1$
+-		optionalTasksPanel.add(embeddedRE);
+-		return optionalTasksPanel;
+-	}
+-
+ 	public Dimension getPreferredSize() {
+ 		return getMinimumSize();
+ 	}
+@@ -139,7 +145,7 @@
+ 	 */
+ 	public void clear() {
+ 		super.clear();
+-		getImages.setSelected(false);
+ 		urlConfigGui.clear();
++        requestOptionsConfigGui.clear();
+ 	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java	(revision 520854)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java	(working copy)
+@@ -114,33 +114,42 @@
+ 	protected void init() {
+ 		this.setLayout(new BorderLayout());
+ 
+-		// WEB SERVER PANEL
+-		VerticalPanel webServerPanel = new VerticalPanel();
+-		webServerPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils
+-				.getResString("web_server")));
+-		webServerPanel.add(getDomainPanel());
+-		webServerPanel.add(getPortPanel());
++	}
+ 
+-		JPanel northPanel = new JPanel();
+-		northPanel.setLayout(new BoxLayout(northPanel, BoxLayout.Y_AXIS));
+-		northPanel.add(getProtocolAndMethodPanel());
+-		northPanel.add(getPathPanel());
++    public JPanel getArgumentPanel() {
++        return getParameterPanel();
++    }
++    
++    public JPanel getRequestPanel() {
++        JPanel requestPanel = new JPanel(new BorderLayout(0, 5));
++        
++        // WEB SERVER PANEL
++        VerticalPanel webServerPanel = new VerticalPanel();
++        webServerPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils
++                .getResString("web_server")));
++        webServerPanel.add(getDomainPanel());
++        webServerPanel.add(getPortPanel());
+ 
+-		// WEB REQUEST PANEL
+-		JPanel webRequestPanel = new JPanel();
+-		webRequestPanel.setLayout(new BorderLayout());
+-		webRequestPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils
+-				.getResString("web_request")));
++        JPanel northPanel = new JPanel();
++        northPanel.setLayout(new BoxLayout(northPanel, BoxLayout.Y_AXIS));
++        northPanel.add(getProtocolAndMethodPanel());
++        northPanel.add(getPathPanel());
+ 
+-		webRequestPanel.add(northPanel, BorderLayout.NORTH);
+-		webRequestPanel.add(getParameterPanel(), BorderLayout.CENTER);
+-		webRequestPanel.add(getFilePanel(), BorderLayout.SOUTH);
++        // WEB REQUEST PANEL
++        JPanel webRequestPanel = new JPanel();
++        webRequestPanel.setLayout(new BorderLayout());
++        webRequestPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils
++                .getResString("web_request")));
+ 
+-		this.add(webServerPanel, BorderLayout.NORTH);
+-		this.add(webRequestPanel, BorderLayout.CENTER);
+-	}
++        webRequestPanel.add(northPanel, BorderLayout.NORTH);
+ 
+-	protected JPanel getFilePanel() {
++        requestPanel.add(webServerPanel, BorderLayout.NORTH);
++        requestPanel.add(webRequestPanel, BorderLayout.CENTER);
++        
++        return requestPanel;
++    }
++    
++	public JPanel getFilePanel() {
+ 		JPanel filePanel = new VerticalPanel();
+ 		filePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils
+ 				.getResString("send_file")));
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/RequestOptionsConfigGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/RequestOptionsConfigGui.java	(revision 0)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/RequestOptionsConfigGui.java	(revision 0)
+@@ -0,0 +1,185 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.protocol.http.config.gui;
++
++import java.awt.BorderLayout;
++import java.awt.FlowLayout;
++
++import javax.swing.BorderFactory;
++import javax.swing.Box;
++import javax.swing.JCheckBox;
++import javax.swing.JPanel;
++
++import org.apache.jmeter.config.ConfigTestElement;
++import org.apache.jmeter.gui.util.HorizontalPanel;
++import org.apache.jmeter.gui.util.VerticalPanel;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
++
++/**
++ * GUI for handling HTTP Request options
++ */
++public class RequestOptionsConfigGui extends JPanel {
++/*    
++	private static String FOLLOW_REDIRECTS = "follow_redirects"; // $NON-NLS-1$
++
++	private static String AUTO_REDIRECTS = "auto_redirects"; // $NON-NLS-1$
++
++	private static String USE_KEEPALIVE = "use_keepalive"; // $NON-NLS-1$
++
++    private static String GET_EMBEDDED_RESOURCES = "get_embedded_resources"; // $NON-NLS-1$
++
++    private static String EMBEDDED_RESOURCES_EXPR = "embedded_resources_expr"; // $NON-NLS-1$
++
++    private static String IS_MONITOR = "is_monitor"; // $NON-NLS-1$
++*/    
++    
++	private JCheckBox followRedirects;
++
++	private JCheckBox autoRedirects;
++
++	private JCheckBox useKeepAlive;
++    
++    private JCheckBox isMonitor;
++
++    private JCheckBox getImages;
++
++    private JLabeledTextField embeddedRE; // regular expression used to match against embedded resource URLs
++
++	public RequestOptionsConfigGui() {
++		init();
++	}
++
++	protected void configureTestElement(TestElement mc) {
++		mc.setProperty(TestElement.NAME, getName());
++		mc.setProperty(TestElement.GUI_CLASS, this.getClass().getName());
++		mc.setProperty(TestElement.TEST_CLASS, mc.getClass().getName());
++	}
++
++	public void clear() {
++		followRedirects.setSelected(true);
++		autoRedirects.setSelected(false);
++		useKeepAlive.setSelected(true);
++        getImages.setSelected(false);
++        isMonitor.setSelected(false);
++        embeddedRE.setText(""); // $NON-NLS-1$
++	}
++
++	public TestElement createTestElement() {
++		ConfigTestElement element = new ConfigTestElement();
++
++		this.configureTestElement(element);
++
++		element.setProperty(new BooleanProperty(HTTPSamplerBase.FOLLOW_REDIRECTS, followRedirects.isSelected()));
++		element.setProperty(new BooleanProperty(HTTPSamplerBase.AUTO_REDIRECTS, autoRedirects.isSelected()));
++		element.setProperty(new BooleanProperty(HTTPSamplerBase.USE_KEEPALIVE, useKeepAlive.isSelected()));
++        element.setProperty(new BooleanProperty(HTTPSamplerBase.IMAGE_PARSER, getImages.isSelected()));
++        element.setProperty(new BooleanProperty(HTTPSamplerBase.MONITOR, isMonitor.isSelected()));
++        element.setProperty(HTTPSamplerBase.EMBEDDED_URL_RE, embeddedRE.getText());
++        
++		return element;
++	}
++
++	/**
++	 * Set the text, etc. in the UI.
++	 * 
++	 * @param el
++	 *            contains the data to be displayed
++	 */
++	public void configure(TestElement el) {
++		setName(el.getPropertyAsString(TestElement.NAME));
++
++		followRedirects.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.FOLLOW_REDIRECTS));
++		autoRedirects.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.AUTO_REDIRECTS));
++		useKeepAlive.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.USE_KEEPALIVE));
++        getImages.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.IMAGE_PARSER));
++        isMonitor.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.MONITOR));
++        embeddedRE.setText(el.getPropertyAsString(HTTPSamplerBase.EMBEDDED_URL_RE));
++	}
++
++	protected void init() {
++        setLayout(new BorderLayout(0, 5));
++        
++        Box myBox = Box.createVerticalBox();
++        myBox.add(createGeneralRequestOptions());
++        myBox.add(Box.createVerticalStrut(5));
++        myBox.add(createEmbeddedResoures());
++
++		this.add(myBox, BorderLayout.CENTER);
++	}
++
++
++	/**
++	 * This method defines the Panel for the HTTP path, 'Follow Redirects' and
++	 * 'Use KeepAlive' elements.
++	 * 
++	 * @return JPanel The Panel for the path, 'Follow Redirects' and 'Use
++	 *         KeepAlive' elements.
++	 */
++	protected JPanel createGeneralRequestOptions() {
++		autoRedirects = new JCheckBox(JMeterUtils.getResString("follow_redirects_auto"));
++//		autoRedirects.setName(AUTO_REDIRECTS);
++		autoRedirects.setSelected(false);// will be reset by
++											// configure(TestElement)
++
++		followRedirects = new JCheckBox(JMeterUtils.getResString("follow_redirects")); // $NON-NLS-1$
++//		followRedirects.setName(FOLLOW_REDIRECTS);
++		followRedirects.setSelected(true);
++
++		useKeepAlive = new JCheckBox(JMeterUtils.getResString("use_keepalive")); // $NON-NLS-1$
++//		useKeepAlive.setName(USE_KEEPALIVE);
++		useKeepAlive.setSelected(true);
++
++		JPanel optionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
++        optionPanel.setBorder(
++                BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                "HTTP request options")); 
++		optionPanel.add(autoRedirects);
++		optionPanel.add(followRedirects);
++		optionPanel.add(useKeepAlive);
++		optionPanel.setMinimumSize(optionPanel.getPreferredSize());
++
++		return optionPanel;
++	}
++    
++    protected JPanel createEmbeddedResoures() {
++        JPanel optionalTasksPanel = new VerticalPanel();
++        optionalTasksPanel.setBorder(
++                BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("optional_tasks"))); // $NON-NLS-1$
++
++        JPanel checkBoxPanel = new HorizontalPanel();
++        // RETRIEVE IMAGES
++        getImages = new JCheckBox(JMeterUtils.getResString("web_testing_retrieve_images")); // $NON-NLS-1$
++        // Is monitor
++        isMonitor = new JCheckBox(JMeterUtils.getResString("monitor_is_title")); // $NON-NLS-1$
++        checkBoxPanel.add(getImages);
++        checkBoxPanel.add(isMonitor);
++        optionalTasksPanel.add(checkBoxPanel);
++        
++        // Embedded URL match regex
++        embeddedRE = new JLabeledTextField(JMeterUtils.getResString("web_testing_embedded_url_pattern"),30); // $NON-NLS-1$
++        optionalTasksPanel.add(embeddedRE);
++
++        return optionalTasksPanel;
++    }
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(revision 520854)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(working copy)
+@@ -58,12 +58,6 @@
+ 
+ 	private static String PATH = "path"; // $NON-NLS-1$
+ 
+-	private static String FOLLOW_REDIRECTS = "follow_redirects"; // $NON-NLS-1$
+-
+-	private static String AUTO_REDIRECTS = "auto_redirects"; // $NON-NLS-1$
+-
+-	private static String USE_KEEPALIVE = "use_keepalive"; // $NON-NLS-1$
+-
+ 	private JTextField domain;
+ 
+ 	private JTextField port;
+@@ -74,12 +68,6 @@
+ 
+ 	private JTextField path;
+ 
+-	private JCheckBox followRedirects;
+-
+-	private JCheckBox autoRedirects;
+-
+-	private JCheckBox useKeepAlive;
+-
+     private JLabeledChoice method;
+     
+ 	public UrlConfigGui() {
+@@ -94,14 +82,11 @@
+ 
+ 	public void clear() {
+ 		domain.setText(""); // $NON-NLS-1$
+-		followRedirects.setSelected(true);
+-		autoRedirects.setSelected(false);
+         method.setText(HTTPSamplerBase.DEFAULT_METHOD);
+ 		path.setText(""); // $NON-NLS-1$
+ 		port.setText(""); // $NON-NLS-1$
+ 		protocol.setText(""); // $NON-NLS-1$
+ 		contentEncoding.setText(""); // $NON-NLS-1$
+-		useKeepAlive.setSelected(true);
+ 		argsPanel.clear();
+ 	}
+ 
+@@ -119,9 +104,6 @@
+ 		element.setProperty(HTTPSamplerBase.METHOD, method.getText());
+ 		element.setProperty(HTTPSamplerBase.CONTENT_ENCODING, contentEncoding.getText());
+ 		element.setProperty(HTTPSamplerBase.PATH, path.getText());
+-		element.setProperty(new BooleanProperty(HTTPSamplerBase.FOLLOW_REDIRECTS, followRedirects.isSelected()));
+-		element.setProperty(new BooleanProperty(HTTPSamplerBase.AUTO_REDIRECTS, autoRedirects.isSelected()));
+-		element.setProperty(new BooleanProperty(HTTPSamplerBase.USE_KEEPALIVE, useKeepAlive.isSelected()));
+ 		return element;
+ 	}
+ 
+@@ -148,10 +130,6 @@
+         method.setText(el.getPropertyAsString(HTTPSamplerBase.METHOD));
+         contentEncoding.setText(el.getPropertyAsString(HTTPSamplerBase.CONTENT_ENCODING));
+ 		path.setText(el.getPropertyAsString(HTTPSamplerBase.PATH));
+-		followRedirects.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.FOLLOW_REDIRECTS));
+-
+-		autoRedirects.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.AUTO_REDIRECTS));
+-		useKeepAlive.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.USE_KEEPALIVE));
+ 	}
+ 
+ 	protected void init() {
+@@ -222,34 +200,14 @@
+ 		JLabel label = new JLabel(JMeterUtils.getResString("path"));
+ 		label.setLabelFor(path);
+ 
+-		autoRedirects = new JCheckBox(JMeterUtils.getResString("follow_redirects_auto"));
+-		autoRedirects.setName(AUTO_REDIRECTS);
+-		autoRedirects.setSelected(false);// will be reset by
+-											// configure(TestElement)
+-
+-		followRedirects = new JCheckBox(JMeterUtils.getResString("follow_redirects")); // $NON-NLS-1$
+-		followRedirects.setName(FOLLOW_REDIRECTS);
+-		followRedirects.setSelected(true);
+-
+-		useKeepAlive = new JCheckBox(JMeterUtils.getResString("use_keepalive")); // $NON-NLS-1$
+-		useKeepAlive.setName(USE_KEEPALIVE);
+-		useKeepAlive.setSelected(true);
+-
+ 		JPanel pathPanel = new JPanel(new BorderLayout(5, 0));
+ 		pathPanel.add(label, BorderLayout.WEST);
+ 		pathPanel.add(path, BorderLayout.CENTER);
+ 		pathPanel.setMinimumSize(pathPanel.getPreferredSize());
+ 
+-		JPanel optionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+-		optionPanel.add(autoRedirects);
+-		optionPanel.add(followRedirects);
+-		optionPanel.add(useKeepAlive);
+-		optionPanel.setMinimumSize(optionPanel.getPreferredSize());
+-
+ 		JPanel panel = new JPanel();
+ 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+ 		panel.add(pathPanel);
+-		panel.add(optionPanel);
+ 		return panel;
+ 	}
+ 

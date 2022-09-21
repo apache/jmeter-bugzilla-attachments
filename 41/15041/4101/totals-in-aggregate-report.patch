@@ -1,0 +1,441 @@
+diff -Naur orig/components/org/apache/jmeter/visualizers/RunningSample.java src/components/org/apache/jmeter/visualizers/RunningSample.java
+--- orig/components/org/apache/jmeter/visualizers/RunningSample.java	2002-12-10 01:32:08.000000000 +0100
++++ src/components/org/apache/jmeter/visualizers/RunningSample.java	2002-12-10 02:50:34.000000000 +0100
+@@ -86,13 +86,15 @@
+     private long errorCount;
+     private long firstTime;
+     private long lastTime;
+-    private Set threadNames;
+     private String label;
++    private int index;
+ 
+     /**
+      * use this constructor.
+      */
+-    public RunningSample() {
++    public RunningSample(String label, int index) {
++        this.label= label;
++	this.index = index;
+         counter = 0L;
+         runningSum = 0L;
+         max = Long.MIN_VALUE;
+@@ -100,7 +102,6 @@
+         errorCount = 0L;
+         firstTime = 0L;
+         lastTime = 0L;
+-        threadNames = new HashSet();
+     }
+ 
+     /**
+@@ -123,20 +124,18 @@
+         long howLongRunning = lastTime - firstTime;
+ 
+         if (howLongRunning == 0) return ("N/A");
+-        double samplesPerSecond = (double)((double)howLongRunning * threadNames.size()) / (double)getAverage();
+-        double factor = (double)((double)1000 / (double)howLongRunning);
+-        samplesPerSecond = samplesPerSecond * factor;
+-        String perString = "/sec";
+-        if (samplesPerSecond < 1.0) {
+-            samplesPerSecond *= 60;
+-            perString = "/min";
++	double rate= (double)howLongRunning / counter / 1000.0;
++	String unit="sec";
++        if (rate < 1.0) {
++            rate *= 60.0;
++            unit = "min";
+         }
+-        if (samplesPerSecond < 1.0) {
+-            samplesPerSecond *= 60;
+-            perString = "/hour";
++        if (rate < 1.0) {
++            rate *= 60.0;
++            unit = "/hour";
+         }
+         
+-        String rval = rateFormatter.format(samplesPerSecond) + perString;
++        String rval = rateFormatter.format(rate) + "/" + unit;
+         return (rval);
+     }
+     
+@@ -145,6 +144,10 @@
+     	return label;
+     }
+ 
++    public int getIndex()
++    {
++        return index;
++    }
+ 
+     /**
+      * Records a sample.
+@@ -152,11 +155,9 @@
+      * @arg aSuccessFlag Flag for if this sample was successful or not
+      */
+     public synchronized void addSample(SampleResult res) {
+-    	threadNames.add(res.getThreadName());
+ 		long aTimeInMillis = res.getTime();
+ 		boolean aSuccessFlag = res.isSuccessful();
+ 		lastTime = res.getTimeStamp();
+-		label = res.getSampleLabel();
+         counter++;
+         if (firstTime == 0L) {
+             // this is our first sample, set the start time to current timestamp
+@@ -174,7 +175,7 @@
+      */
+     public long getMin() {
+         long rval = 0;
+-        if (min != Long.MIN_VALUE) rval = min;
++        if (min != Long.MAX_VALUE) rval = min;
+         return (rval);
+     }
+ 
+@@ -184,7 +185,7 @@
+      */
+     public long getMax() {
+         long rval = 0;
+-        if (max != Long.MAX_VALUE) rval = max;
++        if (max != Long.MIN_VALUE) rval = max;
+         return (rval);
+     }
+ 
+diff -Naur orig/components/org/apache/jmeter/visualizers/StatVisualizer.java src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+--- orig/components/org/apache/jmeter/visualizers/StatVisualizer.java	2002-12-10 01:32:47.000000000 +0100
++++ src/components/org/apache/jmeter/visualizers/StatVisualizer.java	2002-12-10 03:09:24.000000000 +0100
+@@ -108,7 +108,7 @@
+ 	 ***************************************/
+ 	protected JScrollPane myScrollPane;
+ 	private final static String VISUALIZER_NAME =
+-		JMeterUtils.getResString("Aggregate Report");
++		JMeterUtils.getResString("aggregate_report");
+ 	private long sleepTill = 0;
+ 	private static int width = 2000;
+ 	//    private boolean data = true;
+@@ -209,7 +209,6 @@
+ 	public void clear()
+ 	{
+ 		myStatTableModel.clear();
+-		myJTable.tableChanged(new TableModelEvent(myStatTableModel));
+ 		model.clear();
+ 	}
+ 
+@@ -220,8 +219,7 @@
+ 	 ***************************************/
+ 	public void updateGui(RunningSample s)
+ 	{
+-		updateChart(myStatTableModel,s);
+-		myStatTableModel.fireTableDataChanged();
++		myStatTableModel.rowChanged(s.getIndex());
+ 	}
+ 	// overrides AbstractVisualizer
+ 	// forces GUI update after sample file has been read
+@@ -232,35 +230,6 @@
+ 		return t;
+ 	}
+ 	/****************************************
+-	 * Main method to update the chart with data contained in the passed-in-map. No
+-	 * matter how quickly you repeatedly call this method, the table will only be
+-	 * updated at most once per second.
+-	 *
+-	 *@param aTable   !ToDo (Parameter description)
+-	 *@param dataset  !ToDo (Parameter description)
+-	 *@return         A flag whether or not the graph was updated at all
+-	 ***************************************/
+-	public synchronized boolean updateChart(StatTableModel aTable, RunningSample rs)
+-	{
+-		int ridx = aTable.getRowWithKey(rs.getLabel());
+-			aTable.setValueAt(rs.getLabel(), ridx, 0);
+-			aTable.setValueAt(new Long(rs.getNumSamples()), ridx, 1);
+-			aTable.setValueAt(new Long(rs.getAverage()), ridx, 2);
+-			aTable.setValueAt(new Long(rs.getMin()), ridx, 3);
+-			aTable.setValueAt(new Long(rs.getMax()), ridx, 4);
+-			aTable.setValueAt(rs.getErrorPercentageString(), ridx, 5);
+-			aTable.setValueAt(rs.getRateString(), ridx, 6);
+-			if (rs.getErrorPercentage() > .5)
+-			{
+-				// have some fun with cell renderers later, change this text to red or something.
+-				// here is where the logic would be.
+-			}
+-		// while
+-		// we ended up updating the data in the table, so we'll return true so our caller can force a repaint
+-		// of components
+-		return (true);
+-	}
+-	/****************************************
+ 	 * Main visualizer setup..
+ 	 ***************************************/
+ 	private void init()
+@@ -280,7 +249,7 @@
+ 			new Font(curFont.getFontName(), curFont.getStyle(), curFontSize));
+ 		mainPanel.add(panelTitleLabel);
+ 		mainPanel.add(getFilePanel());
+-		myStatTableModel = new StatTableModel();
++		myStatTableModel = new StatTableModel(model);
+ 		//        SortFilterModel mySortedModel = new SortFilterModel(myStatTableModel);
+ 		myJTable = new JTable(myStatTableModel);
+ 		myJTable.setPreferredScrollableViewportSize(new Dimension(500, 70));
+@@ -471,67 +440,42 @@
+  ***************************************/
+ class StatTableModel extends AbstractTableModel
+ {
+-	final String[] columnNames =
++	private final String[] columnNames =
+ 		{ "URL", "Count", "Average", "Min", "Max", "Error%", "Rate" };
+-	Vector data;
+-	Map rowValues;
++	private final Class[] columnClasses =
++	  	{ String.class, Long.class, Double.class, Long.class, Long.class, String.class, String.class };
++	private final String TOTAL_LABEL= JMeterUtils.getResString("aggregate_report_total_label");
++
++	private StatVisualizerModel model;
++	private int currentRowCount= 0;
++
+ 	/****************************************
+ 	 * !ToDo (Constructor description)
+ 	 ***************************************/
+-	public StatTableModel()
++	public StatTableModel(StatVisualizerModel model)
+ 	{
+ 		super();
+-		data = new Vector();
+-		rowValues = new HashMap();
++		this.model= model;
+ 	}
+ 	
+-	public int getRowWithKey(String key)
+-	{
+-		Integer row = (Integer)rowValues.get(key);
+-		if(row == null)
+-		{
+-			return data.size();
+-		}
+-		else
+-		{
+-			return row.intValue();
+-		}
+-	}
+-	/****************************************
+-	 * !ToDo (Method description)
+-	 *
+-	 *@param value  !ToDo (Parameter description)
+-	 *@param row    !ToDo (Parameter description)
+-	 *@param col    !ToDo (Parameter description)
+-	 ***************************************/
+-	public void setValueAt(Object value, int row, int col)
+-	{
+-		Object[] temp;
+-		if(col == 0)
+-		{
+-			if(!rowValues.containsKey(value))
+-			{
+-				rowValues.put(value,new Integer(row));
+-			}
+-		}
+-		//Extends the size of the vector as needed (can be used for append)
+-		if (row >= data.size())
+-		{
+-			data.setSize(row + 1);
+-		}
+-		//Check if the line is not empty
+-		if ((Object[]) (data.get(row)) == null)
+-		{
+-			temp = new Object[this.getColumnCount()];
+-		}
+-		else
+-		{
+-			temp = (Object[]) (data.get(row));
++	public void rowChanged(int index) {
++		TableModelEvent event;
++
++		// Create the table changed event, carefully handling the case where the
++		// table grows beyond its current known size:
++	        synchronized(this) {
++		  if (index >= currentRowCount-1) {
++		    event= new TableModelEvent(this, currentRowCount-1, index, TableModelEvent.ALL_COLUMNS, TableModelEvent.INSERT);
++		    currentRowCount= index+2;
++		  }
++		  else event= new TableModelEvent(this, index);
+ 		}
+-		temp[col] = value;
+-		//Columns are stored as an array
+-		data.set(row, temp);
++		// Fire the event:
++		fireTableChanged(event);
++		// No matter which row changes, the totals row will have changed too:
++		fireTableChanged(new TableModelEvent(this, currentRowCount));
+ 	}
++
+ 	/****************************************
+ 	 * !ToDoo (Method description)
+ 	 *
+@@ -548,7 +492,8 @@
+ 	 ***************************************/
+ 	public int getRowCount()
+ 	{
+-		return data.size();
++		currentRowCount= model.getRunningSampleCount() + 1;
++		return currentRowCount;
+ 	}
+ 	/****************************************
+ 	 * !ToDoo (Method description)
+@@ -569,14 +514,25 @@
+ 	 ***************************************/
+ 	public Object getValueAt(int row, int col)
+ 	{
+-		//When created, rows are null, need to check that
+-		if ((((Object[]) data.get(row))[col]) != null)
+-		{
+-			return (((Object[]) (data.get(row)))[col]);
++	  	RunningSample s;
++
++		if (row==model.getRunningSampleCount()) {
++		  if (col==0) return TOTAL_LABEL;
++		  s= model.getRunningSampleTotal();
+ 		}
+-		else
+-		{
+-			return (" ");
++		else {
++		  s= model.getRunningSample(row);
++		}
++
++		switch (col) {
++		  case 0: return s.getLabel();
++		  case 1: return new Long(s.getNumSamples());
++		  case 2: return new Double(s.getAverage());
++		  case 3: return new Long(s.getMin());
++		  case 4: return new Long(s.getMax());
++		  case 5: return s.getErrorPercentageString();
++		  case 6: return s.getRateString();
++		  default: return "__ERROR__";
+ 		}
+ 	}
+ 	/****************************************
+@@ -587,23 +543,14 @@
+ 	 ***************************************/
+ 	public Class getColumnClass(int c)
+ 	{
+-		return getValueAt(0, c).getClass();
++		return columnClasses[c];
+ 	}
+ 	/****************************************
+ 	 * !ToDo (Method description)
+ 	 ***************************************/
+ 	public void clear()
+ 	{
+-		data.clear();
+-	}
+-	/****************************************
+-	 * !ToDo (Method description)
+-	 *
+-	 *@param row  !ToDo (Parameter description)
+-	 ***************************************/
+-	public void insertRowAt(int row)
+-	{
+-		data.insertElementAt(new Object[this.getColumnCount()], row);
++		fireTableDataChanged();
+ 	}
+ }
+ // class StatTableModel
+diff -Naur orig/components/org/apache/jmeter/visualizers/StatVisualizerModel.java src/components/org/apache/jmeter/visualizers/StatVisualizerModel.java
+--- orig/components/org/apache/jmeter/visualizers/StatVisualizerModel.java	2002-12-10 01:32:59.000000000 +0100
++++ src/components/org/apache/jmeter/visualizers/StatVisualizerModel.java	2002-12-10 02:29:55.000000000 +0100
+@@ -73,14 +73,19 @@
+ {
+ 	private String name;
+ 	private List listeners;
++	private Vector runningSamples;
+ 	private Map labelMap;
++	private RunningSample total;
++
+ 	/****************************************
+ 	 * Default Constuctor
+ 	 ***************************************/
+ 	public StatVisualizerModel()
+ 	{
+ 		listeners = new LinkedList();
++		runningSamples = new Vector(0, 10);
+ 		labelMap = Collections.synchronizedMap(new HashMap(10));
++		total = new RunningSample("__TOTAL__", -1);
+ 	}
+ 	/****************************************
+ 	 * Sets the Name attribute of the StatVisualizerModel object
+@@ -91,16 +96,7 @@
+ 	{
+ 		this.name = name;
+ 	}
+-	/****************************************
+-	 * Returns the Map containing the Samples we've collected and their
+-	 * corresponding RunningSample instance.
+-	 *
+-	 *@return   The URLStats value
+-	 ***************************************/
+-	public Map getURLStats()
+-	{
+-		return (labelMap);
+-	}
++
+ 	/****************************************
+ 	 * Gets the GuiClass attribute of the StatVisualizerModel object
+ 	 *
+@@ -134,6 +130,20 @@
+ 	{
+ 		listeners.add(listener);
+ 	}
++
++	public int getRunningSampleCount() {
++	  	return runningSamples.size();
++	}
++
++	public RunningSample getRunningSample(int index)
++	{
++		return (RunningSample)runningSamples.get(index);
++	}
++
++	public RunningSample getRunningSampleTotal() {
++	  	return total;
++	}
++
+ 	/****************************************
+ 	 * !ToDo
+ 	 *
+@@ -143,19 +153,18 @@
+ 	{
+ 		String aLabel = res.getSampleLabel();
+ 		String responseCode = res.getResponseCode();
+-		RunningSample myRS;
+-		if (labelMap.containsKey(aLabel))
+-		{
+-			myRS = (RunningSample) labelMap.get(aLabel);
+-		}
+-		else
+-		{
+-			// put a new one there..
+-			myRS = new RunningSample();
+-			labelMap.put(aLabel, myRS);
++		RunningSample s;
++		synchronized(labelMap) {
++		  s= (RunningSample)labelMap.get(aLabel);
++		  if (s == null) {
++			  s = new RunningSample(aLabel, runningSamples.size());
++			  runningSamples.add(s);
++			  labelMap.put(aLabel, s);
++		  }
+ 		}
+-		myRS.addSample(res);
+-		this.fireDataChanged(myRS);
++		s.addSample(res);
++		total.addSample(res);
++		this.fireDataChanged(s);
+ 	}
+ 	/****************************************
+ 	 * Reset everything we can in the model.
+@@ -163,7 +172,9 @@
+ 	public void clear()
+ 	{
+ 		// clear the data structures
++		runningSamples.clear();
+ 		labelMap.clear();
++		total= new RunningSample("__TOTAL__", -1);
+ 		this.fireDataChanged();
+ 	}
+ 	/****************************************

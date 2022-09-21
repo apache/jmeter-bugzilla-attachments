@@ -1,0 +1,385 @@
+<html xmlns:jmeter="http://jmeter.apache.org/">
+   <title>Schematic view of Test Plan</title>
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+      <style>
+ul.tree, ul.tree ul {
+    list-style-type: none;
+    background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAKAQMAAABPHKYJAAAAA1BMVEWIiIhYZW6zAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH1ggGExMZBky19AAAAAtJREFUCNdjYMAEAAAUAAHlhrBKAAAAAElFTkSuQmCC') repeat-y;
+    margin: 0;
+    padding: 0;
+}
+ul.tree ul {
+    margin-left: 10px;
+}
+ul.tree li {
+    margin: 0;
+    padding: 0 12px;
+    line-height: 20px;
+    background:  url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAUAQMAAACK1e4oAAAABlBMVEUAAwCIiIgd2JB2AAAAAXRSTlMAQObYZgAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9YIBhQIJYVaFGwAAAARSURBVAjXY2hgQIf/GTDFGgDSkwqATqpCHAAAAABJRU5ErkJggg==') no-repeat;
+    color: #369;
+}
+ul.tree li:last-child {
+    background: #fff url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAUAQMAAACK1e4oAAAABlBMVEUAAwCIiIgd2JB2AAAAAXRSTlMAQObYZgAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9YIBhQIIhs+gc8AAAAQSURBVAjXY2hgQIf/GbAAAKCTBYBUjWvCAAAAAElFTkSuQmCC') no-repeat;
+}
+</style>
+   </head>
+   <body>
+      <ul class="tree" id="tree">
+         <li><b>load test </b>
+            "Load Test" 
+            (globalVars:[],
+            executeTearDownThreadsOnShutdown: )
+            <br>
+            &nbsp;&nbsp;&nbsp;Comments: <i style="color:green"></i></li>
+         <li>
+            <ul>
+               <li><b>run</b>
+                  "Pre-req" 
+                  (
+                  threads: "20",
+                  loops: "1",
+                  ramp-up: "100"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>handle cookies</b>
+                        "Cookie Manager" 
+                        (clearOnEachIteration: false,
+                        policy: "",
+                        cookies: [
+                        ])
+                        </li>
+                     <li><b>read csv into vars</b>
+                        "CSV Data Set Config" 
+                        (file: "C:\Users\mcginltr\OneDrive - AGCO Corp\Documents\Development\Jmeter Load Testing\MFG_MCF_Load_Test\TEST-20Users_20Machines\UserVariables.csv",
+                        vars:"Jmeter_FMD_SN,Jmeter_VIN,Jmeter_MachineModel,Jmeter_Platform,Jmeter_ManifestID,Jmeter_ManifestID_Version,Jmeter_TaxonomyID",
+                        sharing:"shareMode.group",
+                        recycleOnEof:true,
+                        stopThreadOnEof:false
+                        )
+                        <br></li>
+                     <li><b>OnceOnlyController</b>
+                        "Init" </li>
+                     <li>
+                        <ul>
+                           <li><b>http request</b>
+                              "access_token" 
+                              (method: "POST",
+                              url: "
+                              https://test-agco-e-extoauthprovider-v2.ir-e1.cloudhub.io://api/v1/access_token",
+                              
+                              body: [
+                              
+                              ]
+                              ,
+                              upload-files: [
+                              
+                              ]
+                              )
+                              </li>
+                           <li>
+                              <ul>
+                                 <li><b>add headers</b>
+                                    "access_token" 
+                                    (headers:[
+                                    
+                                    {"client_id"=
+                                    "28c53217-15e0-4288-a2c3-b6fb92976be7"
+                                    ,
+                                    {"client_secret"=
+                                    "s72vWBM4BuxMdUVFd30p2nxrSiXzsy7CmBGeZV68VcJvYZDD8dzj_XV_r-gYrBzI1VYIKfI0x29F9AGMqMvKLA"
+                                    ,
+                                    {"grant_type"=
+                                    "client_credentials"
+                                    ])
+                                    </li>
+                                 <li><b>extract-jsonpath </b>
+                                    "access_token" <b>using response body</b>
+                                    (exportedVar: "access_token",
+                                    jsonPaths: "$.access_token",
+                                    default: "",
+                                    matchNr: "0")
+                                    </li>
+                              </ul>
+                           </li>
+                           <li><b>http request</b>
+                              "Device Registration" 
+                              (method: "POST",
+                              url: "
+                              https://test-agco-e-featuredevice-v1.ir-e1.cloudhub.io://api/v1/registration/device?access_token=${access_token}",
+                              
+                              body: "{&#xD;
+                              "publicKey": "NIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA9QLeoeiQmhmL+UW9dzzOf0Wrfq5",&#xD;
+                              "serialNumber": "${Jmeter_FMD_SN}",&#xD;
+                              "agcoPartNumber": "M219PB2564ACM",&#xD;
+                              "featureManagerDevice": "1XFFF0002504A",&#xD;
+                              "signatureScheme": "RSA",&#xD;
+                              "signingAlgorithm": "sha512"&#xD;
+                              }"
+                              ,
+                              upload-files: [
+                              
+                              ]
+                              )
+                              </li>
+                           <li>
+                              <ul>
+                                 <li><b>add headers</b>
+                                    "Device Registration" 
+                                    (headers:[
+                                    
+                                    {"Content-Type"=
+                                    "application/json"
+                                    ])
+                                    </li>
+                              </ul>
+                           </li>
+                           <li><b>http request</b>
+                              "Verify Device Registration" 
+                              (method: "GET",
+                              url: "
+                              https://test-agco-e-featuredevice-v1.ir-e1.cloudhub.io://api/v1/registration/device?access_token=${access_token}&amp;serialNumber=${Jmeter_FMD_SN}&amp;featureManagerDevice=1XFFF0002504A",
+                              
+                              body: [
+                              
+                              ]
+                              ,
+                              upload-files: [
+                              
+                              ]
+                              )
+                              </li>
+                           <li><b>http request</b>
+                              "Polarion POST manifests" 
+                              (method: "POST",
+                              url: "
+                              https://test-agco-e-polarion-v1.ir-e1.cloudhub.io://api/v3/manifests?access_token=${access_token}",
+                              
+                              body: "{&#xD;
+                              "features": [&#xD;
+                              "1XFFF0002E004","1XFFF00018000","1XFFF0002E0FE","1XFFF0002E02F","1XFFF0003F022","1XFFF0001702B","1XFFF00020003","1XFFF000200ED","1XFFF000320FE","1XFFF0003203C","1XFFF00076016","1XFFF00052016","1XFFF00015080","1XFFF00015081","1XFFF00015082","1XFFF00015083","1XFFF00015084","1XFFF00015085","1XFFF00015088","1XFFF00015089","1XFFF0001508A","1XFFF0001508B","1XFFF0001508C","1XFFF0001508D","1XFFF0001508F","1XFFF0007C08E","1XFFF0005402F","1XFFF0001608E","1XFFF0003E006","1XFFF0003E021","1XFFF0001201C","1XFFF0003C097","1XFFF00051017","1XFFF00014031","1XFFF00014032","1XFFF0002A029","1XFFF0002A02A","1XFFF000140FE","1XFFF00075090","1XFFF0002504A","1XFFF00022085","1XFFF00022088","1XFFF00022087","1XFFF00022082","1XFFF00022081","1XFFF00022084","1XFFF00022083","1XFFF0002208F","1XFFF0002208A","1XFFF00022089","1XFFF0001F015","1XFFF0001E005","1XFFF0001E020","1XFFF00059005","1XFFF000590FE","2X0000000A001","2X00000223001","2X0000004308C","2X00000043078","2X000001C8007","2X000001C8001","2X0000012B001","2X0000012B000","2X00000139009","2X00000139008","2X0000013D002","2X00000140001","2X00000140000","2X00000152001","2X00000081001","2X0000004408C","2X0000014F001","2X00000164001","2X00000176001","2XFFEFFFFF001","2X00000127001","2X00000165078","2XFFEFFFF9001","2X0000012801C","2X0000012801B","2X00000128019","2X00000128018","2X00000128017","2X00000128016","2X00000128015","2X00000128014","2X00000128013","2X00000128012","2X00000128011","2X00000128010","2X0000012800F","2X0000012800D","2X0000012800C","2X0000012800B","2X0000012800A","2X00000128009","2X00000128008","2X00000128007","2X00000128006","2X00000128005","2X00000128004","2X00000128003","2X00000128002","2X00000128001","2X00000128000","2X0000012C001","2X00000141000","2X00000141001","2X00000141002","2X0000013E032","2X00000153002","2X00000153001","2X00000153000","2X0000001E001","2X0000013F258","2XFFEFFFFE001","2X0000016A002","2X00000166078","2X00000082001","2X000001AA001","2X000001AA002","2X00000094003","2X0000012D003","2X00000130001","2X00000046078","2X00000142000","2X00000142001","2X00000154002","2X00000154001","2X0000016A001","2X00000129001","2X000001FA001","2XFFEFFFFC001","2X00000155007","2X00000155008","2X0000016B001","2X0000016B002","2X0000011C001","2X00000180000","2X00000180001","2X000001AB035","2X000001C0001","2X000001AB02B","2X0000012E004","2X00000131004","2X00000131002","2X00000131005","2X00000143001","2X00000143000","2X000001F7081","2X000001F707B","2X000001FB001","2X0000000E001","2X00000144000","2X00000144001","2X0000015A001","2X00000181001","2X000001AC01F","2X000001AC018","2X00000047078","2XFFEFFFFB001","2X0000004C002","2X0000012F001","2X00000132004","2X00000132005","2X00000132006","2X000001C202E","2X00000169104","2X000001FC001","2X000001F800F","2X00000108001","2X00000133000","2X00000133003","2X00000145002","2X00000145000","2X00000145001","2X00000157001","2X0000015B001","2X00000182001","2X0000016D001","2X000001BF002","2X000001AD002","2X000001AD006","2XFFEFFFF5001","2X000001F900B","2X000001FD001","2X000001AE029","2X000001AE030","2X00000134001","2X00000134004","2X0000014A001","2X00000146001","2X00000146000","2X00000158001","2X0000015C001","2XFFEFFFFA001","2X00000002001","2X000001AF04D","2X000001AF045","2X000001FE001","2X0000021C001","2X0000014B001","2X0000014B002","2X00000159001","2X00000219001","2X0000012400A","2X0000012400D","2X00000100002","2X00000100001","2X00000040078","2X00000136001","2X0000013A001","2X0000004008C","2X0000014C000","2X0000014C001","2X0000009E002","2X0000009E001","2X0000014C00F","2X00000173001","2X00000161001","2X00000185001","2X0000009F002","2X0000009F001","2X0000004108C","2X00000041078","2X0000021E001","2X0000013B001","2X00000137002","2X00000137001","2X00000150001","2X00000149001","2X00000149002","2X0000014D002","2X0000014D001","2X00000162001","2X00000222001","2X00000101001","2X0000004208C","2X00000042078","2X0000012A003","2X0000012A002","2X0000013800E","2X0000013800D","2X0000013800F","2X00000138010","2X0000014E001","2X0000014E002","2X00000151002","2X00000163001","2X00000175001","2X00000005002","2X00000005001","2X0000006B001","2X00000221003","2X000001220C3","2X000001220B4","2X000001220A6","2X00000122096","2X0000022B001","2X0000022A000","2X0000022A002","2X0000022A003","2X00000227002","2X0000022E001","2X0000022F001","2X00000132003","2X000001220E0","2X000001220D2","2X00000229001","2X00000229002","2X00000155000","2X00000159002","1XFFF00022080","1XFFF0002208B","1XFFF0002208C","1XFFF0002208D"&#xD;
+                              ],&#xD;
+                              "taxonomies": [&#xD;
+                              {&#xD;
+                              "taxonomyid": "${Jmeter_TaxonomyID}",&#xD;
+                              "genscode": "123 (${Jmeter_MachineModel})"&#xD;
+                              }&#xD;
+                              ],&#xD;
+                              "manifestID": "${Jmeter_ManifestID}",&#xD;
+                              "manifestVersion": "${Jmeter_ManifestID_Version}",&#xD;
+                              "manifestDesc": "${Jmeter_Platform}__PRE.2019.2",&#xD;
+                              "manifestURL": "/Platforms/${Jmeter_Platform}/20190705074127/manifest.xml",&#xD;
+                              "manifestHash": "71D08D7D8C2B80BA62E9AECC360EE9649BBFC720B347B802C001A1107EF029F7",&#xD;
+                              "releaseType": "development",&#xD;
+                              "machineTypeDiagnosticID": "${Jmeter_Platform}"&#xD;
+                              }"
+                              ,
+                              upload-files: [
+                              
+                              ]
+                              )
+                              </li>
+                           <li>
+                              <ul>
+                                 <li><b>add headers</b>
+                                    "Polarion POST manifests" 
+                                    (headers:[
+                                    
+                                    {"Content-Type"=
+                                    "application/json"
+                                    ])
+                                    </li>
+                              </ul>
+                           </li>
+                           <li><b>http request</b>
+                              "Verify Manifest" 
+                              (method: "GET",
+                              url: "
+                              https://test-agco-e-manifests-v1.ir-e1.cloudhub.io://api/manifests/${Jmeter_ManifestID}?access_token=${access_token}&amp;version=${Jmeter_ManifestID_Version}&amp;releasetype=development",
+                              
+                              body: [
+                              
+                              ]
+                              ,
+                              upload-files: [
+                              
+                              ]
+                              )
+                              </li>
+                        </ul>
+                     </li>
+                  </ul>
+               </li>
+               <li><b>run</b>
+                  "Load" 
+                  (
+                  threads: "20",
+                  loops: "-1",
+                  ramp-up: "100"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>handle cookies</b>
+                        "Cookie Manager" 
+                        (clearOnEachIteration: false,
+                        policy: "",
+                        cookies: [
+                        ])
+                        </li>
+                     <li><b>read csv into vars</b>
+                        "CSV Data Set Config" 
+                        (file: "C:\Users\mcginltr\OneDrive - AGCO Corp\Documents\Development\Jmeter Load Testing\MFG_MCF_Load_Test\TEST-20Users_20Machines\UserVariables.csv",
+                        vars:"Jmeter_FMD_SN,Jmeter_VIN,Jmeter_MachineModel,Jmeter_Platform,Jmeter_ManifestID,Jmeter_ManifestID_Version,Jmeter_TaxonomyID",
+                        sharing:"shareMode.group",
+                        recycleOnEof:true,
+                        stopThreadOnEof:false
+                        )
+                        <br></li>
+                     <li><b>OnceOnlyController</b>
+                        "Init" </li>
+                     <li>
+                        <ul>
+                           <li><b>http request</b>
+                              "access_token" 
+                              (method: "POST",
+                              url: "
+                              https://test-agco-e-extoauthprovider-v2.ir-e1.cloudhub.io://api/v1/access_token",
+                              
+                              body: [
+                              
+                              ]
+                              ,
+                              upload-files: [
+                              
+                              ]
+                              )
+                              </li>
+                           <li>
+                              <ul>
+                                 <li><b>add headers</b>
+                                    "access_token" 
+                                    (headers:[
+                                    
+                                    {"client_id"=
+                                    "28c53217-15e0-4288-a2c3-b6fb92976be7"
+                                    ,
+                                    {"client_secret"=
+                                    "s72vWBM4BuxMdUVFd30p2nxrSiXzsy7CmBGeZV68VcJvYZDD8dzj_XV_r-gYrBzI1VYIKfI0x29F9AGMqMvKLA"
+                                    ,
+                                    {"grant_type"=
+                                    "client_credentials"
+                                    ])
+                                    </li>
+                                 <li><b>extract-jsonpath </b>
+                                    "access_token" <b>using response body</b>
+                                    (exportedVar: "access_token",
+                                    jsonPaths: "$.access_token",
+                                    default: "",
+                                    matchNr: "0")
+                                    </li>
+                              </ul>
+                           </li>
+                        </ul>
+                     </li>
+                     <li><b>http request</b>
+                        "Mfg feature-check" 
+                        (method: "POST",
+                        url: "
+                        https://test-agco-e-mfg-v1.ir-e1.cloudhub.io://api/v3/configfeatures/feature-check?validatefeatures=true&amp;releasetype=development&amp;manifestid=${Jmeter_ManifestID}&amp;access_token=${access_token}&amp;version=${Jmeter_ManifestID_Version}",
+                        
+                        body: "&lt;?xml version="1.0" encoding="UTF-8"?&gt;&#xD;
+                        &lt;root&gt;&#xD;
+                        &lt;features&gt;&#xD;
+                        &lt;element&gt;&lt;id&gt;2XFFEFFFF5001&lt;/id&gt;&lt;val&gt;FI&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFF9001&lt;/id&gt;&lt;val&gt;${Jmeter_MachineModel}&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFA001&lt;/id&gt;&lt;val&gt;M&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFB001&lt;/id&gt;&lt;val&gt;50&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFC001&lt;/id&gt;&lt;val&gt;6126&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFE001&lt;/id&gt;&lt;val&gt;${Jmeter_Platform}&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFF001&lt;/id&gt;&lt;val&gt;${Jmeter_VIN}&lt;/val&gt;&lt;/element&gt;&#xD;
+                        &lt;element&gt;&lt;id&gt;1XFFF00018000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015080&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015081&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015082&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015083&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015084&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015089&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001508A&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001508B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001508F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00051017&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00014031&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001E020&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001F015&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00020003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF000200ED&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00014032&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF000140FE&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001702B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0002504A&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0002A029&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0003E021&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0005402F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000000A001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000000E001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004008C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004108C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004208C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004308C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000046078&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000047078&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004C002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000009F002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000100002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000101001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000122096&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012400D&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012800B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012A003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012B001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012D003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012E004&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000130001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000131004&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000132004&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000133003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000134001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000136001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000137002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013800D&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000139009&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013A001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013B001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013E032&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013F258&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000140000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000141000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000142000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000143000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000144000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000145000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000146000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000149002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014A001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014B002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014C00F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014D002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014F001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000151002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000152001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000153000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000154002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000155008&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000015C001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000164001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000165078&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000180000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000182001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AA002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AB035&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AC01F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AD006&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AE029&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AF045&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001C202E&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001C8007&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001F7081&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001F800F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001F900B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000223001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000022A003&lt;/id&gt;&lt;/element&gt;&#xD;
+                        &lt;/features&gt;&#xD;
+                        &lt;/root&gt;"
+                        ,
+                        upload-files: [
+                        
+                        ]
+                        )
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>add headers</b>
+                              "Mfg feature-check" 
+                              (headers:[
+                              
+                              {"Content-Type"=
+                              "application/xml"
+                              ])
+                              </li>
+                        </ul>
+                     </li>
+                     <li><b>http request</b>
+                        "Mfg send MCF" 
+                        (method: "POST",
+                        url: "
+                        https://test-agco-e-mfg-v1.ir-e1.cloudhub.io://api/v3/configfeatures?access_token=${access_token}&amp;version=${Jmeter_ManifestID_Version}&amp;releasetype=development",
+                        
+                        body: "&lt;?xml version="1.0" encoding="UTF-8"?&gt;&#xD;
+                        &lt;root&gt;&#xD;
+                        &lt;deviceSerialNumber&gt;${Jmeter_FMD_SN}&lt;/deviceSerialNumber&gt;&#xD;
+                        &lt;featureManagerDevice&gt;1XFFF0002504A&lt;/featureManagerDevice&gt;&#xD;
+                        &lt;fileContent&gt;tgz&lt;/fileContent&gt;&#xD;
+                        &lt;syntaxVersion&gt;1.0.0&lt;/syntaxVersion&gt;&#xD;
+                        &lt;features&gt;&#xD;
+                        &lt;element&gt;&lt;id&gt;2XFFEFFFF5001&lt;/id&gt;&lt;val&gt;FI&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFF9001&lt;/id&gt;&lt;val&gt;${Jmeter_MachineModel}&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFA001&lt;/id&gt;&lt;val&gt;M&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFB001&lt;/id&gt;&lt;val&gt;50&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFC001&lt;/id&gt;&lt;val&gt;6126&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFE001&lt;/id&gt;&lt;val&gt;${Jmeter_Platform}&lt;/val&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2XFFEFFFFF001&lt;/id&gt;&lt;val&gt;${Jmeter_VIN}&lt;/val&gt;&lt;/element&gt;&#xD;
+                        &lt;element&gt;&lt;id&gt;1XFFF00018000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015080&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015081&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015082&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015083&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015084&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00015089&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001508A&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001508B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001508F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00051017&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00014031&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001E020&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001F015&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00020003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF000200ED&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF00014032&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF000140FE&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0001702B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0002504A&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0002A029&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0003E021&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;1XFFF0005402F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000000A001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000000E001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004008C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004108C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004208C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004308C&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000046078&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000047078&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000004C002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000009F002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000100002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000101001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000122096&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012400D&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012800B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012A003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012B001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012D003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000012E004&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000130001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000131004&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000132004&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000133003&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000134001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000136001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000137002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013800D&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000139009&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013A001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013B001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013E032&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000013F258&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000140000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000141000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000142000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000143000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000144000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000145000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000146000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000149002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014A001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014B002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014C00F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014D002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000014F001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000151002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000152001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000153000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000154002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000155008&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000015C001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000164001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000165078&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000180000&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000182001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AA002&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AB035&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AC01F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AD006&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AE029&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001AF045&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001C202E&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001C8007&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001F7081&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001F800F&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X000001F900B&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X00000223001&lt;/id&gt;&lt;/element&gt;&lt;element&gt;&lt;id&gt;2X0000022A003&lt;/id&gt;&lt;/element&gt;&#xD;
+                        &lt;/features&gt;&#xD;
+                        &lt;/root&gt;"
+                        ,
+                        upload-files: [
+                        
+                        ]
+                        )
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>add headers</b>
+                              "Mfg send MCF" 
+                              (headers:[
+                              
+                              {"Content-Type"=
+                              "application/xml"
+                              ])
+                              </li>
+                        </ul>
+                     </li>
+                     <li><b>http request</b>
+                        "Mfg verify MCF" 
+                        (method: "GET",
+                        url: "
+                        https://test-agco-e-mfg-v1.ir-e1.cloudhub.io://api/v3/configfeatures/${Jmeter_VIN}?access_token=${access_token}&amp;syntaxversion=1.0.0&amp;deviceserialnumber=${Jmeter_FMD_SN}&amp;filecontent=tgz&amp;featureManagerDevice=1XFFF0002504A",
+                        
+                        body: [
+                        
+                        ]
+                        ,
+                        upload-files: [
+                        
+                        ]
+                        )
+                        </li>
+                  </ul>
+               </li>
+               <li><b>write samples</b>
+                  "Aggregate Report" 
+                  (filename: "C:\Users\mcginltr\OneDrive - AGCO Corp\Documents\Development\Jmeter Load Testing\MFG_MCF_Load_Test\TEST-20Users_20Machines\Results\TEST-MFG_MCF_Load_Test-20Users_20Machines.csv",
+                  xml: false,
+                  errorsOnly: false,
+                  successOnly: )
+                  </li>
+               <li><b>write samples</b>
+                  "View Results Tree" </li>
+               <li><b>write samples</b>
+                  "Response Time Graph" </li>
+            </ul>
+         </li>
+      </ul>
+   </body>
+</html>

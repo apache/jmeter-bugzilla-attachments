@@ -1,0 +1,390 @@
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1552140)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -3826,7 +3826,7 @@
+ </component>
+ 
+ 
+-<component name="Keystore Configuration" index="&sect-num;.4.9"  width="530" height="171" screenshot="keystore_config.png">
++<component name="Keystore Configuration" index="&sect-num;.4.9"  width="441" height="189" screenshot="keystore_config.png">
+ <description><p>The Keystore Config Element lets you configure how Keystore will be loaded and which keys it will use.
+ This component is typically used in HTTPS scenarios where you don't want to take into account keystore initialization into account in response time.</p>
+ <p>To use this element, you need to setup first a Java Key Store with the client certificates you want to test, to do that:
+@@ -3843,11 +3843,20 @@
+ </p>
+ </description>
+ 
++preload.shortDescription=Preload Keystore before test. Setting is to true is usually the best option.
++startIndex.displayName=Alias Start index (0-based)
++startIndex.shortDescription=First index of Alias in Keystore
++endIndex.displayName=Alias End index (0-based)
++endIndex.shortDescription=Last index of Alias in Keystore. When using Variable name ensure it is large enough so that all keys are loaded at startup.
++clientCertAliasVarName.displayName=Variable name holding certificate alias
++clientCertAliasVarName.shortDescription=Variable name that will contain the alias to use for Cert authentication. Var content can come from CSV Data Set.
++
+ <properties>
+   <property name="Name" required="No">Descriptive name for this element that is shown in the tree. </property>
+-  <property name="Preload" required="Yes">Wether or not to preload Keystore.</property>
++  <property name="Preload" required="Yes">Wether or not to preload Keystore. Setting is to true is usually the best option.</property>
++  <property name="Variable name holding certificate alias" required="False">Variable name that will contain the alias to use for authentication by client certificate. Variable value will be filled from CSV Data Set for example. In the screenshot, "certificat_ssl" will also be a variable in CSV Data Set.</property>
+   <property name="Alias Start Index" required="Yes">The index of the first key to use in Keystore, 0-based.</property>
+-  <property name="Alias End Index" required="Yes">The index of the last key to use in Keystore, 0-based.</property>
++  <property name="Alias End Index" required="Yes">The index of the last key to use in Keystore, 0-based. When using "Variable name holding certificate alias" ensure it is large enough so that all keys are loaded at startup.</property>
+ </properties>
+ <note>
+ To make JMeter use more than one certificate you need to ensure that:
+Index: src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java
+===================================================================
+--- src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java	(revision 1539658)
++++ src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java	(working copy)
+@@ -26,7 +26,11 @@
+ import java.security.cert.X509Certificate;
+ import java.util.ArrayList;
+ import java.util.Enumeration;
++import java.util.HashMap;
++import java.util.Map;
+ 
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -41,21 +45,24 @@
+     private final KeyStore store;
+     private final int startIndex;
+     private final int endIndex;
++    private String clientCertAliasVarName;
+ 
+-    private X509Certificate[][] certChains;
+-    private PrivateKey[] keys;
+     private String[] names = new String[0]; // default empty array to prevent NPEs
+-
++    private Map<String, PrivateKey> privateKeyByAlias = new HashMap<String, PrivateKey>();
++    private Map<String, X509Certificate[]> certsByAlias = new HashMap<String, X509Certificate[]>();
++    
+     //@GuardedBy("this")
+     private int last_user;
+ 
+-    private JmeterKeyStore(String type, int startIndex, int endIndex) throws Exception {
++
++    private JmeterKeyStore(String type, int startIndex, int endIndex, String clientCertAliasVarName) throws Exception {
+         if (startIndex < 0 || endIndex < 0 || endIndex < startIndex) {
+             throw new IllegalArgumentException("Invalid index(es). Start="+startIndex+", end="+endIndex);
+         }
+         this.store = KeyStore.getInstance(type);
+         this.startIndex = startIndex;
+         this.endIndex = endIndex;
++        this.clientCertAliasVarName = clientCertAliasVarName;
+     }
+ 
+     /**
+@@ -66,9 +73,9 @@
+         store.load(is, pw);
+     
+         ArrayList<String> v_names = new ArrayList<String>();
+-        ArrayList<PrivateKey> v_keys = new ArrayList<PrivateKey>();
+-        ArrayList<X509Certificate[]> v_certChains = new ArrayList<X509Certificate[]>();
+-    
++        this.privateKeyByAlias = new HashMap<String, PrivateKey>();
++        this.certsByAlias = new HashMap<String, X509Certificate[]>();
++
+         if (null != is){ // No point checking an empty keystore
+             PrivateKey _key = null;
+             int index = 0;
+@@ -86,12 +93,13 @@
+                             throw new Exception("No certificate chain found for alias: " + alias);
+                         }
+                         v_names.add(alias);
+-                        v_keys.add(_key);
+                         X509Certificate[] x509certs = new X509Certificate[chain.length];
+                         for (int i = 0; i < x509certs.length; i++) {
+                             x509certs[i] = (X509Certificate)chain[i];
+                         }
+-                        v_certChains.add(x509certs);
++
++                        privateKeyByAlias.put(alias, _key);
++                        certsByAlias.put(alias, x509certs);
+                     }
+                     index++;
+                 }
+@@ -101,23 +109,14 @@
+                 throw new Exception("No key(s) found");
+             }
+             if (index <= endIndex-startIndex) {
+-                LOG.warn("Did not find all requested aliases. Start="+startIndex+", end="+endIndex+", found="+v_certChains.size());
++                LOG.warn("Did not find all requested aliases. Start="+startIndex+", end="+endIndex+", found="+certsByAlias.size());
+             }
+         }
+     
+         /*
+          * Note: if is == null, the arrays will be empty
+          */
+-        int v_size = v_names.size();
+-    
+-        this.names = new String[v_size];
+-        this.names = v_names.toArray(names);
+-    
+-        this.keys = new PrivateKey[v_size];
+-        this.keys = v_keys.toArray(keys);
+-    
+-        this.certChains = new X509Certificate[v_size][];
+-        this.certChains = v_certChains.toArray(certChains);
++        this.names = v_names.toArray(new String[v_names.size()]);
+     }
+ 
+ 
+@@ -125,12 +124,12 @@
+      * Get the ordered certificate chain for a specific alias.
+      */
+     public X509Certificate[] getCertificateChain(String alias) {
+-        int entry = findAlias(alias);
+-        if (entry >=0) {
+-            return this.certChains[entry];
++        X509Certificate[] result = this.certsByAlias.get(alias);
++        if(result != null) {
++            return result;
+         }
+         // API expects null not empty array, see http://docs.oracle.com/javase/6/docs/api/javax/net/ssl/X509KeyManager.html
+-        return null;
++        throw new IllegalArgumentException("No certificate found for alias:'"+alias+"'");
+     }
+ 
+     /**
+@@ -138,6 +137,15 @@
+      * @return the next or only alias.
+      */
+     public String getAlias() {
++        if(!StringUtils.isEmpty(clientCertAliasVarName)) {
++            // We return even if result is null
++            String aliasName = JMeterContextService.getContext().getVariables().get(clientCertAliasVarName);
++            if(StringUtils.isEmpty(aliasName)) {
++                LOG.error("No var called '"+clientCertAliasVarName+"' found");
++                throw new IllegalArgumentException("No var called '"+clientCertAliasVarName+"' found");
++            }
++            return aliasName;
++        }
+         int length = this.names.length;
+         if (length == 0) { // i.e. is == null
+             return null;
+@@ -164,11 +172,11 @@
+      * Return the private Key for a specific alias
+      */
+     public PrivateKey getPrivateKey(String alias) {
+-        int entry = findAlias(alias);
+-        if (entry >=0) {
+-            return this.keys[entry];
++        PrivateKey pk = this.privateKeyByAlias.get(alias);
++        if(pk != null) {
++            return pk;
+         }
+-        return null;
++        throw new IllegalArgumentException("No PrivateKey found for alias:'"+alias+"'");
+     }
+ 
+     /**
+@@ -176,11 +184,12 @@
+      * @param type store type (e.g. JKS)
+      * @param startIndex first index (from 0)
+      * @param endIndex last index (to count -1)
++     * @param clientCertAliasVarName 
+      * @return the keystore
+      * @throws Exception
+      */
+-    public static JmeterKeyStore getInstance(String type, int startIndex, int endIndex) throws Exception {
+-        return new JmeterKeyStore(type, startIndex, endIndex);
++    public static JmeterKeyStore getInstance(String type, int startIndex, int endIndex, String clientCertAliasVarName) throws Exception {
++        return new JmeterKeyStore(type, startIndex, endIndex, clientCertAliasVarName);
+     }
+ 
+     /**
+@@ -190,16 +199,7 @@
+      * @throws Exception
+      */
+     public static JmeterKeyStore getInstance(String type) throws Exception {
+-        return new JmeterKeyStore(type, 0, 0);
+-    }
+-    
+-    private int findAlias(String alias) {
+-        for(int i = 0; i < names.length; i++) {
+-            if (alias.equals(names[i])){
+-                return i;
+-            }
+-        }
+-        return -1;
++        return getInstance(type, 0, 0, null);
+     }
+ 
+     /**
+Index: src/core/org/apache/jmeter/util/JsseSSLManager.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JsseSSLManager.java	(revision 1539658)
++++ src/core/org/apache/jmeter/util/JsseSSLManager.java	(working copy)
+@@ -389,10 +389,12 @@
+          */
+         @Override
+         public String chooseClientAlias(String[] keyType, Principal[] issuers, Socket socket) {
+-            log.debug("keyType: " + keyType[0]);
++            if(log.isDebugEnabled()) {
++                log.debug("keyType: " + keyType[0]);
++            }
+             String alias = this.store.getAlias();
+-            if (alias == null || alias.length() == 0) {
+-                log.debug("ClientAlias not found.");
++            if(log.isDebugEnabled()) {
++                log.debug("Client alias:'"+alias+"'");
+             }
+             return alias;
+         }
+Index: src/core/org/apache/jmeter/util/SSLManager.java
+===================================================================
+--- src/core/org/apache/jmeter/util/SSLManager.java	(revision 1539658)
++++ src/core/org/apache/jmeter/util/SSLManager.java	(working copy)
+@@ -81,6 +81,8 @@
+ 
+     private int keystoreAliasEndIndex;
+ 
++    private String clientCertAliasVarName;
++
+     /**
+      * Resets the SSLManager so that we can create a new one with a new keystore
+      */
+@@ -104,14 +106,14 @@
+      * not set, this method will prompt you to enter it. Unfortunately, there is
+      * no PasswordEntryField available from JOptionPane.
+      */
+-    protected JmeterKeyStore getKeyStore() {
++    protected synchronized JmeterKeyStore getKeyStore() {
+         if (null == this.keyStore) {
+             String fileName = System.getProperty(JAVAX_NET_SSL_KEY_STORE,""); // empty if not provided
+             String fileType = System.getProperty(JAVAX_NET_SSL_KEY_STORE_TYPE, // use the system property to determine the type
+                     fileName.toLowerCase(Locale.ENGLISH).endsWith(".p12") ? PKCS12 : "JKS"); // otherwise use the name
+             log.info("JmeterKeyStore Location: " + fileName + " type " + fileType);
+             try {
+-                this.keyStore = JmeterKeyStore.getInstance(fileType, keystoreAliasStartIndex, keystoreAliasEndIndex);
++                this.keyStore = JmeterKeyStore.getInstance(fileType, keystoreAliasStartIndex, keystoreAliasEndIndex, clientCertAliasVarName);
+                 log.info("KeyStore created OK");
+             } catch (Exception e) {
+                 this.keyStore = null;
+@@ -275,10 +277,12 @@
+      * @param preload 
+      * @param startIndex 
+      * @param endIndex 
++     * @param clientCertAliasVarName 
+      */
+-    public void configureKeystore(boolean preload, int startIndex, int endIndex) {
++    public void configureKeystore(boolean preload, int startIndex, int endIndex, String clientCertAliasVarName) {
+         this.keystoreAliasStartIndex = startIndex;
+         this.keystoreAliasEndIndex = endIndex;
++        this.clientCertAliasVarName = clientCertAliasVarName;
+         if(preload) {
+             keyStore = getKeyStore();
+         }
+Index: src/components/org/apache/jmeter/config/KeystoreConfig.java
+===================================================================
+--- src/components/org/apache/jmeter/config/KeystoreConfig.java	(revision 1539658)
++++ src/components/org/apache/jmeter/config/KeystoreConfig.java	(working copy)
+@@ -41,6 +41,7 @@
+     private String startIndex;
+     private String endIndex;
+     private String preload;
++    private String clientCertAliasVarName;
+     
+     public KeystoreConfig() {
+         super();
+@@ -90,11 +91,13 @@
+             throw new JMeterStopTestException("Keystore Config error : Alias start index must be lower than Alias end index");
+         }
+         log.info("Configuring Keystore with (preload:"+preload+", startIndex:"+
+-                startIndexAsInt+", endIndex:"+endIndexAsInt+")");
++                startIndexAsInt+", endIndex:"+endIndexAsInt+
++                ", clientCertAliasVarName:" + clientCertAliasVarName +")");
+ 
+         SSLManager.getInstance().configureKeystore(Boolean.parseBoolean(preload),
+                 startIndexAsInt, 
+-                endIndexAsInt);
++                endIndexAsInt,
++                clientCertAliasVarName);
+     }
+ 
+     /**
+@@ -138,4 +141,18 @@
+     public void setPreload(String preload) {
+         this.preload = preload;
+     }
++
++    /**
++     * @return the clientCertAliasVarName
++     */
++    public String getClientCertAliasVarName() {
++        return clientCertAliasVarName;
++    }
++
++    /**
++     * @param clientCertAliasVarName the clientCertAliasVarName to set
++     */
++    public void setClientCertAliasVarName(String clientCertAliasVarName) {
++        this.clientCertAliasVarName = clientCertAliasVarName;
++    }
+ }
+Index: src/components/org/apache/jmeter/config/KeystoreConfigResources.properties
+===================================================================
+--- src/components/org/apache/jmeter/config/KeystoreConfigResources.properties	(revision 1539658)
++++ src/components/org/apache/jmeter/config/KeystoreConfigResources.properties	(working copy)
+@@ -18,8 +18,10 @@
+ aliases.displayName=Aliases selection configuration
+ # fields
+ preload.displayName=Preload
+-preload.shortDescription=Preload Keystore before test
++preload.shortDescription=Preload Keystore before test. Setting is to true is usually the best option.
+ startIndex.displayName=Alias Start index (0-based)
+ startIndex.shortDescription=First index of Alias in Keystore
+ endIndex.displayName=Alias End index (0-based)
+-endIndex.shortDescription=Last index of Alias in Keystore
++endIndex.shortDescription=Last index of Alias in Keystore. When using Variable name ensure it is large enough so that all keys are loaded at startup.
++clientCertAliasVarName.displayName=Variable name holding certificate alias
++clientCertAliasVarName.shortDescription=Variable name that will contain the alias to use for Cert authentication. Var content can come from CSV Data Set.
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/config/KeystoreConfigResources_fr.properties
+===================================================================
+--- src/components/org/apache/jmeter/config/KeystoreConfigResources_fr.properties	(revision 1539658)
++++ src/components/org/apache/jmeter/config/KeystoreConfigResources_fr.properties	(working copy)
+@@ -23,3 +23,5 @@
+ startIndex.shortDescription=Num\u00E9ro d'index du premier alias de cl\u00E9 dans le coffre de cl\u00E9s (JKS)
+ endIndex.displayName=Num\u00E9ro d'index derni\u00E8re cl\u00E9 (d\u00E9marre \u00E0 0)
+ endIndex.shortDescription=Num\u00E9ro d'index du dernier alias de cl\u00E9 dans le coffre de cl\u00E9s (JKS)
++clientCertAliasVarName.displayName=Nom variable contenant l'alias
++clientCertAliasVarName.shortDescription=Nom de la variable qui contiendra l'alias \u00E0 utiliser pour l'authentification par Certificat. La variable peut \u00E8tre aliment\u00E9e depuis un CSV Data Set.
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/config/KeystoreConfigBeanInfo.java
+===================================================================
+--- src/components/org/apache/jmeter/config/KeystoreConfigBeanInfo.java	(revision 1539658)
++++ src/components/org/apache/jmeter/config/KeystoreConfigBeanInfo.java	(working copy)
+@@ -30,6 +30,7 @@
+     private static final String ALIASES_GROUP = "aliases";
+     private static final String ALIAS_END_INDEX = "endIndex";
+     private static final String ALIAS_START_INDEX = "startIndex";
++    private static final String CLIENT_CERT_ALIAS_VAR_NAME = "clientCertAliasVarName";
+     private static final String PRELOAD = "preload";
+ 
+     /**
+@@ -39,7 +40,7 @@
+         super(KeystoreConfig.class);
+ 
+         createPropertyGroup(ALIASES_GROUP, new String[] { 
+-                PRELOAD, ALIAS_START_INDEX, ALIAS_END_INDEX });
++                PRELOAD, CLIENT_CERT_ALIAS_VAR_NAME, ALIAS_START_INDEX, ALIAS_END_INDEX });
+ 
+         PropertyDescriptor p = property(PRELOAD);
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+@@ -48,6 +49,10 @@
+         p.setValue(NOT_OTHER, Boolean.TRUE);
+         p.setValue(TAGS, new String[]{"True", "False"}); // $NON-NLS-1$ $NON-NLS-2$
+ 
++        p = property(CLIENT_CERT_ALIAS_VAR_NAME);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, ""); // $NON-NLS-1$
++
+         p = property(ALIAS_START_INDEX);
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, ""); // $NON-NLS-1$

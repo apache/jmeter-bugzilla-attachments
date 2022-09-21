@@ -1,0 +1,43 @@
+--- jmeter/src/functions/org/apache/jmeter/functions/Jexl2Function.java	2014-07-10 17:45:39.000000000 +0400
++++ jmeter-threadLocalJEXL2/src/functions/org/apache/jmeter/functions/Jexl2Function.java	2014-07-10 17:58:09.000000000 +0400
+@@ -49,12 +49,7 @@
+     private static final List<String> desc = new LinkedList<String>();
+ 
+     // TODO should the engine be static?
+-    private static final JexlEngine jexl = new JexlEngine();
+-    static {
+-       jexl.setCache(512);
+-       jexl.setLenient(false);
+-       jexl.setSilent(false);
+-    }
++    private static final ThreadLocal<JexlEngine> threadLocal_jexl = new ThreadLocal<JexlEngine>();
+ 
+     static
+     {
+@@ -64,6 +59,18 @@
+ 
+     private Object[] values;
+ 
++    public JexlEngine getJexlEngine() {
++        JexlEngine engine = threadLocal_jexl.get();
++        if(engine == null) {
++            engine = new JexlEngine();
++            engine.setCache(512);
++            engine.setLenient(false);
++            engine.setSilent(false);
++            threadLocal_jexl.set(engine);
++        }
++        return engine;
++    }
++
+     /** {@inheritDoc} */
+     @Override
+     public synchronized String execute(SampleResult previousResult, Sampler currentSampler)
+@@ -81,6 +88,7 @@
+ 
+         JMeterContext jmctx = JMeterContextService.getContext();
+         JMeterVariables vars = jmctx.getVariables();
++        JexlEngine jexl = getJexlEngine();
+ 
+         try
+         {

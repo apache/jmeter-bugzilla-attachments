@@ -1,0 +1,387 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1815729)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -176,6 +176,8 @@
+ cancel_new_from_template=There are test items that have not been saved.  Do you wish to save before creating a test plan from selected template?
+ cancel_new_to_save=There are test items that have not been saved.  Do you wish to save before clearing the test plan?
+ cancel_revert_project=There are test items that have not been saved.  Do you wish to revert to the previously saved test plan?
++change_case_string=String to change case
++change_case_mode=Change case mode UPPER(default),LOWER,CAPITALIZE,CAMEL_CASE,CAMEL_CASE_FIRST_LOWER 
+ change_parent=Change Controller
+ char_value=Unicode character number (decimal or 0xhex)
+ check_return_code_title=Check Return Code
+Index: src/functions/org/apache/jmeter/functions/ChangeCase.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/ChangeCase.java	(nonexistent)
++++ src/functions/org/apache/jmeter/functions/ChangeCase.java	(working copy)
+@@ -0,0 +1,161 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import java.util.Arrays;
++import java.util.Collection;
++import java.util.EnumSet;
++import java.util.LinkedList;
++import java.util.List;
++
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Change Case Function
++ * 
++ * Support String manipulations of: upper case, lower case, capitalize and camel
++ * cases
++ * 
++ * @since 4.0
++ *
++ */
++public class ChangeCase extends AbstractFunction {
++
++	private static final String NOT_ALPHANUMERIC_REGEX = "[^a-zA-Z]";
++	private static final List<String> desc = new LinkedList<>();
++	private static final String KEY = "__changeCase";
++
++	private static final int MIN_PARAMETER_COUNT = 1;
++	private static final int MAX_PARAMETER_COUNT = 3;
++
++	static {
++		desc.add(JMeterUtils.getResString("change_case_string"));
++		desc.add(JMeterUtils.getResString("change_case_mode"));
++		desc.add(JMeterUtils.getResString("function_name_paropt"));
++	}
++
++	private CompoundVariable[] values;
++
++	@Override
++	public String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++		String originalString = values[0].execute();
++		String mode = ChangeCaseMode.UPPER.getName(); // default
++		if (values.length > 1) {
++			mode = values[1].execute();
++		}
++		String targetString = changeCase(originalString, mode);
++		addVariableValue(targetString, values, 2);
++		return targetString;
++	}
++
++	protected String changeCase(String originalString, String mode) {
++		String targetString = originalString;
++		// mode is case insensitive, allow upper for example
++		ChangeCaseMode changeCaseMode = ChangeCaseMode.typeOf(mode.toUpperCase());
++		if (changeCaseMode != null) {
++			switch (changeCaseMode) {
++			case UPPER:
++				targetString = StringUtils.upperCase(originalString);
++				break;
++			case LOWER:
++				targetString = StringUtils.lowerCase(originalString);
++				break;
++			case CAPITALIZE:
++				targetString = StringUtils.capitalize(originalString);
++				break;
++			case CAMEL_CASE:
++				targetString = camel(originalString, false);
++				break;
++			case CAMEL_CASE_FIRST_LOWER:
++				targetString = camel(originalString, true);
++				break;
++			default:
++				// default not doing nothing to string
++			}
++		}
++		return targetString;
++	}
++
++	@Override
++	public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++		checkParameterCount(parameters, MIN_PARAMETER_COUNT, MAX_PARAMETER_COUNT);
++		values = parameters.toArray(new CompoundVariable[parameters.size()]);
++	}
++
++	@Override
++	public String getReferenceKey() {
++		return KEY;
++	}
++
++	@Override
++	public List<String> getArgumentDesc() {
++		return desc;
++	}
++
++	private static String camel(String str, boolean isFirstCapitalied) {
++		StringBuffer buff = new StringBuffer();
++		List<String> tokens = Arrays.asList(str.split(NOT_ALPHANUMERIC_REGEX));
++		if (isFirstCapitalied) {
++			buff.append(tokens.get(0));
++			tokens = tokens.subList(1, tokens.size());
++		}
++		for (String i : tokens) {
++			buff.append(StringUtils.capitalize(i));
++		}
++		return buff.toString();
++	}
++
++	/**
++	 * ChangeCase Modes
++	 * 
++	 * Modes for different cases
++	 *
++	 */
++	public enum ChangeCaseMode {
++		UPPER("UPPER"), LOWER("LOWER"), CAPITALIZE("CAPITALIZE"), CAMEL_CASE("CAMEL_CASE"), CAMEL_CASE_FIRST_LOWER("CAMEL_CASE_FIRST_LOWER");
++		private String mode;
++
++		private ChangeCaseMode(String mode) {
++			this.mode = mode;
++		}
++
++		public String getName() {
++			return this.mode;
++		}
++
++		/**
++		 * Get ChangeCaseMode by mode
++		 * 
++		 * @param mode
++		 * @return relevant ChangeCaseMode
++		 */
++		public static ChangeCaseMode typeOf(String mode) {
++			EnumSet<ChangeCaseMode> allOf = EnumSet.allOf(ChangeCaseMode.class);
++			for (ChangeCaseMode zs : allOf) {
++				if (zs.getName().equals(mode))
++					return zs;
++			}
++			return null;
++		}
++	}
++}
+Index: test/src/org/apache/jmeter/functions/TestChangeCase.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestChangeCase.java	(nonexistent)
++++ test/src/org/apache/jmeter/functions/TestChangeCase.java	(working copy)
+@@ -0,0 +1,138 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import static org.junit.Assert.assertEquals;
++
++import java.util.Collection;
++import java.util.LinkedList;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.Before;
++import org.junit.Test;
++
++/**
++ * Test{@link ChangeCase} ChangeCase
++ *  
++ * @see ChangeCase 
++ *
++ */
++public class TestChangeCase extends JMeterTestCase {
++	
++	protected AbstractFunction changeCase;
++	private SampleResult result;
++
++    private Collection<CompoundVariable> params;
++
++    private JMeterVariables vars;
++
++    private JMeterContext jmctx;
++
++    @Before
++    public void setUp() {
++    	changeCase = new ChangeCase();
++        result = new SampleResult();
++        jmctx = JMeterContextService.getContext();
++        String data = "dummy data";
++        result.setResponseData(data, null);
++        vars = new JMeterVariables();
++        jmctx.setVariables(vars);
++        jmctx.setPreviousResult(result);
++        params = new LinkedList<>();
++    }
++
++    @Test
++    public void testParameterCountIsPropDefined() throws Exception {
++        checkInvalidParameterCounts(changeCase, 1, 3);
++    }
++    
++    @Test
++    public void testChangeCase() throws Exception {
++    	params.add(new CompoundVariable("myUpperTest"));
++    	changeCase.setParameters(params);
++    	String returnValue = changeCase.execute(result, null);
++    	assertEquals("MYUPPERTEST", returnValue);
++    }
++
++    @Test
++    public void testChangeCaseLower() throws Exception {
++    	params.add(new CompoundVariable("myUpperTest"));
++    	params.add(new CompoundVariable("LOWER"));
++    	changeCase.setParameters(params);
++    	String returnValue = changeCase.execute(result, null);
++    	assertEquals("myuppertest", returnValue);
++    }
++    
++    @Test
++    public void testChangeCaseWrongMode() throws Exception {
++    	params.add(new CompoundVariable("myUpperTest"));
++    	params.add(new CompoundVariable("Wrong"));
++    	changeCase.setParameters(params);
++    	String returnValue = changeCase.execute(result, null);
++    	assertEquals("myUpperTest", returnValue);
++    }
++    
++    @Test
++    public void testChangeCaseCamelCase() throws Exception {
++    	params.add(new CompoundVariable("ab-CD eF"));
++    	params.add(new CompoundVariable("CAMEL_CASE"));
++    	changeCase.setParameters(params);
++    	String returnValue = changeCase.execute(result, null);
++    	assertEquals("AbCDEF", returnValue);
++    }
++    
++    @Test
++    public void testChangeCaseCapitalize() throws Exception {
++    	params.add(new CompoundVariable("ab-CD eF"));
++    	params.add(new CompoundVariable("CAPITALIZE"));
++    	changeCase.setParameters(params);
++    	String returnValue = changeCase.execute(result, null);
++    	assertEquals("Ab-CD eF", returnValue);
++    }
++    
++    @Test
++    public void testChangeCaseCamelCaseFirstLower() throws Exception {
++    	params.add(new CompoundVariable("ab-CD eF"));
++        params.add(new CompoundVariable("camel_CASE_FIRST_LOWER"));
++        changeCase.setParameters(params);
++        String returnValue = changeCase.execute(result, null);
++        assertEquals("abCDEF", returnValue);
++    }
++    
++    @Test(expected=InvalidVariableException.class)
++	public void testChangeCaseError() throws Exception {
++		changeCase.setParameters(params);
++		changeCase.execute(result, null);
++	}    
++
++    @Test
++    public void testChangeCaseWrongModeIgonre() throws Exception {
++    	params.add(new CompoundVariable("ab-CD eF"));
++        params.add(new CompoundVariable("Wrong"));
++        changeCase.setParameters(params);
++        String returnValue = changeCase.execute(result, null);
++        assertEquals("ab-CD eF", returnValue);
++    }
++
++}
+Index: xdocs/changes.xml
+===================================================================
+--- xdocs/changes.xml	(revision 1815729)
++++ xdocs/changes.xml	(working copy)
+@@ -136,6 +136,7 @@
+     <li><bug>61724</bug>Add <code>__digest</code> function to provide computing of Hashes (SHA-XXX, MDX). Based on a contribution by orimarko at gmail.com</li>
+     <li><bug>61735</bug>Add <code>__dateTimeConvert</code> function to provide date formats conversions. Based on a contribution by orimarko at gmail.com</li>
+     <li><bug>61760</bug>Add <code>__isPropDefined</code> and <code>__isVarDefined</code> functions to know if property or variable exist. Contributed by orimarko at gmail.com</li>
++    <li><bug>61759</bug>Add <code>__changeCase</code> function to change different cases of a string. Contributed by orimarko at gmail.com</li>
+ </ul>
+ 
+ <h3>I18N</h3>
+Index: xdocs/usermanual/functions.xml
+===================================================================
+--- xdocs/usermanual/functions.xml	(revision 1815729)
++++ xdocs/usermanual/functions.xml	(working copy)
+@@ -1616,7 +1616,7 @@
+         <property name="Name of variable" required="No">The name of the variable to set.</property>
+     </properties>
+ </component>
+-<component index="&sect-num;.5.35" name="__isPropDefined">
++<component index="&sect-num;.5.36" name="__isPropDefined">
+     <description>
+         <p>The __isPropDefined function returns true if property exists or false if not.</p>
+     </description>
+@@ -1626,7 +1626,7 @@
+         </property>        
+     </properties>
+ </component>
+-<component index="&sect-num;.5.35" name="__isVarDefined">
++<component index="&sect-num;.5.37" name="__isVarDefined">
+     <description>
+         <p>The isVarDefined function returns true if variable exists or false if not.</p>
+     </description>
+@@ -1636,6 +1636,30 @@
+         </property>        
+     </properties>
+ </component>
++<component index="&sect-num;.5.38" name="__changeCase">
++    <description>
++        <p>The change case function returns a string value changing
++            specific case mode with the optional variable name.</p>
++    </description>
++    <properties>
++    <property name="String to change its case" required="Yes"> The String
++            that its case will be changed</property>
++        <property name="change case mode" required="Yes">
++            The mode to be used to change case, for exaple for ab-CD eF:
++            <ul>
++                <li><code>UPPER</code> result as AB-CD EF</li>
++                <li><code>LOWER</code> result as ab-cd ed</li>
++                <li><code>CAPITALIZE</code> result as Ab-CD eF</li>
++                <li><code>CAMEL_CASE</code>result as AbCDEF</li>
++                <li><code>CAMEL_CASE_FIRST_LOWER</code>result as abCDEF</li>
++            </ul>
++            <note>mode is case insensitive</note>
++        </property>
++        <property name="Name of variable" required="No">The name of
++            the variable to set.</property>
++    </properties>
++</component>
++
+ </subsection>
+ 
+ <subsection name="&sect-num;.6 Pre-defined Variables" anchor="predefinedvars">

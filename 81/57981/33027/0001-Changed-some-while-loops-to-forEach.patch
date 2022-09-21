@@ -1,0 +1,156 @@
+From c79da2280afdb7a9f990ab8ce062bc349fdd5e8d Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Sun, 23 Aug 2015 13:12:43 +0100
+Subject: [PATCH 1/1] Changed some while loops to forEach
+
+---
+ .../apache/jmeter/assertions/SMIMEAssertion.java   | 27 +++++++++-------------
+ .../apache/jmeter/control/IncludeController.java   | 23 +++++++-----------
+ .../jmeter/visualizers/PropertyControlGui.java     |  6 ++---
+ 3 files changed, 21 insertions(+), 35 deletions(-)
+
+diff --git a/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java b/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+index 0915a25..41dafa4 100644
+--- a/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
++++ b/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+@@ -31,10 +31,7 @@ import java.security.cert.CertStore;
+ import java.security.cert.CertificateException;
+ import java.security.cert.CertificateFactory;
+ import java.security.cert.X509Certificate;
+-import java.util.ArrayList;
+-import java.util.Iterator;
+-import java.util.List;
+-import java.util.Properties;
++import java.util.*;
+ 
+ import javax.mail.MessagingException;
+ import javax.mail.Session;
+@@ -303,7 +300,7 @@ class SMIMEAssertion {
+      * 
+      * @param serialString
+      *            the String representation of the serial Number
+-     * @return
++     * @return the BitInteger representation of the serial Number
+      */
+     private static BigInteger readSerialNumber(String serialString) {
+         if (serialString.startsWith("0x") || serialString.startsWith("0X")) { // $NON-NLS-1$  // $NON-NLS-2$
+@@ -315,7 +312,7 @@ class SMIMEAssertion {
+     /**
+      * Extract email addresses from a certificate
+      * 
+-     * @param cert
++     * @param cert the X509 certificate
+      * @return a List of all email addresses found
+      * @throws CertificateException
+      */
+@@ -324,17 +321,16 @@ class SMIMEAssertion {
+         List<String> res = new ArrayList<>();
+ 
+         X509Principal subject = PrincipalUtil.getSubjectX509Principal(cert);
+-        Iterator<?> addressIt = subject.getValues(X509Name.EmailAddress).iterator();
+-        while (addressIt.hasNext()) {
+-            String address = (String) addressIt.next();
+-            res.add(address);
++        Vector<?> addresses = subject.getValues(X509Name.EmailAddress);
++        for (Object address: addresses) {
++            res.add((String) address);
+         }
+ 
+-        Iterator<?> subjectAltNamesIt = 
+-            X509ExtensionUtil.getSubjectAlternativeNames(cert).iterator();
+-        while (subjectAltNamesIt.hasNext()) {
+-            List<?> altName = (List<?>) subjectAltNamesIt.next();
+-            int type = ((Integer) altName.get(0)).intValue();
++        Collection<?> subjectAltNames =
++            X509ExtensionUtil.getSubjectAlternativeNames(cert);
++        for (Object altNameObj : subjectAltNames) {
++            List<?> altName = (List<?>) altNameObj;
++            int type = (Integer) altName.get(0);
+             if (type == GeneralName.rfc822Name) {
+                 String address = (String) altName.get(1);
+                 res.add(address);
+@@ -347,7 +343,6 @@ class SMIMEAssertion {
+     /**
+      * Check if the Bouncycastle jce provider is installed and dynamically load
+      * it, if needed;
+-     * 
+      */
+     private static void checkForBouncycastle() {
+         if (null == Security.getProvider("BC")) { // $NON-NLS-1$
+diff --git a/src/components/org/apache/jmeter/control/IncludeController.java b/src/components/org/apache/jmeter/control/IncludeController.java
+index 3a87149..83b569b 100644
+--- a/src/components/org/apache/jmeter/control/IncludeController.java
++++ b/src/components/org/apache/jmeter/control/IncludeController.java
+@@ -67,9 +67,8 @@ public class IncludeController extends GenericController implements ReplaceableC
+         clone.setIncludePath(this.getIncludePath());
+         if (this.subtree != null) {
+             if (this.subtree.size() == 1) {
+-                Iterator<Object> itr = this.subtree.keySet().iterator();
+-                while (itr.hasNext()) {
+-                    this.sub = (TestElement) itr.next();
++                for (Object o : this.subtree.keySet()) {
++                    this.sub = (TestElement) o;
+                 }
+             }
+             clone.subtree = (HashTree)this.subtree.clone();
+@@ -173,18 +172,15 @@ public class IncludeController extends GenericController implements ReplaceableC
+      * @return HashTree Subset within Test Fragment or Empty HashTree
+      */
+     private HashTree getProperBranch(HashTree tree) {
+-        Iterator<Object> iter = new LinkedList<>(tree.list()).iterator();
+-        while (iter.hasNext()) {
+-            TestElement item = (TestElement) iter.next();
++        for (Object o : new LinkedList<>(tree.list())) {
++            TestElement item = (TestElement) o;
+ 
+             //if we found a TestPlan, then we are on our way to the TestFragment
+-            if (item instanceof TestPlan)
+-            {
++            if (item instanceof TestPlan) {
+                 return getProperBranch(tree.getTree(item));
+             }
+ 
+-            if (item instanceof TestFragmentController)
+-            {
++            if (item instanceof TestFragmentController) {
+                 return tree.getTree(item);
+             }
+         }
+@@ -194,14 +190,11 @@ public class IncludeController extends GenericController implements ReplaceableC
+ 
+ 
+     private void removeDisabledItems(HashTree tree) {
+-        Iterator<Object> iter = new LinkedList<>(tree.list()).iterator();
+-        while (iter.hasNext()) {
+-            TestElement item = (TestElement) iter.next();
++        for (Object o : new LinkedList<>(tree.list())) {
++            TestElement item = (TestElement) o;
+             if (!item.isEnabled()) {
+-                //log.info("Removing "+item.toString());
+                 tree.remove(item);
+             } else {
+-                //log.info("Keeping "+item.toString());
+                 removeDisabledItems(tree.getTree(item));// Recursive call
+             }
+         }
+diff --git a/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java b/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java
+index 7aad116..289e52d 100644
+--- a/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java
++++ b/src/components/org/apache/jmeter/visualizers/PropertyControlGui.java
+@@ -159,11 +159,9 @@ public class PropertyControlGui extends AbstractConfigGui implements
+                 return m1.compareTo(m2);
+             }
+         });
+-        Iterator<Map.Entry<Object, Object>> i = al.iterator();
+-        while (i.hasNext()) {
+-            tableModel.addRow(i.next());
++        for (Map.Entry<Object, Object> row : al) {
++            tableModel.addRow(row);
+         }
+-
+     }
+ 
+     @Override
+-- 
+2.1.4
+

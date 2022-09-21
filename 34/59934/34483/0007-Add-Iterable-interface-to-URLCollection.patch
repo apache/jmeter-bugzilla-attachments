@@ -1,0 +1,61 @@
+From 8fcf11f450d4080c6126fdb7d9a65187996868ac Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 27 Nov 2016 12:48:27 +0100
+Subject: [PATCH 7/7] Add Iterable interface to URLCollection
+
+---
+ .../http/org/apache/jmeter/protocol/http/parser/CssParser.java   | 9 ++-------
+ .../org/apache/jmeter/protocol/http/parser/URLCollection.java    | 3 ++-
+ 2 files changed, 4 insertions(+), 8 deletions(-)
+
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
+index 19cc630..ceaeb28 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
+@@ -23,6 +23,7 @@ import java.nio.charset.Charset;
+ import java.util.Collections;
+ import java.util.Iterator;
+ 
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.commons.lang3.Validate;
+ import org.apache.commons.lang3.tuple.ImmutableTriple;
+ import org.apache.commons.lang3.tuple.Triple;
+@@ -70,13 +71,7 @@ public class CssParser implements LinkExtractorParser {
+             final URLCollection urlCollection = orDefault(CSS_URL_CACHE.get(triple), EMPTY_URL_COLLECTION);
+ 
+             if (LOG.isDebugEnabled()) {
+-                StringBuilder builder = new StringBuilder();
+-                for (Iterator<URL> iterator = urlCollection.iterator(); iterator
+-                        .hasNext();) {
+-                    URL urlString = iterator.next();
+-                    builder.append(urlString).append(',');
+-                }
+-                LOG.debug("Parsed:" + baseUrl + ", got:" + builder.toString());
++                LOG.debug("Parsed:" + baseUrl + ", got:" + StringUtils.join(urlCollection, ","));
+             }
+ 
+             return urlCollection.iterator();
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java
+index fb913c8..21ca5aa 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java
+@@ -39,7 +39,7 @@ import org.apache.log.Logger;
+  * does not support remove()
+  *
+  */
+-public class URLCollection {
++public class URLCollection implements Iterable<URL> {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+     private final Collection<URLString> coll;
+ 
+@@ -99,6 +99,7 @@ public class URLCollection {
+         return b;
+     }
+ 
++    @Override
+     public Iterator<URL> iterator() {
+         return new UrlIterator(coll.iterator());
+     }
+-- 
+2.7.4
+

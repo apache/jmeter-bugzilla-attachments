@@ -1,0 +1,36 @@
+Index: D:/Development/Eclipse/Workspace/jmeter/src/core/org/apache/jmeter/services/FileServer.java
+===================================================================
+--- D:/Development/Eclipse/Workspace/jmeter/src/core/org/apache/jmeter/services/FileServer.java	(revision 424313)
++++ D:/Development/Eclipse/Workspace/jmeter/src/core/org/apache/jmeter/services/FileServer.java	(working copy)
+@@ -112,7 +112,7 @@
+ 		}
+ 	}
+ 
+-   /**
++	/**
+ 	 * Get the next line of the named file, recycle by default.
+ 	 *
+      * @param filename
+@@ -126,7 +126,7 @@
+    /**
+ 	 * Get the next line of the named file.
+ 	 * 
+-     * @param filename
++	 * @param filename
+      * @param recycle - should file be restarted at EOF?
+ 	 * @return String containing the next line in the file (null if EOF reached and not recycle)
+ 	 * @throws IOException
+@@ -191,7 +191,12 @@
+     private void closeFile(String name, FileEntry fileEntry) throws IOException {
+         if (fileEntry != null && fileEntry.inputOutputObject != null) {
+             log.info("Close: "+name);
+-			((Reader) fileEntry.inputOutputObject).close();
++            if (fileEntry.inputOutputObject instanceof Reader)
++                ((Reader) fileEntry.inputOutputObject).close();
++            else if (fileEntry.inputOutputObject instanceof Writer)
++                ((Writer) fileEntry.inputOutputObject).close();
++            else 
++                log.error("Unknow inputOutputObject type : " + fileEntry.inputOutputObject.getClass());
+ 			fileEntry.inputOutputObject = null;
+ 		}
+     }

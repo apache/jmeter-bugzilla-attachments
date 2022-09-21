@@ -1,0 +1,80 @@
+Index: src/core/org/apache/jmeter/JMeter.java
+===================================================================
+--- src/core/org/apache/jmeter/JMeter.java	(revision 1763872)
++++ src/core/org/apache/jmeter/JMeter.java	(working copy)
+@@ -347,6 +347,7 @@
+             }
+         } else {
+             JTree jTree = GuiPackage.getInstance().getMainFrame().getTree();
++            GuiPackage.getInstance().newTestPlan();
+             TreePath path = jTree.getPathForRow(0);
+             jTree.setSelectionPath(path);
+             FocusRequester.requestFocus(jTree);
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1763872)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -41,6 +41,7 @@
+ import org.apache.jmeter.gui.tree.JMeterTreeModel;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
+ import org.apache.jmeter.gui.util.JMeterToolBar;
++import org.apache.jmeter.reporters.ResultCollector;
+ import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.testbeans.TestBean;
+ import org.apache.jmeter.testbeans.gui.TestBeanGUI;
+@@ -49,9 +50,12 @@
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
++import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.gui.ThreadGroupGui;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.util.LocaleChangeEvent;
+ import org.apache.jmeter.util.LocaleChangeListener;
++import org.apache.jmeter.visualizers.ViewResultsFullVisualizer;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -701,6 +705,28 @@
+         undoHistory.clear();
+         undoHistory.add(this.treeModel, "Initial Tree");
+     }
++    
++    /**
++     * Create a new test plan
++     */
++    public void newTestPlan() {
++        clearTestPlan();
++        TestElement threadGroupElement = createTestElement(ThreadGroupGui.class, ThreadGroup.class);
++        JMeterTreeNode rootNode = (JMeterTreeNode)getTreeModel().getRoot();
++        JMeterTreeNode testPlan = (JMeterTreeNode)getTreeModel().getChild(getTreeModel().getRoot(), 0);
++        getTreeModel().insertNodeInto(
++                new JMeterTreeNode(threadGroupElement, getTreeModel()), 
++                testPlan, 
++                0);
++        
++        TestElement viewResultsTreeElement = createTestElement(ViewResultsFullVisualizer.class, ResultCollector.class);
++        getTreeModel().insertNodeInto(
++                new JMeterTreeNode(viewResultsTreeElement, getTreeModel()), 
++                testPlan, 
++                1);
++        
++        getTreeModel().nodeStructureChanged(rootNode);
++    }
+ 
+     /**
+      * Clears the test plan element and associated object
+Index: src/core/org/apache/jmeter/gui/action/Close.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Close.java	(revision 1765498)
++++ src/core/org/apache/jmeter/gui/action/Close.java	(working copy)
+@@ -103,8 +103,7 @@
+ 
+     static void closeProject(ActionEvent e) {
+         GuiPackage guiPackage = GuiPackage.getInstance();
+-
+-        guiPackage.clearTestPlan();
++        guiPackage.newTestPlan();
+         JTree tree = guiPackage.getTreeListener().getJTree();
+         tree.setSelectionRow(0);
+         FocusRequester.requestFocus(tree);

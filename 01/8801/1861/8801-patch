@@ -1,0 +1,438 @@
+Index: org/apache/jmeter/control/gui/LoopControlPanel.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/control/gui/LoopControlPanel.java,v
+retrieving revision 1.3
+diff -u -r1.3 LoopControlPanel.java
+--- org/apache/jmeter/control/gui/LoopControlPanel.java	29 Apr 2002 17:08:07 -0000	1.3
++++ org/apache/jmeter/control/gui/LoopControlPanel.java	15 May 2002 06:10:03 -0000
+@@ -1,3 +1,57 @@
++/*
++ * ====================================================================
++ * The Apache Software License, Version 1.1
++ *
++ * Copyright (c) 2001 The Apache Software Foundation.  All rights
++ * reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ * 1. Redistributions of source code must retain the above copyright
++ * notice, this list of conditions and the following disclaimer.
++ *
++ * 2. Redistributions in binary form must reproduce the above copyright
++ * notice, this list of conditions and the following disclaimer in
++ * the documentation and/or other materials provided with the
++ * distribution.
++ *
++ * 3. The end-user documentation included with the redistribution,
++ * if any, must include the following acknowledgment:
++ * "This product includes software developed by the
++ * Apache Software Foundation (http://www.apache.org/)."
++ * Alternately, this acknowledgment may appear in the software itself,
++ * if and wherever such third-party acknowledgments normally appear.
++ *
++ * 4. The names "Apache" and "Apache Software Foundation" and
++ * "Apache JMeter" must not be used to endorse or promote products
++ * derived from this software without prior written permission. For
++ * written permission, please contact apache@apache.org.
++ *
++ * 5. Products derived from this software may not be called "Apache",
++ * "Apache JMeter", nor may "Apache" appear in their name, without
++ * prior written permission of the Apache Software Foundation.
++ *
++ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
++ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++ * DISCLAIMED.  IN NO EVENT SHALL THE APACHE SOFTWARE FOUNDATION OR
++ * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
++ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
++ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
++ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ * ====================================================================
++ *
++ * This software consists of voluntary contributions made by many
++ * individuals on behalf of the Apache Software Foundation.  For more
++ * information on the Apache Software Foundation, please see
++ * <http://www.apache.org/>.
++ */
+ package org.apache.jmeter.control.gui;
+ import java.awt.*;
+ import java.awt.event.*;
+@@ -5,7 +59,7 @@
+ import javax.swing.*;
+ import javax.swing.border.*;
+ import org.apache.jmeter.control.LoopController;
+-import org.apache.jmeter.gui.NamePanel;
++import org.apache.jmeter.gui.*;
+ import org.apache.jmeter.gui.util.FocusRequester;
+ import org.apache.jmeter.gui.util.VerticalLayout;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -172,6 +226,8 @@
+ 				}
+ 			}
+ 		}
++		// The user will get a warning message on exiting
++		GuiPackage.getInstance().getTreeModel().dirty = true;
+ 	}
+ 
+ 	/****************************************
+Index: org/apache/jmeter/gui/action/ExitCommand.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/gui/action/ExitCommand.java,v
+retrieving revision 1.2
+diff -u -r1.2 ExitCommand.java
+--- org/apache/jmeter/gui/action/ExitCommand.java	29 Apr 2002 17:08:08 -0000	1.2
++++ org/apache/jmeter/gui/action/ExitCommand.java	15 May 2002 06:10:04 -0000
+@@ -58,8 +58,11 @@
+ import java.util.*;
+ import java.lang.reflect.*;
+ 
++import javax.swing.JOptionPane;
++
+ import org.apache.jmeter.gui.*;
+ import org.apache.jmeter.gui.tree.*;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  *  Title: JMeter Description: Copyright: Copyright (c) 2000 Company: Apache
+@@ -98,8 +101,23 @@
+ 	 */
+ 	public void doAction(ActionEvent e)
+ 	{
+-		System.err.println("Note to self, we should really prompt to save here... (bb)");
+-		System.exit(0);
++		JMeterTreeModel tm = GuiPackage.getInstance().getTreeModel();
++		if (!tm.isDirty())
++		{
++			// the test plan has been saved, no need to prompt
++			System.exit(0);
++		}
++		// the test plan has _not_ been saved, we need to prompt
++		MainFrame mf = GuiPackage.getInstance().getMainFrame();
++		int reply = JOptionPane.showConfirmDialog(mf,
++							  JMeterUtils.getResString("exit?"),
++							  mf.getTitle(),
++							  JOptionPane.YES_NO_OPTION,
++							  JOptionPane.WARNING_MESSAGE);
++		if (reply == JOptionPane.YES_OPTION)
++		{
++			System.exit(0);
++		}
+ 	}
+ 
+ 	static
+Index: org/apache/jmeter/gui/action/Save.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/gui/action/Save.java,v
+retrieving revision 1.3
+diff -u -r1.3 Save.java
+--- org/apache/jmeter/gui/action/Save.java	2 May 2002 22:54:58 -0000	1.3
++++ org/apache/jmeter/gui/action/Save.java	15 May 2002 06:10:05 -0000
+@@ -123,6 +123,8 @@
+ 		{
+ 			writer = new FileOutputStream(chooser.getSelectedFile());
+ 			SaveService.saveSubTree(subTree,writer);
++			// at least a part of the current tree has been saved
++			GuiPackage.getInstance().getTreeModel().dirty = false;
+ 		}
+ 		catch(Throwable ex)
+ 		{
+Index: org/apache/jmeter/gui/tree/JMeterTreeModel.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/gui/tree/JMeterTreeModel.java,v
+retrieving revision 1.4
+diff -u -r1.4 JMeterTreeModel.java
+--- org/apache/jmeter/gui/tree/JMeterTreeModel.java	2 May 2002 22:54:58 -0000	1.4
++++ org/apache/jmeter/gui/tree/JMeterTreeModel.java	15 May 2002 06:10:06 -0000
+@@ -80,6 +80,8 @@
+ public class JMeterTreeModel extends DefaultTreeModel
+ {
+ 	private static ResourceBundle rb = ResourceBundle.getBundle("org.apache.jmeter.resources.messages");
++	/** This indicates whether the test plan has been saved or not. */
++	public static boolean dirty;
+ 
+ 	/****************************************
+ 	 * !ToDo (Constructor description)
+@@ -91,6 +93,7 @@
+ 				(JMeterTreeNode)getRoot(), 0);
+ 		this.insertNodeInto(new JMeterTreeNode(new WorkBenchGui()),
+ 				(JMeterTreeNode)getRoot(), 1);
++		dirty = false;
+ 	}
+ 
+ 	/****************************************
+@@ -107,27 +110,58 @@
+ 	}
+ 
+ 	/****************************************
+-	 * !ToDo
++	 * This method is used by the {@link org.apache.jmeter.gui.action.Load Load}
++	 * command class to add Test Plans from file. Note that if this is the first
++	 * action for this test plan, then the test plan does not need to be saved,
++	 * as it is still consistent with the Test Plan on file.
+ 	 *
+-	 *@param subTree                         !ToDo
+-	 *@param current                         !ToDo
+-	 *@exception IllegalUserActionException  !ToDo (Exception description)
++	 *@param subTree                         The sub-tree to add.
++	 *@param current                         The node to which to add the sub-tree.
++	 *@exception IllegalUserActionException  This is thrown to indicate an unacceptable
++	 *                                       user action.
+ 	 ***************************************/
+ 	public void addSubTree(ListedHashTree subTree, JMeterTreeNode current)
+ 			 throws IllegalUserActionException
+ 	{
++		JMeterTreeNode root = (JMeterTreeNode)getRoot();
++		int depth = root.getDepth();
++		Iterator iter = subTree.list().iterator();
++		boolean storeDirty = dirty;
++		if (iter.hasNext() && depth > 1)
++			// i.e. 'Test Plan' or 'Workbench' have children
++			storeDirty = true;
++		while(iter.hasNext())
++		{
++			JMeterGUIComponent item = (JMeterGUIComponent)iter.next();
++			if(item instanceof TestPlanGui)
++			{
++				addSubTree(root, subTree.get(item), current);
++			}
++			else
++			{
++				addSubTree(root, subTree.get(item), addComponent(item, current));
++			}
++		}
++		dirty = storeDirty;
++	}
++
++	private void addSubTree(JMeterTreeNode root, ListedHashTree subTree, JMeterTreeNode current)
++			 throws IllegalUserActionException
++	{
+ 		Iterator iter = subTree.list().iterator();
+ 		while(iter.hasNext())
+ 		{
+ 			JMeterGUIComponent item = (JMeterGUIComponent)iter.next();
+ 			if(item instanceof TestPlanGui)
+ 			{
+-				current = (JMeterTreeNode)((JMeterTreeNode)getRoot()).getChildAt(0);
+-				addSubTree(subTree.get(item), current);
++				// this is probably not needed,
++				// but perhaps the TestPlanGui will not always be the 'root'
++				current = (JMeterTreeNode)root.getChildAt(0);
++				addSubTree(root, subTree.get(item), current);
+ 			}
+ 			else
+ 			{
+-				addSubTree(subTree.get(item), addComponent(item, current));
++				addSubTree(root, subTree.get(item), addComponent(item, current));
+ 			}
+ 		}
+ 	}
+@@ -157,9 +191,24 @@
+ 	}
+ 
+ 	/****************************************
+-	 * !ToDo (Method description)
++	 * This method wraps the corresponding method in <b>DefaultTreeModel</b>.
++	 * In this way the state of the object can be maintained.
+ 	 *
+-	 *@param node  !ToDo (Parameter description)
++	 *@param newChild  The new node to be inserted.
++	 *@param parent    The parent node.
++	 *@param index     The insertion index.
++	 ***************************************/
++	public void insertNodeInto(MutableTreeNode newChild, MutableTreeNode parent, int index)
++	{
++		super.insertNodeInto(newChild, parent, index);
++		dirty = true;
++	}
++
++	/****************************************
++	 * This method wraps the corresponding method in <b>DefaultTreeModel</b>.
++	 * In this way the type of the object can be verified.
++	 *
++	 *@param node  The node to be removed from the TreeModel.
+ 	 ***************************************/
+ 	public void removeNodeFromParent(JMeterTreeNode node)
+ 	{
+@@ -167,6 +216,7 @@
+ 				!(node.getUserObject() instanceof WorkBench))
+ 		{
+ 			super.removeNodeFromParent(node);
++			dirty = true;
+ 		}
+ 	}
+ 
+@@ -199,5 +249,11 @@
+ 	public ListedHashTree getTestPlan()
+ 	{
+ 		return getCurrentSubTree((JMeterTreeNode)this.getRoot());
++	}
++
++	/** This method indicates whether or not the current test plan has been saved. */
++	public static boolean isDirty()
++	{
++		return dirty;
+ 	}
+ }
+Index: org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java,v
+retrieving revision 1.3
+diff -u -r1.3 ProxyControlGui.java
+--- org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	29 Apr 2002 17:08:11 -0000	1.3
++++ org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	15 May 2002 06:10:09 -0000
+@@ -58,9 +58,7 @@
+ import java.awt.event.*;
+ import javax.swing.*;
+ import javax.swing.border.*;
+-import org.apache.jmeter.gui.JMeterJListModel;
+-import org.apache.jmeter.gui.JMeterGUIComponent;
+-import org.apache.jmeter.gui.NamePanel;
++import org.apache.jmeter.gui.*;
+ import org.apache.jmeter.gui.util.VerticalLayout;
+ import org.apache.jmeter.protocol.http.proxy.ProxyControl;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -250,6 +248,8 @@
+ 				}
+ 			}
+ 		}
++		// The user will get a warning message on exiting
++		GuiPackage.getInstance().getTreeModel().dirty = true;
+ 	}
+ 
+ 	private void init()
+Index: org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.7
+diff -u -r1.7 messages.properties
+--- org/apache/jmeter/resources/messages.properties	1 May 2002 23:48:52 -0000	1.7
++++ org/apache/jmeter/resources/messages.properties	15 May 2002 06:10:12 -0000
+@@ -6,6 +6,7 @@
+ open=Open...
+ edit=Edit
+ exit=Exit
++exit?=Are you sure you want to exit without saving your test plan?
+ start=Start
+ stop=Stop
+ clear=Clear
+@@ -214,4 +215,4 @@
+ busy_testing=I'm busy testing, please stop the test before changing settings
+ http_user_parameter_modifier=HTTP User Parameter Modifier
+ user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
+-filename=File Name
+\ No newline at end of file
++filename=File Name
+Index: org/apache/jmeter/resources/messages_ja.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/resources/messages_ja.properties,v
+retrieving revision 1.6
+diff -u -r1.6 messages_ja.properties
+--- org/apache/jmeter/resources/messages_ja.properties	1 May 2002 23:48:52 -0000	1.6
++++ org/apache/jmeter/resources/messages_ja.properties	15 May 2002 06:10:17 -0000
+@@ -6,6 +6,7 @@
+ open=\u958b\u304f
+ edit=\u7de8\u96c6
+ exit=\u7d42\u4e86
++exit?=Are you sure you want to exit without saving your test plan?
+ start=\u958b\u59cb
+ stop=\u505c\u6b62
+ clear=\u6d88\u53bb
+@@ -208,4 +209,4 @@
+ busy_testing=I'm busy testing, please stop the test before changing settings
+ http_user_parameter_modifier=HTTP User Parameter Modifier
+ user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
+-filename=File Name
+\ No newline at end of file
++filename=File Name
+Index: org/apache/jmeter/resources/messages_no.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/resources/messages_no.properties,v
+retrieving revision 1.6
+diff -u -r1.6 messages_no.properties
+--- org/apache/jmeter/resources/messages_no.properties	1 May 2002 23:48:52 -0000	1.6
++++ org/apache/jmeter/resources/messages_no.properties	15 May 2002 06:10:18 -0000
+@@ -6,6 +6,7 @@
+ open=Åpne...
+ edit=Rediger
+ exit=Avslutt
++exit?=Are you sure you want to exit without saving your test plan?
+ start=Start
+ stop=Stopp
+ clear=Nullstill
+@@ -199,4 +200,4 @@
+ busy_testing=I'm busy testing, please stop the test before changing settings
+ http_user_parameter_modifier=HTTP User Parameter Modifier
+ user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
+-filename=File Name
+\ No newline at end of file
++filename=File Name
+Index: org/apache/jmeter/threads/gui/ThreadGroupGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/threads/gui/ThreadGroupGui.java,v
+retrieving revision 1.5
+diff -u -r1.5 ThreadGroupGui.java
+--- org/apache/jmeter/threads/gui/ThreadGroupGui.java	29 Apr 2002 17:08:14 -0000	1.5
++++ org/apache/jmeter/threads/gui/ThreadGroupGui.java	15 May 2002 06:10:20 -0000
+@@ -239,6 +239,8 @@
+ 				}
+ 			}
+ 		}
++		// The user will get a warning message on exiting
++		GuiPackage.getInstance().getTreeModel().dirty = true;
+ 	}
+ 
+ 	/****************************************
+Index: org/apache/jmeter/timers/gui/ConstantTimerGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/timers/gui/ConstantTimerGui.java,v
+retrieving revision 1.3
+diff -u -r1.3 ConstantTimerGui.java
+--- org/apache/jmeter/timers/gui/ConstantTimerGui.java	29 Apr 2002 17:08:14 -0000	1.3
++++ org/apache/jmeter/timers/gui/ConstantTimerGui.java	15 May 2002 06:10:21 -0000
+@@ -144,6 +144,8 @@
+ 				}
+ 			}
+ 		}
++		// The user will get a warning message on exiting
++		GuiPackage.getInstance().getTreeModel().dirty = true;
+ 	}
+ 
+ 	/****************************************
+Index: org/apache/jmeter/timers/gui/GaussianRandomTimerGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/timers/gui/GaussianRandomTimerGui.java,v
+retrieving revision 1.3
+diff -u -r1.3 GaussianRandomTimerGui.java
+--- org/apache/jmeter/timers/gui/GaussianRandomTimerGui.java	29 Apr 2002 17:08:14 -0000	1.3
++++ org/apache/jmeter/timers/gui/GaussianRandomTimerGui.java	15 May 2002 06:10:22 -0000
+@@ -163,6 +163,8 @@
+ 				}
+ 			}
+ 		}
++		// The user will get a warning message on exiting
++		GuiPackage.getInstance().getTreeModel().dirty = true;
+ 	}
+ 
+ 	/****************************************
+Index: org/apache/jmeter/timers/gui/UniformRandomTimerGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src_1/org/apache/jmeter/timers/gui/UniformRandomTimerGui.java,v
+retrieving revision 1.3
+diff -u -r1.3 UniformRandomTimerGui.java
+--- org/apache/jmeter/timers/gui/UniformRandomTimerGui.java	29 Apr 2002 17:08:14 -0000	1.3
++++ org/apache/jmeter/timers/gui/UniformRandomTimerGui.java	15 May 2002 06:10:24 -0000
+@@ -164,6 +164,8 @@
+ 				}
+ 			}
+ 		}
++		// The user will get a warning message on exiting
++		GuiPackage.getInstance().getTreeModel().dirty = true;
+ 	}
+ 
+ 	/****************************************

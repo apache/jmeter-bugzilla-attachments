@@ -1,0 +1,50 @@
+diff -ru a/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java b/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java
+--- a/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	2014-08-04 14:33:11.451584550 +0200
++++ b/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	2014-08-04 14:33:39.005584637 +0200
+@@ -124,6 +124,8 @@
+ 
+     private transient Throwable thrown = null;
+ 
++    private transient Context context = null;
++
+     /**
+      * {@inheritDoc}
+      */
+@@ -313,7 +315,6 @@
+     public void threadStarted() {
+         logThreadStart();
+ 
+-        Context context = null;
+         thrown = null;
+         try {
+             context = getInitialContext();
+@@ -383,14 +384,6 @@
+         } catch (NoClassDefFoundError e) {
+             thrown = e;
+             LOGGER.error(e.getLocalizedMessage(), e);
+-        } finally {
+-            if (context != null) {
+-                try {
+-                    context.close();
+-                } catch (NamingException ignored) {
+-                    // ignore
+-                }
+-            }
+         }
+     }
+ 
+@@ -468,6 +461,14 @@
+     public void threadFinished() {
+         LOGGER.debug("Thread ended " + new Date());
+ 
++        if (context != null) {
++            try {
++                context.close();
++            } catch (NamingException ignored) {
++                // ignore
++            }
++        }
++
+         Utils.close(session, LOGGER);
+         Utils.close(connection, LOGGER);
+         if (receiverThread != null) {

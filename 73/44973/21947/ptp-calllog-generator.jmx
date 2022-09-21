@@ -1,0 +1,556 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="2.0">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="TMS Load Testing PtP Call" enabled="true">
+      <stringProp name="TestPlan.comments"></stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+      <stringProp name="TestPlan.user_define_classpath"></stringProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(p_ptpthreadcount,1)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(p_ptprampup,1)}</stringProp>
+        <longProp name="ThreadGroup.start_time">1206443171000</longProp>
+        <longProp name="ThreadGroup.end_time">1206443171000</longProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <stringProp name="TestPlan.comments">override on commandline with -Jp_ptpthreadcount=X</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="TMS IP Address" enabled="true">
+          <collectionProp name="Arguments.arguments">
+            <elementProp name="tmsIP" elementType="Argument">
+              <stringProp name="Argument.name">tmsIP</stringProp>
+              <stringProp name="Argument.value">${__P(p_tmsIP,10.1.2.178)}</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+          </collectionProp>
+          <stringProp name="TestPlan.comments">override on command line with -Jp_tmsIP=X</stringProp>
+        </Arguments>
+        <hashTree/>
+        <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="TMS URL" enabled="true">
+          <collectionProp name="Arguments.arguments">
+            <elementProp name="feedbackURL" elementType="Argument">
+              <stringProp name="Argument.name">feedbackURL</stringProp>
+              <stringProp name="Argument.value">${tmsIP}/tms/public/feedback/code.aspx</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+          </collectionProp>
+        </Arguments>
+        <hashTree/>
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="CodecValues" enabled="true">
+          <stringProp name="delimiter">,</stringProp>
+          <stringProp name="fileEncoding"></stringProp>
+          <stringProp name="filename">codec-list.csv</stringProp>
+          <boolProp name="recycle">true</boolProp>
+          <boolProp name="stopThread">false</boolProp>
+          <stringProp name="variableNames">systemName,systemMACAddr,systemDelayPerCall</stringProp>
+        </CSVDataSet>
+        <hashTree/>
+        <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="Logging Variables" enabled="true">
+          <collectionProp name="Arguments.arguments">
+            <elementProp name="logDir" elementType="Argument">
+              <stringProp name="Argument.name">logDir</stringProp>
+              <stringProp name="Argument.value">${__P(p_logs-out,ptp-out)}</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+          </collectionProp>
+        </Arguments>
+        <hashTree/>
+        <LoopController guiclass="LoopControlPanel" testclass="LoopController" testname="# of Calls Per Codec" enabled="true">
+          <boolProp name="LoopController.continue_forever">true</boolProp>
+          <stringProp name="LoopController.loops">${__P(p_ptploopcount,1)}</stringProp>
+        </LoopController>
+        <hashTree>
+          <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Simple PtP Call" enabled="true"/>
+          <hashTree>
+            <UserParameters guiclass="UserParametersGui" testclass="UserParameters" testname="call log parameters" enabled="true">
+              <collectionProp name="UserParameters.names">
+                <stringProp name="103148383">logID</stringProp>
+                <stringProp name="-1923879406">callDuration</stringProp>
+              </collectionProp>
+              <collectionProp name="UserParameters.thread_values">
+                <collectionProp name="1169056402">
+                  <stringProp name="1532634622">${__time(HMS)}</stringProp>
+                  <stringProp name="1629">30</stringProp>
+                </collectionProp>
+              </collectionProp>
+              <boolProp name="UserParameters.per_iteration">true</boolProp>
+            </UserParameters>
+            <hashTree/>
+            <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Step 1" enabled="true"/>
+            <hashTree>
+              <SoapSampler guiclass="SoapSamplerGui" testclass="SoapSampler" testname="Conference Event" enabled="true">
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                  <collectionProp name="Arguments.arguments"/>
+                </elementProp>
+                <stringProp name="SoapSampler.URL_DATA">http://${feedbackURL}</stringProp>
+                <stringProp name="HTTPSamper.xml_data">
+&lt;Status xmlns=&quot;http://www.tandberg.no/XML/CUIL/1.0&quot;&gt;
+  &lt;Identification&gt;
+    &lt;SystemName&gt;${systemName}&lt;/SystemName&gt;
+    &lt;MACAddress&gt;${systemMACAddr}&lt;/MACAddress&gt;
+    &lt;IPAddress&gt;10.1.2.114&lt;/IPAddress&gt;
+    &lt;ProductType&gt;TANDBERG Codec&lt;/ProductType&gt;
+    &lt;ProductID&gt;TANDBERG CODEC 3000MXP&lt;/ProductID&gt;
+    &lt;SWVersion&gt;F6.3 NTSC&lt;/SWVersion&gt;
+    &lt;HWBoard&gt;101070 rev. 07&lt;/HWBoard&gt;
+    &lt;SerialNumber&gt;33A25251&lt;/SerialNumber&gt;
+  &lt;/Identification&gt;
+  &lt;Conference item=&quot;1&quot; type=&quot;PointToPoint&quot;&gt;
+    &lt;Multiway item=&quot;1&quot; status=&quot;Off&quot;/&gt;
+  &lt;/Conference&gt;
+&lt;/Status&gt;
+</stringProp>
+                <stringProp name="SoapSampler.xml_data_file"></stringProp>
+                <stringProp name="SoapSampler.SOAP_ACTION"></stringProp>
+                <stringProp name="SoapSampler.SEND_SOAP_ACTION">false</stringProp>
+                <boolProp name="HTTPSampler.use_keepalive">false</boolProp>
+              </SoapSampler>
+              <hashTree/>
+            </hashTree>
+            <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Step 2" enabled="true"/>
+            <hashTree>
+              <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Constant Timer" enabled="true">
+                <stringProp name="ConstantTimer.delay">500</stringProp>
+              </ConstantTimer>
+              <hashTree/>
+              <SoapSampler guiclass="SoapSamplerGui" testclass="SoapSampler" testname="CallSuccessful" enabled="true">
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                  <collectionProp name="Arguments.arguments"/>
+                </elementProp>
+                <stringProp name="SoapSampler.URL_DATA">http://${feedbackURL}</stringProp>
+                <stringProp name="HTTPSamper.xml_data">
+&lt;Event xmlns=&quot;http://www.tandberg.no/XML/CUIL/1.0&quot;&gt;
+  &lt;Identification&gt;
+    &lt;SystemName&gt;${systemName}&lt;/SystemName&gt;
+    &lt;MACAddress&gt;${systemMACAddr}&lt;/MACAddress&gt;
+    &lt;IPAddress&gt;10.1.2.114&lt;/IPAddress&gt;
+    &lt;ProductType&gt;TANDBERG Codec&lt;/ProductType&gt;
+    &lt;ProductID&gt;TANDBERG CODEC 3000MXP&lt;/ProductID&gt;
+    &lt;SWVersion&gt;F6.3 NTSC&lt;/SWVersion&gt;
+    &lt;HWBoard&gt;101070 rev. 07&lt;/HWBoard&gt;
+    &lt;SerialNumber&gt;33A25251&lt;/SerialNumber&gt;
+  &lt;/Identification&gt;
+  &lt;CallSuccessful item=&quot;1&quot;&gt;
+    &lt;CallRef item=&quot;1&quot;&gt;1&lt;/CallRef&gt;
+    &lt;LogTag item=&quot;1&quot;&gt;${logID}&lt;/LogTag&gt;
+    &lt;Protocol item=&quot;1&quot;&gt;H323&lt;/Protocol&gt;
+    &lt;Direction item=&quot;1&quot;&gt;Outgoing&lt;/Direction&gt;
+    &lt;CallRate item=&quot;1&quot;&gt;384&lt;/CallRate&gt;
+    &lt;RemoteNumber item=&quot;1&quot;&gt;10.1.2.83&lt;/RemoteNumber&gt;
+    &lt;Encryption item=&quot;1&quot;&gt;
+      &lt;Incoming item=&quot;1&quot;&gt;AES-128&lt;/Incoming&gt;
+      &lt;Outgoing item=&quot;1&quot;&gt;AES-128&lt;/Outgoing&gt;
+    &lt;/Encryption&gt;
+  &lt;/CallSuccessful&gt;
+&lt;/Event&gt;
+</stringProp>
+                <stringProp name="SoapSampler.xml_data_file"></stringProp>
+                <stringProp name="SoapSampler.SOAP_ACTION"></stringProp>
+                <stringProp name="SoapSampler.SEND_SOAP_ACTION">false</stringProp>
+                <boolProp name="HTTPSampler.use_keepalive">false</boolProp>
+              </SoapSampler>
+              <hashTree/>
+            </hashTree>
+            <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Step 3" enabled="true"/>
+            <hashTree>
+              <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Constant Timer" enabled="true">
+                <stringProp name="ConstantTimer.delay">0</stringProp>
+              </ConstantTimer>
+              <hashTree/>
+              <SoapSampler guiclass="SoapSamplerGui" testclass="SoapSampler" testname="Call Item" enabled="true">
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                  <collectionProp name="Arguments.arguments"/>
+                </elementProp>
+                <stringProp name="SoapSampler.URL_DATA">http://${feedbackURL}</stringProp>
+                <stringProp name="HTTPSamper.xml_data">
+&lt;Status xmlns=&quot;http://www.tandberg.no/XML/CUIL/1.0&quot;&gt;
+  &lt;Identification&gt;
+    &lt;SystemName&gt;${systemName}&lt;/SystemName&gt;
+    &lt;MACAddress&gt;${systemMACAddr}&lt;/MACAddress&gt;
+    &lt;IPAddress&gt;10.1.2.114&lt;/IPAddress&gt;
+    &lt;ProductType&gt;TANDBERG Codec&lt;/ProductType&gt;
+    &lt;ProductID&gt;TANDBERG CODEC 3000MXP&lt;/ProductID&gt;
+    &lt;SWVersion&gt;F6.3 NTSC&lt;/SWVersion&gt;
+    &lt;HWBoard&gt;101070 rev. 07&lt;/HWBoard&gt;
+    &lt;SerialNumber&gt;33A25251&lt;/SerialNumber&gt;
+  &lt;/Identification&gt;
+  &lt;Call item=&quot;1&quot; status=&quot;Synced&quot; type=&quot;Vtlph&quot; protocol=&quot;H323&quot; direction=&quot;Outgoing&quot; logTag=&quot;${logID}&quot;&gt;
+    &lt;CallRate item=&quot;1&quot;&gt;384&lt;/CallRate&gt;
+    &lt;RemoteNumber item=&quot;1&quot;&gt;10.1.2.83&lt;/RemoteNumber&gt;
+    &lt;Mute item=&quot;1&quot;&gt;Off&lt;/Mute&gt;
+    &lt;Microphone item=&quot;1&quot;&gt;Off&lt;/Microphone&gt;
+    &lt;Duration item=&quot;1&quot;&gt;0&lt;/Duration&gt;
+    &lt;MuteOutgoing item=&quot;1&quot;&gt;Off&lt;/MuteOutgoing&gt;
+    &lt;CallOnHold item=&quot;1&quot;&gt;False&lt;/CallOnHold&gt;
+    &lt;RemoteSiteOnHold item=&quot;1&quot;&gt;False&lt;/RemoteSiteOnHold&gt;
+    &lt;MultiwayProgress item=&quot;1&quot;&gt;Off&lt;/MultiwayProgress&gt;
+    &lt;Channels item=&quot;1&quot; type=&quot;Incoming&quot;&gt;
+      &lt;Rate item=&quot;1&quot;&gt;384&lt;/Rate&gt;
+      &lt;Restrict item=&quot;1&quot;&gt;Off&lt;/Restrict&gt;
+      &lt;Encryption item=&quot;1&quot; status=&quot;On&quot;&gt;
+        &lt;Type item=&quot;1&quot;&gt;AES-128&lt;/Type&gt;
+        &lt;CheckCode item=&quot;1&quot;&gt;ACCAC3411B19FDB4&lt;/CheckCode&gt;
+      &lt;/Encryption&gt;
+      &lt;Audio item=&quot;1&quot; status=&quot;Active&quot;&gt;
+        &lt;Protocol item=&quot;1&quot;&gt;AAC-LD&lt;/Protocol&gt;
+        &lt;Rate item=&quot;1&quot;&gt;64&lt;/Rate&gt;
+        &lt;RemoteIPAddress item=&quot;1&quot;&gt;&lt;/RemoteIPAddress&gt;
+	&lt;LocalIPAddress item=&quot;1&quot;&gt;10.1.2.
+	&lt;/LocalIPAddress&gt;
+        &lt;Encryption item=&quot;1&quot; status=&quot;On&quot;&gt;
+          &lt;Type item=&quot;1&quot;&gt;AES-128&lt;/Type&gt;
+        &lt;/Encryption&gt;
+        &lt;RSVP item=&quot;1&quot;&gt;Off&lt;/RSVP&gt;
+        &lt;RSVPRate item=&quot;1&quot;&gt;0&lt;/RSVPRate&gt;
+        &lt;DynamicRate item=&quot;1&quot;&gt;0&lt;/DynamicRate&gt;
+        &lt;TotalPackets item=&quot;1&quot;&gt;0&lt;/TotalPackets&gt;
+        &lt;PacketLoss item=&quot;1&quot;&gt;0&lt;/PacketLoss&gt;
+        &lt;Jitter item=&quot;1&quot;&gt;0&lt;/Jitter&gt;
+        &lt;PacketsDropped item=&quot;1&quot;&gt;0&lt;/PacketsDropped&gt;
+      &lt;/Audio&gt;
+      &lt;Video item=&quot;1&quot; status=&quot;Active&quot;&gt;
+        &lt;Protocol item=&quot;1&quot;&gt;H264&lt;/Protocol&gt;
+        &lt;Resolution item=&quot;1&quot;&gt;&lt;/Resolution&gt;
+        &lt;Rate item=&quot;1&quot;&gt;320&lt;/Rate&gt;
+        &lt;RemoteIPAddress item=&quot;1&quot;&gt;&lt;/RemoteIPAddress&gt;
+        &lt;LocalIPAddress item=&quot;1&quot;&gt;10.1.2.114:2376&lt;/LocalIPAddress&gt;
+        &lt;Encryption item=&quot;1&quot; status=&quot;On&quot;&gt;
+          &lt;Type item=&quot;1&quot;&gt;AES-128&lt;/Type&gt;
+        &lt;/Encryption&gt;
+        &lt;RSVP item=&quot;1&quot;&gt;Off&lt;/RSVP&gt;
+        &lt;RSVPRate item=&quot;1&quot;&gt;0&lt;/RSVPRate&gt;
+        &lt;DynamicRate item=&quot;1&quot;&gt;0&lt;/DynamicRate&gt;
+        &lt;TotalPackets item=&quot;1&quot;&gt;0&lt;/TotalPackets&gt;
+        &lt;PacketLoss item=&quot;1&quot;&gt;0&lt;/PacketLoss&gt;
+        &lt;Jitter item=&quot;1&quot;&gt;0&lt;/Jitter&gt;
+        &lt;PacketsDropped item=&quot;1&quot;&gt;0&lt;/PacketsDropped&gt;
+      &lt;/Video&gt;
+      &lt;Video item=&quot;2&quot; status=&quot;Inactive&quot;/&gt;
+      &lt;Data item=&quot;1&quot; status=&quot;Inactive&quot;/&gt;
+    &lt;/Channels&gt;
+    &lt;Channels item=&quot;2&quot; type=&quot;Outgoing&quot;&gt;
+      &lt;Rate item=&quot;1&quot;&gt;384&lt;/Rate&gt;
+      &lt;Restrict item=&quot;1&quot;&gt;Off&lt;/Restrict&gt;
+      &lt;Encryption item=&quot;1&quot; status=&quot;On&quot;&gt;
+	&lt;Type item=&quot;1&quot;&gt;AES-128&lt;/Type&gt;
+        &lt;CheckCode item=&quot;1&quot;&gt;ACCAC3411B19FDB4&lt;/CheckCode&gt;
+      &lt;/Encryption&gt;
+      &lt;Audio item=&quot;1&quot; status=&quot;Active&quot;&gt;
+        &lt;Protocol item=&quot;1&quot;&gt;AAC-LD&lt;/Protocol&gt;
+        &lt;Rate item=&quot;1&quot;&gt;64&lt;/Rate&gt;
+        &lt;RemoteIPAddress item=&quot;1&quot;&gt;10.1.2.83:2390&lt;/RemoteIPAddress&gt;
+        &lt;LocalIPAddress item=&quot;1&quot;&gt;10.1.2.114:2374&lt;/LocalIPAddress&gt;
+        &lt;Encryption item=&quot;1&quot; status=&quot;On&quot;&gt;
+          &lt;Type item=&quot;1&quot;&gt;AES-128&lt;/Type&gt;
+        &lt;/Encryption&gt;
+        &lt;RSVP item=&quot;1&quot;&gt;Off&lt;/RSVP&gt;
+        &lt;RSVPRate item=&quot;1&quot;&gt;0&lt;/RSVPRate&gt;
+        &lt;DynamicRate item=&quot;1&quot;&gt;0&lt;/DynamicRate&gt;
+        &lt;TotalPackets item=&quot;1&quot;&gt;0&lt;/TotalPackets&gt;
+        &lt;PacketLoss item=&quot;1&quot;&gt;0&lt;/PacketLoss&gt;
+        &lt;Jitter item=&quot;1&quot;&gt;0&lt;/Jitter&gt;
+      &lt;/Audio&gt;
+      &lt;Video item=&quot;1&quot; status=&quot;Active&quot;&gt;
+        &lt;Protocol item=&quot;1&quot;&gt;H264&lt;/Protocol&gt;
+        &lt;Resolution item=&quot;1&quot;&gt;400p&lt;/Resolution&gt;
+        &lt;Rate item=&quot;1&quot;&gt;320&lt;/Rate&gt;
+        &lt;RemoteIPAddress item=&quot;1&quot;&gt;10.1.2.83:2392&lt;/RemoteIPAddress&gt;
+        &lt;LocalIPAddress item=&quot;1&quot;&gt;10.1.2.114:2376&lt;/LocalIPAddress&gt;
+        &lt;Encryption item=&quot;1&quot; status=&quot;On&quot;&gt;
+          &lt;Type item=&quot;1&quot;&gt;AES-128&lt;/Type&gt;
+        &lt;/Encryption&gt;
+        &lt;RSVP item=&quot;1&quot;&gt;Off&lt;/RSVP&gt;
+        &lt;RSVPRate item=&quot;1&quot;&gt;0&lt;/RSVPRate&gt;
+        &lt;DynamicRate item=&quot;1&quot;&gt;0&lt;/DynamicRate&gt;
+        &lt;TotalPackets item=&quot;1&quot;&gt;0&lt;/TotalPackets&gt;
+        &lt;PacketLoss item=&quot;1&quot;&gt;0&lt;/PacketLoss&gt;
+        &lt;Jitter item=&quot;1&quot;&gt;0&lt;/Jitter&gt;
+      &lt;/Video&gt;
+      &lt;Video item=&quot;2&quot; status=&quot;Inactive&quot;/&gt;
+      &lt;Data item=&quot;1&quot; status=&quot;Inactive&quot;/&gt;
+    &lt;/Channels&gt;
+  &lt;/Call&gt;
+&lt;/Status&gt;
+</stringProp>
+                <stringProp name="SoapSampler.xml_data_file"></stringProp>
+                <stringProp name="SoapSampler.SOAP_ACTION"></stringProp>
+                <stringProp name="SoapSampler.SEND_SOAP_ACTION">false</stringProp>
+                <boolProp name="HTTPSampler.use_keepalive">false</boolProp>
+              </SoapSampler>
+              <hashTree/>
+            </hashTree>
+            <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Step 4" enabled="true"/>
+            <hashTree>
+              <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Constant Timer" enabled="true">
+                <stringProp name="ConstantTimer.delay">1000</stringProp>
+              </ConstantTimer>
+              <hashTree/>
+              <SoapSampler guiclass="SoapSamplerGui" testclass="SoapSampler" testname="Call Item Update" enabled="true">
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                  <collectionProp name="Arguments.arguments"/>
+                </elementProp>
+                <stringProp name="SoapSampler.URL_DATA">http://${feedbackURL}</stringProp>
+                <stringProp name="HTTPSamper.xml_data">
+&lt;Status xmlns=&quot;http://www.tandberg.no/XML/CUIL/1.0&quot;&gt;
+  &lt;Identification&gt;
+    &lt;SystemName&gt;${systemName}&lt;/SystemName&gt;
+    &lt;MACAddress&gt;${systemMACAddr}&lt;/MACAddress&gt;
+    &lt;IPAddress&gt;10.1.2.114&lt;/IPAddress&gt;
+    &lt;ProductType&gt;TANDBERG Codec&lt;/ProductType&gt;
+    &lt;ProductID&gt;TANDBERG CODEC 3000MXP&lt;/ProductID&gt;
+    &lt;SWVersion&gt;F6.3 NTSC&lt;/SWVersion&gt;
+    &lt;HWBoard&gt;101070 rev. 07&lt;/HWBoard&gt;
+    &lt;SerialNumber&gt;33A25251&lt;/SerialNumber&gt;
+  &lt;/Identification&gt;
+  &lt;Call item=&quot;1&quot; status=&quot;Synced&quot; type=&quot;Vtlph&quot; protocol=&quot;H323&quot; direction=&quot;Outgoing&quot; logTag=&quot;${logID}&quot;&gt;
+    &lt;Channels item=&quot;1&quot; type=&quot;Incoming&quot;&gt;
+      &lt;Video item=&quot;1&quot; status=&quot;Active&quot;&gt;
+        &lt;Resolution item=&quot;1&quot;&gt;400p&lt;/Resolution&gt;
+      &lt;/Video&gt;
+    &lt;/Channels&gt;
+  &lt;/Call&gt;
+&lt;/Status&gt;
+</stringProp>
+                <stringProp name="SoapSampler.xml_data_file"></stringProp>
+                <stringProp name="SoapSampler.SOAP_ACTION"></stringProp>
+                <stringProp name="SoapSampler.SEND_SOAP_ACTION">false</stringProp>
+                <boolProp name="HTTPSampler.use_keepalive">false</boolProp>
+              </SoapSampler>
+              <hashTree/>
+            </hashTree>
+            <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Call In Progress" enabled="true"/>
+            <hashTree>
+              <TestAction guiclass="TestActionGui" testclass="TestAction" testname="Call ongoing" enabled="true">
+                <intProp name="ActionProcessor.action">1</intProp>
+                <intProp name="ActionProcessor.target">0</intProp>
+                <stringProp name="ActionProcessor.duration">0</stringProp>
+              </TestAction>
+              <hashTree>
+                <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Ongoing Call Timer" enabled="true">
+                  <stringProp name="ConstantTimer.delay">30000</stringProp>
+                </ConstantTimer>
+                <hashTree/>
+              </hashTree>
+            </hashTree>
+            <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Step 5" enabled="true"/>
+            <hashTree>
+              <SoapSampler guiclass="SoapSamplerGui" testclass="SoapSampler" testname="History Event" enabled="true">
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                  <collectionProp name="Arguments.arguments"/>
+                </elementProp>
+                <stringProp name="SoapSampler.URL_DATA">http://${feedbackURL}</stringProp>
+                <stringProp name="HTTPSamper.xml_data">
+&lt;History xmlns=&quot;http://www.tandberg.no/XML/CUIL/1.0&quot;&gt;
+  &lt;Identification&gt;
+    &lt;SystemName&gt;${systemName}&lt;/SystemName&gt;
+    &lt;MACAddress&gt;${systemMACAddr}&lt;/MACAddress&gt;
+    &lt;IPAddress&gt;10.1.2.114&lt;/IPAddress&gt;
+    &lt;ProductType&gt;TANDBERG Codec&lt;/ProductType&gt;
+    &lt;ProductID&gt;TANDBERG CODEC 3000MXP&lt;/ProductID&gt;
+    &lt;SWVersion&gt;F6.3 NTSC&lt;/SWVersion&gt;
+    &lt;HWBoard&gt;101070 rev. 07&lt;/HWBoard&gt;
+    &lt;SerialNumber&gt;33A25251&lt;/SerialNumber&gt;
+  &lt;/Identification&gt;
+  &lt;Call item=&quot;1&quot; type=&quot;Vtlph&quot; protocol=&quot;H323&quot; direction=&quot;Outgoing&quot;&gt;
+    &lt;LogTag item=&quot;1&quot;&gt;${logID}&lt;/LogTag&gt;
+    &lt;RemoteNumber item=&quot;1&quot;&gt;10.1.2.83&lt;/RemoteNumber&gt;
+    &lt;EncryptionIn item=&quot;1&quot;&gt;AES-128&lt;/EncryptionIn&gt;
+    &lt;EncryptionOut item=&quot;1&quot;&gt;AES-128&lt;/EncryptionOut&gt;
+    &lt;CallRate item=&quot;1&quot;&gt;384&lt;/CallRate&gt;
+    &lt;DisconnectCauseValue item=&quot;1&quot;&gt;16&lt;/DisconnectCauseValue&gt;
+    &lt;DisconnectCause item=&quot;1&quot;&gt;ReasonUndefined&lt;/DisconnectCause&gt;
+    &lt;Duration item=&quot;1&quot;&gt;${callDuration}&lt;/Duration&gt;
+    &lt;UptimeAtEndOfCall item=&quot;1&quot;&gt;2326358&lt;/UptimeAtEndOfCall&gt;
+    &lt;BillingCode item=&quot;1&quot;&gt;&lt;/BillingCode&gt;
+    &lt;Audio item=&quot;1&quot;&gt;
+      &lt;PacketsReceived item=&quot;1&quot;&gt;738&lt;/PacketsReceived&gt;
+      &lt;PacketsLost item=&quot;1&quot;&gt;0&lt;/PacketsLost&gt;
+      &lt;PacketsDropped item=&quot;1&quot;&gt;0&lt;/PacketsDropped&gt;
+      &lt;DurationLossLevel1 item=&quot;1&quot;&gt;0&lt;/DurationLossLevel1&gt;
+      &lt;DurationJitterLevel1 item=&quot;1&quot;&gt;0&lt;/DurationJitterLevel1&gt;
+      &lt;NumberOfLevel1Bursts item=&quot;1&quot;&gt;0&lt;/NumberOfLevel1Bursts&gt;
+      &lt;DurationLossLevel2 item=&quot;1&quot;&gt;0&lt;/DurationLossLevel2&gt;
+     &lt;DurationJitterLevel2 item=&quot;1&quot;&gt;0&lt;/DurationJitterLevel2&gt;
+      &lt;NumberOfLevel2Bursts item=&quot;1&quot;&gt;0&lt;/NumberOfLevel2Bursts&gt;
+    &lt;/Audio&gt;
+    &lt;Video item=&quot;1&quot;&gt;
+      &lt;PacketsReceived item=&quot;1&quot;&gt;1663&lt;/PacketsReceived&gt;
+      &lt;PacketsLost item=&quot;1&quot;&gt;0&lt;/PacketsLost&gt;
+      &lt;PacketsDropped item=&quot;1&quot;&gt;0&lt;/PacketsDropped&gt;
+      &lt;DurationLossLevel1 item=&quot;1&quot;&gt;0&lt;/DurationLossLevel1&gt;
+      &lt;DurationJitterLevel1 item=&quot;1&quot;&gt;0&lt;/DurationJitterLevel1&gt;
+      &lt;NumberOfLevel1Bursts item=&quot;1&quot;&gt;0&lt;/NumberOfLevel1Bursts&gt;
+      &lt;DurationLossLevel2 item=&quot;1&quot;&gt;0&lt;/DurationLossLevel2&gt;
+      &lt;DurationJitterLevel2 item=&quot;1&quot;&gt;0&lt;/DurationJitterLevel2&gt;
+      &lt;NumberOfLevel2Bursts item=&quot;1&quot;&gt;0&lt;/NumberOfLevel2Bursts&gt;
+    &lt;/Video&gt;
+  &lt;/Call&gt;
+&lt;/History&gt;
+</stringProp>
+                <stringProp name="SoapSampler.xml_data_file"></stringProp>
+                <stringProp name="SoapSampler.SOAP_ACTION"></stringProp>
+                <stringProp name="SoapSampler.SEND_SOAP_ACTION">false</stringProp>
+                <boolProp name="HTTPSampler.use_keepalive">false</boolProp>
+              </SoapSampler>
+              <hashTree/>
+            </hashTree>
+            <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="Step 6" enabled="true"/>
+            <hashTree>
+              <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Constant Timer" enabled="true">
+                <stringProp name="ConstantTimer.delay">500</stringProp>
+              </ConstantTimer>
+              <hashTree/>
+              <SoapSampler guiclass="SoapSamplerGui" testclass="SoapSampler" testname="Conference Event" enabled="true">
+                <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                  <collectionProp name="Arguments.arguments"/>
+                </elementProp>
+                <stringProp name="SoapSampler.URL_DATA">http://${feedbackURL}</stringProp>
+                <stringProp name="HTTPSamper.xml_data">
+&lt;Status xmlns=&quot;http://www.tandberg.no/XML/CUIL/1.0&quot;&gt;
+  &lt;Identification&gt;
+    &lt;SystemName&gt;${systemName}&lt;/SystemName&gt;
+    &lt;MACAddress&gt;${systemMACAddr}&lt;/MACAddress&gt;
+    &lt;IPAddress&gt;10.1.2.114&lt;/IPAddress&gt;
+    &lt;ProductType&gt;TANDBERG Codec&lt;/ProductType&gt;
+    &lt;ProductID&gt;TANDBERG CODEC 3000MXP&lt;/ProductID&gt;
+    &lt;SWVersion&gt;F6.3 NTSC&lt;/SWVersion&gt;
+    &lt;HWBoard&gt;101070 rev. 07&lt;/HWBoard&gt;
+    &lt;SerialNumber&gt;33A25251&lt;/SerialNumber&gt;
+  &lt;/Identification&gt;
+  &lt;Conference item=&quot;1&quot; type=&quot;Idle&quot;&gt;
+    &lt;Multiway item=&quot;1&quot; ghost=&quot;True&quot;/&gt;
+  &lt;/Conference&gt;
+&lt;/Status&gt;
+</stringProp>
+                <stringProp name="SoapSampler.xml_data_file"></stringProp>
+                <stringProp name="SoapSampler.SOAP_ACTION"></stringProp>
+                <stringProp name="SoapSampler.SEND_SOAP_ACTION">false</stringProp>
+                <boolProp name="HTTPSampler.use_keepalive">false</boolProp>
+              </SoapSampler>
+              <hashTree/>
+            </hashTree>
+            <TestAction guiclass="TestActionGui" testclass="TestAction" testname="Pause between Calls" enabled="true">
+              <intProp name="ActionProcessor.action">1</intProp>
+              <intProp name="ActionProcessor.target">0</intProp>
+              <stringProp name="ActionProcessor.duration">0</stringProp>
+            </TestAction>
+            <hashTree>
+              <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Constant Timer" enabled="true">
+                <stringProp name="ConstantTimer.delay">${systemDelayPerCall}</stringProp>
+              </ConstantTimer>
+              <hashTree/>
+            </hashTree>
+          </hashTree>
+        </hashTree>
+        <ResultCollector guiclass="TableVisualizer" testclass="ResultCollector" testname="View Results in Table" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>true</xml>
+              <fieldNames>false</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+            </value>
+            <name>saveConfig</name>
+          </objProp>
+          <stringProp name="filename">${logDir}\ptp-results.txt</stringProp>
+        </ResultCollector>
+        <hashTree/>
+        <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="Simple Data Writer" enabled="true">
+          <boolProp name="ResultCollector.error_logging">true</boolProp>
+          <objProp>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>true</responseData>
+              <samplerData>false</samplerData>
+              <xml>true</xml>
+              <fieldNames>false</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+            </value>
+            <name>saveConfig</name>
+          </objProp>
+          <stringProp name="filename">${logDir}\ptp-errors.txt</stringProp>
+        </ResultCollector>
+        <hashTree/>
+        <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>true</xml>
+              <fieldNames>false</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+            </value>
+            <name>saveConfig</name>
+          </objProp>
+          <stringProp name="filename"></stringProp>
+        </ResultCollector>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

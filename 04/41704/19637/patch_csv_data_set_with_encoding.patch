@@ -1,0 +1,261 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/test/src/org/apache/jmeter/services/TestFileServer.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/test/src/org/apache/jmeter/services/TestFileServer.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/test/src/org/apache/jmeter/services/TestFileServer.java	(working copy)
+@@ -59,7 +59,7 @@
+         FS.closeFile("xxx"); // Unrecognised files are ignored
+         assertFalse("Should not have any files open",FS.filesOpen());
+         String infile="testfiles/test.csv";
+-        FS.reserveFile(infile); // Does not open file
++        FS.reserveFile(infile, null); // Does not open file
+         assertFalse("Should not have any files open",FS.filesOpen());
+         assertEquals("a1,b1,c1,d1",FS.readLine(infile));
+         assertTrue("Should have some files open",FS.filesOpen());
+@@ -86,7 +86,7 @@
+         }
+         String base=FS.getBaseDir();
+         infile=base+"/testfiles/test.csv";
+-        FS.reserveFile(infile); // Does not open file
++        FS.reserveFile(infile, null); // Does not open file
+         assertFalse("Should not have any files open",FS.filesOpen());
+         assertEquals("a1,b1,c1,d1",FS.readLine(infile));
+         try {
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java	(working copy)
+@@ -49,7 +49,7 @@
+ 	 */
+ 	public int parse(TestElement el, int parseCount) {
+ 		FileServer fileServer = FileServer.getFileServer();
+-		fileServer.reserveFile(FILENAME);
++		fileServer.reserveFile(FILENAME, null);
+ 		try {
+ 			return parse(fileServer, el, parseCount);
+ 		} catch (Exception exception) {
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSet.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSet.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSet.java	(working copy)
+@@ -45,6 +45,8 @@
+ 
+     private transient String filename;
+ 
++    private transient String fileEncoding;
++
+     private transient String variableNames;
+ 
+     private transient String delimiter;
+@@ -66,7 +68,7 @@
+ 		FileServer server = FileServer.getFileServer();
+ 		String _fileName = getFilename();
+ 		if (vars == null) {
+-			server.reserveFile(_fileName);
++			server.reserveFile(_fileName, getFileEncoding());
+ 			vars = JOrphanUtils.split(getVariableNames(), ","); // $NON-NLS-1$
+ 		}
+ 		try {
+@@ -107,6 +109,21 @@
+ 	}
+ 
+ 	/**
++	 * @return Returns the file encoding.
++	 */
++	public String getFileEncoding() {
++		return fileEncoding;
++	}
++
++	/**
++	 * @param fileEncoding
++	 *            The fileEncoding to set.
++	 */
++	public void setFileEncoding(String fileEncoding) {
++		this.fileEncoding = fileEncoding;
++	}
++
++	/**
+ 	 * @return Returns the variableNames.
+ 	 */
+ 	public String getVariableNames() {
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java	(working copy)
+@@ -25,13 +25,12 @@
+ /**
+  * @author mstover
+  * 
+- * TODO To change the template for this generated type comment go to Window -
+- * Preferences - Java - Code Style - Code Templates
+  */
+ public class CSVDataSetBeanInfo extends BeanInfoSupport {
+ 
+     // These names must agree case-wise with the variable and property names
+     private static final String FILENAME = "filename";               //$NON-NLS-1$
++    private static final String FILE_ENCODING = "fileEncoding";      //$NON-NLS-1$
+     private static final String VARIABLE_NAMES = "variableNames";    //$NON-NLS-1$
+     private static final String DELIMITER = "delimiter";             //$NON-NLS-1$
+     private static final String RECYCLE = "recycle";                 //$NON-NLS-1$
+@@ -42,13 +41,18 @@
+ 	public CSVDataSetBeanInfo() {
+ 		super(CSVDataSet.class);
+ 		createPropertyGroup("csv_data",             //$NON-NLS-1$
+-                new String[] { FILENAME, VARIABLE_NAMES, DELIMITER, RECYCLE });
++                new String[] { FILENAME, FILE_ENCODING, VARIABLE_NAMES, DELIMITER, RECYCLE });
+         
+ 		PropertyDescriptor p = property(FILENAME);
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, "");        //$NON-NLS-1$
+ 		p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+         
++		p = property(FILE_ENCODING);
++		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++		p.setValue(DEFAULT, "");        //$NON-NLS-1$
++		p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++		
+ 		p = property(VARIABLE_NAMES);
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, "");        //$NON-NLS-1$
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSetResources.properties
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSetResources.properties	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/config/CSVDataSetResources.properties	(working copy)
+@@ -2,6 +2,8 @@
+ csv_data.displayName=Configure the CSV Data Source
+ filename.displayName=Filename
+ filename.shortDescription=Name of the file that holds the cvs data (relative or absolute filename)
++fileEncoding.displayName=File encoding
++fileEncoding.shortDescription=The character set encoding used in the file
+ variableNames.displayName=Variable Names (comma-delimited)
+ variableNames.shortDescription=List your variable names in order to match the order of columns in your csv data.  Separate by commas.
+ delimiter.displayName=Delimiter (use '\\t' for tab)
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/services/FileServer.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/services/FileServer.java	(revision 511787)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/services/FileServer.java	(working copy)
+@@ -24,9 +24,11 @@
+ import java.io.BufferedReader;
+ import java.io.BufferedWriter;
+ import java.io.File;
+-import java.io.FileReader;
+-import java.io.FileWriter;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
+ import java.io.IOException;
++import java.io.InputStreamReader;
++import java.io.OutputStreamWriter;
+ import java.io.Reader;
+ import java.io.Writer;
+ import java.util.HashMap;
+@@ -63,6 +65,7 @@
+     //TODO - make "files" and "random" static as the class is a singleton?
+     
+ 	private final Map files = new HashMap();
++	private final Map charsets = new HashMap();
+     
+ 	private static final FileServer server = new FileServer();
+ 
+@@ -85,6 +88,7 @@
+ 			throw new IOException("Files are still open, cannot change base directory");
+ 		}
+ 		files.clear();
++		charsets.clear();
+ 		if (basedir != null) {
+ 			base = new File(basedir);
+ 			if (!base.isDirectory()) {
+@@ -102,17 +106,19 @@
+      * and stores it for later use - unless it is already stored.
+      * 
+      * @param filename - relative (to base) or absolute file name
++     * @param charsetName - the character set encoding to use for the file
+      */
+-	public synchronized void reserveFile(String filename) {
++	public synchronized void reserveFile(String filename, String charsetName) {
+ 		if (!files.containsKey(filename)) {
+             File f = new File(filename); 
+             FileEntry file = 
+                 new FileEntry(f.isAbsolute() ? f : new File(base, filename),null);
+             log.info("Stored: "+filename);
+ 			files.put(filename, file);
++			charsets.put(filename, charsetName);
+ 		}
+ 	}
+-
++	
+    /**
+ 	 * Get the next line of the named file, recycle by default.
+ 	 *
+@@ -136,8 +142,7 @@
+ 		FileEntry fileEntry = (FileEntry) files.get(filename);
+ 		if (fileEntry != null) {
+ 			if (fileEntry.inputOutputObject == null) {
+-				BufferedReader r = new BufferedReader(new FileReader(fileEntry.file));
+-				fileEntry.inputOutputObject = r;
++				fileEntry.inputOutputObject = createBufferedReader(fileEntry, filename);
+             } else if (!(fileEntry.inputOutputObject instanceof Reader)) {
+                 throw new IOException("File " + filename + " already in use");
+             }
+@@ -145,7 +150,7 @@
+ 			String line = reader.readLine();
+ 			if (line == null && recycle) {
+ 				reader.close();
+-				reader = new BufferedReader(new FileReader(fileEntry.file));
++				reader = createBufferedReader(fileEntry, filename);
+ 				fileEntry.inputOutputObject = reader;
+ 				line = reader.readLine();
+ 			}
+@@ -154,12 +159,25 @@
+ 		}
+ 		throw new IOException("File never reserved: "+filename);
+ 	}
++	
++	private BufferedReader createBufferedReader(FileEntry fileEntry, String filename) throws IOException { 
++		FileInputStream fis = new FileInputStream(fileEntry.file);				
++		InputStreamReader isr = null;
++        // If file encoding is specified, read using that encoding, otherwise use default platform encoding
++		String charsetName = (String) charsets.get(filename);
++		if(charsetName != null && charsetName.trim().length() > 0) {
++			isr = new InputStreamReader(fis, charsetName); 
++		} else {
++			isr = new InputStreamReader(fis); 
++		}
++		return new BufferedReader(isr);
++	}
+ 
+ 	public synchronized void write(String filename, String value) throws IOException {
+ 		FileEntry fileEntry = (FileEntry) files.get(filename);
+ 		if (fileEntry != null) {
+ 			if (fileEntry.inputOutputObject == null) {
+-				fileEntry.inputOutputObject = new BufferedWriter(new FileWriter(fileEntry.file));
++				fileEntry.inputOutputObject = createBufferedWriter(fileEntry, filename);
+ 			} else if (!(fileEntry.inputOutputObject instanceof Writer)) {
+ 				throw new IOException("File " + filename + " already in use");
+ 			}
+@@ -171,6 +189,19 @@
+         }
+ 	}
+ 
++	private BufferedWriter createBufferedWriter(FileEntry fileEntry, String filename) throws IOException { 
++		FileOutputStream fos = new FileOutputStream(fileEntry.file);				
++		OutputStreamWriter osw = null;
++        // If file encoding is specified, write using that encoding, otherwise use default platform encoding
++		String charsetName = (String) charsets.get(filename);
++		if(charsetName != null && charsetName.trim().length() > 0) {
++			osw = new OutputStreamWriter(fos, charsetName); 
++		} else {
++			osw = new OutputStreamWriter(fos); 
++		}
++		return new BufferedWriter(osw);
++	}
++
+ 	public void closeFiles() throws IOException {
+ 		Iterator iter = files.entrySet().iterator();
+ 		while (iter.hasNext()) {
+@@ -178,6 +209,7 @@
+ 			closeFile((String)me.getKey(),(FileEntry)me.getValue() );
+ 		}
+ 		files.clear();
++		charsets.clear();
+ 	}
+ 
+ 	/**

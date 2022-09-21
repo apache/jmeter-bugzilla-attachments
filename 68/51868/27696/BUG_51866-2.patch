@@ -1,0 +1,141 @@
+Index: src/core/org/apache/jmeter/control/IfController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/IfController.java	(revision 1179195)
++++ src/core/org/apache/jmeter/control/IfController.java	(working copy)
+@@ -22,6 +22,7 @@
+ 
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.property.StringProperty;
++import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ import org.mozilla.javascript.Context;
+@@ -123,6 +124,7 @@
+             logger.debug("    >> evaluate Condition -  [ " + cond + "] results is  [" + result + "]");
+         } catch (Exception e) {
+             logger.error(getName()+": error while processing "+ "[" + cond + "]\n", e);
++            throw new IllegalStateException(getName()+": error while processing "+ "[" + cond + "]\n", e);
+         } finally {
+             Context.exit();
+         }
+@@ -158,6 +160,10 @@
+      */
+     @Override
+     public Sampler next() {
++        if(JMeterContextService.getContext().isWithinRestartNextLoop()) {
++            // Suppose condition is true (make it a random choice ?)
++            return super.next();
++        }
+         // We should only evalute the condition if it is the first
+         // time ( first "iteration" ) we are called.
+         // For subsequent calls, we are inside the IfControllerGroup,
+Index: src/core/org/apache/jmeter/threads/JMeterContext.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterContext.java	(revision 1179195)
++++ src/core/org/apache/jmeter/threads/JMeterContext.java	(working copy)
+@@ -49,6 +49,8 @@
+ 
+     private boolean isReinitSubControllers = false;
+ 
++    private boolean isWithinRestartNextLoop = false;
++
+     JMeterContext() {
+         clear0();
+     }
+@@ -66,6 +68,7 @@
+         threadNum = 0;
+         thread = null;
+         isReinitSubControllers = false;
++        isWithinRestartNextLoop = false;
+     }
+ 
+     /**
+@@ -187,4 +190,36 @@
+     public boolean isReinitializingSubControllers() {
+         return isReinitSubControllers;
+     }
++
++    /**
++     * unset flag indicating that JMeterThread has met an error.
++     * And is restarting next loop, for example IfController 
++     * should not evaluate Condition, See bug 50032 
++     */
++    public void unsetIsWithinRestartNextLoop() {
++        if (isWithinRestartNextLoop) {
++            isWithinRestartNextLoop = false;
++        }
++    }
++    
++    /**
++     * @return true if JMeterThread is restarting next loop
++     */
++    public boolean isWithinRestartNextLoop() {
++        return isWithinRestartNextLoop;
++    }
++    
++    /**
++     * Set flag indicating that JMeterThread has met an error.
++     * And is restarting next loop, for example IfController 
++     * should not evaluate Condition, See bug 50032 
++     * @return true if it is the first one to set
++     */
++    public boolean setIsWithinRestartNextLoop() {
++        if (!isWithinRestartNextLoop) {
++            isWithinRestartNextLoop = true;
++            return true;
++        }
++        return false;
++    }
+ }
+Index: src/core/org/apache/jmeter/control/GenericController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/GenericController.java	(revision 1179195)
++++ src/core/org/apache/jmeter/control/GenericController.java	(working copy)
+@@ -29,6 +29,7 @@
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -361,6 +362,10 @@
+     }
+ 
+     protected void fireIterationStart() {
++        if(JMeterContextService.getContext().isWithinRestartNextLoop())
++        {
++            return;
++        }
+         Iterator<LoopIterationListener> iter = iterationListeners.iterator();
+         LoopIterationEvent event = new LoopIterationEvent(this, getIterCount());
+         while (iter.hasNext()) {
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 1179195)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -285,13 +285,18 @@
+                             process_sampler(sam, null, threadContext);
+                             sam = controller.next();
+                         } else {
+-                            // Last not ok. start get the begining of the tree
+-                            sam = controller.next(); // need perfom a until loop for special case (tc as parent)
+-                            while (sam != null && !sam.equals(firstSampler)) { // while the thread is NOT on the begining of the tree
+-                                sam = controller.next();
++                            try{
++                                JMeterContextService.getContext().setIsWithinRestartNextLoop();
++                                // Last not ok. start get the begining of the tree
++                                sam = controller.next(); // need perfom a until loop for special case (tc as parent)
++                                while (sam != null && !sam.equals(firstSampler)) { // while the thread is NOT on the begining of the tree
++                                    sam = controller.next();
++                                }
++                                // At this point: begining tree, thus Last must Ok
++                                threadContext.getVariables().put(LAST_SAMPLE_OK, TRUE);
++                            } finally {
++                                JMeterContextService.getContext().unsetIsWithinRestartNextLoop();                                
+                             }
+-                            // At this point: begining tree, thus Last must Ok
+-                            threadContext.getVariables().put(LAST_SAMPLE_OK, TRUE);
+                         }
+                     } else {
+                         process_sampler(sam, null, threadContext);

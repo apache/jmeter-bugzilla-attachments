@@ -1,0 +1,258 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java	(revision 535755)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java	(working copy)
+@@ -49,7 +49,8 @@
+ 
+ 	public JMeterTreeModel() {
+ 		super(new JMeterTreeNode(new WorkBenchGui().createTestElement(), null));
+-		initTree();
++		TestElement tp = new TestPlanGui().createTestElement();
++		initTree(tp);
+ 	}
+ 
+ 	/**
+@@ -174,19 +175,46 @@
+ 		return getCurrentSubTree((JMeterTreeNode) ((JMeterTreeNode) this.getRoot()).getChildAt(0));
+ 	}
+ 
++    /**
++     * Clear the test plan, and use default node for test plan and workbench
++     */
+ 	public void clearTestPlan() {
+-		super.removeNodeFromParent((JMeterTreeNode) getChild(getRoot(), 0));
+-		initTree();
++		TestElement tp = new TestPlanGui().createTestElement();
++		clearTestPlan(tp);
+ 	}
+-
+-	private void initTree() {
+-		TestElement tp = new TestPlanGui().createTestElement();
+-		TestElement wb = new WorkBenchGui().createTestElement();
+-		this.insertNodeInto(new JMeterTreeNode(tp, this), (JMeterTreeNode) getRoot(), 0);
+-		try {
+-			super.removeNodeFromParent((JMeterTreeNode) getChild(getRoot(), 1));
+-		} catch (RuntimeException e) {
+-		}
+-		this.insertNodeInto(new JMeterTreeNode(wb, this), (JMeterTreeNode) getRoot(), 1);
++    
++    /**
++     * Clear the test plan, and use specified node for test plan and default node for workbench
++     * 
++     * @param testPlan the node to use as the testplan top node
++     */
++    public void clearTestPlan(TestElement testPlan) {
++        // Remove the workbench and testplan nodes
++        int children = getChildCount(getRoot());
++        while (children > 0) {
++            JMeterTreeNode child = (JMeterTreeNode)getChild(getRoot(), 0);
++            super.removeNodeFromParent(child);
++            children = getChildCount(getRoot());
++        }
++        // Init the tree
++        initTree(testPlan);
++    }
++    
++    /**
++     * Initialize the model with nodes for testplan and workbench. Use the specified
++     * node for testplan, and default node for workbench.
++     * 
++     * @param tp the element to use as testplan
++     */
++	private void initTree(TestElement tp) {
++        // Insert the test plan node
++        insertNodeInto(new JMeterTreeNode(tp, this), (JMeterTreeNode) getRoot(), 0);
++        // Insert the workbench node
++        TestElement wb = new WorkBenchGui().createTestElement();
++		insertNodeInto(new JMeterTreeNode(wb, this), (JMeterTreeNode) getRoot(), 1);
++        // Let others know that the tree content has changed.
++        // This should not be necessary, but without it, nodes are not shown when the user
++        // uses the Close menu item
++        nodeStructureChanged((JMeterTreeNode)getRoot());
+ 	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 535755)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -71,6 +71,7 @@
+     public static final String SAVE_GRAPHICS_ALL= "save_graphics_all"; // $NON-NLS-1$
+     public static final String SSL_MANAGER      = "sslManager"; // $NON-NLS-1$
+     public static final String SUB_TREE_LOADED  = "sub_tree_loaded"; // $NON-NLS-1$
++    public static final String SUB_TREE_MERGED  = "sub_tree_merged"; // $NON-NLS-1$
+     public static final String SUB_TREE_SAVED   = "sub_tree_saved"; // $NON-NLS-1$
+     public static final String WHAT_CLASS       = "what_class"; // $NON-NLS-1$
+ 
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Load.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Load.java	(revision 535755)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Load.java	(working copy)
+@@ -35,6 +35,7 @@
+ import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.save.SaveService;
+ import org.apache.jmeter.services.FileServer;
++import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+@@ -68,31 +69,34 @@
+ 	}
+ 
+ 	public void doAction(ActionEvent e) {
+-		boolean merging = e.getActionCommand().equals(ActionNames.MERGE);
+-
+-		if (!merging) {
+-			ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), "close"));
+-		}
+-
+ 		JFileChooser chooser = FileDialoger.promptToOpenFile(new String[] { ".jmx" });
+ 		if (chooser == null) {
+ 			return;
+ 		}
+-		boolean isTestPlan = false;
+ 		InputStream reader = null;
+-		File f = null;
+ 		try {
+-			f = chooser.getSelectedFile();
++            File f = chooser.getSelectedFile();
+ 			if (f != null) {
++                boolean isTestPlan = false;
++                boolean merging = e.getActionCommand().equals(ActionNames.MERGE);
++
+ 				if (merging) {
+ 					log.info("Merging file: " + f);
+ 				} else {
+ 					log.info("Loading file: " + f);
++                    // Close the test plan currently open
++					ActionRouter.getInstance().doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.CLOSE));
++
+ 					FileServer.getFileServer().setBasedir(f.getAbsolutePath());
+ 				}
+ 				reader = new FileInputStream(f);
+ 				HashTree tree = SaveService.loadTree(reader);
+-				isTestPlan = insertLoadedTree(e.getID(), tree);
++				isTestPlan = insertLoadedTree(e.getID(), tree, merging);
++                
++                // don't change name if merging
++                if (!merging && isTestPlan) {
++                    GuiPackage.getInstance().setTestPlanFile(f.getAbsolutePath());
++                }
+ 			}
+ 		} catch (NoClassDefFoundError ex) // Allow for missing optional jars
+ 		{
+@@ -117,28 +121,39 @@
+ 			GuiPackage.getInstance().updateCurrentGui();
+ 			GuiPackage.getInstance().getMainFrame().repaint();
+ 		}
+-		// don't change name if merging
+-		if (!merging && isTestPlan && f != null) {
+-			GuiPackage.getInstance().setTestPlanFile(f.getAbsolutePath());
+-		}
+ 	}
+ 
+ 	/**
+ 	 * Returns a boolean indicating whether the loaded tree was a full test plan
+ 	 */
+-	public boolean insertLoadedTree(int id, HashTree tree) throws Exception, IllegalUserActionException {
++	public boolean insertLoadedTree(int id, HashTree tree, boolean merging) throws Exception, IllegalUserActionException {
+ 		// convertTree(tree);
+ 		if (tree == null) {
+ 			throw new Exception("Error in TestPlan - see log file");
+ 		}
+ 		boolean isTestPlan = tree.getArray()[0] instanceof TestPlan;
++
++		// If we are loading a new test plan, initialize the tree with the testplan node we are loading
++		if(isTestPlan && !merging) {
++			GuiPackage.getInstance().getTreeModel().clearTestPlan((TestElement)tree.getArray()[0]);
++		}
++
+ 		HashTree newTree = GuiPackage.getInstance().addSubTree(tree);
+ 		GuiPackage.getInstance().updateCurrentGui();
+ 		GuiPackage.getInstance().getMainFrame().getTree().setSelectionPath(
+ 				new TreePath(((JMeterTreeNode) newTree.getArray()[0]).getPath()));
+ 		tree = GuiPackage.getInstance().getCurrentSubTree();
+-		ActionRouter.getInstance().actionPerformed(
+-				new ActionEvent(tree.get(tree.getArray()[tree.size() - 1]), id, ActionNames.SUB_TREE_LOADED));
++		// Send different event wether we are merging a test plan into another test plan,
++		// or loading a testplan from scratch
++		ActionEvent actionEvent = null;
++		if(!merging) {
++			actionEvent = new ActionEvent(tree.get(tree.getArray()[tree.size() - 1]), id, ActionNames.SUB_TREE_LOADED);
++		}
++		else {
++			actionEvent = new ActionEvent(tree.get(tree.getArray()[tree.size() - 1]), id, ActionNames.SUB_TREE_MERGED);
++		}
++
++		ActionRouter.getInstance().actionPerformed(actionEvent);
+ 	    if (expandTree) {
+ 			JTree jTree = GuiPackage.getInstance().getMainFrame().getTree();
+ 			   for(int i = 0; i < jTree.getRowCount(); i++) {
+@@ -148,4 +163,8 @@
+ 
+ 		return isTestPlan;
+ 	}
++    
++	public boolean insertLoadedTree(int id, HashTree tree) throws Exception, IllegalUserActionException {
++		return insertLoadedTree(id, tree, false);
++	}
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/CheckDirty.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/CheckDirty.java	(revision 535755)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/CheckDirty.java	(working copy)
+@@ -52,6 +52,7 @@
+ 	static {
+ 		commands.add(ActionNames.CHECK_DIRTY);
+ 		commands.add(ActionNames.SUB_TREE_SAVED);
++		commands.add(ActionNames.SUB_TREE_MERGED);
+ 		commands.add(ActionNames.SUB_TREE_LOADED);
+ 		commands.add(ActionNames.ADD_ALL);
+ 		commands.add(ActionNames.CHECK_REMOVE);
+@@ -91,12 +92,18 @@
+ 			}
+ 			removeMode = false;
+ 		}
+-		checkMode = true;
+-		dirty = false;
+-		HashTree wholeTree = GuiPackage.getInstance().getTreeModel().getTestPlan();
+-		wholeTree.traverse(this);
++		// If we are merging in another test plan, we know the test plan is dirty now
++		if(action.equals(ActionNames.SUB_TREE_MERGED)) {
++			dirty = true;
++		}
++		else {
++			dirty = false;
++			checkMode = true;
++			HashTree wholeTree = GuiPackage.getInstance().getTreeModel().getTestPlan();
++			wholeTree.traverse(this);
++			checkMode = false;
++		}
+ 		GuiPackage.getInstance().setDirty(dirty);
+-		checkMode = false;
+ 	}
+ 
+ 	/**
+@@ -107,13 +114,16 @@
+ 		log.debug("Node is class:" + node.getClass());
+ 		JMeterTreeNode treeNode = (JMeterTreeNode) node;
+ 		if (checkMode) {
+-			if (previousGuiItems.containsKey(treeNode)) {
+-				if (!previousGuiItems.get(treeNode).equals(treeNode.getTestElement())) {
+-					dirty = true;
+-				}
+-			} else {
+-				dirty = true;
+-			}
++			// Only check if we have not found any differences so far
++			if(!dirty) {
++				if (previousGuiItems.containsKey(treeNode)) {
++					if (!previousGuiItems.get(treeNode).equals(treeNode.getTestElement())) {
++						dirty = true;
++					}
++				} else {
++					dirty = true;
++				}
++			}
+ 		} else if (removeMode) {
+ 			previousGuiItems.remove(treeNode);
+ 		} else {

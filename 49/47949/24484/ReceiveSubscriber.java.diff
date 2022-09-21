@@ -1,0 +1,88 @@
+--- ReceiveSubscriber.java.orig	2009-11-04 20:17:44.000000000 -0500
++++ ReceiveSubscriber.java	2009-11-04 20:44:41.000000000 -0500
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.jmeter.protocol.jms.client;
+ 
++import java.util.concurrent.ConcurrentLinkedQueue;
++
+ import javax.jms.JMSException;
+ import javax.jms.Message;
+ import javax.jms.TextMessage;
+@@ -59,9 +61,8 @@
+     private int counter;
+ 
+     private int loop = 1; // TODO never read
+-
+-    //@GuardedBy("this")
+-    private final StringBuffer buffer = new StringBuffer();
++    
++    private final ConcurrentLinkedQueue<TextMessage> queue = new ConcurrentLinkedQueue<TextMessage>();
+ 
+     //@GuardedBy("this")
+     private volatile boolean RUN = true;
+@@ -150,18 +151,13 @@
+      * Get the message as a string
+      *
+      */
+-    public synchronized String getMessage() {
+-        return this.buffer.toString();
+-    }
+-
+-    /**
+-     * Get the message(s) as an array of byte[]
+-     * 
+-     */
+-    public synchronized byte[] getByteResult() {
+-        return this.buffer.toString().getBytes();
++    public synchronized TextMessage getMessage() {
++        TextMessage msg = (TextMessage) queue.poll();
++        this.counter--;
++        return msg;
+     }
+ 
++ 
+     /**
+      * close() will stop the connection first. Then it closes the subscriber,
+      * session and connection.
+@@ -175,7 +171,7 @@
+             this.CONN.close();
+             this.CLIENTTHREAD.interrupt();
+             this.CLIENTTHREAD = null;
+-            this.buffer.setLength(0);
++            queue.clear();
+         } catch (JMSException e) {
+             log.error(e.getMessage());
+         } catch (Exception e) {
+@@ -184,14 +180,6 @@
+     }
+ 
+     /**
+-     * Reset the receiver ready for receiving any further messages
+-     */
+-    public synchronized void reset() {
+-        counter = 0;
+-        this.buffer.setLength(0);
+-    }
+-
+-    /**
+      * Increment the count and return the new value
+      *
+      * @param increment
+@@ -231,14 +219,8 @@
+             try {
+                 Message message = this.SUBSCRIBER.receive();
+                 if (message != null && message instanceof TextMessage) {
+-                    TextMessage msg = (TextMessage) message;
+-                    String text = msg.getText();
+-                    if (text.trim().length() > 0) {
+-                        synchronized (this) {
+-                            this.buffer.append(text);
+-                            count(1);
+-                        }
+-                    }
++                    queue.add((TextMessage)message);
++                    count(1);
+                 }
+             } catch (JMSException e) {
+                 log.error("Communication error: " + e.getMessage());

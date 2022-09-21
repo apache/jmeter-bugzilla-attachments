@@ -1,0 +1,219 @@
+### Eclipse Workspace Patch 1.0
+#P jmeterSVN
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java	(revision 986649)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java	(working copy)
+@@ -74,6 +74,7 @@
+         smtpPanel.setReceiverBCC(element.getPropertyAsString(SmtpSampler.RECEIVER_BCC));
+ 
+         smtpPanel.setBody(element.getPropertyAsString(SmtpSampler.MESSAGE));
++        smtpPanel.setEmptyBody(element.getPropertyAsBoolean(SmtpSampler.EMPTY_MESSAGE));
+         smtpPanel.setSubject(element.getPropertyAsString(SmtpSampler.SUBJECT));
+         smtpPanel.setSuppressSubject(element.getPropertyAsBoolean(SmtpSampler.SUPPRESS_SUBJECT));
+         smtpPanel.setIncludeTimestamp(element.getPropertyAsBoolean(SmtpSampler.INCLUDE_TIMESTAMP));
+@@ -130,6 +131,7 @@
+         te.setProperty(SmtpSampler.SUPPRESS_SUBJECT, Boolean.toString(smtpPanel.isSuppressSubject()));
+         te.setProperty(SmtpSampler.INCLUDE_TIMESTAMP, Boolean.toString(smtpPanel.isIncludeTimestamp()));
+         te.setProperty(SmtpSampler.MESSAGE, smtpPanel.getBody());
++        te.setProperty(SmtpSampler.EMPTY_MESSAGE, Boolean.toString(smtpPanel.isEmptyBody()));
+         te.setProperty(SmtpSampler.ATTACH_FILE, smtpPanel.getAttachments());
+         
+         SecuritySettingsPanel secPanel = smtpPanel.getSecuritySettingsPanel();
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java	(revision 986645)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java	(working copy)
+@@ -94,6 +94,8 @@
+ 
+     private StringBuffer serverResponse = new StringBuffer();
+ 
++	private boolean emptyMessage;
++
+     /**
+      * Standard-Constructor
+      */
+@@ -172,18 +174,21 @@
+             message = new MimeMessage(session);
+             // handle body and attachments
+             Multipart multipart = new MimeMultipart();
+-            BodyPart body = new MimeBodyPart();
+-            body.setText(mailBody);
+-            multipart.addBodyPart(body);
++            if(!emptyMessage){
++                BodyPart body = new MimeBodyPart();
++                body.setText(mailBody);
++                multipart.addBodyPart(body);	
++            }
+ 
+             for (File f : attachments) {
+                 BodyPart attach = new MimeBodyPart();
+                 attach.setFileName(f.getName());
+-                attach.setDataHandler(new DataHandler(new FileDataSource(f)));
++                attach.setDataHandler(new DataHandler(new FileDataSource(f.getAbsolutePath())));
+                 multipart.addBodyPart(attach);
+             }
+-
+-            message.setContent(multipart);
++            if(!(emptyMessage && attachments.size() == 0)){
++            	message.setContent(multipart);	
++            }            
+         }
+ 
+         // set from field and subject
+@@ -722,6 +727,15 @@
+     public void setMailBody(String body){
+         mailBody = body;
+     }
++    
++    /**
++     * Set the mail body.
++     *
++     * @param body
++     */
++    public void setEmptyBody(boolean emptyBody){
++    	emptyMessage = emptyBody;
++    }
+ 
+     public StringBuffer getServerResponse() {
+         return this.serverResponse;
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(revision 986647)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(working copy)
+@@ -37,6 +37,7 @@
+ import org.apache.jmeter.samplers.AbstractSampler;
+ import org.apache.jmeter.samplers.Entry;
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -68,6 +69,7 @@
+     public final static String SUBJECT              = "SMTPSampler.subject"; // $NON-NLS-1$
+     public final static String SUPPRESS_SUBJECT     = "SMTPSampler.suppressSubject"; // $NON-NLS-1$
+     public final static String MESSAGE              = "SMTPSampler.message"; // $NON-NLS-1$
++    public final static String EMPTY_MESSAGE        = "SMTPSampler.emptyMessage"; // $NON-NLS-1$
+     public final static String INCLUDE_TIMESTAMP    = "SMTPSampler.include_timestamp"; // $NON-NLS-1$
+     public final static String ATTACH_FILE          = "SMTPSampler.attachFile"; // $NON-NLS-1$
+     public final static String MESSAGE_SIZE_STATS   = "SMTPSampler.messageSizeStatistics"; // $NON-NLS-1$
+@@ -149,11 +151,18 @@
+             if (!getPropertyAsBoolean(USE_EML)) { // part is only needed if we
+                 // don't send an .eml-file
+                 instance.setMailBody(getPropertyAsString(MESSAGE));
++                instance.setEmptyBody(getPropertyAsBoolean(EMPTY_MESSAGE));
+                 final String filesToAttach = getPropertyAsString(ATTACH_FILE);
+                 if (!filesToAttach.equals("")) {
+                     String[] attachments = filesToAttach.split(FILENAME_SEPARATOR);
+                     for (String attachment : attachments) {
+-                        instance.addAttachment(new File(attachment));
++                    	File file = new File(attachment);
++                    	if(!file.isAbsolute()){
++                            log.info("loading file with relative path: " +attachment);
++                            file = new File(FileServer.getFileServer().getBaseDir(), attachment);
++                            log.info("file path set to: "+attachment);
++                        }
++                        instance.addAttachment(file);
+                     }
+                 }
+ 
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(revision 986649)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(working copy)
+@@ -63,6 +63,7 @@
+     private JTextField tfAttachment;
+     private JTextField tfEmlMessage;
+     private JTextArea taMessage;
++    private JCheckBox cbEmptyBody;
+ 
+     private JLabel jlAddressFrom;
+     private JLabel jlAddressTo;
+@@ -298,6 +299,26 @@
+     }
+ 
+     /**
++     * Returns true if message body should be empty
++     *
++     * @return Subject of e-mail
++     */
++    public boolean isEmptyBody() {
++        return cbEmptyBody.isSelected();
++    }
++
++    /**
++     * Sets the property that defines if the body should be null
++     *
++     * @param subject
++     *            Subject of e-mail
++     */
++    public void setEmptyBody(boolean emptyBody) {
++    	cbEmptyBody.setSelected(emptyBody);
++    	taMessage.setEnabled(!emptyBody);
++    }
++
++    /**
+      * Returns if mail-server needs authentication (checkbox)
+      *
+      * @return true if authentication is used
+@@ -484,6 +505,13 @@
+ 
+         taMessage = new JTextArea(5, 20);
+ 
++        cbEmptyBody = new JCheckBox(JMeterUtils.getResString("smtp_emptybody")); // $NON-NLS-1$
++        cbEmptyBody.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent evt) {
++                emptyBodyActionPerformed(evt);
++            }
++        });
++        
+         cbSuppressSubject = new JCheckBox(JMeterUtils.getResString("smtp_suppresssubj")); // $NON-NLS-1$
+         cbSuppressSubject.addActionListener(new ActionListener() {
+             public void actionPerformed(ActionEvent evt) {
+@@ -742,6 +770,13 @@
+         gridBagConstraints.gridy = 3;
+         gridBagConstraints.fill = GridBagConstraints.BOTH;
+         panelMessageSettings.add(taMessage, gridBagConstraints);
++        
++        cbEmptyBody.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
++        cbEmptyBody.setMargin(new java.awt.Insets(0, 0, 0, 0));
++        gridBagConstraints.gridx = 2;
++        gridBagConstraints.gridy = 3;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
++        panelMessageSettings.add(cbEmptyBody, gridBagConstraints);
+ 
+         gridBagConstraints.gridx = 0;
+         gridBagConstraints.gridy = 4;
+@@ -939,6 +974,7 @@
+         tfMailToBCC.setText("");
+         tfMailToCC.setText("");
+         tfSubject.setText("");
++        cbEmptyBody.setSelected(false);
+         cbSuppressSubject.setSelected(false);
+         securitySettingsPanel.clear();
+         clearHeaderFields();
+@@ -1041,4 +1077,11 @@
+             }
+         }
+     }
++	
++	private void emptyBodyActionPerformed(ActionEvent evt) {
++		final Object source = evt.getSource();
++    	if(source != null && source instanceof JCheckBox){
++			taMessage.setEnabled(!cbEmptyBody.isSelected());
++    	}		
++	}
+ }
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 986644)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -789,6 +789,7 @@
+ smime_assertion_signer_serial=Serial Number
+ smime_assertion_title=SMIME Assertion
+ smime_assertion_verify_signature=Verify signature
++smtp_emptybody=Supress Message Body
+ smtp_additional_settings=Additional Settings
+ smtp_attach_file=Attach file(s):
+ smtp_attach_file_tooltip=Separate multiple files with ";"

@@ -1,0 +1,29 @@
+From 87a730b11e3ef40d10a14d4fd41d42d4c069f3f2 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 4 Feb 2017 16:36:32 +0100
+Subject: [PATCH 3/3] Guard clearance of buffer and only set text in logger
+ panel in one way.
+
+---
+ src/core/org/apache/jmeter/gui/LoggerPanel.java | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/gui/LoggerPanel.java b/src/core/org/apache/jmeter/gui/LoggerPanel.java
+index 0fcfaeb..ac5f49e 100644
+--- a/src/core/org/apache/jmeter/gui/LoggerPanel.java
++++ b/src/core/org/apache/jmeter/gui/LoggerPanel.java
+@@ -152,7 +152,9 @@ public class LoggerPanel extends JPanel implements LogTarget {
+      * Clear panel content
+      */
+     public void clear() {
+-        this.textArea.setText(""); // $NON-NLS-1$
+-        events.clear();
++        synchronized (events) {
++            events.clear();
++        }
++        logChanged = true;
+     }
+ }
+-- 
+2.7.4
+

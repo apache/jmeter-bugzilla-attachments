@@ -1,0 +1,89 @@
+diff -u -r jakarta-jmeter-2.0.3-orig/src/components/org/apache/jmeter/assertions/ResponseAssertion.java jakarta-jmeter-2.0.3-src/src/components/org/apache/jmeter/assertions/ResponseAssertion.java
+--- jakarta-jmeter-2.0.3-orig/src/components/org/apache/jmeter/assertions/ResponseAssertion.java	2004-06-11 13:04:46.000000000 +0200
++++ jakarta-jmeter-2.0.3-src/src/components/org/apache/jmeter/assertions/ResponseAssertion.java	2005-10-18 13:35:03.000000000 +0200
+@@ -263,7 +263,8 @@
+       // What are we testing against?
+       if (ResponseAssertion.RESPONSE_DATA.equals(getTestField()))
+       {
+-		toCheck = new StringBuffer(response.getResponseHeaders()).append(new String(response.responseDataAsBA())).toString();
++
++		toCheck = new StringBuffer(response.getResponseHeaders()).append(response.responseDataAsString()).toString();
+       }
+       else if (ResponseAssertion.RESPONSE_CODE.equals(getTestField()))
+       {
+diff -u -r jakarta-jmeter-2.0.3-orig/src/core/org/apache/jmeter/samplers/SampleResult.java jakarta-jmeter-2.0.3-src/src/core/org/apache/jmeter/samplers/SampleResult.java
+--- jakarta-jmeter-2.0.3-orig/src/core/org/apache/jmeter/samplers/SampleResult.java	2005-03-12 11:38:40.000000000 +0100
++++ jakarta-jmeter-2.0.3-src/src/core/org/apache/jmeter/samplers/SampleResult.java	2005-10-18 13:21:31.000000000 +0200
+@@ -20,6 +20,7 @@
+ 
+ import java.io.Serializable;
+ import java.io.StringWriter;
++import java.io.UnsupportedEncodingException;
+ import java.net.URL;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+@@ -369,6 +370,39 @@
+ 	{
+ 		return responseData == null ? EMPTY_BA : responseData;
+ 	}
++	
++	/**
++	 * Convenience method to get responseData String that
++	 * cares character set of response.
++	 * 
++	 * @return the responseData. If responseData is null
++	 * then an empty String is returned
++	 * 
++	 */
++	public String responseDataAsString()
++	{
++       String str = null;
++ 	   if ( getContentType()!=null 
++ 			   && getContentType().startsWith("text/") ){
++ 		   if ( log.isDebugEnabled()){
++ 			   log.debug("attempting to use charset '"+getDataEncoding()+"' for contentType '"+getContentType()+"' of "+getURL());
++ 		   }
++ 		   try{
++ 		      // use supplied encoding from ContentType
++ 		      str = new String(responseDataAsBA(),getDataEncoding());
++ 		   }catch(UnsupportedEncodingException ex){
++ 			   if ( log.isErrorEnabled()){
++ 				   log.error("Error "+ex.getMessage()+" while converting charset '"+getDataEncoding()+"' for contentType '"+getContentType()+"' of "+getURL()+". Falling back to system encoding.");
++ 			   }
++ 		   }
++ 	   }
++ 	   
++ 	   if (str == null) {
++ 		   // fallback to old behaviour
++ 		   str = new String(responseDataAsBA());
++ 	   }
++ 	   return str;
++	}
+ 
+     public void setSamplerData(String s)
+     {
+diff -u -r jakarta-jmeter-2.0.3-orig/src/functions/org/apache/jmeter/functions/RegexFunction.java jakarta-jmeter-2.0.3-src/src/functions/org/apache/jmeter/functions/RegexFunction.java
+--- jakarta-jmeter-2.0.3-orig/src/functions/org/apache/jmeter/functions/RegexFunction.java	2004-12-11 12:12:18.000000000 +0100
++++ jakarta-jmeter-2.0.3-src/src/functions/org/apache/jmeter/functions/RegexFunction.java	2005-10-18 13:24:42.000000000 +0200
+@@ -143,7 +143,7 @@
+         try
+         {
+             PatternMatcher matcher = (PatternMatcher) localMatcher.get();
+-            String responseText = new String(previousResult.getResponseData());
++            String responseText = previousResult.responseDataAsString();
+             PatternMatcherInput input = new PatternMatcherInput(responseText);
+             while (matcher.contains(input, searchPattern))
+             {
+diff -u -r jakarta-jmeter-2.0.3-orig/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java jakarta-jmeter-2.0.3-src/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+--- jakarta-jmeter-2.0.3-orig/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2004-10-03 16:23:30.000000000 +0200
++++ jakarta-jmeter-2.0.3-src/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2005-10-18 13:32:12.000000000 +0200
+@@ -675,6 +675,9 @@
+         totalRes.setResponseMessage(lastRes.getResponseMessage());
+         totalRes.setDataType(lastRes.getDataType());
+         totalRes.setResponseHeaders(lastRes.getResponseHeaders());
++        totalRes.setContentType(lastRes.getContentType());
++        totalRes.setDataEncoding(lastRes.getDataEncoding());
++
+         return totalRes;
+     }
+ 

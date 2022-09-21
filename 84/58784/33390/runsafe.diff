@@ -1,0 +1,237 @@
+Index: src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	(Arbeitskopie)
+@@ -57,7 +57,7 @@
+         sb.append(sample.getSampleLabel());
+         sb.append(getAssertionResult(sample));
+         sb.append("\n"); // $NON-NLS-1$
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(true, new Runnable() {
+             @Override
+             public void run() {
+                 synchronized (textArea) {
+Index: src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(Arbeitskopie)
+@@ -60,7 +60,7 @@
+ 
+     @Override
+     public void add(final SampleResult sample) {
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(true, new Runnable() {
+             @Override
+             public void run() {
+                 DefaultMutableTreeNode currNode = new DefaultMutableTreeNode(sample);
+Index: src/components/org/apache/jmeter/visualizers/DistributionGraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/DistributionGraphVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/DistributionGraphVisualizer.java	(Arbeitskopie)
+@@ -108,7 +108,7 @@
+ 
+     @Override
+     public void add(final SampleResult res) {
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(true, new Runnable() {
+             @Override
+             public void run() {
+                 // made currentSample volatile
+Index: src/components/org/apache/jmeter/visualizers/GraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/GraphVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/GraphVisualizer.java	(Arbeitskopie)
+@@ -131,7 +131,7 @@
+ 
+     @Override
+     public void add(final SampleResult res) {
+-        JMeterUtils.runSafe(new Runnable() {            
++        JMeterUtils.runSafe(true, new Runnable() {            
+             @Override
+             public void run() {
+                 updateGui(model.addSample(res));
+Index: src/components/org/apache/jmeter/visualizers/MailerVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/MailerVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/MailerVisualizer.java	(Arbeitskopie)
+@@ -122,7 +122,7 @@
+     @Override
+     public void add(final SampleResult res) {
+         if (getModel() != null) {
+-            JMeterUtils.runSafe(new Runnable() {
++            JMeterUtils.runSafe(true, new Runnable() {
+                 @Override
+                 public void run() {
+                     MailerModel model = ((MailerResultCollector) getModel()).getMailerModel();
+Index: src/components/org/apache/jmeter/visualizers/RespTimeGraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/RespTimeGraphVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/RespTimeGraphVisualizer.java	(Arbeitskopie)
+@@ -299,7 +299,7 @@
+         if ((matcher == null) || (matcher.find())) {
+             final long startTimeMS = sampleResult.getStartTime();
+             final long startTimeInterval = startTimeMS / intervalValue;
+-            JMeterUtils.runSafe(new Runnable() {
++            JMeterUtils.runSafe(true, new Runnable() {
+                 @Override
+                 public void run() {
+                     synchronized (lock) {
+Index: src/components/org/apache/jmeter/visualizers/SplineVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/SplineVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/SplineVisualizer.java	(Arbeitskopie)
+@@ -94,7 +94,7 @@
+ 
+     @Override
+     public void add(final SampleResult res) {
+-        JMeterUtils.runSafe(new Runnable() {            
++        JMeterUtils.runSafe(true, new Runnable() {            
+             @Override
+             public void run() {
+                 model.add(res);
+Index: src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(Arbeitskopie)
+@@ -361,7 +361,7 @@
+             matcher = pattern.matcher(sampleLabel);
+         }
+         if ((matcher == null) || (matcher.find())) {
+-            JMeterUtils.runSafe(new Runnable() {
++            JMeterUtils.runSafe(true, new Runnable() {
+                 @Override
+                 public void run() {
+                     SamplingStatCalculator row = null;
+Index: src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/StatVisualizer.java	(Arbeitskopie)
+@@ -114,7 +114,7 @@
+ 
+     @Override
+     public void add(final SampleResult res) {
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(true, new Runnable() {
+             @Override
+             public void run() {
+                 SamplingStatCalculator row = null;
+Index: src/components/org/apache/jmeter/visualizers/SummaryReport.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/SummaryReport.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/SummaryReport.java	(Arbeitskopie)
+@@ -177,7 +177,7 @@
+     @Override
+     public void add(final SampleResult res) {
+         final String sampleLabel = res.getSampleLabel(useGroupName.isSelected());
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(true, new Runnable() {
+             @Override
+             public void run() {
+                 Calculator row = null;
+Index: src/components/org/apache/jmeter/visualizers/TableVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(Arbeitskopie)
+@@ -166,7 +166,7 @@
+ 
+     @Override
+     public void add(final SampleResult res) {
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(true, new Runnable() {
+             @Override
+             public void run() {
+                 if (childSamples.isSelected()) {
+Index: src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(Revision 1722492)
++++ src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(Arbeitskopie)
+@@ -131,7 +131,7 @@
+     /** {@inheritDoc} */
+     @Override
+     public void add(final SampleResult sample) {
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(true, new Runnable() {
+             @Override
+             public void run() {
+                 updateGui(sample);
+Index: src/core/org/apache/jmeter/util/JMeterUtils.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterUtils.java	(Revision 1722492)
++++ src/core/org/apache/jmeter/util/JMeterUtils.java	(Arbeitskopie)
+@@ -1306,15 +1306,30 @@
+      * @param runnable {@link Runnable}
+      */
+     public static final void runSafe(Runnable runnable) {
++        runSafe(true, runnable);
++    }
++
++    /**
++     * Run the runnable in AWT Thread if current thread is not AWT thread
++     * otherwise runs call {@link SwingUtilities#invokeAndWait(Runnable)}
++     * @param synchronous flag, whether we will wait for the AWT Thread to finish its job.
++     * @param runnable {@link Runnable}
++     */
++    public static final void runSafe(boolean synchronous, Runnable runnable) {
+         if(SwingUtilities.isEventDispatchThread()) {
+             runnable.run();
+         } else {
+-            try {
+-                SwingUtilities.invokeAndWait(runnable);
+-            } catch (InterruptedException e) {
+-                log.warn("Interrupted in thread "+Thread.currentThread().getName(), e);
+-            } catch (InvocationTargetException e) {
+-                throw new Error(e);
++            if (synchronous) {
++                try {
++                    SwingUtilities.invokeAndWait(runnable);
++                } catch (InterruptedException e) {
++                    log.warn("Interrupted in thread "
++                            + Thread.currentThread().getName(), e);
++                } catch (InvocationTargetException e) {
++                    throw new Error(e);
++                }
++            } else {
++                SwingUtilities.invokeLater(runnable);
+             }
+         }
+     }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(Revision 1722492)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(Arbeitskopie)
+@@ -846,7 +846,7 @@
+         final GenericController sc = new GenericController();
+         sc.setProperty(TestElement.GUI_CLASS, LOGIC_CONTROLLER_GUI);
+         sc.setName("-------------------"); // $NON-NLS-1$
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(false, new Runnable() {
+             @Override
+             public void run() {
+                 try {
+@@ -876,7 +876,7 @@
+         final GenericController sc = new GenericController();
+         sc.setProperty(TestElement.GUI_CLASS, LOGIC_CONTROLLER_GUI);
+         sc.setName(name);
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(false, new Runnable() {
+             @Override
+             public void run() {
+                 try {
+@@ -907,7 +907,7 @@
+         sc.setIncludeTimers(false);
+         sc.setProperty(TestElement.GUI_CLASS, TRANSACTION_CONTROLLER_GUI);
+         sc.setName(name);
+-        JMeterUtils.runSafe(new Runnable() {
++        JMeterUtils.runSafe(false, new Runnable() {
+             @Override
+             public void run() {
+                  try {
+@@ -1145,7 +1145,7 @@
+             final long deltaTFinal = deltaT;
+             final boolean firstInBatchFinal = firstInBatch;
+             final JMeterTreeNode myTargetFinal = myTarget;
+-            JMeterUtils.runSafe(new Runnable() {
++            JMeterUtils.runSafe(false, new Runnable() {
+                 @Override
+                 public void run() {
+                     try {

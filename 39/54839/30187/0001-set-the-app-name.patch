@@ -1,0 +1,29 @@
+From 08f77a53ba74cec2b33997d0e1ed0de191e57817 Mon Sep 17 00:00:00 2001
+From: benoit <b.wiart@ubik-ingenierie.com>
+Date: Sat, 13 Apr 2013 12:00:19 +0200
+Subject: [PATCH] set the app name
+
+
+diff --git bin/jmeter.sh bin/jmeter.sh
+index 4d62546..da4ecb7 100644
+--- bin/jmeter.sh
++++ bin/jmeter.sh
+@@ -27,5 +27,13 @@
+ ##
+ ##   ==============================================
+ 
+-# Add Mac-specific property - should be ignored elsewhere (Bug 47064)
+-java $JVM_ARGS -Dapple.laf.useScreenMenuBar=true -jar `dirname $0`/ApacheJMeter.jar "$@"
++
++JMETER_OPTS=""
++case $(uname) in
++   Darwin*)
++   # Add Mac-specific property - should be ignored elsewhere
++   JMETER_OPTS="-Xdock:name=JMeter -Dapple.laf.useScreenMenuBar=true"
++   ;;
++esac
++
++java $JVM_ARGS $JMETER_OPTS -jar `dirname $0`/ApacheJMeter.jar "$@"
+-- 
+1.7.12
+

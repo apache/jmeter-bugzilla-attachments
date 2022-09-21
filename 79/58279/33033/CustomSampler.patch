@@ -1,0 +1,77 @@
+Index: test/src/org/apache/jmeter/protocol/http/sampler/HTTPSamplerFactoryTest.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/sampler/HTTPSamplerFactoryTest.java	(revision 0)
++++ test/src/org/apache/jmeter/protocol/http/sampler/HTTPSamplerFactoryTest.java	(revision 0)
+@@ -0,0 +1,15 @@
++package org.apache.jmeter.protocol.http.sampler;
++
++import junit.framework.TestCase;
++
++public class HTTPSamplerFactoryTest extends TestCase {
++
++	public void testGetImplementation() throws Exception {
++
++		HTTPAbstractImpl implementation = HTTPSamplerFactory.getImplementation(
++				StubHTTPSamplerBase.class.getName(),
++				HTTPSamplerFactory.newInstance());
++
++		assertEquals(StubHTTPSamplerBase.class.getName(), implementation.getClass().getName());
++	}
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerFactory.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerFactory.java	(revision 1696806)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerFactory.java	(working copy)
+@@ -65,7 +65,7 @@
+      *
+      * @param alias HTTP_SAMPLER or HTTP_SAMPLER_APACHE or IMPL_HTTP_CLIENT3_1 or IMPL_HTTP_CLIENT4
+      * @return the appropriate sampler
+-     * @throws UnsupportedOperationException if alias is not recognised
++     * @throws UnsupportedOperationException if alias is not recognized
+      */
+     public static HTTPSamplerBase newInstance(String alias) {
+         if (alias ==null || alias.length() == 0) {
+@@ -101,8 +101,14 @@
+         } else if (IMPL_HTTP_CLIENT4.equals(impl)) {
+             return new HTTPHC4Impl(base);
+         } else {
+-            throw new IllegalArgumentException("Unknown implementation type: '"+impl+"'");
++        	try {
++        		Class<?> implClass = Class.forName(impl);
++        		return  (HTTPAbstractImpl)implClass.getConstructor(HTTPSamplerBase.class).newInstance(base);
++        	} catch(Exception e) {
++        		e.printStackTrace();
++            }
+         }
++		throw new IllegalArgumentException("Unknown implementation type: '"+impl+"'");
+     }
+ 
+ }
+Index: test/src/org/apache/jmeter/protocol/http/sampler/StubHTTPSamplerBase.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/sampler/StubHTTPSamplerBase.java	(revision 0)
++++ test/src/org/apache/jmeter/protocol/http/sampler/StubHTTPSamplerBase.java	(revision 0)
+@@ -0,0 +1,22 @@
++package org.apache.jmeter.protocol.http.sampler;
++
++import java.net.URL;
++
++public class StubHTTPSamplerBase extends HTTPAbstractImpl {
++
++	public StubHTTPSamplerBase(HTTPSamplerBase testElement) {
++		super(testElement);
++	}
++
++	@Override
++	public boolean interrupt() {
++		return false;
++	}
++
++	@Override
++	protected HTTPSampleResult sample(URL url, String method,
++			boolean areFollowingRedirect, int frameDepth) {
++		return null;
++	}
++	
++}
+\ No newline at end of file

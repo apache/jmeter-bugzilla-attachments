@@ -1,0 +1,239 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(revision 817709)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(working copy)
+@@ -20,14 +20,14 @@
+ import java.io.FileNotFoundException;
+ import java.io.IOException;
+ import java.io.InputStream;
+-
+ import java.net.BindException;
+ import java.net.HttpURLConnection;
+ import java.net.InetSocketAddress;
+ import java.net.Proxy;
+ import java.net.URL;
+ import java.net.URLConnection;
+-
++import java.text.SimpleDateFormat;
++import java.util.Date;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+@@ -40,17 +40,14 @@
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.Header;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+-
++import org.apache.jmeter.protocol.http.control.CacheManager.CacheEntry;
+ import org.apache.jmeter.samplers.Interruptible;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+-
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.util.SSLManager;
+-
+ import org.apache.jorphan.logging.LoggingManager;
+-
+ import org.apache.log.Logger;
+ 
+ /**
+@@ -78,6 +75,8 @@
+     private transient PostWriter postOrPutWriter;
+ 
+     private volatile HttpURLConnection savedConn;
++	private transient SimpleDateFormat mExpiresDateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z");
++
+ 
+     /**
+      * Constructor for the HTTPSampler object.
+@@ -244,7 +243,9 @@
+ 
+         // works OK even if ContentEncoding is null
+         boolean gzipped = ENCODING_GZIP.equals(conn.getContentEncoding());
+-
++        if (log.isDebugEnabled()) {
++        	log.debug("gzipped page " + gzipped + " " + conn.getURL().toString());
++        }
+         try {
+             if (gzipped) {
+                 in = new BufferedInputStream(new GZIPInputStream(conn.getInputStream()));
+@@ -361,6 +362,7 @@
+                     Header header = (Header) i.next().getObjectValue();
+                     String n = header.getName();
+                     String v = header.getValue();
++                    log.info("adding request property " + n + " " + v);
+                     conn.addRequestProperty(n, v);
+                 }
+             }
+@@ -443,17 +445,53 @@
+      */
+     @Override
+     protected HTTPSampleResult sample(URL url, String method, boolean areFollowingRedirect, int frameDepth) {
+-        HttpURLConnection conn = null;
++    	HttpURLConnection conn = null;
+ 
+-        String urlStr = url.toString();
+-        log.debug("Start : sample " + urlStr);
++        String urlString = url.toString();
++        log.debug("Start : sample " + urlString);
+ 
+         HTTPSampleResult res = new HTTPSampleResult();
+         res.setMonitor(isMonitor());
+ 
+-        res.setSampleLabel(urlStr);
++        res.setSampleLabel(urlString);
++        CacheEntry cacheEntry = getCacheManager() == null ? null : getCacheManager().getCacheEntry(urlString);
++        boolean isCached = false;
++        if (cacheEntry != null) {
++        	String cacheControl = cacheEntry.getCacheControl();
++        	String expires = cacheEntry.getExpires();
++        	if (cacheControl != null && cacheControl.contains("public") && cacheControl.contains("max-age=")) {
++        		long maxAge = Long.parseLong(cacheControl.substring(cacheControl.indexOf("max-age=")+8))*1000;
++        		long millisSinceCached = System.currentTimeMillis()-cacheEntry.getCreationTime();
++        		isCached = millisSinceCached < maxAge;
++        		if (log.isDebugEnabled()) {
++        			log.debug("attempting cache control " + cacheControl + " max age of [" + maxAge +"] isCached= " + isCached  + " for " + urlString);
++        		}
++        	} else if (expires != null) {
++        		try {
++        			Date dt = mExpiresDateFormat.parse(expires);
++        			isCached = dt.compareTo(new Date()) >= 0;
++            		if (log.isDebugEnabled()) {
++            			log.debug("attempting expires " + expires + " with date of " + dt + " isCached= " + isCached + " for " + urlString);
++            		}
++        		} catch (Exception ignore) {}
++        	}
++        }
+         
+         res.sampleStart(); // Count the retries as well in the time
++        
++        if (isCached) {
++    		if (log.isDebugEnabled()) {
++    			log.debug("cache hit on " + urlString);
++    		}
++    		res.setHTTPMethod(method);
++    		res.setURL(url);
++    		res.setQueryString(url.getQuery());
++        	res.setResponseCode("204");
++        	res.sampleEnd();
++            res.setSuccessful(true);
++        	return res;
++        }
++        
+         try {
+             // Sampling proper - establish the connection and read the response:
+             // Repeatedly try to connect:
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	(revision 817709)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	(working copy)
+@@ -61,5 +61,10 @@
+     public static final String IF_MODIFIED_SINCE = "If-Modified-Since"; // $NON-NLS-1$
+     public static final String ETAG = "Etag"; // $NON-NLS-1$
+     public static final String LAST_MODIFIED = "Last-Modified"; // $NON-NLS-1$
++    public static final String CACHE_CONTROL = "Cache-Control";	 //public, max-age=259200
++    public static final String EXPIRES = "Expires"; //Sat, 07 Nov 2009 19:02:05 GMT
++    	
++    
++    
+ 
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java	(revision 817709)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java	(working copy)
+@@ -61,22 +61,37 @@
+      * Holder for storing cache details.
+      * Perhaps add original response later?
+      */
+-    private static class CacheEntry{
+-        private final String lastModified;
+-        private final String etag;
+-        public CacheEntry(String lastModified, String etag){
+-           this.lastModified = lastModified;
+-           this.etag = etag;
++    public static class CacheEntry{
++        private String mLastModified;
++        private String mEtag;
++		private String mCacheControl;
++		private String mExpires;
++		private long mCreationTime;
++       public CacheEntry(String expires, String cacheControl, String lastModified, String etag){
++    	   mExpires = expires;
++    	   mCacheControl = cacheControl;
++           mLastModified = lastModified;
++           mEtag = etag;
++           mCreationTime = System.currentTimeMillis();
+        }
+-        public String getLastModified() {
+-            return lastModified;
++        public String getExpires() {
++        	return mExpires;
++        }
++        public String getCacheControl() {
++			return mCacheControl;
++		}
++		public String getLastModified() {
++            return mLastModified;
+         }
+         public String getEtag() {
+-            return etag;
++            return mEtag;
++        }
++        public long getCreationTime() {
++        	return mCreationTime;
+         }
+         @Override
+         public String toString(){
+-            return lastModified+" "+etag;
++            return mExpires + " " + mCacheControl + " " + mLastModified+" "+mEtag;
+         }
+     }
+ 
+@@ -90,8 +105,10 @@
+         if (isCacheable(res)){
+             String lastModified = conn.getHeaderField(HTTPConstantsInterface.LAST_MODIFIED);
+             String etag = conn.getHeaderField(HTTPConstantsInterface.ETAG);
++            String cacheControl = conn.getHeaderField(HTTPConstantsInterface.CACHE_CONTROL);
++            String expires = conn.getHeaderField(HTTPConstantsInterface.EXPIRES);
+             String url = conn.getURL().toString();
+-            setCache(lastModified, etag, url);
++            setCache(expires, cacheControl, lastModified, etag, url);
+         }
+     }
+ 
+@@ -105,17 +122,19 @@
+         if (isCacheable(res)){
+             String lastModified = getHeader(method ,HTTPConstantsInterface.LAST_MODIFIED);
+             String etag = getHeader(method ,HTTPConstantsInterface.ETAG);
++            String cacheControl = getHeader(method, HTTPConstantsInterface.CACHE_CONTROL);
++            String expires = getHeader(method, HTTPConstantsInterface.EXPIRES);
+             String url = method.getURI().toString();
+-            setCache(lastModified, etag, url);
++            setCache(expires, cacheControl, lastModified, etag, url);
+         }
+     }
+ 
+     // helper method to save the cache entry
+-    private void setCache(String lastModified, String etag, String url) {
++    private void setCache(String expires, String cacheControl, String lastModified, String etag, String url) {
+         if (log.isDebugEnabled()){
+             log.debug("SET(both) "+url + " " + lastModified + " " + etag);
+         }
+-        getCache().put(url, new CacheEntry(lastModified, etag));
++        getCache().put(url, new CacheEntry(expires, cacheControl, lastModified, etag));
+     }
+ 
+     // Helper method to deal with missing headers
+@@ -133,6 +152,10 @@
+         return "200".compareTo(responseCode) <= 0  // $NON-NLS-1$
+             && "299".compareTo(responseCode) >= 0; // $NON-NLS-1$
+     }
++    
++    public CacheEntry getCacheEntry(String url) {
++    	return getCache().get(url);
++    }
+ 
+     /**
+      * Check the cache, and if there is a match, set the headers:<br/>

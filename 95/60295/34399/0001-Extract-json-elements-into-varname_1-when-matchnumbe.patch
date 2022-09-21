@@ -1,0 +1,148 @@
+From 55bf8006cb79d0bbfc8e839ea9d55d6e0dc50ee5 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Thu, 20 Oct 2016 21:38:46 +0200
+Subject: [PATCH] Extract json elements into varname_1 when matchnumber is -1
+ and only one element is found.
+
+---
+ .../extractor/json/jsonpath/JSONPostProcessor.java |  3 +-
+ .../jmeter/extractor/TestJSONPostProcessor.java    | 37 ++++++++++++++++++++++
+ .../jmeter/extractor/TestRegexExtractor.java       | 32 +++++++++++++++++++
+ 3 files changed, 71 insertions(+), 1 deletion(-)
+
+diff --git a/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java b/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+index d8c1856..c07b4a9 100644
+--- a/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
++++ b/src/components/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+@@ -161,7 +161,8 @@ public class JSONPostProcessor extends AbstractScopedTestElement implements Seri
+                             }
+                         } else {
+                             // else just one value extracted
+-                            placeObjectIntoVars(vars, currentRefName, extractedValues, 0);
++                            String suffix = (matchNumber < 0) ? "_1" : "";
++                            placeObjectIntoVars(vars, currentRefName + suffix, extractedValues, 0);
+                             if (matchNumber < 0 && getComputeConcatenation()) {
+                                 vars.put(currentRefName + ALL_SUFFIX, vars.get(currentRefName));
+                             }
+diff --git a/test/src/org/apache/jmeter/extractor/TestJSONPostProcessor.java b/test/src/org/apache/jmeter/extractor/TestJSONPostProcessor.java
+index 2e1fafd..36f46ea 100644
+--- a/test/src/org/apache/jmeter/extractor/TestJSONPostProcessor.java
++++ b/test/src/org/apache/jmeter/extractor/TestJSONPostProcessor.java
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.jmeter.extractor;
+ 
++import static org.junit.Assert.assertThat;
++
+ import java.nio.charset.StandardCharsets;
+ 
+ import net.minidev.json.parser.JSONParser;
+@@ -28,6 +30,7 @@ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
++import org.hamcrest.CoreMatchers;
+ import org.junit.Assert;
+ import org.junit.Test;
+ 
+@@ -36,6 +39,40 @@ public class TestJSONPostProcessor {
+     private static final String VAR_NAME = "varName";
+ 
+     @Test
++    public void testProcessAllElementsOneMatch() {
++        JMeterContext context = JMeterContextService.getContext();
++        JSONPostProcessor processor = setupProcessor(context, "-1", true);
++        JMeterVariables vars = new JMeterVariables();
++        processor.setDefaultValues("NONE");
++        processor.setJsonPathExpressions("$[*]");
++        processor.setRefNames("varname");
++        processor.setScopeVariable("contentvar");
++        context.setVariables(vars);
++        vars.put("contentvar", "[\"one\"]");
++        processor.process();
++        assertThat(vars.get("varname"), CoreMatchers.is(CoreMatchers.nullValue()));
++        assertThat(vars.get("varname_1"), CoreMatchers.is("one"));
++        assertThat(vars.get("varname_matchNr"), CoreMatchers.is("1"));
++    }
++
++    @Test
++    public void testProcessAllElementsMultipleMatches() {
++        JMeterContext context = JMeterContextService.getContext();
++        JSONPostProcessor processor = setupProcessor(context, "-1", true);
++        JMeterVariables vars = new JMeterVariables();
++        processor.setDefaultValues("NONE");
++        processor.setJsonPathExpressions("$[*]");
++        processor.setRefNames("varname");
++        processor.setScopeVariable("contentvar");
++        context.setVariables(vars);
++        vars.put("contentvar", "[\"one\", \"two\"]");
++        processor.process();
++        assertThat(vars.get("varname_1"), CoreMatchers.is("one"));
++        assertThat(vars.get("varname_2"), CoreMatchers.is("two"));
++        assertThat(vars.get("varname_matchNr"), CoreMatchers.is("2"));
++    }
++
++    @Test
+     public void testBug59609() throws ParseException {
+         JMeterContext context = JMeterContextService.getContext();
+         JSONPostProcessor processor = setupProcessor(context, "0", false);
+diff --git a/test/src/org/apache/jmeter/extractor/TestRegexExtractor.java b/test/src/org/apache/jmeter/extractor/TestRegexExtractor.java
+index ee8a263..4b2953f 100644
+--- a/test/src/org/apache/jmeter/extractor/TestRegexExtractor.java
++++ b/test/src/org/apache/jmeter/extractor/TestRegexExtractor.java
+@@ -23,13 +23,16 @@ import static org.junit.Assert.assertEquals;
+ import static org.junit.Assert.assertFalse;
+ import static org.junit.Assert.assertNotNull;
+ import static org.junit.Assert.assertNull;
++import static org.junit.Assert.assertThat;
+ import static org.junit.Assert.assertTrue;
+ 
+ import java.net.URL;
++
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
++import org.hamcrest.CoreMatchers;
+ import org.junit.Before;
+ import org.junit.Test;
+ 
+@@ -68,6 +71,35 @@ public class TestRegexExtractor {
+         }
+ 
+         @Test
++        public void testProcessAllElementsSingleMatch() {
++            vars.put("content", "one");
++            extractor.setMatchNumber(-1);
++            extractor.setRefName("varname");
++            extractor.setRegex("(\\w+)");
++            extractor.setScopeVariable("content");
++            extractor.setThreadContext(jmctx);
++            extractor.setTemplate("$1$");
++            extractor.process();
++            assertThat(vars.get("varname"), CoreMatchers.is(CoreMatchers.nullValue()));
++            assertThat(vars.get("varname_1"), CoreMatchers.is("one"));
++        }
++
++        @Test
++        public void testProcessAllElementsMultipleMatches() {
++            vars.put("content", "one, two");
++            extractor.setMatchNumber(-1);
++            extractor.setRefName("varname");
++            extractor.setRegex("(\\w+)");
++            extractor.setScopeVariable("content");
++            extractor.setThreadContext(jmctx);
++            extractor.setTemplate("$1$");
++            extractor.process();
++            assertThat(vars.get("varname"), CoreMatchers.is(CoreMatchers.nullValue()));
++            assertThat(vars.get("varname_1"), CoreMatchers.is("one"));
++            assertThat(vars.get("varname_2"), CoreMatchers.is("two"));
++        }
++
++        @Test
+         public void testEmptyDefaultVariable() throws Exception {
+             extractor.setRegex("<value name=\"positioncount\">(.+?)</value>");
+             extractor.setTemplate("$1$");
+-- 
+2.7.4
+

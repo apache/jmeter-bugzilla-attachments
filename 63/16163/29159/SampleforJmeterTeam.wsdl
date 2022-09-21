@@ -1,0 +1,93 @@
+<wsdl:definitions xmlns:tns="http://abc.com/def/HipGenService"
+        xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/"
+        xmlns:http="http://schemas.xmlsoap.org/wsdl/http/"
+        xmlns:xmime="http://www.w3.org/2005/05/xmlmime"
+        xmlns:wsaw="http://www.w3.org/2006/05/addressing/wsdl"
+        xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+        xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+        xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+        xmlns="http://schemas.xmlsoap.org/wsdl/"
+        xmlns:wsp="http://schemas.xmlsoap.org/ws/2004/09/policy"
+        xmlns:wsoma="http://schemas.xmlsoap.org/ws/2004/09/policy/optimizedmimeserialization"
+        xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
+        targetNamespace="http://abc.com/def/HipGenService">
+
+   <wsp:Policy wsu:Id="MyPolicy" >
+                   <wsoma:OptimizedMimeSerialization />
+                  <!-- omitted assertions -->
+   </wsp:Policy>
+   
+   <wsdl:types>
+      <xsd:schema xmlns="http://schemas.xmlsoap.org/wsdl/"
+              attributeFormDefault="qualified" elementFormDefault="qualified"
+              targetNamespace="http://abc.com/def/HipGenService">
+
+         <xsd:import namespace="http://www.w3.org/2005/05/xmlmime"
+                 schemaLocation="http://www.w3.org/2005/05/xmlmime" />
+         <xsd:element name="generateTemplateHip">
+            <xsd:complexType>
+               <xsd:sequence>
+                <xsd:element name="templateXML" type="xmime:base64Binary" xmime:expectedContentTypes="text/xml" />
+               </xsd:sequence>
+            </xsd:complexType>
+         </xsd:element>
+         <xsd:element name="generateTemplateHipResponse">
+            <xsd:complexType>
+               <xsd:sequence>
+                  <xsd:element minOccurs="1" name="hipFile" type="xmime:base64Binary" xmime:expectedContentTypes="application/octet-stream"/>
+               </xsd:sequence>
+            </xsd:complexType>
+         </xsd:element>
+			<xsd:element name="TemplateGenerationException">
+				<xsd:complexType>
+					<xsd:sequence>
+						<xsd:element name="code" type="xsd:int"/>
+						<xsd:element name="text" type="xsd:string"/>
+					</xsd:sequence>
+				</xsd:complexType>
+			</xsd:element>
+      </xsd:schema>
+   </wsdl:types>
+	
+   <wsdl:message name="generateTemplateHip">
+      <wsdl:part name="part1" element="tns:generateTemplateHip" />
+   </wsdl:message>
+	<wsdl:message name="generateTemplateHipResponse">
+		<wsdl:part name="part1" element="tns:generateTemplateHipResponse" />
+	</wsdl:message>
+	<wsdl:message name="TemplateGenerationFault">
+		<wsdl:part name="fault" element="tns:TemplateGenerationException"/>
+	</wsdl:message>
+	
+	<wsdl:portType name="HipGenSvcPortType">
+      <wsdl:operation name="generateTemplateHip">
+         <wsdl:input message="tns:generateTemplateHip" />
+         <wsdl:output message="tns:generateTemplateHipResponse" />
+			<wsdl:fault name="TemplateGenerationException" message="tns:TemplateGenerationFault"/>
+      </wsdl:operation>
+   </wsdl:portType>
+	
+   <wsdl:binding name="HipGenSvcSOAPBinding" type="tns:HipGenSvcPortType">
+      <wsp:PolicyReference
+                       URI="#MyPolicy"
+                       wsdl:required="true" />
+      <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="document" />
+      <wsdl:operation name="generateTemplateHip">
+         <soap:operation soapAction="generateTemplateHip" style="document" />
+         <wsdl:input>
+            <soap:body use="literal"/>
+         </wsdl:input>
+         <wsdl:output>
+            <soap:body use="literal" />
+         </wsdl:output>
+			<wsdl:fault name="TemplateGenerationException">
+				<soap:fault use="literal" name="TemplateGenerationException"/>
+			</wsdl:fault>
+      </wsdl:operation>
+   </wsdl:binding>
+   <wsdl:service name="HipGenSvc">
+      <wsdl:port name="HipGenSvcSOAPport_http" binding="tns:HipGenSvcSOAPBinding">
+         <soap:address location="http://localhost:9090/axis2/services/HipGenSvc" />
+      </wsdl:port>
+   </wsdl:service>
+</wsdl:definitions>

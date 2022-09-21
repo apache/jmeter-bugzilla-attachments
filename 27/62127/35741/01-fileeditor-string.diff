@@ -1,0 +1,41 @@
+Index: src/core/org/apache/jmeter/testbeans/gui/FileEditor.java
+===================================================================
+--- src/core/org/apache/jmeter/testbeans/gui/FileEditor.java	(Revision 1825250)
++++ src/core/org/apache/jmeter/testbeans/gui/FileEditor.java	(Arbeitskopie)
+@@ -33,6 +33,7 @@
+ import javax.swing.JFileChooser;
+ import javax.swing.JPanel;
+ 
++import org.apache.commons.io.FilenameUtils;
+ import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+@@ -115,9 +116,16 @@
+             return;
+         }
+ 
+-        setValue(chooser.getSelectedFile().getPath());
++        setValue(toUnix(chooser.getSelectedFile()));
+     }
+ 
++    private String toUnix(final File file) {
++        if (File.separatorChar == '\\') {
++            return FilenameUtils.separatorsToUnix(file.getPath());
++        }
++        return file.getPath();
++    }
++
+     /**
+      * {@inheritDoc}
+      */
+@@ -226,8 +234,8 @@
+         }
+ 
+         @Override
+-        public void setAsText(String text) throws IllegalArgumentException {
+-            super.setValue(new File(text));
++        public void setAsText(String text) {
++            super.setValue(text);
+         }
+     }
+ }

@@ -1,0 +1,1268 @@
+Index: E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LdapExtClient.java
+===================================================================
+--- E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LdapExtClient.java	(revision 433219)
++++ E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LdapExtClient.java	(working copy)
+@@ -72,13 +72,18 @@
+ 	 * @exception NamingException
+ 	 *                Description of Exception
+ 	 */
+-	public DirContext connect(String host, String port, String rootdn, String username, String password)
++	public DirContext connect(String host, String port, String rootdn, String username, String password, String connTimeOut, String secure)
+ 			throws NamingException {
+ 		DirContext dirContext;
+ 		Hashtable env = new Hashtable();
+ 		env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory");
+-		env.put(Context.PROVIDER_URL, "ldap://" + host + ":" + port + "/" + rootdn);
++		if (secure.equals("TRUE")) {
++			env.put(Context.PROVIDER_URL, "ldaps://" + host + ":" + port + "/" + rootdn);
++		} else {
++			env.put(Context.PROVIDER_URL, "ldap://" + host + ":" + port + "/" + rootdn);
++		}
+ 		log.info("prov_url= " + env.get(Context.PROVIDER_URL));
++        env.put("com.sun.jndi.ldap.connect.timeout", connTimeOut);
+ 		env.put(Context.REFERRAL, "throw");
+ 		env.put("java.naming.batchsize", "0");
+ 		env.put(Context.SECURITY_CREDENTIALS, password);
+Index: E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+===================================================================
+--- E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(revision 433219)
++++ E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(working copy)
+@@ -13,7 +13,7 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- * 
++ *
+  */
+ 
+ package org.apache.jmeter.protocol.ldap.sampler;
+@@ -50,7 +50,7 @@
+ 
+ /*******************************************************************************
+  * Title: JMeter Description: Copyright: Copyright (c) 2000 Company: Apache
+- * 
++ *
+  * @author Dolf Smits(Dolf.Smits@Siemens.com)
+  * @created Aug 09 2003 11:00 AM
+  * @company Siemens Netherlands N.V..
+@@ -74,10 +74,14 @@
+ 
+ 	public final static String PORT = "port";
+ 
++	public final static String SECURE = "secure";
++
+ 	public final static String ROOTDN = "rootdn";
+ 
+ 	public final static String TEST = "test";
+ 
++    public final static String SEARCH = "search";
++
+ 	public final static String ADD = "add";
+ 
+ 	public final static String MODIFY = "modify";
+@@ -100,9 +104,9 @@
+ 
+ 	public final static String SCOPE = "scope";
+ 
+-	public final static String COUNTLIM = "countlimit";
++	public final static String COUNTLIM = "countlim";
+ 
+-	public final static String TIMELIM = "timelimit";
++	public final static String TIMELIM = "timelim";
+ 
+ 	public final static String ATTRIBS = "attributes";
+ 
+@@ -118,6 +122,8 @@
+ 
+ 	public final static String COMPARE = "compare";
+ 
++	public final static String CONNTO = "5000";
++
+ 	public final static String SUSERDN = "suser_dn";
+ 
+ 	public final static String SUSERPW = "suser_pw";
+@@ -126,6 +132,8 @@
+ 
+ 	public final static String COMPAREFILT = "comparefilt";
+ 
++    public final static String PARSEFLAG = "FALSE";
++
+ 	public final static String RENAME = "rename";
+ 
+ 	public final static String MODDDN = "modddn";
+@@ -146,9 +154,34 @@
+ 	public LDAPExtSampler() {
+ 	}
+ 
++    public void setConnTimeOut(String connto) {
++        setProperty(new StringProperty(CONNTO, connto));
++    }
++
++    public String getConnTimeOut() {
++        return getPropertyAsString(CONNTO);
++    }
++    
++    public void setSecure(String sec) {
++        setProperty(new StringProperty(SECURE, sec));
++    }
++
++    public String getSecure() {
++        return getPropertyAsString(SECURE);
++    }
++
++
++    public String getParseFlag() {
++        return getPropertyAsString(PARSEFLAG);
++    }
++
++    public void setParseFlag(String parseFlag) {
++        setProperty(new StringProperty(PARSEFLAG, parseFlag));
++    }
++
+ 	/***************************************************************************
+ 	 * Gets the username attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The username
+ 	 **************************************************************************/
+ 
+@@ -158,7 +191,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the username attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The username
+ 	 **************************************************************************/
+ 
+@@ -168,7 +201,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the password attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The password
+ 	 **************************************************************************/
+ 
+@@ -178,7 +211,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the password attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The password
+ 	 **************************************************************************/
+ 
+@@ -188,7 +221,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the username attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The username
+ 	 **************************************************************************/
+ 
+@@ -198,7 +231,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the username attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The username
+ 	 **************************************************************************/
+ 
+@@ -208,7 +241,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the password attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The password
+ 	 **************************************************************************/
+ 
+@@ -218,7 +251,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the password attribute of the LDAP object
+-	 * 
++	 *
+ 	 * @return The password
+ 	 **************************************************************************/
+ 
+@@ -228,7 +261,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the Servername attribute of the ServerConfig object
+-	 * 
++	 *
+ 	 * @param servername
+ 	 *            The new servername value
+ 	 **************************************************************************/
+@@ -238,7 +271,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the Port attribute of the ServerConfig object
+-	 * 
++	 *
+ 	 * @param port
+ 	 *            The new Port value
+ 	 **************************************************************************/
+@@ -248,7 +281,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the servername attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The Servername value
+ 	 **************************************************************************/
+ 
+@@ -258,7 +291,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the Port attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The Port value
+ 	 **************************************************************************/
+ 
+@@ -268,7 +301,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the Rootdn attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @param rootdn
+ 	 *            The new rootdn value
+ 	 **************************************************************************/
+@@ -278,7 +311,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the Rootdn attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The Rootdn value
+ 	 **************************************************************************/
+ 	public String getRootdn() {
+@@ -287,7 +320,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the search scope attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The scope value
+ 	 **************************************************************************/
+ 	public String getScope() {
+@@ -296,7 +329,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the search scope attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @param rootdn
+ 	 *            The new scope value
+ 	 **************************************************************************/
+@@ -306,7 +339,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the size limit attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The scope value
+ 	 **************************************************************************/
+ 	public String getCountlim() {
+@@ -315,7 +348,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the size limit attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @param rootdn
+ 	 *            The new scope value
+ 	 **************************************************************************/
+@@ -325,7 +358,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the time limit attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The scope value
+ 	 **************************************************************************/
+ 	public String getTimelim() {
+@@ -334,7 +367,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the time limit attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @param rootdn
+ 	 *            The new scope value
+ 	 **************************************************************************/
+@@ -344,7 +377,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the return objects attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The scope value
+ 	 **************************************************************************/
+ 	public boolean getRetobj() {
+@@ -353,7 +386,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the return objects attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @param rootdn
+ 	 *            The new scope value
+ 	 **************************************************************************/
+@@ -363,7 +396,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the search scope attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The scope value
+ 	 **************************************************************************/
+ 	public boolean getDeref() {
+@@ -372,7 +405,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the search scope attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @param rootdn
+ 	 *            The new scope value
+ 	 **************************************************************************/
+@@ -382,7 +415,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the Test attribute of the LdapConfig object
+-	 * 
++	 *
+ 	 * @param Test
+ 	 *            The new test value(Add,Modify,Delete and search)
+ 	 **************************************************************************/
+@@ -392,7 +425,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the test attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The test value (Add,Modify,Delete and search)
+ 	 **************************************************************************/
+ 	public String getTest() {
+@@ -401,7 +434,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the Test attribute of the LdapConfig object
+-	 * 
++	 *
+ 	 * @param Test
+ 	 *            The new test value(Add,Modify,Delete and search)
+ 	 **************************************************************************/
+@@ -411,7 +444,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the test attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The test value (Add,Modify,Delete and search)
+ 	 **************************************************************************/
+ 	public String getAttrs() {
+@@ -420,7 +453,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Sets the Base Entry DN attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @param value
+ 	 *            The new Base entry DN value
+ 	 **************************************************************************/
+@@ -430,7 +463,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the BaseEntryDN attribute of the LDAPSampler object
+-	 * 
++	 *
+ 	 * @return The Base entry DN value
+ 	 **************************************************************************/
+ 	public String getBaseEntryDN() {
+@@ -440,7 +473,7 @@
+ 	/***************************************************************************
+ 	 * Sets the Arguments attribute of the LdapConfig object This will collect
+ 	 * values from the table for user defined test case
+-	 * 
++	 *
+ 	 * @param value
+ 	 *            The arguments
+ 	 **************************************************************************/
+@@ -450,7 +483,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the Arguments attribute of the LdapConfig object
+-	 * 
++	 *
+ 	 * @return The arguments user defined test case
+ 	 **************************************************************************/
+ 	public Arguments getArguments() {
+@@ -460,7 +493,7 @@
+ 	/***************************************************************************
+ 	 * Sets the Arguments attribute of the LdapConfig object This will collect
+ 	 * values from the table for user defined test case
+-	 * 
++	 *
+ 	 * @param value
+ 	 *            The arguments
+ 	 **************************************************************************/
+@@ -470,7 +503,7 @@
+ 
+ 	/***************************************************************************
+ 	 * Gets the LDAPArguments attribute of the LdapConfig object
+-	 * 
++	 *
+ 	 * @return The LDAParguments user defined modify test case
+ 	 **************************************************************************/
+ 	public LDAPArguments getLDAPArguments() {
+@@ -481,7 +514,7 @@
+ 	 * Collect all the value from the table (Arguments), using this create the
+ 	 * basicAttributes This will create the Basic Attributes for the User
+ 	 * defined TestCase for Add Test
+-	 * 
++	 *
+ 	 * @return The BasicAttributes
+ 	 **************************************************************************/
+ 	public BasicAttributes getUserAttributes() {
+@@ -506,7 +539,7 @@
+ 	 * Collect all the value from the table (Arguments), using this create the
+ 	 * basicAttributes This will create the Basic Attributes for the User
+ 	 * defined TestCase for Modify test
+-	 * 
++	 *
+ 	 * @return The BasicAttributes
+ 	 **************************************************************************/
+ 	public ModificationItem[] getUserModAttributes() {
+@@ -539,7 +572,7 @@
+ 	 * Collect all the value from the table (Arguments), using this create the
+ 	 * Attributes This will create the Basic Attributes for the User defined
+ 	 * TestCase for search test
+-	 * 
++	 *
+ 	 * @return The BasicAttributes
+ 	 **************************************************************************/
+ 	public String[] getRequestAttributes(String reqAttr) {
+@@ -577,7 +610,7 @@
+ 
+ 	/***************************************************************************
+ 	 * This will create the Basic Attribute for the give name value pair
+-	 * 
++	 *
+ 	 * @return The BasicAttribute
+ 	 **************************************************************************/
+ 	public BasicAttribute getBasicAttribute(String name, String value) {
+@@ -587,7 +620,7 @@
+ 
+ 	/**
+ 	 * Returns a formatted string label describing this sampler Example output:
+-	 * 
++	 *
+ 	 * @return a formatted string label describing this sampler
+ 	 */
+ 	public String getLabel() {
+@@ -596,7 +629,7 @@
+ 
+ 	/***************************************************************************
+ 	 * This will do the add test for the User defined TestCase
+-	 * 
++	 *
+ 	 * @return executed time for the give test case
+ 	 **************************************************************************/
+ 	private void addTest(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -607,7 +640,7 @@
+ 
+ 	/***************************************************************************
+ 	 * This will do the delete test for the User defined TestCase
+-	 * 
++	 *
+ 	 * @return executed time for the give test case
+ 	 **************************************************************************/
+ 	private void deleteTest(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -618,7 +651,7 @@
+ 
+ 	/***************************************************************************
+ 	 * This will do the search test for the User defined TestCase
+-	 * 
++	 *
+ 	 * @return executed time for the give test case
+ 	 **************************************************************************/
+ 	private void searchTest(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -632,7 +665,7 @@
+ 
+ 	/***************************************************************************
+ 	 * This will do the modify test for the User defined TestCase
+-	 * 
++	 *
+ 	 * @return executed time for the give test case
+ 	 **************************************************************************/
+ 	private void modifyTest(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -644,7 +677,7 @@
+ 	/***************************************************************************
+ 	 * This will do the bind for the User defined Thread, this bind is used for
+ 	 * the whole context
+-	 * 
++	 *
+ 	 * @return executed time for the bind op
+ 	 **************************************************************************/
+ 	private void bindOp(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -654,28 +687,28 @@
+ 			ctx.close();
+ 		}
+ 		res.sampleStart();
+-		dirContext = ldap.connect(getServername(), getPort(), getRootdn(), getUserDN(), getUserPw());
++		dirContext = ldap.connect(getServername(), getPort(), getRootdn(), getUserDN(), getUserPw(),getConnTimeOut(),getSecure());
+ 		res.sampleEnd();
+ 		ldapContexts.put(getThreadName(), dirContext);
+ 	}
+ 
+ 	/***************************************************************************
+ 	 * This will do the bind and unbind for the User defined TestCase
+-	 * 
++	 *
+ 	 * @return executed time for the bind op
+ 	 **************************************************************************/
+ 	private void singleBindOp(SampleResult res) throws NamingException {
+ 		LdapExtClient ldap_temp;
+ 		ldap_temp = new LdapExtClient();
+ 		res.sampleStart();
+-		DirContext ctx = ldap_temp.connect(getServername(), getPort(), getRootdn(), getSuserDN(), getSuserPw());
++		DirContext ctx = ldap_temp.connect(getServername(), getPort(), getRootdn(), getSuserDN(), getSuserPw(),getConnTimeOut(),getSecure());
++		res.sampleEnd();
+ 		ldap_temp.disconnect(ctx);
+-		res.sampleEnd();
+ 	}
+ 
+ 	/***************************************************************************
+ 	 * This will do a compare Opp for the User and attribute/value pair defined
+-	 * 
++	 *
+ 	 * @return executed time for the compare op
+ 	 **************************************************************************/
+ 	private void compareOp(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -686,7 +719,7 @@
+ 
+ 	/***************************************************************************
+ 	 * This will do a moddn Opp for the User new DN defined
+-	 * 
++	 *
+ 	 * @return executed time for the moddn op
+ 	 **************************************************************************/
+ 	private void renameTest(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -698,7 +731,7 @@
+ 	/***************************************************************************
+ 	 * This will do the unbind for the User defined TestCase as well as inbuilt
+ 	 * test case
+-	 * 
++	 *
+ 	 * @return executed time for the bind op
+ 	 **************************************************************************/
+ 	private void unbindOp(LdapExtClient ldap, DirContext dirContext, SampleResult res) throws NamingException {
+@@ -712,13 +745,13 @@
+ 
+ 	/***************************************************************************
+ 	 * !ToDo (Method description)
+-	 * 
++	 *
+ 	 * @param e
+ 	 *            !ToDo (Parameter description)
+ 	 * @return !ToDo (Return description)
+ 	 **************************************************************************/
+ 	public SampleResult sample(Entry e) {
+-		String responseData = "<ldapanswer>";
++		String responseData = "";
+ 		SampleResult res = new SampleResult();
+ 		res.setResponseData("successfull".getBytes());
+ 		res.setResponseMessage("Success");
+@@ -739,8 +772,8 @@
+ 			}
+ 			ldapConnections.put(getThreadName(), temp_client);
+ 		}
+-
+-		try {
++        responseData ="<ldapanswer>";
++        try {
+ 			log.debug("performing test: " + getPropertyAsString(TEST));
+ 			if (getPropertyAsString(TEST).equals("unbind")) {
+ 				res.setSamplerData("Unbind");
+@@ -752,7 +785,8 @@
+ 				res.setSamplerData("Bind as " + getUserDN());
+ 				responseData = responseData + "<operation><opertype>bind</opertype>";
+ 				responseData = responseData + "<baseobj>" + getRootdn() + "</baseobj>";
+-				responseData = responseData + "<binddn>" + getUserDN() + "</binddn></operation>";
++				responseData = responseData + "<binddn>" + getUserDN() + "</binddn>";
++				responseData = responseData + "<connectionTO>" + getConnTimeOut() + "</connectionTO></operation>";
+ 				bindOp(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("sbind")) {
+ 				res.setSamplerData("SingleBind as " + getSuserDN());
+@@ -760,8 +794,7 @@
+ 				responseData = responseData + "<binddn>" + getSuserDN() + "</binddn></operation>";
+ 				singleBindOp(res);
+ 			} else if (getPropertyAsString(TEST).equals("compare")) {
+-				res
+-						.setSamplerData("Compare " + getPropertyAsString(COMPAREFILT) + " "
++				res.setSamplerData("Compare " + getPropertyAsString(COMPAREFILT) + " "
+ 								+ getPropertyAsString(COMPAREDN));
+ 				responseData = responseData + "<operation><opertype>compare</opertype>";
+ 				responseData = responseData + "<comparedn>" + getPropertyAsString(COMPAREDN) + "</comparedn>";
+@@ -770,7 +803,7 @@
+ 				compareOp(temp_client, dirContext, res);
+ 				if (temp_client.compareAnswer.hasMore()) {
+ 				} else {
+-					res.setResponseCode("49");
++					res.setResponseCode("5");
+ 					res.setResponseMessage("compareFalse");
+ 					isSuccessful = false;
+ 				}
+@@ -800,38 +833,41 @@
+ 				renameTest(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("search")) {
+ 				res.setSamplerData("Search with filter " + getPropertyAsString(SEARCHFILTER));
+-				responseData = responseData + "<operation><opertype>search</opertype>";
++			    responseData = responseData + "<operation><opertype>search</opertype>";
+ 				responseData = responseData + "<searchfilter>" + getPropertyAsString(SEARCHFILTER) + "</searchfilter>";
+ 				responseData = responseData + "<searchbase>" + getPropertyAsString(SEARCHBASE) + ","
+ 						+ getPropertyAsString(ROOTDN) + "</searchbase>";
+ 				responseData = responseData + "<scope>" + getPropertyAsString(SCOPE) + "</scope>";
+ 				responseData = responseData + "<countlimit>" + getPropertyAsString(COUNTLIM) + "</countlimit>";
+ 				responseData = responseData + "<timelimit>" + getPropertyAsString(TIMELIM) + "</timelimit>";
+-				responseData = responseData + "</operation><searchresult>";
+-				searchTest(temp_client, dirContext, res);
+-				while (temp_client.answer.hasMore()) {
+-					sr = (SearchResult) temp_client.answer.next();
+-					responseData = responseData + "<dn>" + sr.getName() + "," + getPropertyAsString(SEARCHBASE) + ","
++				if (getParseFlag().equals("TRUE")) {
++					responseData = responseData + "<searchresult>";
++					searchTest(temp_client, dirContext, res);
++					while (temp_client.answer.hasMore()) {
++						sr = (SearchResult) temp_client.answer.next();
++						responseData = responseData + "<dn>" + sr.getName() + "," + getPropertyAsString(SEARCHBASE) + ","
+ 							+ getRootdn() + "</dn>";
+-					responseData = responseData + "<returnedattr>" + sr.getAttributes().size() + "</returnedattr>";
+-					attrlist = sr.getAttributes().getIDs();
+-					while (attrlist.hasMore()) {
+-						iets = (String) attrlist.next();
+-						responseData = responseData + "<attribute><attributename>" + iets.toString()
++						responseData = responseData + "<returnedattr>" + sr.getAttributes().size() + "</returnedattr>";
++						attrlist = sr.getAttributes().getIDs();
++						while (attrlist.hasMore()) {
++							iets = (String) attrlist.next();
++							responseData = responseData + "<attribute><attributename>" + iets.toString()
+ 								+ "</attributename>";
+-						responseData = responseData
++							responseData = responseData
+ 								+ "<attributevalue>"
+ 								+ sr.getAttributes().get(iets.toString()).toString().substring(
+ 										iets.toString().length() + 2) + "</attributevalue></attribute>";
++						}
+ 					}
++					responseData = responseData + "</searchresult>";
+ 				}
+-				responseData = responseData + "</searchresult></operation>";
++			    responseData = responseData + "</operation>";
+ 			}
+ 
+ 		} catch (NamingException ex) {
+ 			String returnData = ex.toString();
+ 			if (returnData.indexOf("LDAP: error code") >= 0) {
+-				res.setResponseMessage(returnData.substring(returnData.indexOf("LDAP: error code") + 22, returnData
++				res.setResponseMessage(returnData.substring(returnData.indexOf("LDAP: error code") + 21, returnData
+ 						.indexOf("]")));
+ 				res.setResponseCode(returnData.substring(returnData.indexOf("LDAP: error code") + 17, returnData
+ 						.indexOf("LDAP: error code") + 19));
+@@ -841,6 +877,9 @@
+ 			}
+ 			isSuccessful = false;
+ 		} finally {
++			if ((res.getResponseCode().equals("4 ") || res.getResponseCode().equals("3 ")) && getParseFlag().equals("TRUE")) {
++				responseData = responseData + "</searchresult></operation>";
++			}
+ 			responseData = responseData + "<responsecode>" + res.getResponseCode() + "</responsecode>";
+ 			responseData = responseData + "<responsemessage>" + res.getResponseMessage() + "</responsemessage>";
+ 			responseData = responseData + "</ldapanswer>";
+Index: E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/config/gui/LdapExtConfigGui.java
+===================================================================
+--- E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/config/gui/LdapExtConfigGui.java	(revision 433219)
++++ E:/soft_dev/workspace/Jmeter-2.2/src/protocol/ldap/org/apache/jmeter/protocol/ldap/config/gui/LdapExtConfigGui.java	(working copy)
+@@ -13,7 +13,7 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- * 
++ *
+  */
+ 
+ package org.apache.jmeter.protocol.ldap.config.gui;
+@@ -45,7 +45,7 @@
+ /*******************************************************************************
+  * author Dolf Smits(Dolf.Smits@Siemens.com) created Aug 09 2003 11:00 AM
+  * company Siemens Netherlands N.V..
+- * 
++ *
+  * Based on the work of: author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+  * created Apr 29 2003 11:00 AM company Sip Technologies and Exports Ltd.
+  ******************************************************************************/
+@@ -76,18 +76,12 @@
+ 
+ 	private JTextField port = new JTextField(20);
+ 
+-	private JTextField scope = new JTextField(20);
+-
+ 	private JTextField countlim = new JTextField(20);
+ 
+ 	private JTextField timelim = new JTextField(20);
+ 
+ 	private JTextField attribs = new JTextField(20);
+ 
+-	private JTextField retobj = new JTextField(20);
+-
+-	private JTextField deref = new JTextField(20);
+-
+ 	private JTextField userdn = new JTextField(20);
+ 
+ 	private JTextField userpw = new JPasswordField(20);
+@@ -104,6 +98,10 @@
+ 
+ 	private JTextField newdn = new JTextField(20);
+ 
++    private JTextField connto = new JTextField(20);
++
++    private JRadioButton parseflag = new JRadioButton(JMeterUtils.getResString("parseflag"));
++
+ 	private JRadioButton addTest = new JRadioButton(JMeterUtils.getResString("addTest"));
+ 
+ 	private JRadioButton modifyTest = new JRadioButton(JMeterUtils.getResString("modTest"));
+@@ -122,7 +120,33 @@
+ 
+ 	private JRadioButton compare = new JRadioButton(JMeterUtils.getResString("compare"));
+ 
++	private JRadioButton deref = new JRadioButton(JMeterUtils.getResString("deref"));
++
++	private JRadioButton noderef = new JRadioButton(JMeterUtils.getResString("noderef"));
++	
++	private JRadioButton retobj = new JRadioButton(JMeterUtils.getResString("retobj"));
++	
++	private JRadioButton noretobj = new JRadioButton(JMeterUtils.getResString("noretobj"));
++	
++	private JRadioButton baseobject = new JRadioButton(JMeterUtils.getResString("baseobject"));
++	
++	private JRadioButton onelevel = new JRadioButton(JMeterUtils.getResString("onelevel"));
++	
++	private JRadioButton subtree = new JRadioButton(JMeterUtils.getResString("subtree"));
++	
++	private JRadioButton secure = new JRadioButton(JMeterUtils.getResString("ldapsp"));
++	
++	private JRadioButton nonsecure = new JRadioButton(JMeterUtils.getResString("ldapp"));
++	
+ 	private ButtonGroup bGroup = new ButtonGroup();
++	
++	private ButtonGroup derefGroup = new ButtonGroup();
++	
++	private ButtonGroup retobjGroup = new ButtonGroup();
++	
++	private ButtonGroup scopeGroup = new ButtonGroup();
++	
++	private ButtonGroup secureGroup = new ButtonGroup();
+ 
+ 	private boolean displayName = true;
+ 
+@@ -141,7 +165,7 @@
+ 
+ 	/***************************************************************************
+ 	 * !ToDo (Constructor description)
+-	 * 
++	 *
+ 	 * @param displayName
+ 	 *            !ToDo (Parameter description)
+ 	 **************************************************************************/
+@@ -164,7 +188,7 @@
+ 	 * Element object by calling this method. The component is responsible for
+ 	 * querying the Test Element object for the relevant information to display
+ 	 * in its GUI.
+-	 * 
++	 *
+ 	 * @param element
+ 	 *            the TestElement to configure
+ 	 */
+@@ -173,12 +197,12 @@
+ 		servername.setText(element.getPropertyAsString(LDAPExtSampler.SERVERNAME));
+ 		port.setText(element.getPropertyAsString(LDAPExtSampler.PORT));
+ 		rootdn.setText(element.getPropertyAsString(LDAPExtSampler.ROOTDN));
+-		scope.setText(element.getPropertyAsString(LDAPExtSampler.SCOPE));
++//		scope.setText(element.getPropertyAsString(LDAPExtSampler.SCOPE));
+ 		countlim.setText(element.getPropertyAsString(LDAPExtSampler.COUNTLIM));
+ 		timelim.setText(element.getPropertyAsString(LDAPExtSampler.TIMELIM));
+ 		attribs.setText(element.getPropertyAsString(LDAPExtSampler.ATTRIBS));
+-		retobj.setText(element.getPropertyAsString(LDAPExtSampler.RETOBJ));
+-		deref.setText(element.getPropertyAsString(LDAPExtSampler.DEREF));
++//		retobj.setText(element.getPropertyAsString(LDAPExtSampler.RETOBJ));
++//		deref.setText(element.getPropertyAsString(LDAPExtSampler.DEREF));
+ 		userpw.setText(element.getPropertyAsString(LDAPExtSampler.USERPW));
+ 		userdn.setText(element.getPropertyAsString(LDAPExtSampler.USERDN));
+ 		comparedn.setText(element.getPropertyAsString(LDAPExtSampler.COMPAREDN));
+@@ -187,7 +211,33 @@
+ 		suserdn.setText(element.getPropertyAsString(LDAPExtSampler.SUSERDN));
+ 		modddn.setText(element.getPropertyAsString(LDAPExtSampler.MODDDN));
+ 		newdn.setText(element.getPropertyAsString(LDAPExtSampler.NEWDN));
+-		CardLayout cl = (CardLayout) (cards.getLayout());
++        connto.setText(element.getPropertyAsString(LDAPExtSampler.CONNTO));
++        CardLayout cl = (CardLayout)(cards.getLayout());
++        if (element.getPropertyAsString(LDAPExtSampler.PARSEFLAG).equals("TRUE")) {
++        	parseflag.setSelected(true);
++    	}
++        if (element.getPropertyAsString(LDAPExtSampler.SECURE).equals("TRUE")) {
++        	secure.setSelected(true);
++    	} else {
++        	nonsecure.setSelected(true);
++    	}    		
++        if (element.getPropertyAsString(LDAPExtSampler.DEREF).equals("TRUE")) {
++        	deref.setSelected(true);
++    	} else {
++        	noderef.setSelected(true);
++    	}    		
++        if (element.getPropertyAsString(LDAPExtSampler.RETOBJ).equals("TRUE")) {
++        	retobj.setSelected(true);
++    	} else {
++        	noretobj.setSelected(true);
++    	}    		
++		if (element.getPropertyAsString(LDAPExtSampler.SCOPE).equals("0")) {
++	       	baseobject.setSelected(true);			
++		} else if (element.getPropertyAsString(LDAPExtSampler.SCOPE).equals("1")) {
++	       	onelevel.setSelected(true);			
++		} else if(element.getPropertyAsString(LDAPExtSampler.SCOPE).equals("2")) {
++	       	subtree.setSelected(true);			
++		}
+ 		if (element.getPropertyAsString(LDAPExtSampler.TEST).equals("unbind")) {
+ 			unbind.setSelected(true);
+ 			cl.show(cards, "unbind");
+@@ -235,7 +285,7 @@
+ 
+ 	/**
+ 	 * Modifies a given TestElement to mirror the data in the gui components.
+-	 * 
++	 *
+ 	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
+ 	 */
+ 	public void modifyTestElement(TestElement element) {
+@@ -244,12 +294,12 @@
+ 		element.setProperty(LDAPExtSampler.SERVERNAME, servername.getText());
+ 		element.setProperty(LDAPExtSampler.PORT, port.getText());
+ 		element.setProperty(LDAPExtSampler.ROOTDN, rootdn.getText());
+-		element.setProperty(LDAPExtSampler.SCOPE, scope.getText());
++//		element.setProperty(LDAPExtSampler.SCOPE, scope.getText());
+ 		element.setProperty(LDAPExtSampler.COUNTLIM, countlim.getText());
+ 		element.setProperty(LDAPExtSampler.TIMELIM, timelim.getText());
+ 		element.setProperty(LDAPExtSampler.ATTRIBS, attribs.getText());
+-		element.setProperty(LDAPExtSampler.RETOBJ, retobj.getText());
+-		element.setProperty(LDAPExtSampler.DEREF, deref.getText());
++//		element.setProperty(LDAPExtSampler.RETOBJ, retobj.getText());
++//		element.setProperty(LDAPExtSampler.DEREF, deref.getText()); //
+ 		element.setProperty(LDAPExtSampler.USERDN, userdn.getText());
+ 		element.setProperty(LDAPExtSampler.USERPW, userpw.getText());
+ 		element.setProperty(LDAPExtSampler.COMPAREDN, comparedn.getText());
+@@ -258,6 +308,37 @@
+ 		element.setProperty(LDAPExtSampler.SUSERPW, suserpw.getText());
+ 		element.setProperty(LDAPExtSampler.MODDDN, modddn.getText());
+ 		element.setProperty(LDAPExtSampler.NEWDN, newdn.getText());
++        element.setProperty(LDAPExtSampler.CONNTO, connto.getText());
++        if (parseflag.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.PARSEFLAG,"TRUE"));
++        }
++        if (secure.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.SECURE,"TRUE"));
++        }
++        if (nonsecure.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.SECURE,"FALSE"));
++        }
++       if (deref.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.DEREF,"TRUE"));
++        }
++        if (noderef.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.DEREF,"FALSE"));
++        }
++        if (retobj.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.RETOBJ,"TRUE"));
++        }
++        if (noretobj.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.RETOBJ,"FALSE"));
++        }
++        if (baseobject.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.SCOPE,"0"));
++        }
++        if (onelevel.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.SCOPE,"1"));
++        }
++        if (subtree.isSelected()) {
++            element.setProperty(new StringProperty(LDAPExtSampler.SCOPE,"2"));
++        }
+ 		if (addTest.isSelected()) {
+ 			element.setProperty(new StringProperty(LDAPExtSampler.TEST, LDAPExtSampler.ADD));
+ 			element.setProperty(new StringProperty(LDAPExtSampler.BASE_ENTRY_DN, add.getText()));
+@@ -274,12 +355,13 @@
+ 			element.setProperty(new StringProperty(LDAPExtSampler.DELETE, delete.getText()));
+ 		}
+ 		if (searchTest.isSelected()) {
+-			element.setProperty(new StringProperty(LDAPExtSampler.TEST, LDAPExtSampler.SEARCHBASE));
++			element.setProperty(new StringProperty(LDAPExtSampler.TEST, LDAPExtSampler.SEARCH));
+ 			element.setProperty(new StringProperty(LDAPExtSampler.SEARCHBASE, searchbase.getText()));
+ 			element.setProperty(new StringProperty(LDAPExtSampler.SEARCHFILTER, searchfilter.getText()));
+ 		}
+ 		if (bind.isSelected()) {
+ 			element.setProperty(new StringProperty(LDAPExtSampler.TEST, LDAPExtSampler.BIND));
++            element.setProperty(new StringProperty(LDAPExtSampler.CONNTO,connto.getText()));
+ 		}
+ 		if (sbind.isSelected()) {
+ 			element.setProperty(new StringProperty(LDAPExtSampler.TEST, LDAPExtSampler.SBIND));
+@@ -358,6 +440,15 @@
+ 		return rootdnPanel;
+ 	}
+ 
++	private JPanel securePanel() {
++	    JPanel row1Panel = new JPanel(new BorderLayout(5, 0));
++
++		row1Panel.add(secure, BorderLayout.WEST);
++		secureGroup.add(secure);
++		row1Panel.add(nonsecure, BorderLayout.CENTER);
++		secureGroup.add(nonsecure);
++		return row1Panel;
++	}
+ 	/***************************************************************************
+ 	 * This will create the bind panel in the LdapConfigGui
+ 	 **************************************************************************/
+@@ -376,6 +467,7 @@
+ 		sB1Panel.add(sBlabel1, BorderLayout.WEST);
+ 		sB1Panel.add(suserpw, BorderLayout.CENTER);
+ 		sbindPanel.add(sB1Panel);
++
+ 		return sbindPanel;
+ 	}
+ 
+@@ -390,17 +482,25 @@
+ 
+ 		JPanel BPanel = new JPanel(new BorderLayout(5, 0));
+ 		JLabel Blabel0 = new JLabel(JMeterUtils.getResString("userdn"));
+-		Blabel0.setLabelFor(scope);
++		Blabel0.setLabelFor(userdn);
+ 		BPanel.add(Blabel0, BorderLayout.WEST);
+ 		BPanel.add(userdn, BorderLayout.CENTER);
+ 		bindPanel.add(BPanel);
+ 
+ 		JPanel B1Panel = new JPanel(new BorderLayout(5, 0));
+ 		JLabel Blabel1 = new JLabel(JMeterUtils.getResString("userpw"));
+-		Blabel1.setLabelFor(countlim);
++		Blabel1.setLabelFor(userpw);
+ 		B1Panel.add(Blabel1, BorderLayout.WEST);
+ 		B1Panel.add(userpw, BorderLayout.CENTER);
+ 		bindPanel.add(B1Panel);
++
++        JPanel B2Panel = new JPanel(new BorderLayout(5, 0));
++        JLabel Blabel2 = new JLabel(JMeterUtils.getResString("connto"));
++        Blabel2.setLabelFor(connto);
++        B2Panel.add(Blabel2, BorderLayout.WEST);
++        B2Panel.add(connto, BorderLayout.CENTER);
++        bindPanel.add(B2Panel);
++		bindPanel.add(securePanel());
+ 		return bindPanel;
+ 	}
+ 
+@@ -432,13 +532,16 @@
+ 	private JPanel createSCPanel() {
+ 		VerticalPanel SCPanel = new VerticalPanel();
+ 
+-		JPanel SC0Panel = new JPanel(new BorderLayout(5, 0));
+-		JLabel label0 = new JLabel(JMeterUtils.getResString("scope"));
+-		label0.setLabelFor(scope);
+-		SC0Panel.add(label0, BorderLayout.WEST);
+-		SC0Panel.add(scope, BorderLayout.CENTER);
+-		SCPanel.add(SC0Panel);
++		JPanel row0Panel = new JPanel(new BorderLayout(0, 3));
+ 
++		row0Panel.add(baseobject, BorderLayout.NORTH);
++		scopeGroup.add(baseobject);
++		row0Panel.add(onelevel, BorderLayout.CENTER);
++		scopeGroup.add(onelevel);
++		row0Panel.add(subtree, BorderLayout.SOUTH);
++		scopeGroup.add(subtree);
++		SCPanel.add(row0Panel);
++
+ 		JPanel SC1Panel = new JPanel(new BorderLayout(5, 0));
+ 		JLabel label1 = new JLabel(JMeterUtils.getResString("countlim"));
+ 		label1.setLabelFor(countlim);
+@@ -460,20 +563,22 @@
+ 		SC3Panel.add(attribs, BorderLayout.CENTER);
+ 		SCPanel.add(SC3Panel);
+ 
+-		JPanel SC4Panel = new JPanel(new BorderLayout(5, 0));
+-		JLabel label4 = new JLabel(JMeterUtils.getResString("retobj"));
+-		label4.setLabelFor(retobj);
+-		SC4Panel.add(label4, BorderLayout.WEST);
+-		SC4Panel.add(retobj, BorderLayout.CENTER);
+-		SCPanel.add(SC4Panel);
++		JPanel row1Panel = new JPanel(new BorderLayout(5, 0));
+ 
+-		JPanel SC5Panel = new JPanel(new BorderLayout(5, 0));
+-		JLabel label5 = new JLabel(JMeterUtils.getResString("deref"));
+-		label5.setLabelFor(deref);
+-		SC5Panel.add(label5, BorderLayout.WEST);
+-		SC5Panel.add(deref, BorderLayout.CENTER);
+-		SCPanel.add(SC5Panel);
++		row1Panel.add(retobj, BorderLayout.WEST);
++		retobjGroup.add(retobj);
++		row1Panel.add(noretobj, BorderLayout.CENTER);
++		retobjGroup.add(noretobj);
++		SCPanel.add(row1Panel);
+ 
++		JPanel row2Panel = new JPanel(new BorderLayout(5, 0));
++
++		row2Panel.add(deref, BorderLayout.WEST);
++		derefGroup.add(deref);
++		row2Panel.add(noderef, BorderLayout.CENTER);
++		derefGroup.add(noderef);
++		SCPanel.add(row2Panel);
++
+ 		return SCPanel;
+ 	}
+ 
+@@ -496,9 +601,15 @@
+ 		searchFPanel.add(label20, BorderLayout.WEST);
+ 		searchFPanel.add(searchfilter, BorderLayout.CENTER);
+ 
+-		searchPanel.add(searchBPanel);
+-		searchPanel.add(searchFPanel);
+-		searchPanel.add(createSCPanel());
++        JPanel B3Panel = new JPanel(new BorderLayout(5, 0));
++        B3Panel.add(parseflag, BorderLayout.WEST);
++
++        searchPanel.add(searchBPanel);
++        searchPanel.add(searchFPanel);
++        searchPanel.add(createSCPanel());
++        
++        searchPanel.add(B3Panel);
++
+ 		return searchPanel;
+ 	}
+ 
+@@ -636,6 +747,16 @@
+ 		mainPanel.add(createTestPanel());
+ 		mainPanel.add(testPanel());
+ 		add(mainPanel, BorderLayout.CENTER);
++        parseflag.addItemListener(this);
++        secure.addItemListener(this);
++		nonsecure.addItemListener(this);
++		deref.addItemListener(this);
++		noderef.addItemListener(this);
++		retobj.addItemListener(this);
++		noretobj.addItemListener(this);
++		baseobject.addItemListener(this);
++		onelevel.addItemListener(this);
++		subtree.addItemListener(this);
+ 		bind.addItemListener(this);
+ 		sbind.addItemListener(this);
+ 		unbind.addItemListener(this);
+Index: E:/soft_dev/workspace/Jmeter-2.2/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- E:/soft_dev/workspace/Jmeter-2.2/src/core/org/apache/jmeter/resources/messages.properties	(revision 433219)
++++ E:/soft_dev/workspace/Jmeter-2.2/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -1,7 +1,7 @@
++#
++# => All keys in this file must also be lower case or they won't match
++# and converts keys to lowercase before lookup
+ # Warning: JMeterUtils.getResString() replaces space with '_'
+-# and converts keys to lowercase before lookup
+-# => All keys in this file must also be lower case or they won't match
+-#
+ about=About Apache JMeter
+ add=Add
+ add_as_child=Add as Child
+@@ -23,9 +23,9 @@
+ aggregate_report_min=Min
+ aggregate_report_rate=Throughput
+ aggregate_report_total_label=TOTAL
+-als_message=Note\: The Access Log Parser is generic in design and allows you to plugin
+ als_message2=your own parser. To do so, implement the LogParser, add the jar to the
+ als_message3=/lib directory and enter the class in the sampler.
++als_message=Note\: The Access Log Parser is generic in design and allows you to plugin
+ analyze=Analyze Data File...
+ anchor_modifier_title=HTML Link Parser
+ appearance=Look and Feel
+@@ -50,6 +50,7 @@
+ auth_manager_title=HTTP Authorization Manager
+ auths_stored=Authorizations Stored in the Authorization Manager
+ average=Average
++baseobject=Perform baseobject search
+ bind=Thread Bind
+ browse=Browse...
+ bsf_sampler_title=BSF Sampler
+@@ -82,6 +83,7 @@
+ config_element=Config Element
+ config_save_settings=Configure
+ configure_wsdl=Configure
++connto=Connection timeout (in milliseconds)
+ constant_throughput_timer_memo=Add a delay between sampling to attain constant throughput
+ constant_timer_delay=Thread Delay (in milliseconds)\:
+ constant_timer_memo=Add a constant delay between sampling
+@@ -197,11 +199,11 @@
+ generator_instantiate_msg=Could not create an instance of the generator parser. Please make sure the generator implements Generator interface.
+ get_xml_from_file=File with SOAP XML Data (overrides above text)
+ get_xml_from_random=Message Folder
+-get_xml_message=Note\: Parsing XML is CPU intensive. Therefore, do not set the thread count
+ get_xml_message2=too high. In general, 10 threads will consume 100% of the CPU on a 900mhz
+ get_xml_message3=Pentium 3. On a pentium 4 2.4ghz cpu, 50 threads is the upper limit. Your
+ get_xml_message4=options for increasing the number of clients is to increase the number of
+ get_xml_message5=machines or use multi-cpu systems.
++get_xml_message=Note\: Parsing XML is CPU intensive. Therefore, do not set the thread count
+ graph_choose_graphs=Graphs to Display
+ graph_full_results_title=Graph Full Results
+ graph_results_average=Average
+@@ -255,14 +257,13 @@
+ jms_auth_not_required=Not Required
+ jms_auth_required=Required
+ jms_authentication=Authentication
++jms_client_caption2=MessageListener uses onMessage(Message) interface to listen for new messages.
+ jms_client_caption=Receive client uses TopicSubscriber.receive() to listen for message.
+-jms_client_caption2=MessageListener uses onMessage(Message) interface to listen for new messages.
+ jms_client_type=Client
+ jms_communication_style=Communication style
+ jms_concrete_connection_factory=Concrete Connection Factory
+ jms_config=Configuration
+ jms_config_title=JMS Configuration
+-jms_point_to_point=JMS Point-to-Point
+ jms_connection_factory=Connection Factory
+ jms_error_msg=Object message should read from an external file. Text input is currently selected, please remember to change it.
+ jms_file=File
+@@ -274,6 +275,7 @@
+ jms_message_type=Message Type
+ jms_msg_content=Content
+ jms_object_message=Object Message
++jms_point_to_point=JMS Point-to-Point
+ jms_props=JMS Properties
+ jms_provider_url=Provider URL
+ jms_publisher=JMS Publisher
+@@ -319,26 +321,28 @@
+ junit_do_setup_teardown=Do not call setUp and tearDown
+ junit_error_code=Error Code
+ junit_error_default_code=9999
++junit_error_default_msg=An unexpected error occured
+ junit_error_msg=Error Message
+-junit_error_default_msg=An unexpected error occured
+ junit_failure_code=Failure Code
+ junit_failure_default_code=0001
++junit_failure_default_msg=Test failed
+ junit_failure_msg=Failure Message
+-junit_failure_default_msg=Test failed
+ junit_pkg_filter=Package Filter
+ junit_request=JUnit Request
+ junit_request_defaults=JUnit Request Defaults
+ junit_success_code=Success Code
+ junit_success_default_code=1000
++junit_success_default_msg=Test successful
+ junit_success_msg=Success Message
+-junit_success_default_msg=Test successful
++junit_test_config=JUnit Test Parameters
+ junit_test_method=Test Method
+-junit_test_config=JUnit Test Parameters
+ ldap_argument_list=LDAPArgument List
+ ldap_sample_title=LDAP Request Defaults
+ ldap_testing_title=LDAP Request
+ ldapext_sample_title=LDAP Extended Request Defaults
+ ldapext_testing_title= LDAP Extended Request
++ldapp=Use LDAP Protocol
++ldapsp=Use Secure LDAP Protocol
+ load=Load
+ load_wsdl=Load WSDL
+ log_errors_only=Log Errors Only
+@@ -433,13 +437,17 @@
+ new=New
+ newdn=New distinghuised name
+ no=Norwegian
++noderef=do not dereference aliases
++noretobj=Don't return object
+ number_of_threads=Number of Threads\:
+ once_only_controller_title=Once Only Controller
++onelevel=Perform onelevel search
+ opcode=opCode
+ open=Open...
+ option=Options
+ optional_tasks=Optional Tasks
+ paramtable=Send Parameters With the Request\:
++parseflag=Parse the search results
+ password=Password
+ paste=Paste
+ paste_insert=Paste As Insert
+@@ -457,9 +465,9 @@
+ property_editor.value_is_invalid_message=The text you just entered is not a valid value for this property.\nThe property will be reverted to its previous value.
+ property_editor.value_is_invalid_title=Invalid input
+ property_name_param=Name of property
+-property_value_param=Value of property
+ property_tool_tip={0}\: {1}
+ property_undefined=Undefined
++property_value_param=Value of property
+ protocol=Protocol\:
+ protocol_java_border=Java class
+ protocol_java_classname=Classname\:
+@@ -478,9 +486,9 @@
+ random_control_title=Random Controller
+ random_order_control_title=Random Order Controller
+ read_response_message=Read response is not checked. To see the response, please check the box in the sampler.
+-read_response_note=If read response is unchecked, the sampler will not read the response
+ read_response_note2=or set the SampleResult. This improves performance, but it means
+ read_response_note3=the response content won't be logged.
++read_response_note=If read response is unchecked, the sampler will not read the response
+ read_soap_response=Read SOAP Response
+ record_controller_title=Recording Controller
+ ref_name_field=Reference Name\:
+@@ -629,6 +637,7 @@
+ string_from_file_file_name=Enter full path to file
+ string_from_file_seq_final=Final file sequence number
+ string_from_file_seq_start=Start file sequence number
++subtree=Perform subtree search
+ success?=Success?
+ summariser_title=Generate Summary Results
+ switch_controller_label=Switch Value
+@@ -644,7 +653,6 @@
+ tcp_timeout=Timeout (milliseconds)\:
+ template_field=Template\:
+ test=Test
+-testconfiguration=Test Configuration
+ test_action_action=Action
+ test_action_duration=Duration
+ test_action_pause=Pause
+@@ -655,6 +663,7 @@
+ test_action_title=Test Action
+ test_configuration=Test Configuration
+ test_plan=Test Plan
++testconfiguration=Test Configuration
+ testplan.serialized=Run each Thread Group separately (i.e. run one group before starting the next)
+ testplan_comments=Comments\:
+ testt=Test
+@@ -714,9 +723,9 @@
+ web_testing_retrieve_images=Retrieve All Embedded Resources from HTML Files
+ web_testing_title=HTTP Request
+ webservice_proxy_host=Proxy Host
+-webservice_proxy_note=If Use HTTP Proxy is checked, but no host or port are provided, the sampler
+ webservice_proxy_note2=will look at command line options. If no proxy host or port are provided by
+ webservice_proxy_note3=either, it will fail silently.
++webservice_proxy_note=If Use HTTP Proxy is checked, but no host or port are provided, the sampler
+ webservice_proxy_port=Proxy Port
+ webservice_sampler_title=WebService(SOAP) Request
+ webservice_soap_action=SOAPAction
+Index: E:/soft_dev/workspace/Jmeter-2.2/src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+--- E:/soft_dev/workspace/Jmeter-2.2/src/core/org/apache/jmeter/util/JMeterVersion.java	(revision 433219)
++++ E:/soft_dev/workspace/Jmeter-2.2/src/core/org/apache/jmeter/util/JMeterVersion.java	(working copy)
+@@ -41,7 +41,7 @@
+ 	 * JMeterUtils This ensures that JMeterUtils always gets the correct
+ 	 * version, even if it is not re-compiled during the build.
+ 	 */
+-	private static final String VERSION = "2.1.20050824";
++	private static final String VERSION = "2.1.20060823";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2005 The Apache Software Foundation";
+ 

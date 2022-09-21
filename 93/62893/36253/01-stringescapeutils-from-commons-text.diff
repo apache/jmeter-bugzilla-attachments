@@ -1,0 +1,236 @@
+Index: build.properties
+===================================================================
+--- build.properties	(Revision 1846182)
++++ build.properties	(Arbeitskopie)
+@@ -140,6 +140,11 @@
+ commons-pool2.loc             = ${maven2.repo}/org/apache/commons/commons-pool2/${commons-pool2.version}
+ commons-pool2.sha512          = C31D44FF2D527DEC5189BAF8AE1D888C37A53A60283C58CBEACD723C773DB8219DD54E0FCA15F29F781E0AF66E60E894254D6AAC80178207B51DD2F9DCC972C3
+ 
++commons-text.version         = 1.6
++commons-text.jar             = commons-text-${commons-text.version}.jar
++commons-text.loc             = ${maven2.repo}/org/apache/commons/commons-text/${commons-text.version}
++commons-text.sha512          = a0c077e33c075ffd2a9bf6776c1c27f6d19b451dd6f9a26cc06aed586bd746e5dadefee72e130f0d43768f8e3f24cddabe79b1e94abf227fbc8e8c58db0c6504
++
+ darcula.version            = e208efb96f70e4be9dc362fbb46f6e181ef501dd
+ darcula.jar                = darcula.jar
+ darcula.loc                = https://github.com/bulenkov/Darcula/raw/${darcula.version}/build
+Index: build.xml
+===================================================================
+--- build.xml	(Revision 1846182)
++++ build.xml	(Arbeitskopie)
+@@ -407,6 +407,7 @@
+     <include name="${lib.dir}/${commons-math3.jar}"/>
+     <include name="${lib.dir}/${commons-net.jar}"/>
+     <include name="${lib.dir}/${commons-pool2.jar}"/>
++    <include name="${lib.dir}/${commons-text.jar}"/>
+     <include name="${lib.dir}/${darcula.jar}"/>
+     <include name="${lib.dir}/${dnsjava.jar}"/>
+     <include name="${lib.dir}/${freemarker.jar}"/>
+@@ -493,6 +494,7 @@
+     <pathelement location="${lib.dir}/${commons-math3.jar}"/>
+     <pathelement location="${lib.dir}/${commons-net.jar}"/>
+     <pathelement location="${lib.dir}/${commons-pool2.jar}"/>
++    <pathelement location="${lib.dir}/${commons-text.jar}"/>
+     <pathelement location="${lib.dir}/${darcula.jar}"/>
+     <pathelement location="${lib.dir}/${dnsjava.jar}"/>
+     <pathelement location="${lib.dir}/${freemarker.jar}"/>
+@@ -3368,6 +3370,7 @@
+     <process_jarfile jarname="commons-math3"/>
+     <process_jarfile jarname="commons-net"/>
+     <process_jarfile jarname="commons-pool2"/>
++    <process_jarfile jarname="commons-text"/>
+     <process_jarfile jarname="darcula"/>
+     <process_jarfile jarname="dnsjava"/>
+     <process_jarfile jarname="freemarker"/>
+Index: eclipse.classpath
+===================================================================
+--- eclipse.classpath	(Revision 1846182)
++++ eclipse.classpath	(Arbeitskopie)
+@@ -60,6 +60,7 @@
+ 	<classpathentry kind="lib" path="lib/commons-math3-3.6.1.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-net-3.6.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-pool2-2.6.0.jar"/>
++	<classpathentry kind="lib" path="lib/commons-text-1.6.jar"/>
+ 	<classpathentry kind="lib" path="lib/darcula.jar"/>
+ 	<classpathentry kind="lib" path="lib/dec-0.1.2.jar"/>
+ 	<classpathentry kind="lib" path="lib/dnsjava-2.1.8.jar"/>
+Index: licenses/bin/README.txt
+===================================================================
+--- licenses/bin/README.txt	(Revision 1846182)
++++ licenses/bin/README.txt	(Arbeitskopie)
+@@ -15,6 +15,7 @@
+ commons-math3-3.5.jar
+ commons-net-3.6.jar
+ commons-pool2-2.5.0.jar
++commons-text-1.6.jar
+ excalibur-logger-1.1.jar
+ geronimo-jms_1.1_spec-1.1.1.jar
+ groovy-all-2.4.15.jar
+Index: res/maven/ApacheJMeter_parent.pom
+===================================================================
+--- res/maven/ApacheJMeter_parent.pom	(Revision 1846182)
++++ res/maven/ApacheJMeter_parent.pom	(Arbeitskopie)
+@@ -71,6 +71,7 @@
+       <commons-math3.version>3.6.1</commons-math3.version>
+       <commons-net.version>3.6</commons-net.version>
+       <commons-pool2.version>2.6.0</commons-pool2.version>
++      <commons-text.version>1.6</commons-text.version>
+       <dnsjava.version>2.1.8</dnsjava.version>
+       <freemarker.version>2.3.28</freemarker.version>
+       <groovy-all.version>2.4.15</groovy-all.version>
+@@ -221,6 +222,11 @@
+         <version>${commons-pool2.version}</version>
+       </dependency>
+       <dependency>
++        <groupId>org.apache.commons</groupId>
++        <artifactId>commons-text</artifactId>
++        <version>${commons-text.version}</version>
++      </dependency>
++      <dependency>
+         <groupId>dnsjava</groupId>
+         <artifactId>dnsjava</artifactId>
+         <version>${dnsjava.version}</version>
+Index: src/components/org/apache/jmeter/extractor/BoundaryExtractor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/BoundaryExtractor.java	(Revision 1846182)
++++ src/components/org/apache/jmeter/extractor/BoundaryExtractor.java	(Arbeitskopie)
+@@ -26,8 +26,8 @@
+ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
+ import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.AbstractScopedTestElement;
+Index: src/components/org/apache/jmeter/extractor/RegexExtractor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/RegexExtractor.java	(Revision 1846182)
++++ src/components/org/apache/jmeter/extractor/RegexExtractor.java	(Arbeitskopie)
+@@ -23,7 +23,7 @@
+ import java.util.Collections;
+ import java.util.List;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.AbstractScopedTestElement;
+Index: src/core/org/apache/jmeter/report/dashboard/HtmlTemplateExporter.java
+===================================================================
+--- src/core/org/apache/jmeter/report/dashboard/HtmlTemplateExporter.java	(Revision 1846182)
++++ src/core/org/apache/jmeter/report/dashboard/HtmlTemplateExporter.java	(Arbeitskopie)
+@@ -27,9 +27,9 @@
+ import java.util.regex.PatternSyntaxException;
+ 
+ import org.apache.commons.io.FileUtils;
+-import org.apache.commons.lang3.StringEscapeUtils;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.commons.lang3.Validate;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.JMeter;
+ import org.apache.jmeter.report.config.ConfigurationException;
+ import org.apache.jmeter.report.config.ExporterConfiguration;
+Index: src/core/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java	(Revision 1846182)
++++ src/core/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java	(Arbeitskopie)
+@@ -17,8 +17,8 @@
+  */
+ package org.apache.jmeter.report.processor;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
+ import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.report.core.Sample;
+ import org.apache.jmeter.report.utils.MetricUtils;
+ import org.apache.jmeter.samplers.SampleSaveConfiguration;
+Index: src/functions/org/apache/jmeter/functions/EscapeHtml.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/EscapeHtml.java	(Revision 1846182)
++++ src/functions/org/apache/jmeter/functions/EscapeHtml.java	(Arbeitskopie)
+@@ -22,7 +22,7 @@
+ import java.util.LinkedList;
+ import java.util.List;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+Index: src/functions/org/apache/jmeter/functions/EscapeXml.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/EscapeXml.java	(Revision 1846182)
++++ src/functions/org/apache/jmeter/functions/EscapeXml.java	(Arbeitskopie)
+@@ -22,7 +22,7 @@
+ import java.util.LinkedList;
+ import java.util.List;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+Index: src/functions/org/apache/jmeter/functions/UnEscape.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/UnEscape.java	(Revision 1846182)
++++ src/functions/org/apache/jmeter/functions/UnEscape.java	(Arbeitskopie)
+@@ -23,7 +23,7 @@
+ import java.util.LinkedList;
+ import java.util.List;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+Index: src/functions/org/apache/jmeter/functions/UnEscapeHtml.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/UnEscapeHtml.java	(Revision 1846182)
++++ src/functions/org/apache/jmeter/functions/UnEscapeHtml.java	(Arbeitskopie)
+@@ -23,7 +23,7 @@
+ import java.util.LinkedList;
+ import java.util.List;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+@@ -40,7 +40,7 @@
+  * If an entity is unrecognized, it is left alone, and inserted verbatim into the result string.
+  * e.g. "&amp;gt;&amp;zzzz;x" will become "&gt;&amp;zzzz;x".
+  * </p>
+- * @see org.apache.commons.lang3.StringEscapeUtils#unescapeHtml4(String)
++ * @see StringEscapeUtils#unescapeHtml4(String)
+  * @since 2.3.3
+  */
+ public class UnEscapeHtml extends AbstractFunction {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java	(Revision 1846182)
++++ src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java	(Arbeitskopie)
+@@ -23,8 +23,8 @@
+ import java.util.Collection;
+ import java.util.Iterator;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
+ import org.apache.commons.lang3.Validate;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.protocol.http.util.ConversionUtils;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+Index: src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+===================================================================
+--- src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(Revision 1846182)
++++ src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(Arbeitskopie)
+@@ -39,7 +39,7 @@
+ import javax.naming.directory.ModificationItem;
+ import javax.naming.directory.SearchResult;
+ 
+-import org.apache.commons.lang3.StringEscapeUtils;
++import org.apache.commons.text.StringEscapeUtils;
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.config.ConfigTestElement;

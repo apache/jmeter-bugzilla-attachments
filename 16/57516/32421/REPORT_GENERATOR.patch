@@ -1,0 +1,735 @@
+Index: build.properties
+===================================================================
+--- build.properties	(revision 1656228)
++++ build.properties	(working copy)
+@@ -171,6 +171,11 @@
+ excalibur-pool-instrumented.loc     = ${maven2.repo}/excalibur-pool/excalibur-pool-instrumented/${excalibur-pool-instrumented.version}
+ excalibur-pool-instrumented.md5     = 1b5425fe0fe63dc67da6fe995db6be31
+ 
++freemarker.version          = 2.3.21
++freemarker.loc               = ${maven2.repo}/org/freemarker/freemarker/${freemarker.version}
++freemarker.jar               = freemarker-${freemarker.version}.jar
++freemarker.md5               = bdc6a9d3a41bc13e5965fc06e74c16c2
++
+ # Common file containing both htmlparser and htmllexer jars
+ htmlparser.version          = 2.1
+ htmllexer.loc               = ${maven2.repo}/org/htmlparser/htmllexer/${htmlparser.version}
+Index: build.xml
+===================================================================
+--- build.xml	(revision 1656250)
++++ build.xml	(working copy)
+@@ -371,6 +371,7 @@
+     <include name="${lib.dir}/${excalibur-pool-api.jar}"/>
+     <include name="${lib.dir}/${excalibur-pool-impl.jar}"/>
+     <include name="${lib.dir}/${excalibur-pool-instrumented.jar}"/>
++    <include name="${lib.dir}/${freemarker.jar}"/>
+     <include name="${lib.dir}/${htmllexer.jar}"/>
+     <include name="${lib.dir}/${htmlparser.jar}"/>
+     <include name="${lib.dir}/${httpclient.jar}"/>
+@@ -446,6 +447,7 @@
+     <pathelement location="${lib.dir}/${excalibur-pool-api.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-pool-impl.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-pool-instrumented.jar}"/>
++  	<pathelement location="${lib.dir}/${freemarker.jar}"/>
+     <pathelement location="${lib.dir}/${htmllexer.jar}"/>
+     <pathelement location="${lib.dir}/${htmlparser.jar}"/>
+     <pathelement location="${lib.dir}/${httpclient.jar}"/>
+@@ -2871,6 +2873,7 @@
+         <process_jarfile jarname="excalibur-pool-api"/>
+         <process_jarfile jarname="excalibur-pool-impl"/>
+         <process_jarfile jarname="excalibur-pool-instrumented"/>
++    	<process_jarfile jarname="freemarker"/>
+         <process_jarfile jarname="htmllexer"/>
+         <process_jarfile jarname="htmlparser"/>
+         <process_jarfile jarname="httpclient"/>
+Index: report_templates/HTML_REPORT.ftl
+===================================================================
+--- report_templates/HTML_REPORT.ftl	(revision 0)
++++ report_templates/HTML_REPORT.ftl	(revision 0)
+@@ -0,0 +1,240 @@
++<!DOCTYPE html>
++<#setting number_format="##0">
++<html lang="en">
++  <head>
++    <meta charset="utf-8">
++    <meta http-equiv="X-UA-Compatible" content="IE=edge">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <meta name="description" content="">
++    <meta name="author" content="">
++    <script src="./Chart.js"></script>
++    <link rel="icon" href="../../favicon.ico">
++
++    <title>Dashboard</title>
++
++    <!-- Bootstrap core CSS -->
++		<!-- Latest compiled and minified CSS -->
++		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css">
++
++		<!-- Optional theme -->
++		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap-theme.min.css">
++
++    <!-- Custom styles for this template -->
++    <link href="dashboard.css" rel="stylesheet">
++
++    <!-- Just for debugging purposes. Don't actually copy these 2 lines! -->
++    <!--[if lt IE 9]><script src="../../assets/js/ie8-responsive-file-warning.js"></script><![endif]-->
++    <script src="../../assets/js/ie-emulation-modes-warning.js"></script>
++
++    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
++    <!--[if lt IE 9]>
++      <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
++      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
++    <![endif]-->
++  </head>
++
++  <body>
++
++    <nav class="navbar navbar-inverse navbar-fixed-top">
++      <div class="container-fluid">
++        <div class="navbar-header">
++          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
++            <span class="sr-only">Toggle navigation</span>
++            <span class="icon-bar"></span>
++            <span class="icon-bar"></span>
++            <span class="icon-bar"></span>
++          </button>
++          <a class="navbar-brand" href="#">JMeter Dashboard</a>
++        </div>
++
++      </div>
++    </nav>
++
++    <div class="container-fluid">
++      <div class="row">
++        <div class="col-sm-3 col-md-2 sidebar">
++          <ul class="nav nav-sidebar">
++            <li class="active"><a href="#">Overview <span class="sr-only">(current)</span></a></li>
++            <li><a href="#">Reports</a></li>
++            <li><a href="#">Analytics</a></li>
++            <li><a href="#">Export</a></li>
++          </ul>
++        </div>
++        <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
++          <h1 class="page-header">Dashboard</h1>
++
++          <div class="row placeholders">
++			<div class="col-md-6">
++    			<div class="panel panel-default">
++                	<div class="panel-heading">
++                  		<h3 class="panel-title">APDEX</h3>
++                	</div>
++            	   <div class="panel-body">
++              		    ${APDEX}
++                	</div>
++              	</div>
++            </div>
++            <div class="col-md-6">
++                <div class="panel panel-default">
++                    <div class="panel-heading">
++                        <h3 class="panel-title">Requests Summary</h3>
++                    </div>
++                    <div class="panel-body">
++                        <div id="pieChart" style="height:200px"></div>
++    	               <!--<canvas id="pieChart" height="150" width="300"></canvas>-->
++            	       <div id="legend"></div>
++                    </div>
++        		</div>
++            </div>
++
++          <h2 class="sub-header">Statistics</h2>
++          <div class="table-responsive">
++            <table class="table table-striped">
++              <thead>
++                <tr>
++                  <th>Label</th>
++                  <th>#Samples</th>
++                  <th>KO</th>
++                  <th>Error%</th>
++                  <th>90% Line</th>
++                  <th>95% Line</th>
++                  <th>99% Line</th>
++                  <th>Throughput</th>
++                  <th>KB/sec</th>
++                  <th>Min</th>
++                  <th>Max</th>
++                </tr>
++              </thead>
++              <tfoot>
++                <tr>
++                  <td>${TOTAL.label}</td>
++                  <td>${TOTAL.count}</td>
++                  <td>${TOTAL.errorCount}</td>
++                  <td>${TOTAL.errorPercentage?string.percent}</td>
++                  <td>${TOTAL.getPercentPoint(0.9)}</td>
++                  <td>${TOTAL.getPercentPoint(0.95)}</td>
++                  <td>${TOTAL.getPercentPoint(0.99)}</td>
++                  <td>${TOTAL.rate}</td>
++                  <td>${TOTAL.getKBPerSecond()}</td>
++                  <td>${TOTAL.min}</td>
++                  <td>${TOTAL.max}</td>
++                </tr>
++              </tfoot>
++              <tbody>
++<#list resultsPerSample?keys as key>
++<#assign prop = resultsPerSample[key]>
++                <tr>
++                  <td>${prop.label}</td>
++                  <td>${prop.count}</td>
++                  <td>${prop.errorCount}</td>
++                  <td>${prop.errorPercentage?string.percent}</td>
++                  <td>${prop.getPercentPoint(0.9)}</td>
++                  <td>${prop.getPercentPoint(0.95)}</td>
++                  <td>${prop.getPercentPoint(0.99)}</td>
++                  <td>${prop.rate}</td>
++                  <td>${prop.getKBPerSecond()}</td>
++                  <td>${prop.min}</td>
++                  <td>${prop.max}</td>
++                </tr>
++</#list>
++              </tbody>
++            </table>
++          </div>
++        </div>
++      </div>
++    </div>
++
++    <!-- Bootstrap core JavaScript
++    ================================================== -->
++    <!-- Placed at the end of the document so the pages load faster -->
++    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
++    <script src="./assets/js/docs.min.js"></script>
++    <script language="javascript" type="text/javascript" src="./flot/jquery.flot.js"></script>
++    <script language="javascript" type="text/javascript" src="./flot/jquery.flot.pie.js"></script>
++    <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
++    <script src="./assets/js/ie10-viewport-bug-workaround.js"></script>
++        <script>
++
++
++        var pieData = [
++                {
++                    data:${TOTAL.errorCount},
++                    color:"#F7464A",
++                    highlight: "#FF5A5E",
++                    label: "KO",
++                    labelColor : 'white',
++                    labelFontSize : '16'
++                },
++                {
++                    data:${TOTAL.count - TOTAL.errorCount},
++                    color: "#46BFBD",
++                    highlight: "#5AD3D1",
++                    label: "OK",
++                    labelColor : 'white',
++                    labelFontSize : '16'
++                }
++            ];
++            
++        $.plot('#pieChart', pieData, {
++    series: {
++        pie: {
++            show: true,
++            radius: 1,
++            label: {
++                show: true,
++                radius: 3/4,
++                formatter: labelFormatter,
++                background: {
++                    opacity: 0.5
++                }
++            }
++        }
++    },
++    legend: {
++        show: true
++    }
++});
++
++    function labelFormatter(label, series) {
++        return "<div style='font-size:8pt; text-align:center; padding:2px; color:white;'>" + label + "<br/>" + Math.round(series.percent) + "%</div>";
++    }
++    </script>
++    <!--
++    <script>
++        var pieData = [
++                {
++                    value: ${TOTAL.errorCount},
++                    color:"#F7464A",
++                    highlight: "#FF5A5E",
++                    label: "KO",
++                    labelColor : 'white',
++                    labelFontSize : '16'
++                },
++                {
++                    value: ${TOTAL.count - TOTAL.errorCount},
++                    color: "#46BFBD",
++                    highlight: "#5AD3D1",
++                    label: "OK",
++                    labelColor : 'white',
++                    labelFontSize : '16'
++                }
++            ];
++
++            window.onload = function(){
++                var ctx = document.getElementById("pieChart").getContext("2d");
++                window.myPie = new Chart(ctx).Pie(pieData, 
++					{
++    					segmentShowStroke : true,
++						animateScale: false,
++						animateRotate : false,
++						legendTemplate : "<ul class=\"<%=name.toLowerCase()%>-legend\"><% for (var i=0; i<segments.length; i++){%><li><span style=\"background-color:<%=segments[i].fillColor%>\"></span><%if(segments[i].label){%><%=segments[i].label%><%}%></li><%}%></ul>"
++
++					});
++			     $("#legend").html(window.myPie.generateLegend());
++            };
++
++    </script>
++    -->
++  </body>
++  
++</html>
+Index: src/components/org/apache/jmeter/visualizers/backend/BackendListener.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/backend/BackendListener.java	(revision 1656228)
++++ src/components/org/apache/jmeter/visualizers/backend/BackendListener.java	(working copy)
+@@ -169,6 +169,9 @@
+         BackendListenerContext context = new BackendListenerContext(args);
+ 
+         SampleResult sr = listenerClientData.client.createSampleResult(context, event.getResult());
++        if(sr == null) {
++            return;
++        }
+         try {
+             if (!listenerClientData.queue.offer(sr)){ // we failed to add the element first time
+                 listenerClientData.queueWaits.incrementAndGet();
+Index: src/components/org/apache/jmeter/visualizers/backend/apdex/ApdexBackendListenerClient.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/backend/apdex/ApdexBackendListenerClient.java	(revision 0)
++++ src/components/org/apache/jmeter/visualizers/backend/apdex/ApdexBackendListenerClient.java	(revision 0)
+@@ -0,0 +1,221 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.visualizers.backend.apdex;
++
++import java.io.BufferedWriter;
++import java.io.File;
++import java.io.FileOutputStream;
++import java.io.OutputStreamWriter;
++import java.io.Writer;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.config.Arguments;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.visualizers.SamplingStatCalculator;
++import org.apache.jmeter.visualizers.backend.AbstractBackendListenerClient;
++import org.apache.jmeter.visualizers.backend.BackendListenerContext;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.log.Logger;
++
++import freemarker.template.Configuration;
++import freemarker.template.Template;
++import freemarker.template.TemplateExceptionHandler;
++
++/**
++ * APDEX Computer
++ * @since 2.13
++ */
++public class ApdexBackendListenerClient extends AbstractBackendListenerClient {
++    private static final Logger LOGGER = LoggingManager.getLoggerForClass();
++    private static final String SEPARATOR = ";"; //$NON-NLS-1$
++
++    /**
++     * T : Threshold for satistied users. 
++     * Response times <= satisfiedResponseTimeMS count towards satisfying 
++     */
++    private long satisfiedResponseTimeMS;
++    /**
++     * F : Threshold for tolerated users. 
++     * Response times > satisfiedResponseTimeMS and <= toleratedResponseTimeMS count towards tolerated response times 
++     * If user does not provide it, it is equal to 4xT
++     */
++    private long toleratedResponseTimeMS;
++    /**
++     * Semicolon separated samplers to include in results
++     */
++    private String samplersList = ""; //$NON-NLS-1$
++    /**
++     * Set of samplers to filter, computed from samplersList
++     */
++    private Set<String> samplersToFilter;
++       
++    /**
++     * Number of Successful Responses for samplers in samplersToFilter  with Response Time <= T
++     */
++    private AtomicLong numberOfSatistiedResponses = new AtomicLong(0);
++    /**
++     * Number of Successful Responses for samplers in samplersToFilter with Response Time > T and <= F
++     */
++    private AtomicLong numberOfToleratedResponses = new AtomicLong(0);
++    /**
++     * Number of Responses for samplers in samplersToFilter  (OK + KO)
++     */
++    private AtomicLong totalResponses = new AtomicLong(0);
++    private String resultsFile;
++    private String reportFile;
++    public ApdexBackendListenerClient() {
++        super();
++    } 
++
++
++    /**
++     * @return the samplersList
++     */
++    public String getSamplersList() {
++        return samplersList;
++    }
++
++    /**
++     * @param samplersList the samplersList to set
++     */
++    public void setSamplersList(String samplersList) {
++        this.samplersList = samplersList;
++    }
++
++    @Override
++    public void handleSampleResults(List<SampleResult> sampleResults,
++            BackendListenerContext context) {
++        // NOOP
++    }
++
++    @Override
++    public void setupTest(BackendListenerContext context) throws Exception {
++        String satisfiedResponseTimeAsString = context.getParameter("satisfiedResponseTimeMS", "");
++        if(!StringUtils.isEmpty(satisfiedResponseTimeAsString)) {
++            try {
++                satisfiedResponseTimeMS = Long.parseLong(satisfiedResponseTimeAsString);
++            } catch (Exception e) {
++                throw new IllegalArgumentException("Error parsing satisfiedResponseTimeMS '"
++                        +satisfiedResponseTimeAsString+"', message:"+e.getMessage());
++            }
++        } else {
++            throw new IllegalArgumentException("satisfiedResponseTimeMS is null or empty");
++        }
++
++        String toleratedResponseTimeAsString = context.getParameter("toleratedResponseTimeMS", "");
++        if(!StringUtils.isEmpty(toleratedResponseTimeAsString)) {
++            try {
++                toleratedResponseTimeMS = Long.parseLong(toleratedResponseTimeAsString);
++            } catch (Exception e) {
++                throw new IllegalArgumentException("Error parsing toleratedResponseTimeMS '"
++                        +satisfiedResponseTimeAsString+"', message:"+e.getMessage());
++            }
++        } else {
++            toleratedResponseTimeMS = 4*satisfiedResponseTimeMS;
++        }
++        
++        samplersList = context.getParameter("samplersList", "");
++        String[] samplers = samplersList.split(SEPARATOR);
++        samplersToFilter = new HashSet<String>();
++        for (String samplerName : samplers) {
++            samplersToFilter.add(samplerName.trim());
++        }
++        
++        resultsFile = context.getParameter("resultsFile");
++        reportFile = context.getParameter("reportFile");
++        
++        numberOfSatistiedResponses.set(0);
++        numberOfToleratedResponses.set(0);
++        totalResponses.set(0);
++    }
++
++    @Override
++    public void teardownTest(BackendListenerContext context) throws Exception {
++        ReportVisualizer reportVisualizer = new ReportVisualizer(samplersToFilter, satisfiedResponseTimeMS, toleratedResponseTimeMS);
++        ReportResultCollector collector = new ReportResultCollector();
++        collector.setFilename(resultsFile);
++        collector.setListener(reportVisualizer);
++        collector.loadExistingFile();
++        Map<String, SamplingStatCalculator> results = reportVisualizer.getResultsPerSampleLabel();
++        for (Map.Entry<String, SamplingStatCalculator> entry : results.entrySet()) {
++            System.out.println(entry.getKey()+":"+entry.getValue());
++        }
++        generateReport(reportFile, reportVisualizer);
++        samplersToFilter.clear();
++        super.teardownTest(context);
++    }
++    
++    private void generateReport(String reportFile, ReportVisualizer reportVisualizer) 
++        throws Exception {
++        Configuration cfg = new Configuration(Configuration.VERSION_2_3_21);
++        cfg.setDirectoryForTemplateLoading(new File(JMeterUtils.getJMeterHome(),"report_templates"));
++        cfg.setDefaultEncoding("UTF-8");
++        cfg.setTemplateExceptionHandler(TemplateExceptionHandler.HTML_DEBUG_HANDLER);
++        Writer writer = null;
++        try {
++            //Load template from source folder
++            Template template = cfg.getTemplate("HTML_REPORT.ftl");
++             
++            // Build the data-model
++            Map<String, Object> data = new HashMap<String, Object>();
++            data.put("APDEX", "APDEX:"+Float.toString(reportVisualizer.computeApdex()) + " for thresholds T:"+satisfiedResponseTimeMS+"ms, F:"+toleratedResponseTimeMS
++                    + "ms on samplers:"+samplersToFilter);
++            Map<String, SamplingStatCalculator> map = reportVisualizer.getResultsPerSampleLabel();
++            SamplingStatCalculator total = map.get(ReportVisualizer.TOTAL_ROW_LABEL);
++            data.put("TOTAL", total);
++            map.remove(ReportVisualizer.TOTAL_ROW_LABEL);
++            data.put("resultsPerSample", map);
++            writer = new BufferedWriter(new OutputStreamWriter(
++                    new FileOutputStream(reportFile), "UTF-8"));
++            // File output
++            template.process(data, writer);             
++        } finally {
++            JOrphanUtils.closeQuietly(writer);
++        }
++    }
++
++    @Override
++    public Arguments getDefaultParameters() {
++        Arguments arguments = new Arguments();
++        arguments.addArgument("satisfiedResponseTimeMS", "");
++        arguments.addArgument("toleratedResponseTimeMS", "");
++        arguments.addArgument("samplersList", "");
++        arguments.addArgument("resultsFile", "");
++        arguments.addArgument("reportFile", "");
++        return arguments;
++    }
++
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.visualizers.backend.AbstractBackendListenerClient#createSampleResult(org.apache.jmeter.visualizers.backend.BackendListenerContext, org.apache.jmeter.samplers.SampleResult)
++     */
++    @Override
++    public SampleResult createSampleResult(BackendListenerContext context,
++            SampleResult result) {
++        return result;
++    }
++}
+Index: src/components/org/apache/jmeter/visualizers/backend/apdex/ReportResultCollector.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/backend/apdex/ReportResultCollector.java	(revision 0)
++++ src/components/org/apache/jmeter/visualizers/backend/apdex/ReportResultCollector.java	(revision 0)
+@@ -0,0 +1,57 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.visualizers.backend.apdex;
++
++import org.apache.jmeter.reporters.ResultCollector;
++import org.apache.jmeter.reporters.Summariser;
++import org.apache.jmeter.samplers.SampleEvent;
++
++/**
++ * 
++ */
++public class ReportResultCollector extends ResultCollector {
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = 4360593252987031579L;
++
++    /**
++     * 
++     */
++    public ReportResultCollector() {
++        super();
++    }
++
++    /**
++     * @param summer
++     */
++    public ReportResultCollector(Summariser summer) {
++        super(summer);
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.reporters.ResultCollector#sampleOccurred(org.apache.jmeter.samplers.SampleEvent)
++     */
++    @Override
++    public void sampleOccurred(SampleEvent event) {
++        super.sampleOccurred(event);
++    }
++
++}
+Index: src/components/org/apache/jmeter/visualizers/backend/apdex/ReportVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/backend/apdex/ReportVisualizer.java	(revision 0)
++++ src/components/org/apache/jmeter/visualizers/backend/apdex/ReportVisualizer.java	(revision 0)
+@@ -0,0 +1,139 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.visualizers.backend.apdex;
++
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicLong;
++
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.visualizers.SamplingStatCalculator;
++import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
++
++/**
++ * @since 2.13
++ */
++public class ReportVisualizer extends AbstractVisualizer {
++    /**
++     * 
++     */
++    private static final long serialVersionUID = -783284260364641662L;
++    private final Map<String, SamplingStatCalculator> tableRows =
++            new ConcurrentHashMap<String, SamplingStatCalculator>();
++    public final static String TOTAL_ROW_LABEL = JMeterUtils
++            .getResString("aggregate_report_total_label"); //$NON-NLS-1$
++    /**
++     * T : Threshold for satistied users. 
++     * Response times <= satisfiedResponseTimeMS count towards satisfying 
++     */
++    private long satisfiedResponseTimeMS;
++    /**
++     * F : Threshold for tolerated users. 
++     * Response times > satisfiedResponseTimeMS and <= toleratedResponseTimeMS count towards tolerated response times 
++     * If user does not provide it, it is equal to 4xT
++     */
++    private long toleratedResponseTimeMS;
++
++    /**
++     * Set of samplers to filter, computed from samplersList
++     */
++    private Set<String> samplersToFilter;
++       
++    /**
++     * Number of Successful Responses for samplers in samplersToFilter  with Response Time <= T
++     */
++    private AtomicLong numberOfSatistiedResponses = new AtomicLong(0);
++    /**
++     * Number of Successful Responses for samplers in samplersToFilter with Response Time > T and <= F
++     */
++    private AtomicLong numberOfToleratedResponses = new AtomicLong(0);
++    /**
++     * Number of Responses for samplers in samplersToFilter  (OK + KO)
++     */
++    private AtomicLong totalResponses = new AtomicLong(0);
++
++    public ReportVisualizer(Set<String> samplersToFilter,
++            long satisfiedResponseTimeMS,
++            long toleratedResponseTimeMS) {
++        this.samplersToFilter = samplersToFilter;
++        this.satisfiedResponseTimeMS = satisfiedResponseTimeMS;
++        this.toleratedResponseTimeMS = toleratedResponseTimeMS;
++    }
++
++    @Override
++    public void add(SampleResult res) {
++        final String sampleLabel = res.getSampleLabel();
++        if(!samplersToFilter.contains(sampleLabel)) {
++            return;
++        }
++        SamplingStatCalculator row = null;
++        row = tableRows.get(sampleLabel);
++        if (row == null) {
++            row = new SamplingStatCalculator(sampleLabel);
++            tableRows.put(row.getLabel(), row);
++        }
++        row.addSample(res);
++        
++        SamplingStatCalculator tot = tableRows.get(TOTAL_ROW_LABEL);
++        if (tot == null) {
++            tot = new SamplingStatCalculator(TOTAL_ROW_LABEL);
++            tableRows.put(tot.getLabel(), tot);
++        }
++        tot.addSample(res);
++        
++        totalResponses.incrementAndGet();
++
++        if(res.isSuccessful()) {
++            if(res.getTime()<=satisfiedResponseTimeMS) {
++                numberOfSatistiedResponses.incrementAndGet();
++            } else if (res.getTime()<=toleratedResponseTimeMS) {
++                numberOfToleratedResponses.incrementAndGet();
++            }
++        }
++    }
++
++    public Map<String, SamplingStatCalculator> getResultsPerSampleLabel() {
++        return tableRows;
++    }
++    
++    @Override
++    public void clearData() {
++        tableRows.clear();
++        tableRows.put(TOTAL_ROW_LABEL, new SamplingStatCalculator(TOTAL_ROW_LABEL));
++        numberOfSatistiedResponses.set(0);
++        numberOfToleratedResponses.set(0);
++        totalResponses.set(0);
++    }
++
++    @Override
++    public String getLabelResource() {
++        return "TEST";
++    }
++
++    /**
++     * @return float APDEX
++     * See http://www.apdex.org/overview.html
++     */
++    public float computeApdex() {
++        double apdex = ((double)(numberOfSatistiedResponses.get()+numberOfToleratedResponses.get()/2))/totalResponses.get();
++        return (float)apdex;
++    }
++}

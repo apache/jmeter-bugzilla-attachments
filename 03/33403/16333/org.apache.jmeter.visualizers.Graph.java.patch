@@ -1,0 +1,108 @@
+--- /home/dane/tmp/jakarta-jmeter-2.1/src/components/org/apache/jmeter/visualizers/Graph.java	2005-07-12 16:50:29.000000000 -0400
++++ /home/dane/dev/jakarta-jmeter-2.1/src/components/org/apache/jmeter/visualizers/Graph.java	2005-09-06 05:23:04.000000000 -0400
+@@ -1,19 +1,19 @@
+ // $Header: /home/cvs/jakarta-jmeter/src/components/org/apache/jmeter/visualizers/Graph.java,v 1.16 2005/07/12 20:50:29 mstover1 Exp $
+ /*
+  * Copyright 2001-2004 The Apache Software Foundation.
+- * 
++ *
+  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+  * use this file except in compliance with the License. You may obtain a copy
+  * of the License at
+- * 
++ *
+  * http://www.apache.org/licenses/LICENSE-2.0
+- * 
++ *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+  * License for the specific language governing permissions and limitations
+  * under the License.
+- *  
++ *
+  */
+ 
+ package org.apache.jmeter.visualizers;
+@@ -23,6 +23,7 @@
+ import java.awt.Graphics;
+ import java.awt.Rectangle;
+ import java.util.Iterator;
++import java.util.List;
+ 
+ import javax.swing.JComponent;
+ import javax.swing.Scrollable;
+@@ -35,7 +36,7 @@
+ 
+ /**
+  * Implements a simple graph for displaying performance results.
+- * 
++ *
+  * @author Michael Stover Created March 21, 2002
+  * @version $Revision: 1.16 $ Last updated: $Date: 2005/07/12 20:50:29 $
+  */
+@@ -85,7 +86,7 @@
+ 
+ 	/**
+ 	 * Gets the PreferredScrollableViewportSize attribute of the Graph object.
+-	 * 
++	 *
+ 	 * @return the PreferredScrollableViewportSize value
+ 	 */
+ 	public Dimension getPreferredScrollableViewportSize() {
+@@ -95,7 +96,7 @@
+ 
+ 	/**
+ 	 * Gets the ScrollableUnitIncrement attribute of the Graph object.
+-	 * 
++	 *
+ 	 * @return the ScrollableUnitIncrement value
+ 	 */
+ 	public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+@@ -104,7 +105,7 @@
+ 
+ 	/**
+ 	 * Gets the ScrollableBlockIncrement attribute of the Graph object.
+-	 * 
++	 *
+ 	 * @return the ScrollableBlockIncrement value
+ 	 */
+ 	public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+@@ -113,7 +114,7 @@
+ 
+ 	/**
+ 	 * Gets the ScrollableTracksViewportWidth attribute of the Graph object.
+-	 * 
++	 *
+ 	 * @return the ScrollableTracksViewportWidth value
+ 	 */
+ 	public boolean getScrollableTracksViewportWidth() {
+@@ -122,7 +123,7 @@
+ 
+ 	/**
+ 	 * Gets the ScrollableTracksViewportHeight attribute of the Graph object.
+-	 * 
++	 *
+ 	 * @return the ScrollableTracksViewportHeight value
+ 	 */
+ 	public boolean getScrollableTracksViewportHeight() {
+@@ -188,14 +189,12 @@
+ 	public void paintComponent(Graphics g) {
+ 		super.paintComponent(g);
+ 
+-		synchronized (model.getSamples()) {
+-			Iterator e = model.getSamples().iterator();
++        List samples = model.getSamples();
++        synchronized (samples ) {
++			Iterator e = samples.iterator();
+ 
+-			for (int i = 0; e.hasNext(); i++) {
+-				Sample s = (Sample) e.next();
+-
+-				drawSample(i, s, g);
+-			}
++			for (int i = 0; e.hasNext(); i++)
++				drawSample(i, (Sample)e.next(), g);
+ 		}
+ 	}
+ 

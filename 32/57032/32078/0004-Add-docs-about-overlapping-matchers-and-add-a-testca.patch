@@ -1,0 +1,53 @@
+From 3e15a549f638c4b8ee809b8cfee551a7635b05cb Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 4 Oct 2014 13:57:52 +0200
+Subject: [PATCH 4/4] Add docs about overlapping matchers and add a testcase
+ for it.
+
+---
+ .../src/org/apache/jmeter/engine/util/TestValueReplacer.java | 12 ++++++++++++
+ xdocs/usermanual/component_reference.xml                     |  5 +++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java b/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java
+index d092c7c..44061f5 100644
+--- a/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java
++++ b/test/src/org/apache/jmeter/engine/util/TestValueReplacer.java
+@@ -92,6 +92,18 @@ public class TestValueReplacer extends JMeterTestCase {
+             assertEquals("${bounded_regex}", args.get(0).getStringValue());
+         }
+ 
++        public void testOverlappingMatches() throws Exception {
++            TestPlan plan = new TestPlan();
++            plan.addParameter("longMatch", "servername");
++            plan.addParameter("shortMatch", ".*");
++            ValueReplacer replacer = new ValueReplacer(plan);
++            TestElement element = new TestPlan();
++            element.setProperty(new StringProperty("domain", "servername.domain"));
++            replacer.reverseReplace(element, true);
++            String replacedDomain = element.getPropertyAsString("domain");
++            assertEquals("${${shortMatch}", replacedDomain);
++        }
++
+         public void testReplace() throws Exception {
+             ValueReplacer replacer = new ValueReplacer();
+             replacer.setUserDefinedVariables(variables.getUserDefinedVariables());
+diff --git a/xdocs/usermanual/component_reference.xml b/xdocs/usermanual/component_reference.xml
+index 9ca3a31..853dd5b 100644
+--- a/xdocs/usermanual/component_reference.xml
++++ b/xdocs/usermanual/component_reference.xml
+@@ -6181,6 +6181,11 @@ regex within parens, e.g <code>('.*?')</code> to match <code>'name'</code> out o
+ The variables will be checked ordered by the length of the matcher first and then by the name of the key.
+ </note>
+ 
++<p>Look out for overlapping matchers. For example the value <code>.*</code> as a regex in a variable named
++<code>regex</code> will partly match a previous replaced variable, which will result in something like
++<code>${{regex}</code>, which is most probably not the desired result.
++</p>
++
+ <p>If you want to match a whole string only, enclose it in <code>(^</code> and <code>$)</code>, e.g. <code>(^thus$)</code>.
+ The parens are neccessary, since the normally added boundary characters will prevent <code>^</code> and
+ <code>$</code> to match.</p>
+-- 
+1.9.1
+

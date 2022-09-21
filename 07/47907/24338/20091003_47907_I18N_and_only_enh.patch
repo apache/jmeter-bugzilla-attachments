@@ -1,0 +1,274 @@
+Index: /src/components/org/apache/jmeter/assertions/CompareAssertion.java
+===================================================================
+--- /src/components/org/apache/jmeter/assertions/CompareAssertion.java	(revision 820548)
++++ /src/components/org/apache/jmeter/assertions/CompareAssertion.java	(working copy)
+@@ -40,7 +40,7 @@
+     
+ 	private transient List<SampleResult> responses;
+ 
+-	private transient final StringSubstitution emptySub = new StringSubstitution("");
++	private transient final StringSubstitution emptySub = new StringSubstitution(""); //$NON-NLS-1$
+ 
+ 	private boolean compareContent = true;
+ 
+@@ -80,13 +80,14 @@
+ 					result.setFailure(true);
+                     StringBuffer buf = new StringBuffer();
+                     appendResultDetails(buf, prevResult);
+-                    buf.append("Response Time: ").append(prevTime);
++                    buf.append(JMeterUtils.getResString("comparison_response_time")).append(prevTime); //$NON-NLS-1$
+ 					result.addToBaseResult(buf.toString());
+ 					buf = new StringBuffer();
+                     appendResultDetails(buf, sResult);
+-					buf.append("Response Time: ").append(currentTime);
++					buf.append(JMeterUtils.getResString("comparison_response_time")).append(currentTime); //$NON-NLS-1$
+ 					result.addToSecondaryResult(buf.toString());
+-					result.setFailureMessage("Responses differ in response time by more than "+compareTime+" ms");
++					result.setFailureMessage(JMeterUtils.getResString("comparison_differ_time") //$NON-NLS-1$
++					        +compareTime+JMeterUtils.getResString("comparison_unit")); //$NON-NLS-1$
+ 					break;
+ 				}
+ 				prevResult = sResult;
+@@ -118,7 +119,7 @@
+ 					appendResultDetails(buf, sResult);
+ 					buf.append(currentContent);
+ 					result.addToSecondaryResult(buf.toString());
+-					result.setFailureMessage("Responses differ in content");
++					result.setFailureMessage(JMeterUtils.getResString("comparison_differ_content")); //$NON-NLS-1$
+ 					break;
+ 				}
+ 				prevResult = sResult;
+@@ -132,7 +133,7 @@
+         if (samplerData != null){
+             buf.append(samplerData.trim());
+         }
+-        buf.append("\n");
++        buf.append("\n"); //$NON-NLS-1$
+         final String requestHeaders = result.getRequestHeaders();
+         if (requestHeaders != null){
+             buf.append(requestHeaders);
+@@ -137,7 +138,7 @@
+         if (requestHeaders != null){
+             buf.append(requestHeaders);
+         }
+-        buf.append("\n\n");        
++        buf.append("\n\n"); //$NON-NLS-1$
+     }
+ 
+ 	private String filterString(String content) {
+Index: /src/components/org/apache/jmeter/assertions/CompareAssertionBeanInfo.java
+===================================================================
+--- /src/components/org/apache/jmeter/assertions/CompareAssertionBeanInfo.java	(revision 820548)
++++ /src/components/org/apache/jmeter/assertions/CompareAssertionBeanInfo.java	(working copy)
+@@ -23,6 +23,7 @@
+ 
+ import org.apache.jmeter.testbeans.BeanInfoSupport;
+ import org.apache.jmeter.testbeans.gui.TableEditor;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ public class CompareAssertionBeanInfo extends BeanInfoSupport {
+ 
+@@ -28,20 +29,22 @@
+ 
+ 	public CompareAssertionBeanInfo() {
+ 		super(CompareAssertion.class);
+-		createPropertyGroup("compareChoices", new String[] { "compareContent", "compareTime" });
+-		createPropertyGroup("comparison_filters", new String[]{"stringsToSkip"});
+-		PropertyDescriptor p = property("compareContent");
++		createPropertyGroup("compareChoices", new String[] { "compareContent", "compareTime" }); //$NON-NLS-1$ $NON-NLS-2$ $NON-NLS-3$
++		createPropertyGroup("comparison_filters", new String[]{"stringsToSkip"}); //$NON-NLS-1$ $NON-NLS-2$
++		PropertyDescriptor p = property("compareContent"); //$NON-NLS-1$
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, Boolean.TRUE);
+ 		p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+-		p = property("compareTime");
++		p = property("compareTime"); //$NON-NLS-1$
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, new Long(-1));
+ 		p.setValue(NOT_EXPRESSION, Boolean.FALSE);	
+-		p = property("stringsToSkip");
++		p = property("stringsToSkip"); //$NON-NLS-1$
+ 		p.setPropertyEditorClass(TableEditor.class);
+ 		p.setValue(TableEditor.CLASSNAME,SubstitutionElement.class.getName());
+-		p.setValue(TableEditor.HEADERS,new String[]{"Regex String","Substitution"}); // TODO I18n
++		p.setValue(TableEditor.HEADERS,new String[]{
++		        JMeterUtils.getResString("comparison_regex_string"), //$NON-NLS-1$
++		        JMeterUtils.getResString("comparison_regex_substitution")}); //$NON-NLS-1$
+ 		p.setValue(TableEditor.OBJECT_PROPERTIES, // These are the names of the get/set methods
+ 		        new String[]{SubstitutionElement.REGEX, SubstitutionElement.SUBSTITUTE});
+ 		p.setValue(NOT_UNDEFINED,Boolean.TRUE);
+
+Index: /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java
+===================================================================
+--- /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(revision 820548)
++++ /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(working copy)
+@@ -39,6 +39,7 @@
+ import org.apache.jmeter.assertions.CompareAssertionResult;
+ import org.apache.jmeter.samplers.Clearable;
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+ 
+ public class ComparisonVisualizer extends AbstractVisualizer implements Clearable {
+@@ -65,7 +66,7 @@
+ 	}
+ 
+ 	public String getLabelResource() {
+-		return "comparison_visualizer_title";
++		return "comparison_visualizer_title"; //$NON-NLS-1$
+ 	}
+ 
+ 	private void init() {
+@@ -92,6 +93,8 @@
+ 
+ 	private JTextPane getBaseTextPane() {
+ 		base = new JTextPane();
++		base.setEditable(false);
++		base.setBackground(getBackground());
+ 		return base;
+ 	}
+ 
+@@ -97,6 +100,7 @@
+ 
+ 	private JTextPane getSecondaryTextPane() {
+ 		secondary = new JTextPane();
++		secondary.setEditable(false);
+ 		return secondary;
+ 	}
+ 
+@@ -101,7 +105,7 @@
+ 	}
+ 
+ 	private JComponent getTreePanel() {
+-		root = new DefaultMutableTreeNode("Root");
++		root = new DefaultMutableTreeNode("Root"); //$NON-NLS-1$
+ 		treeModel = new DefaultTreeModel(root);
+ 		resultsTree = new JTree(treeModel);
+ 		resultsTree.setCellRenderer(new TreeNodeRenderer());
+@@ -141,8 +145,8 @@
+ 				base.setText(result.getBaseResult());
+ 				secondary.setText(result.getSecondaryResult());
+ 			} catch (Exception err) {
+-				base.setText("Invalid Node " + err);
+-				secondary.setText("Invalid Node " + err);
++				base.setText(JMeterUtils.getResString("comparison_invalid_node") + err); //$NON-NLS-1$
++				secondary.setText(JMeterUtils.getResString("comparison_invalid_node") + err); //$NON-NLS-1$
+ 			}
+ 			base.setCaretPosition(0);
+ 			secondary.setCaretPosition(0);
+@@ -155,8 +159,8 @@
+ 			// the child to be removed will always be 0 'cos as the nodes are
+ 			// removed the nth node will become (n-1)th
+ 			treeModel.removeNodeFromParent((DefaultMutableTreeNode) root.getChildAt(0));
+-			base.setText("");
+-			secondary.setText("");
++			base.setText(""); //$NON-NLS-1$
++			secondary.setText(""); //$NON-NLS-1$
+ 		}
+ 	}
+ 
+Index: /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java
+===================================================================
+--- /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java	(revision 820548)
++++ /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java	(working copy)
+@@ -21,6 +21,7 @@
+ import java.awt.Color;
+ import java.awt.Component;
+ 
++import javax.swing.ImageIcon;
+ import javax.swing.JTree;
+ import javax.swing.tree.DefaultMutableTreeNode;
+ import javax.swing.tree.DefaultTreeCellRenderer;
+@@ -26,6 +27,7 @@
+ import javax.swing.tree.DefaultTreeCellRenderer;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  * Tree cell renderer used by ComparisonVisualizer.
+@@ -32,6 +34,17 @@
+  */
+ public class TreeNodeRenderer extends DefaultTreeCellRenderer {
+ 
++    private static final long serialVersionUID = 240L;
++
++    // Same ViewResultsTree
++    private static final ImageIcon imageSuccess = JMeterUtils.getImage(
++            JMeterUtils.getPropDefault("viewResultsTree.success",  //$NON-NLS-1$
++                    "icon_success_sml.gif")); //$NON-NLS-1$
++
++    private static final ImageIcon imageFailure = JMeterUtils.getImage(
++            JMeterUtils.getPropDefault("viewResultsTree.failure",  //$NON-NLS-1$
++                    "icon_warning_sml.gif")); //$NON-NLS-1$
++    
+ 	public TreeNodeRenderer() {
+ 		super();
+ 	}
+@@ -45,6 +58,9 @@
+ 		{
+ 			if (!((SampleResult) obj).isSuccessful()) {
+ 				this.setForeground(Color.red);
++                this.setIcon(imageFailure);
++            } else {
++                this.setIcon(imageSuccess);
+ 			}
+ 		}
+ 		return this;
+Index: /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java
+===================================================================
+--- /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java	(revision 820548)
++++ /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java	(working copy)
+@@ -75,7 +75,7 @@
+ 			}
+ 			else
+ 			{
+-				baseResult = baseResult + "\n\n" + r;
++				baseResult = baseResult + "\n\n" + r; //$NON-NLS-1$
+ 			}
+ 		}
+ 		
+@@ -87,7 +87,7 @@
+ 			}
+ 			else
+ 			{
+-				secondaryResult = secondaryResult + "\n\n" + r;
++				secondaryResult = secondaryResult + "\n\n" + r; //$NON-NLS-1$
+ 			}
+ 		}
+ 	}
+
+Index: /src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- /src/core/org/apache/jmeter/resources/messages.properties	(revision 821390)
++++ /src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -127,6 +127,13 @@
+ column_number=Column number of CSV file | next | *alias
+ compare=Compare
+ comparefilt=Compare filter
++comparison_differ_content=Responses differ in content
++comparison_differ_time=Responses differ in response time by more than 
++comparison_invalid_node=Invalid Node 
++comparison_regex_string=Regex String
++comparison_regex_substitution=Substitution
++comparison_response_time=Response Time: 
++comparison_unit=\ ms
+ comparison_visualizer_title=Comparison Assertion Visualizer
+ config_element=Config Element
+ config_save_settings=Configure
+Index: /xdocs/usermanual/component_reference.xml
+===================================================================
+--- /xdocs/usermanual/component_reference.xml	(revision 820499)
++++ /xdocs/usermanual/component_reference.xml	(working copy)
+@@ -3413,8 +3413,8 @@
+ <properties>
+     <property name="Name" required="No">Descriptive name for this element that is shown in the tree.</property>
+     <property name="Compare Content" required="Yes">Whether or not to compare the content (response data)</property>
+-    <property name="Compare Time" required="Yes">If the value is >=0, then check if the time difference is no greater than the value. 
+-    I.e. if the value is 0, then the times must be exactly equal.</property>
++    <property name="Compare Time" required="Yes">If the value is >=0, then check if the response time difference is no greater than the value. 
++    I.e. if the value is 0, then the response times must be exactly equal.</property>
+     <property name="Comparison Filters" required="No">Filters can be used to remove strings from the content comparison.
+     For example, if the page has a time-stamp, it might be matched with: "Time: \d\d:\d\d:\d\d" and replaced with a dummy fixed time "Time: HH:MM:SS".
+     </property>
+

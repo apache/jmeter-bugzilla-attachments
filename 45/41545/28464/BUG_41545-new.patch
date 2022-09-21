@@ -1,0 +1,293 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WSDLOperation.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WSDLOperation.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WSDLOperation.java	(revision 0)
+@@ -0,0 +1,58 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.control.gui;
++
++/**
++ * Represent a WSDL template with Operation name
++ */
++public class WSDLOperation {
++    private String operationName = "";
++    private String requestTemplate = "";
++    
++    /**
++     * @param operationName
++     * @param requestTemplate
++     */
++    public WSDLOperation(String operationName, String requestTemplate) {
++        this.operationName = operationName;
++        this.requestTemplate = requestTemplate; 
++    }
++
++    /**
++     * @return the operationName
++     */
++    public String getOperationName() {
++        return operationName;
++    }
++
++    /**
++     * @return the requestTemplate
++     */
++    public String getRequestTemplate() {
++        return requestTemplate;
++    }
++
++    /**
++     * @see java.lang.Object#toString()
++     */
++    @Override
++    public String toString() {
++        return operationName;
++    }
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WSDLToSoapRequestGenerator.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WSDLToSoapRequestGenerator.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WSDLToSoapRequestGenerator.java	(revision 0)
+@@ -0,0 +1,32 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.control.gui;
++
++/**
++ * Gets WSDLOperation[] from WSDL
++ */
++public interface WSDLToSoapRequestGenerator {
++    /**
++     * Get methods from WSDL Url
++     * @param wsdlURL WSDL Url
++     * @return WSDLOperation[]
++     * @throws Exception
++     */
++    public WSDLOperation[] generateRequests(String wsdlURL) throws Exception;
++}
+\ No newline at end of file
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(revision 1293635)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(working copy)
+@@ -20,23 +20,31 @@
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Dimension;
+-import java.awt.GridBagLayout;
+ import java.awt.GridBagConstraints;
++import java.awt.GridBagLayout;
++import java.awt.Insets;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
++import java.lang.reflect.Modifier;
+ 
++import javax.swing.JButton;
+ import javax.swing.JCheckBox;
++import javax.swing.JComboBox;
++import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+ 
++import org.apache.commons.lang.StringUtils;
++import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jmeter.protocol.http.sampler.SoapSampler;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+-import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jorphan.gui.JLabeledTextArea;
+ import org.apache.jorphan.gui.JLabeledTextField;
+ 
+ public class SoapSamplerGui extends AbstractSamplerGui {
++    private static final String soapRequestTemplateGenerator = JMeterUtils.getPropDefault("soap_request_generator", ""); //$NON-NLS-1$
++
+     private static final long serialVersionUID = 240L;
+ 
+     private JLabeledTextField urlField;
+@@ -44,7 +52,12 @@
+     private JCheckBox sendSoapAction;
+     private JCheckBox useKeepAlive;
+     private JLabeledTextArea soapXml;
+-
++    private JLabeledTextField soapWsdl;
++    private JComboBox soapOperation;
++    private JButton retrieveSoapOperations;
++    private JButton generateSoapOperationTemplate;
++    
++    
+     private FilePanel soapXmlFile = new FilePanel();
+ 
+     public SoapSamplerGui() {
+@@ -109,6 +122,11 @@
+         sendSoapAction = new JCheckBox(JMeterUtils.getResString("soap_send_action"), true); //$NON-NLS-1$
+         useKeepAlive = new JCheckBox(JMeterUtils.getResString("use_keepalive")); // $NON-NLS-1$
+ 
++        retrieveSoapOperations = new JButton(JMeterUtils.getResString("soap_retrieve_operations")); //$NON-NLS-1$
++        generateSoapOperationTemplate = new JButton(JMeterUtils.getResString("soap_generate_template")); //$NON-NLS-1$
++        soapWsdl = new JLabeledTextField(JMeterUtils.getResString("soap_wsdl"), 10); //$NON-NLS-1$
++        soapOperation = new JComboBox();
++        
+         JPanel mainPanel = new JPanel(new BorderLayout());
+         JPanel soapActionPanel = new JPanel();
+         soapActionPanel.setLayout(new GridBagLayout());
+@@ -135,6 +153,40 @@
+         c.gridx = 0;
+         soapActionPanel.add(useKeepAlive, c);
+ 
++        JPanel soapOperationPanel = new JPanel();
++        c.fill = GridBagConstraints.HORIZONTAL;
++        c.gridwidth = 2;
++        c.gridx = 0;
++        c.gridy = 3;
++        soapActionPanel.add(soapOperationPanel, c);
++
++        soapOperationPanel.setLayout(new GridBagLayout());
++        c = new GridBagConstraints();
++        c.anchor = GridBagConstraints.WEST;
++        c.fill = GridBagConstraints.NONE;
++        c.gridx = 0;
++        c.gridy = 0;
++        c.weightx = 0;
++        soapOperationPanel.add(retrieveSoapOperations, c);
++        c.fill = GridBagConstraints.HORIZONTAL;
++        c.insets = new Insets(0, 5, 5, 0);
++        c.gridx = 1;
++        c.weightx = 1;
++        soapOperationPanel.add(soapWsdl, c);
++
++        c.fill = GridBagConstraints.NONE;
++        c.gridx = 0;
++        c.gridy = 1;
++        c.insets = new Insets(0, 0, 5, 0);
++        c.weightx = 0;
++        soapOperationPanel.add(generateSoapOperationTemplate, c);
++        c.fill = GridBagConstraints.HORIZONTAL;
++        c.insets = new Insets(0, 5, 5, 0);
++        c.gridx = 1;
++        c.weightx = 1;
++        soapOperationPanel.add(soapOperation, c);
++
++        
+         mainPanel.add(soapActionPanel, BorderLayout.NORTH);
+         mainPanel.add(soapXml, BorderLayout.CENTER);
+         mainPanel.add(soapXmlFile, BorderLayout.SOUTH);
+@@ -145,6 +197,62 @@
+             }
+             });
+ 
++        retrieveSoapOperations.addActionListener(new ActionListener() {
++                public void actionPerformed(ActionEvent e) {
++                    try {
++                        String url = soapWsdl.getText();
++                        if(url != null && url.length() > 0) {
++                            if(!StringUtils.isEmpty(soapRequestTemplateGenerator)) {
++                                Class<?> commandClass = Class.forName(soapRequestTemplateGenerator);
++                                if (!Modifier.isAbstract(commandClass.getModifiers())) {
++                                    WSDLToSoapRequestGenerator generator = (WSDLToSoapRequestGenerator) commandClass.newInstance();
++                                    WSDLOperation[] operations = generator.generateRequests(url);
++                                    soapOperation.removeAllItems();
++                                    for(int i = 0; i < operations.length; i++) {
++                                        soapOperation.addItem(operations[i]);
++                                    }                                    
++                                }
++                            } else {
++                                JOptionPane.showMessageDialog(SoapSamplerGui.this,
++                                        JMeterUtils.getResString("soap_no_implementation"), 
++                                        JMeterUtils.getResString("soap_warning"),
++                                        JOptionPane.WARNING_MESSAGE);
++                            }
++                        }
++                    } catch (Exception ex) {
++                        throw new Error(ex);
++                    }
++                }
++            });
++
++        generateSoapOperationTemplate.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent e) {
++                try {
++                    if(soapOperation.getItemCount() > 0) {
++                        org.apache.jmeter.protocol.http.control.gui.WSDLOperation operation = (WSDLOperation)soapOperation.getSelectedItem();
++                        boolean fillInTemplate = true;
++
++                        if(soapXml.getText().length() > 0) {
++                            fillInTemplate = false;
++                            
++                            int result = JOptionPane.showConfirmDialog(SoapSamplerGui.this, JMeterUtils.getResString("soap_soapxml_overwrite"), // $NON-NLS-1$
++                                    JMeterUtils.getResString("soap_warning"), JOptionPane.OK_CANCEL_OPTION, JOptionPane.ERROR_MESSAGE);
++                            if(result == 0) {
++                                fillInTemplate = true;
++                            }
++                        }
++
++                        if(fillInTemplate) {
++                            soapXml.setText(operation.getRequestTemplate());
++                        }
++                    }
++                } catch (Exception ex) {
++                    throw new Error(ex);
++                }
++            }
++        });
++
++
+         add(mainPanel, BorderLayout.CENTER);
+     }
+ 
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1293635)
++++ bin/jmeter.properties	(working copy)
+@@ -780,7 +780,7 @@
+ # CookieManager behaviour - should Cookies be stored as variables?
+ # Default is false
+ #CookieManager.save.cookies=false
+- 
++
+ # CookieManager behaviour - prefix to add to cookie name before storing it as a variable
+ # Default is COOKIE_; to remove the prefix, define it as one or more spaces
+ #CookieManager.name.prefix=
+@@ -855,6 +855,10 @@
+ # These are in addition to lib/ext. Do not use this for utility jars.
+ #search_paths=/app1/lib;/app2/lib
+ 
++# Implementation of org.apache.jmeter.protocol.http.control.gui.WSDLToSoapRequestGenerator interface
++# Used to generate SOAP template requests
++#soap_request_generator=
++
+ # Users can define additional classpath items by setting the property below
+ # - for example, utility jars or JUnit test cases
+ #

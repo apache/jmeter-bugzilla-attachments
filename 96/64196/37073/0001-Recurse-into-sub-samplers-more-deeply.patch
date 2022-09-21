@@ -1,0 +1,68 @@
+From c4714992c979288f2698dc371dd15c0e211df577 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 8 Mar 2020 15:26:25 +0100
+Subject: [PATCH] Recurse into sub samplers more deeply
+
+---
+ .../apache/jmeter/threads/JMeterThread.java   | 38 +++++++++++--------
+ 1 file changed, 23 insertions(+), 15 deletions(-)
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/threads/JMeterThread.java b/src/core/src/main/java/org/apache/jmeter/threads/JMeterThread.java
+index b730df8ec8..af8e8bf201 100644
+--- a/src/core/src/main/java/org/apache/jmeter/threads/JMeterThread.java
++++ b/src/core/src/main/java/org/apache/jmeter/threads/JMeterThread.java
+@@ -879,21 +879,7 @@ public class JMeterThread implements Runnable, Interruptible {
+                 }
+                 if (scopedAssertion.isScopeChildren(scope)
+                         || scopedAssertion.isScopeAll(scope)) {
+-                    SampleResult[] children = parent.getSubResults();
+-                    boolean childError = false;
+-                    for (SampleResult childSampleResult : children) {
+-                        processAssertion(childSampleResult, assertion);
+-                        if (!childSampleResult.isSuccessful()) {
+-                            childError = true;
+-                        }
+-                    }
+-                    // If parent is OK, but child failed, add a message and flag the parent as failed
+-                    if (childError && parent.isSuccessful()) {
+-                        AssertionResult assertionResult = new AssertionResult(((AbstractTestElement) assertion).getName());
+-                        assertionResult.setResultForFailure("One or more sub-samples failed");
+-                        parent.addAssertionResult(assertionResult);
+-                        parent.setSuccessful(false);
+-                    }
++                    recurseAssertionChecks(parent, assertion, 3);
+                 }
+             } else {
+                 processAssertion(parent, assertion);
+@@ -902,6 +888,28 @@ public class JMeterThread implements Runnable, Interruptible {
+         threadContext.getVariables().put(LAST_SAMPLE_OK, Boolean.toString(parent.isSuccessful()));
+     }
+ 
++    private void recurseAssertionChecks(SampleResult parent, Assertion assertion, int level) {
++        if (level < 0) {
++            return;
++        }
++        SampleResult[] children = parent.getSubResults();
++        boolean childError = false;
++        for (SampleResult childSampleResult : children) {
++            processAssertion(childSampleResult, assertion);
++            recurseAssertionChecks(childSampleResult, assertion, level - 1);
++            if (!childSampleResult.isSuccessful()) {
++                childError = true;
++            }
++        }
++        // If parent is OK, but child failed, add a message and flag the parent as failed
++        if (childError && parent.isSuccessful()) {
++            AssertionResult assertionResult = new AssertionResult(((AbstractTestElement) assertion).getName());
++            assertionResult.setResultForFailure("One or more sub-samples failed");
++            parent.addAssertionResult(assertionResult);
++            parent.setSuccessful(false);
++        }
++    }
++
+     private void processAssertion(SampleResult result, Assertion assertion) {
+         AssertionResult assertionResult;
+         try {
+-- 
+2.17.1
+

@@ -1,0 +1,35 @@
+--- \jakarta-jmeter-cvs\jakarta-jmeter\src\org\apache\jmeter\timers\gui\ConstantTimerGui.java	Thu Jul 26 00:34:52 2001
++++ \jakarta-jmeter-nightly\2001.09.15\jakarta-jmeter\src\org\apache\jmeter\timers\gui\ConstantTimerGui.java	Tue Sep 18 14:08:54 2001
+@@ -124,7 +124,24 @@
+ 			}
+ 			else
+ 			{
+-				model.setDelay(Long.parseLong(delayField.getText()));
++				try
++				{
++					model.setDelay(Long.parseLong(delayField.getText()));
++				}
++				catch (NumberFormatException nfe)
++				{
++					if (delayField.getText().length() > 0)
++					{
++						JOptionPane.showMessageDialog(this, "You must enter a valid number",
++								"Invalid data", JOptionPane.WARNING_MESSAGE);
++						model.setDelay(model.getDefaultDelay());
++						delayField.setText("");
++					}
++					else
++					{
++						model.setDelay(model.getDefaultDelay());
++					}
++				}
+ 			}
+ 		}
+ 
+@@ -135,4 +152,4 @@
+ 	public void keyTyped(KeyEvent e)
+ 	{
+ 	}
+-}
+\ No newline at end of file
++}

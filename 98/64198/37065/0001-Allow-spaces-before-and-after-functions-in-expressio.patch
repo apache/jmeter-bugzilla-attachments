@@ -1,0 +1,117 @@
+From 0d383f5e8b2a61d76c8b2b865e7b42e061e54f54 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Thu, 5 Mar 2020 21:35:20 +0100
+Subject: [PATCH] Allow spaces before and after functions in expressions
+
+---
+ .../jmeter/engine/util/FunctionParser.java    | 14 ++++-
+ .../engine/util/FunctionParserSpec.groovy     | 62 +++++++++++++++++++
+ 2 files changed, 74 insertions(+), 2 deletions(-)
+ create mode 100644 src/core/src/test/groovy/org/apache/jmeter/engine/util/FunctionParserSpec.groovy
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java b/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java
+index 5c19d4e951..8f5a16c2b4 100644
+--- a/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java
++++ b/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java
+@@ -125,10 +125,10 @@ class FunctionParser {
+                     buffer.append(current[0]);
+                 } else if (current[0] == '(' && previous != ' ') {
+                     String funcName = buffer.toString();
+-                    function = CompoundVariable.getNamedFunction(funcName);
++                    function = CompoundVariable.getNamedFunction(funcName.trim());
+                     if (function instanceof Function) {
+                         ((Function) function).setParameters(parseParams(reader));
+-                        if (reader.read(current) == 0 || current[0] != '}') {
++                        if (firstNonSpace(reader, '#') != '}') {
+                             reader.reset();// set to start of string
+                             char []cb = new char[100];
+                             int nbRead = reader.read(cb);
+@@ -162,6 +162,16 @@ class FunctionParser {
+         return buffer.toString();
+     }
+ 
++    private char firstNonSpace(StringReader reader, char defaultResult) throws IOException {
++        char[] current = new char[1];
++        while (reader.read(current) == 1) {
++            if (!Character.isSpaceChar(current[0])) {
++                return current[0];
++            }
++        }
++        return defaultResult;
++    }
++
+     /**
+      * Compile a String into a list of parameters, each made into a
+      * CompoundVariable.
+diff --git a/src/core/src/test/groovy/org/apache/jmeter/engine/util/FunctionParserSpec.groovy b/src/core/src/test/groovy/org/apache/jmeter/engine/util/FunctionParserSpec.groovy
+new file mode 100644
+index 0000000000..5913437c33
+--- /dev/null
++++ b/src/core/src/test/groovy/org/apache/jmeter/engine/util/FunctionParserSpec.groovy
+@@ -0,0 +1,62 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to you under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.engine.util
++
++import org.apache.jmeter.functions.Function
++import org.apache.jmeter.samplers.SampleResult
++import org.apache.jmeter.samplers.Sampler
++
++import spock.lang.Specification
++import spock.lang.Unroll
++
++@Unroll
++class FunctionParserSpec extends Specification {
++    def "function '#value' gets compiled"() {
++        given:
++            CompoundVariable.functions.put('__func', Func.class)
++            def parser = new FunctionParser()
++        when:
++            def result = parser.compileString(value)
++        then:
++            "$result" == "$expected"
++        where:
++            value           | expected
++            '${__func()}'   | [new Func()]
++            '${ __func()}'  | [new Func()]
++            '${__func() }'  | [new Func()]
++            '${ __func() }' | [new Func()]
++    }
++
++    public static class Func implements Function {
++        void setParameters(Collection params) {
++            // do nothing
++        }
++        String getReferenceKey() {
++            return "__func"
++        }
++        List<String> getArgumentDesc() {
++            return Collections.emptyList()
++        }
++        String execute(SampleResult result, Sampler sampler) {
++            return "done"
++        }
++        String toString() {
++            return "__func()"
++        }
++    }
++}
+\ No newline at end of file
+-- 
+2.17.1
+

@@ -1,0 +1,129 @@
+Index: src/org/apache/jmeter/functions/TestDigestFunction.java
+===================================================================
+--- src/org/apache/jmeter/functions/TestDigestFunction.java	(revision 0)
++++ src/org/apache/jmeter/functions/TestDigestFunction.java	(working copy)
+@@ -0,0 +1,124 @@
++package org.apache.jmeter.functions;
++
++import static org.junit.Assert.assertEquals;
++
++import java.util.Collection;
++import java.util.LinkedList;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.Before;
++import org.junit.Test;
++/**
++ * Test Digest function
++ * 
++ * Add Tests with Sha1 and Sha512
++ * 
++ * @author orim
++ *
++ */
++public class TestDigestFunction extends JMeterTestCase {
++	protected AbstractFunction digest;	
++
++    private SampleResult result;
++
++    private Collection<CompoundVariable> params;
++
++    private JMeterVariables vars;
++
++    private JMeterContext jmctx;
++
++    @Before
++    public void setUp() {
++    	digest = new DigestEncode();
++        result = new SampleResult();
++        jmctx = JMeterContextService.getContext();
++        String data = "dummy data";
++        result.setResponseData(data, null);
++        vars = new JMeterVariables();
++        jmctx.setVariables(vars);
++        jmctx.setPreviousResult(result);
++        params = new LinkedList<>();
++    }
++    
++    
++    @Test
++    public void testParameterCount512() throws Exception {
++    	checkInvalidParameterCounts(digest, 2, 5);
++    }   
++    
++    @Test
++    public void testSha512() throws Exception {
++    	params.add(new CompoundVariable("SHA-512"));
++    	params.add(new CompoundVariable("nofile"));
++    	params.add(new CompoundVariable("nofile"));
++    	digest.setParameters(params);
++    	String returnValue = digest.execute(result, null);
++    	assertEquals("0a76f7cd4f3cd9bec27146c32a8cad3de865a48d07ff6a2a40f18f2b3307fef4d0de695d14c90234bd453b375aa2974ba17743564bc782ad1d6cf8b3f4db72a4", returnValue);
++    }      
++    
++    @Test
++    public void testSha1() throws Exception {
++    	params.add(new CompoundVariable("SHA-1"));    	
++    	params.add(new CompoundVariable("nofile"));    	
++    	digest.setParameters(params);
++    	String returnValue = digest.execute(result, null);
++    	assertEquals("4ea2ced10057872be25371cfe638d3b096c58f2f", returnValue);
++    }
++    
++    @Test
++    public void testSha1Variable() throws Exception {
++    	params.add(new CompoundVariable("SHA-1"));    	
++    	params.add(new CompoundVariable("nofile"));  
++    	params.add(new CompoundVariable(""));  
++    	params.add(new CompoundVariable("true"));
++    	params.add(new CompoundVariable("newVar"));  	
++    	digest.setParameters(params);
++    	String returnValue = digest.execute(result, null);
++    	assertEquals("4EA2CED10057872BE25371CFE638D3B096C58F2F", returnValue);
++    }
++
++    @Test
++    public void testSha512Variable() throws Exception {    	
++    	params.add(new CompoundVariable("SHA-512"));
++    	params.add(new CompoundVariable("nofile"));  
++    	params.add(new CompoundVariable(""));  
++    	params.add(new CompoundVariable("true"));
++    	params.add(new CompoundVariable("newVar"));
++        digest.setParameters(params);
++        String returnValue = digest.execute(result, null);
++        assertEquals("58DA94D45A97B35B31D7F76D2EBAC184BC4BDA512B966CDBE43FDE1CAE1CFAF89617082CA89928FB5DC1C75D60B93ADB5631F518F970CA6DCC196E1AFC678B8C", returnValue);
++    }
++    
++    @Test
++    public void testSha512Error() throws Exception {
++    	params.add(new CompoundVariable("nofile"));		
++    	boolean isFailed = false;
++    	try {
++    		digest.setParameters(params);
++    		digest.execute(result, null);
++    	} catch (InvalidVariableException e) {
++    		// expect failure
++    		isFailed = true;
++    	}
++    	assertEquals(isFailed, true);
++    }
++    
++    @Test
++	public void testSha1Error() throws Exception {
++		boolean isFailed = false;
++		try {
++	    	params.add(new CompoundVariable("SHA-1"));    	
++			digest.setParameters(params);
++			digest.execute(result, null);
++		} catch (InvalidVariableException e) {
++			// expect failure
++			isFailed = true;
++		}
++		assertEquals(isFailed, true);
++	}
++}

@@ -1,0 +1,637 @@
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/AuthManager.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/AuthManager.java
+index ca82dce..832639f 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/control/AuthManager.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/AuthManager.java
+@@ -52,7 +52,7 @@ import org.apache.log.Logger;
+  *
+  */
+ public class AuthManager extends ConfigTestElement implements Serializable {
+-    private static final long serialVersionUID = 233L;
++    private static final long serialVersionUID = 234L;
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+@@ -64,6 +64,7 @@ public class AuthManager extends ConfigTestElement implements Serializable {
+         "password",      //$NON-NLS-1$
+         "domain",        //$NON-NLS-1$
+         "realm",         //$NON-NLS-1$
++        "kerberos",      //$NON-NLS-1$
+         };
+ 
+     // Column numbers - must agree with order above
+@@ -72,6 +73,7 @@ public class AuthManager extends ConfigTestElement implements Serializable {
+     public static final int COL_PASSWORD = 2;
+     public static final int COL_DOMAIN = 3;
+     public static final int COL_REALM = 4;
++    public static final int COL_KERBEROS = 5;
+ 
+     private static final int COLUMN_COUNT = COLUMN_RESOURCE_NAMES.length;
+ 
+@@ -92,8 +94,8 @@ public class AuthManager extends ConfigTestElement implements Serializable {
+     /**
+      * Update an authentication record.
+      */
+-    public void set(int index, String url, String user, String pass, String domain, String realm) {
+-        Authorization auth = new Authorization(url, user, pass, domain, realm);
++    public void set(int index, String url, String user, String pass, String domain, String realm, boolean kerberos) {
++        Authorization auth = new Authorization(url, user, pass, domain, realm, kerberos);
+         if (index >= 0) {
+             getAuthObjects().set(index, new TestElementProperty(auth.getName(), auth));
+         } else {
+@@ -254,11 +256,15 @@ public class AuthManager extends ConfigTestElement implements Serializable {
+                     String pass = st.nextToken();
+                     String domain = "";
+                     String realm = "";
++                    boolean kerberos = false;
+                     if (st.hasMoreTokens()){// Allow for old format file without the extra columnns
+                         domain = st.nextToken();
+                         realm = st.nextToken();
+                     }
+-                    Authorization auth = new Authorization(url, user, pass,domain,realm);
++                    if (st.hasMoreTokens()){// Allow for old format file without kerberos support
++                        kerberos = Boolean.valueOf(st.nextToken());
++                    }
++                    Authorization auth = new Authorization(url, user, pass,domain,realm,kerberos);
+                     getAuthObjects().addItem(auth);
+                 } catch (NoSuchElementException e) {
+                     log.error("Error parsing auth line: '" + line + "'");
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/Authorization.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/Authorization.java
+index 8f85c60..615beef 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/control/Authorization.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/Authorization.java
+@@ -30,7 +30,7 @@ import org.apache.jmeter.testelement.AbstractTestElement;
+  */
+ public class Authorization extends AbstractTestElement implements Serializable {
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 241L;
+ 
+     private static final String URL = "Authorization.url"; // $NON-NLS-1$
+ 
+@@ -42,17 +42,20 @@ public class Authorization extends AbstractTestElement implements Serializable {
+ 
+     private static final String REALM = "Authorization.realm"; // $NON-NLS-1$
+ 
++    private static final String KERBEROS = "Authorization.kerberos"; // $NON-NLS-1$
++
+     private static final String TAB = "\t"; // $NON-NLS-1$
+ 
+     /**
+      * create the authorization
+      */
+-    Authorization(String url, String user, String pass, String domain, String realm) {
++    Authorization(String url, String user, String pass, String domain, String realm, boolean kerberos) {
+         setURL(url);
+         setUser(user);
+         setPass(pass);
+         setDomain(domain);
+         setRealm(realm);
++        setKerberos(kerberos);
+     }
+ 
+     public boolean expectsModification() {
+@@ -60,7 +63,7 @@ public class Authorization extends AbstractTestElement implements Serializable {
+     }
+ 
+     public Authorization() {
+-        this("","","","","");
++        this("","","","","", false);
+     }
+ 
+     public void addConfigElement(ConfigElement config) {
+@@ -106,10 +109,18 @@ public class Authorization extends AbstractTestElement implements Serializable {
+         setProperty(REALM, realm);
+     }
+ 
++    public boolean getKerberos() {
++        return getPropertyAsBoolean(KERBEROS);
++    }
++
++    public void setKerberos(boolean kerberos) {
++        setProperty(KERBEROS, kerberos);
++    }
++
+     // Used for saving entries to a file
+     @Override
+     public String toString() {
+-        return getURL() + TAB + getUser() + TAB + getPass() + TAB + getDomain() + TAB + getRealm();
++        return getURL() + TAB + getUser() + TAB + getPass() + TAB + getDomain() + TAB + getRealm() + TAB + getKerberos();
+     }
+ 
+     public String toBasicHeader(){
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManager.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManager.java
+new file mode 100644
+index 0000000..cae5a6f
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManager.java
+@@ -0,0 +1,165 @@
++package org.apache.jmeter.protocol.http.control;
++
++import java.io.IOException;
++import java.io.Serializable;
++import java.util.concurrent.Callable;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.ConcurrentMap;
++import java.util.concurrent.ExecutionException;
++import java.util.concurrent.Future;
++import java.util.concurrent.FutureTask;
++
++import javax.security.auth.Subject;
++import javax.security.auth.callback.Callback;
++import javax.security.auth.callback.CallbackHandler;
++import javax.security.auth.callback.NameCallback;
++import javax.security.auth.callback.PasswordCallback;
++import javax.security.auth.callback.UnsupportedCallbackException;
++import javax.security.auth.login.LoginContext;
++import javax.security.auth.login.LoginException;
++
++import org.apache.jmeter.config.ConfigTestElement;
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++import org.apache.jmeter.testbeans.TestBean;
++import org.apache.jmeter.testelement.TestIterationListener;
++import org.apache.jmeter.testelement.TestStateListener;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class KerberosManager extends ConfigTestElement implements Serializable,
++        TestIterationListener, TestStateListener, TestBean {
++
++    private static final long serialVersionUID = 2L;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private ConcurrentMap<String, Future<Subject>> subjects;
++
++    public KerberosManager() {
++        clearSubjects();
++    }
++
++    @Override
++    public void clear() {
++        super.clear();
++        clearSubjects();
++    }
++
++    private void clearSubjects() {
++        subjects = new ConcurrentHashMap<String, Future<Subject>>();
++    }
++
++    public Subject getSubjectForUser(final String username,
++            final String password) {
++        Callable<Subject> callable = new Callable<Subject>() {
++
++            @Override
++            public Subject call() throws Exception {
++                LoginContext loginCtx;
++                try {
++                    loginCtx = new LoginContext("Client",
++                            new LoginCallbackHandler(username, password));
++                    loginCtx.login();
++                    return loginCtx.getSubject();
++                } catch (LoginException e) {
++                    log.warn("Could not log in user " + username, e);
++                }
++                return null;
++            }
++        };
++
++        FutureTask<Subject> task = new FutureTask<Subject>(callable);
++        Future<Subject> subjectFuture = subjects.putIfAbsent(username, task);
++        if (subjectFuture == null) {
++            subjectFuture = task;
++            task.run();
++        }
++        try {
++            return subjectFuture.get();
++        } catch (InterruptedException e1) {
++            log.warn("Interrupted while getting subject for " + username, e1);
++        } catch (ExecutionException e1) {
++            log.warn(
++                    "Execution of getting subject for " + username + " failed",
++                    e1);
++        }
++        return null;
++    }
++
++    @Override
++    public void testIterationStart(LoopIterationEvent event) {
++        // TODO Auto-generated method stub
++    }
++
++    static private class LoginCallbackHandler implements CallbackHandler {
++        private String password;
++        private String username;
++
++        public LoginCallbackHandler(final String username, final String password) {
++            super();
++            this.username = username;
++            this.password = password;
++        }
++
++        @Override
++        public void handle(Callback[] callbacks) throws IOException,
++                UnsupportedCallbackException {
++            for (Callback callback : callbacks) {
++                if (callback instanceof NameCallback && username != null) {
++                    NameCallback nc = (NameCallback) callback;
++                    nc.setName(username);
++                } else if (callback instanceof PasswordCallback) {
++                    PasswordCallback pc = (PasswordCallback) callback;
++                    pc.setPassword(password.toCharArray());
++                } else {
++                    /*
++                     * throw new UnsupportedCallbackException( callback,
++                     * "Unrecognized Callback");
++                     */
++                }
++            }
++        }
++    }
++    
++    public String getKrb5Conf() {
++        return System.getProperty("java.security.krb5.conf");
++    }
++
++    public void setKrb5Conf(String krb5Conf) {
++        System.setProperty("java.security.krb5.conf", krb5Conf);
++    }
++
++    public boolean getKrb5Debug() {
++        return Boolean.valueOf(System.getProperty("java.security.krb5.debug", "False"));
++    }
++
++    public void setKrb5Debug(boolean krb5Debug) {
++        System.setProperty("sun.security.krb5.debug",
++                Boolean.toString(krb5Debug));
++    }
++
++    public String getJaasConf() {
++        return System.getProperty("java.security.auth.login.config");
++    }
++
++    public void setJaasConf(String jaasLocation) {
++        System.setProperty("java.security.auth.login.config", jaasLocation);
++    }
++
++    @Override
++    public void testStarted() {
++    }
++
++    @Override
++    public void testStarted(String host) {
++    }
++
++    @Override
++    public void testEnded() {
++    }
++
++    @Override
++    public void testEnded(String host) {
++    }
++
++}
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManagerBeanInfo.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManagerBeanInfo.java
+new file mode 100644
+index 0000000..fba0ee9
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManagerBeanInfo.java
+@@ -0,0 +1,33 @@
++package org.apache.jmeter.protocol.http.control;
++
++import java.beans.PropertyDescriptor;
++
++import org.apache.jmeter.testbeans.BeanInfoSupport;
++
++public class KerberosManagerBeanInfo extends BeanInfoSupport {
++
++    private static final String JAAS_CONF = "jaasConf"; // $NON-NLS-1$
++    private static final String KRB5_CONF = "krb5Conf"; // $NON-NLS-1$
++    private static final String KRB5_DEBUG = "krb5Debug"; // $NON-NLS-1$
++    
++    public KerberosManagerBeanInfo() {
++        super(KerberosManager.class);
++        
++        createPropertyGroup("settings", new String[] {KRB5_CONF, JAAS_CONF, KRB5_DEBUG});
++        
++        PropertyDescriptor krb5Conf = property(KRB5_CONF);
++        krb5Conf.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        krb5Conf.setValue(DEFAULT, "/etc/krb5.conf");
++        
++        PropertyDescriptor jaasConf = property(JAAS_CONF);
++        jaasConf.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        jaasConf.setValue(DEFAULT, "/etc/login.conf");
++        
++        PropertyDescriptor krb5Debug = property(KRB5_DEBUG);
++        krb5Debug.setValue(DEFAULT, Boolean.FALSE);
++        krb5Debug.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        krb5Debug.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        krb5Debug.setValue(NOT_OTHER, Boolean.TRUE);
++    }
++
++}
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManagerResources.properties b/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManagerResources.properties
+new file mode 100644
+index 0000000..a90eef1
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/KerberosManagerResources.properties
+@@ -0,0 +1,8 @@
++displayName=Kerberos Configuration
++settings=Kerberos Settings
++jaasConf.displayName=jaas file
++jaasConf.shortDescription=Location of jaas login.conf file
++krb5Conf.displayName=krb5.conf file
++krb5Conf.shortDescription=Location of krb5.conf file
++krb5Debug.displayName=Enable debug infos
++krb5Debug.shortDescription=Enable debug informations
+\ No newline at end of file
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/gui/AuthPanel.java b/src/protocol/http/org/apache/jmeter/protocol/http/gui/AuthPanel.java
+index 3eab28b..82de407 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/gui/AuthPanel.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/gui/AuthPanel.java
+@@ -57,7 +57,8 @@ import org.apache.log.Logger;
+  * user selects.
+  */
+ public class AuthPanel extends AbstractConfigGui implements ActionListener {
+-    private static final long serialVersionUID = -9214884465261470761L;
++
++    private static final long serialVersionUID = -378312656300713636L;
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+@@ -357,6 +358,8 @@ public class AuthPanel extends AbstractConfigGui implements ActionListener {
+                     return auth.getDomain();
+                 case AuthManager.COL_REALM:
+                     return auth.getRealm();
++                case AuthManager.COL_KERBEROS:
++                	return auth.getKerberos();
+                 default:
+                     return null;
+             }
+@@ -382,6 +385,9 @@ public class AuthPanel extends AbstractConfigGui implements ActionListener {
+                 case AuthManager.COL_REALM:
+                     auth.setRealm((String) value);
+                     break;
++                case AuthManager.COL_KERBEROS:
++                    auth.setKerberos((Boolean) value);
++                    break;
+                 default:
+                     break;
+             }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPAbstractImpl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPAbstractImpl.java
+index 0e89a60..4250a40 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPAbstractImpl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPAbstractImpl.java
+@@ -29,6 +29,7 @@ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.control.KerberosManager;
+ import org.apache.jmeter.protocol.http.util.HTTPConstantsInterface;
+ import org.apache.jmeter.protocol.http.util.HTTPFileArg;
+ import org.apache.jmeter.samplers.Interruptible;
+@@ -122,6 +123,13 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
+     }
+ 
+     /**
++     * Incokes {@link HTTPSamplerBase#getKerberosManager()}
++     */
++    protected KerberosManager getKerberosManager() {
++        return testElement.getKerberosManager();
++    }
++
++    /**
+      * Invokes {@link HTTPSamplerBase#getHTTPFiles()}
+      */
+     protected HTTPFileArg[] getHTTPFiles() {
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+index 48869fc..28deab3 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+@@ -30,11 +30,16 @@ import java.net.URL;
+ import java.net.URLDecoder;
+ import java.nio.charset.Charset;
+ import java.security.GeneralSecurityException;
++import java.security.Principal;
++import java.security.PrivilegedActionException;
++import java.security.PrivilegedExceptionAction;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ 
++import javax.security.auth.Subject;
++
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.http.Header;
+ import org.apache.http.HttpConnection;
+@@ -51,6 +56,7 @@ import org.apache.http.StatusLine;
+ import org.apache.http.auth.AuthScope;
+ import org.apache.http.auth.Credentials;
+ import org.apache.http.auth.NTCredentials;
++import org.apache.http.client.ClientProtocolException;
+ import org.apache.http.client.CredentialsProvider;
+ import org.apache.http.client.HttpClient;
+ import org.apache.http.client.HttpRequestRetryHandler;
+@@ -66,6 +72,7 @@ import org.apache.http.client.methods.HttpPut;
+ import org.apache.http.client.methods.HttpRequestBase;
+ import org.apache.http.client.methods.HttpTrace;
+ import org.apache.http.client.methods.HttpUriRequest;
++import org.apache.http.client.params.AuthPolicy;
+ import org.apache.http.client.params.ClientPNames;
+ import org.apache.http.client.params.CookiePolicy;
+ import org.apache.http.client.protocol.ResponseContentEncoding;
+@@ -80,6 +87,7 @@ import org.apache.http.entity.mime.HttpMultipartMode;
+ import org.apache.http.entity.mime.MultipartEntity;
+ import org.apache.http.entity.mime.content.FileBody;
+ import org.apache.http.entity.mime.content.StringBody;
++import org.apache.http.impl.auth.SPNegoSchemeFactory;
+ import org.apache.http.impl.client.AbstractHttpClient;
+ import org.apache.http.impl.client.DefaultHttpClient;
+ import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
+@@ -100,6 +108,7 @@ import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.control.KerberosManager;
+ import org.apache.jmeter.protocol.http.util.EncoderCache;
+ import org.apache.jmeter.protocol.http.util.HC4TrustAllSSLSocketFactory;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+@@ -167,7 +176,9 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+      * This allows the defaults to be overridden if necessary from the properties file.
+      */
+     private static final HttpParams DEFAULT_HTTP_PARAMS;
+-    
++
++    private static final Credentials USE_JAAS_CREDENTIALS = new NullCredentials();
++
+     static {
+         log.info("HTTP request retry count = "+RETRY_COUNT);
+         
+@@ -275,7 +286,7 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+         try {
+             currentRequest = httpRequest;
+             handleMethod(method, res, httpRequest, localContext);
+-            HttpResponse httpResponse = httpClient.execute(httpRequest, localContext); // perform the sample
++            HttpResponse httpResponse = executeRequest(httpClient, httpRequest, localContext, url);
+ 
+             // Needs to be done after execute to pick up all the headers
+             res.setRequestHeaders(getConnectionHeaders((HttpRequest) localContext.getAttribute(ExecutionContext.HTTP_REQUEST)));
+@@ -365,6 +376,56 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+         return res;
+     }
+ 
++    private HttpResponse executeRequest(final HttpClient httpClient,
++            final HttpRequestBase httpRequest, final HttpContext localContext, final URL url)
++            throws IOException, ClientProtocolException {
++        AuthManager authManager = getAuthManager();
++        if (authManager != null) {
++            Authorization authorization = authManager.getAuthForURL(url);
++            if (authorization != null) {
++                if (authorization.getKerberos()) {
++                    KerberosManager kerberosManager = getKerberosManager();
++                    if (kerberosManager == null) {
++                        log.error("no kerberos manager configured");
++                        return null;
++                    }
++                    Subject subject = kerberosManager.getSubjectForUser(
++                            authorization.getUser(), authorization.getPass());
++                    try {
++                        return Subject.doAs(subject,
++                                new PrivilegedExceptionAction<HttpResponse>() {
++
++                                    @Override
++                                    public HttpResponse run() throws Exception {
++                                        return httpClient.execute(httpRequest,
++                                                localContext);
++                                    }
++                                });
++                    } catch (PrivilegedActionException e) {
++                        log.warn(
++                                "Can't execute httpRequest with kerberos-subject",
++                                e);
++                        return null;
++                    }
++                }
++            }
++        }
++        // perform the non-kerberos sample
++        return httpClient.execute(httpRequest, localContext);
++    }
++
++    private static final class NullCredentials implements Credentials {
++        @Override
++        public String getPassword() {
++            return null;
++        }
++
++        @Override
++        public Principal getUserPrincipal() {
++            return null;
++        }
++    }
++
+     /**
+      * Calls sendPostData if method is POST and sendEntityData if method is PUT or PATCH
+      * Field HTTPSampleResult#queryString of result is modified in the 2 cases
+@@ -790,11 +851,16 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+                     String realm = auth.getRealm();
+                     String domain = auth.getDomain();
+                     if (log.isDebugEnabled()){
+-                        log.debug(username + " > D="+domain+" R="+realm);
++                        log.debug(username + " > D="+domain+" R="+realm + " K="+auth.getKerberos());
++                    }
++                    if (auth.getKerberos()) {
++                        ((AbstractHttpClient) client).getAuthSchemes().register(AuthPolicy.SPNEGO, new SPNegoSchemeFactory(true));
++                        credentialsProvider.setCredentials(new AuthScope(null, -1, null), USE_JAAS_CREDENTIALS);
++                    } else {
++                        credentialsProvider.setCredentials(
++                                new AuthScope(url.getHost(), url.getPort(), realm.length()==0 ? null : realm),
++                                new NTCredentials(username, auth.getPass(), localHost, domain));
+                     }
+-                    credentialsProvider.setCredentials(
+-                            new AuthScope(url.getHost(), url.getPort(), realm.length()==0 ? null : realm),
+-                            new NTCredentials(username, auth.getPass(), localHost, domain));
+             } else {
+                 credentialsProvider.clear();
+             }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+index 2993e63..1b96021 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+@@ -54,6 +54,7 @@ import org.apache.jmeter.protocol.http.control.CacheManager;
+ import org.apache.jmeter.protocol.http.control.Cookie;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.control.KerberosManager;
+ import org.apache.jmeter.protocol.http.parser.HTMLParseException;
+ import org.apache.jmeter.protocol.http.parser.HTMLParser;
+ import org.apache.jmeter.protocol.http.util.ConversionUtils;
+@@ -94,7 +95,7 @@ import org.apache.oro.text.regex.Perl5Matcher;
+ public abstract class HTTPSamplerBase extends AbstractSampler
+     implements TestStateListener, TestIterationListener, ThreadListener, HTTPConstantsInterface {
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 241L;
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+@@ -106,8 +107,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+                     "org.apache.jmeter.protocol.http.gui.HeaderPanel",
+                     "org.apache.jmeter.protocol.http.gui.AuthPanel",
+                     "org.apache.jmeter.protocol.http.gui.CacheManagerGui",
+-                    "org.apache.jmeter.protocol.http.gui.CookiePanel"}));
+-    
++                    "org.apache.jmeter.protocol.http.gui.CookiePanel",
++                    "org.apache.jmeter.protocol.http.control.KerberosManager",}));
++
+     //+ JMX names - do not change
+     public static final String ARGUMENTS = "HTTPsampler.Arguments"; // $NON-NLS-1$
+ 
+@@ -119,6 +121,8 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+ 
+     public static final String HEADER_MANAGER = "HTTPSampler.header_manager"; // $NON-NLS-1$
+ 
++    public static final String KERBEROS_MANAGER = "HTTPSampler.kerberos_manager"; // $NON-NLS-1$
++
+     public static final String DOMAIN = "HTTPSampler.domain"; // $NON-NLS-1$
+ 
+     public static final String PORT = "HTTPSampler.port"; // $NON-NLS-1$
+@@ -596,6 +600,8 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+             setHeaderManager((HeaderManager) el);
+         } else if (el instanceof AuthManager) {
+             setAuthManager((AuthManager) el);
++        } else if (el instanceof KerberosManager) {
++            setKerberosManager((KerberosManager) el);
+         } else {
+             super.addTestElement(el);
+         }
+@@ -809,6 +815,18 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+         return (CacheManager) getProperty(CACHE_MANAGER).getObjectValue();
+     }
+ 
++    public void setKerberosManager(KerberosManager value) {
++        KerberosManager mgr = getKerberosManager();
++        if (mgr != null) {
++            log.warn("Existing KerberosManager " + mgr.getName() + " superseded by " + value.getName());
++        }
++        setProperty(new TestElementProperty(KERBEROS_MANAGER, value));
++    }
++
++    public KerberosManager getKerberosManager() {
++        return (KerberosManager) getProperty(KERBEROS_MANAGER).getObjectValue();
++    }
++
+     public boolean isImageParser() {
+         return getPropertyAsBoolean(IMAGE_PARSER, false);
+     }
+@@ -1854,6 +1872,7 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+     @Override
+     public boolean applies(ConfigTestElement configElement) {
+         String guiClass = configElement.getProperty(TestElement.GUI_CLASS).getStringValue();
+-        return APPLIABLE_CONFIG_CLASSES.contains(guiClass);
++        String testClass = configElement.getPropertyAsString(TestElement.TEST_CLASS);
++        return APPLIABLE_CONFIG_CLASSES.contains(guiClass) || APPLIABLE_CONFIG_CLASSES.contains(testClass);
+     }
+-}
+\ No newline at end of file
++}

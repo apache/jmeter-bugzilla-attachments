@@ -1,0 +1,212 @@
+Index: core/org/apache/jmeter/JMeter.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/JMeter.java,v
+retrieving revision 1.37
+diff -u -r1.37 JMeter.java
+--- core/org/apache/jmeter/JMeter.java	18 May 2005 22:57:20 -0000	1.37
++++ core/org/apache/jmeter/JMeter.java	25 May 2005 17:57:21 -0000
+@@ -239,6 +239,9 @@
+                 log.info("Loading file: " + f);
+                 FileInputStream reader = new FileInputStream(f);
+                 HashTree tree = SaveService.loadTree(reader);
++
++                GuiPackage.getInstance().setTestPlanFile(f.getAbsolutePath());
++
+                 new Load().insertLoadedTree(1, tree);
+             }
+             catch (Exception e)
+Index: core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/GuiPackage.java,v
+retrieving revision 1.35
+diff -u -r1.35 GuiPackage.java
+--- core/org/apache/jmeter/gui/GuiPackage.java	8 Apr 2005 15:05:11 -0000	1.35
++++ core/org/apache/jmeter/gui/GuiPackage.java	25 May 2005 17:57:21 -0000
+@@ -21,6 +21,7 @@
+ import java.awt.Component;
+ import java.awt.event.MouseEvent;
+ import java.beans.Introspector;
++import java.io.IOException;
+ import java.util.HashMap;
+ import java.util.Map;
+ 
+@@ -31,6 +32,7 @@
+ import org.apache.jmeter.gui.tree.JMeterTreeListener;
+ import org.apache.jmeter.gui.tree.JMeterTreeModel;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.testbeans.TestBean;
+ import org.apache.jmeter.testbeans.gui.TestBeanGUI;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -647,4 +649,30 @@
+         	mf.setEditMenu(getTreeListener().getCurrentNode().createPopupMenu());
+         }
+     }
++
++    private String testPlanFile;
++
++	/**
++	 * Sets the filepath of the current test plan. It's shown in the main frame
++	 * title and used on saving.
++	 * @param f
++	 */
++    public void setTestPlanFile(String f)
++    {
++        testPlanFile = f;
++        GuiPackage.getInstance().getMainFrame().setTitle(JMeterUtils.getExtendedFrameTitle(testPlanFile));
++        try
++        {
++            FileServer.getFileServer().setBasedir(testPlanFile);
++        }
++        catch(IOException e1)
++        {
++            log.error("Failure setting file server's base dir",e1);
++        } 
++	}
++	
++	public String getTestPlanFile()
++	{
++		return testPlanFile;
++	}
+ }
+\ No newline at end of file
+Index: core/org/apache/jmeter/gui/action/AbstractAction.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/AbstractAction.java,v
+retrieving revision 1.14
+diff -u -r1.14 AbstractAction.java
+--- core/org/apache/jmeter/gui/action/AbstractAction.java	10 Dec 2004 21:32:53 -0000	1.14
++++ core/org/apache/jmeter/gui/action/AbstractAction.java	25 May 2005 17:57:21 -0000
+@@ -95,9 +95,7 @@
+      */
+     protected void popupShouldSave(ActionEvent e)
+     {
+-        if(!( ((Save) ActionRouter.getInstance().getAction(
+-                "save",
+-                "org.apache.jmeter.gui.action.Save")).hasTestPlanFile()))
++        if(GuiPackage.getInstance().getTestPlanFile() == null)
+         {
+             if(JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(),
+                     JMeterUtils.getResString("should_save"),JMeterUtils.getResString("warning"),
+Index: core/org/apache/jmeter/gui/action/Close.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Close.java,v
+retrieving revision 1.3
+diff -u -r1.3 Close.java
+--- core/org/apache/jmeter/gui/action/Close.java	18 Mar 2005 15:26:57 -0000	1.3
++++ core/org/apache/jmeter/gui/action/Close.java	25 May 2005 17:57:21 -0000
+@@ -92,11 +92,7 @@
+         guiPackage.getTreeListener().getJTree().setSelectionRow(1);
+ 
+         // Clear the name of the test plan file
+-        Save save =
+-            (Save) ActionRouter.getInstance().getAction(
+-                "save",
+-                "org.apache.jmeter.gui.action.Save");
+-        save.setTestPlanFile(null);
++        GuiPackage.getInstance().setTestPlanFile(null);
+ 
+         ActionRouter.getInstance().actionPerformed(
+             new ActionEvent(e.getSource(), e.getID(), CheckDirty.ADD_ALL));
+Index: core/org/apache/jmeter/gui/action/Load.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Load.java,v
+retrieving revision 1.29
+diff -u -r1.29 Load.java
+--- core/org/apache/jmeter/gui/action/Load.java	18 May 2005 22:57:53 -0000	1.29
++++ core/org/apache/jmeter/gui/action/Load.java	25 May 2005 17:57:21 -0000
+@@ -136,10 +136,7 @@
+         // don't change name if merging
+         if (!merging && isTestPlan && f != null)
+         {
+-            ((Save) ActionRouter.getInstance().getAction(
+-                    "save",
+-                    "org.apache.jmeter.gui.action.Save")).setTestPlanFile(
+-                f.getAbsolutePath());
++            GuiPackage.getInstance().setTestPlanFile(f.getAbsolutePath());
+         }
+     }
+ 
+Index: core/org/apache/jmeter/gui/action/Save.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Save.java,v
+retrieving revision 1.27
+diff -u -r1.27 Save.java
+--- core/org/apache/jmeter/gui/action/Save.java	7 May 2005 21:53:06 -0000	1.27
++++ core/org/apache/jmeter/gui/action/Save.java	25 May 2005 17:57:22 -0000
+@@ -57,7 +57,6 @@
+     public final static String SAVE_AS = "save_as";
+     public final static String SAVE = "save";
+     //NOTUSED private String chosenFile;
+-    private String testPlanFile;
+ 
+     private static Set commands = new HashSet();
+     static {
+@@ -83,25 +82,6 @@
+         return commands;
+     }
+     
+-    public boolean hasTestPlanFile()
+-    {
+-        return testPlanFile != null;
+-    }
+-
+-    public void setTestPlanFile(String f)
+-    {
+-        testPlanFile = f;
+-        GuiPackage.getInstance().getMainFrame().setTitle(JMeterUtils.getExtendedFrameTitle(testPlanFile));
+-        try
+-        {
+-            FileServer.getFileServer().setBasedir(testPlanFile);
+-        }
+-        catch(IOException e1)
+-        {
+-            log.error("Failure setting file server's base dir",e1);
+-        } 
+-    }
+-
+     public void doAction(ActionEvent e) throws IllegalUserActionException
+     {
+         HashTree subTree = null;
+@@ -118,9 +98,9 @@
+             subTree = GuiPackage.getInstance().getTreeModel().getTestPlan();
+         }
+ 
+-        String updateFile = testPlanFile; 
++        String updateFile = GuiPackage.getInstance().getTestPlanFile(); 
+         if (!SAVE.equals(e.getActionCommand())
+-            || testPlanFile == null)
++            || updateFile == null)
+         {
+             JFileChooser chooser =
+                 FileDialoger.promptToSaveFile(
+@@ -137,7 +117,7 @@
+             updateFile = chooser.getSelectedFile().getAbsolutePath();
+             if (!e.getActionCommand().equals(SAVE_AS))
+             {
+-                setTestPlanFile(updateFile);
++                GuiPackage.getInstance().setTestPlanFile(updateFile);
+             }
+         }
+         // TODO: doesn't putting this here mark the tree as
+@@ -169,7 +149,7 @@
+         }
+         catch (Throwable ex)
+         {
+-            testPlanFile = null;
++            GuiPackage.getInstance().setTestPlanFile(null);
+             log.error("", ex);
+             throw new IllegalUserActionException(
+                 "Couldn't save test plan to file: " + updateFile);
+@@ -178,11 +158,6 @@
+         {
+             closeWriter(writer);
+             closeStream(ostream);
+-            if(testPlanFile != null)
+-            {
+-                GuiPackage.getInstance().getMainFrame().setTitle(JMeterUtils.getExtendedFrameTitle(testPlanFile));
+-            }
+-            GuiPackage.getInstance().getMainFrame().repaint();
+         }
+     }
+ 

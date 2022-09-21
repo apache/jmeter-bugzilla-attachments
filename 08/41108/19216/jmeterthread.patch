@@ -1,0 +1,24 @@
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 481872)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -276,6 +276,7 @@
+ 						stopThread();
+ 					} catch (Exception e) {
+ 						log.error("", e);
++						stopThread();
+ 					}
+ 				}
+ 				if (controller.isDone()) {
+@@ -479,7 +480,10 @@
+ 	private void rampUpDelay() {
+ 		if (initialDelay > 0) {
+ 			try {
+-				Thread.sleep(initialDelay);
++				long horizon = System.currentTimeMillis()+initialDelay;
++				while (running && horizon - System.currentTimeMillis() > 0 ) {
++				   Thread.sleep(400);
++				}
+ 			} catch (InterruptedException e) {
+ 			}
+ 		}

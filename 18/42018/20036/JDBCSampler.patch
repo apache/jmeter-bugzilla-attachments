@@ -1,0 +1,113 @@
+Index: C:/eclipse/eclipse322workspaces/eclipsercp/jmeter/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
+===================================================================
+--- C:/eclipse/eclipse322workspaces/eclipsercp/jmeter/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(revision 532089)
++++ C:/eclipse/eclipse322workspaces/eclipsercp/jmeter/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(working copy)
+@@ -147,47 +147,67 @@
+ 
+             // Based on query return value, get results
+             String _queryType = getQueryType();
+-            if (SELECT.equals(_queryType)) {
+-            	stmt = conn.createStatement();
+-				ResultSet rs = null;
+-				try {
+-					rs = stmt.executeQuery(getQuery());
+-					Data data = getDataFromResultSet(rs);
+-					res.setResponseData(data.toString().getBytes());
+-				} finally {
+-					close(rs);
+-				}
+-            } else if (CALLABLE.equals(_queryType)) {
+-            	CallableStatement cstmt = getCallableStatement(conn);
+-            	setArguments(cstmt);
+-            	// A CallableStatement can return more than 1 ResultSets
+-            	// plus a number of update counts. 
+-            	boolean hasResultSet = cstmt.execute();
+-            	String sb = resultSetsToString(cstmt,hasResultSet);
+-            	res.setResponseData(sb.toString().getBytes());       	
+-            } else if (UPDATE.equals(_queryType)) {
+-            	stmt = conn.createStatement();
+-				stmt.executeUpdate(getQuery());
+-				int updateCount = stmt.getUpdateCount();
+-				String results = updateCount + " updates";
+-				res.setResponseData(results.getBytes());
+-            } else if (PREPARED_SELECT.equals(_queryType)) {
+-            	PreparedStatement pstmt = getPreparedStatement(conn);
+-            	setArguments(pstmt);
+-            	pstmt.executeQuery();
+-            	String sb = resultSetsToString(pstmt,true);
+-            	res.setResponseData(sb.toString().getBytes());
+-            } else if (PREPARED_UPDATE.equals(_queryType)) {
+-            	PreparedStatement pstmt = getPreparedStatement(conn);
+-            	setArguments(pstmt);
+-            	pstmt.executeUpdate();
+-				String sb = resultSetsToString(pstmt,false);
+-            	res.setResponseData(sb.toString().getBytes());
+-            } else { // User provided incorrect query type
+-                String results="Unexpected query type: "+_queryType;
+-                res.setResponseMessage(results);
+-                res.setSuccessful(false);
+-			}
++            final String queryString = getQuery().trim().toLowerCase();
++            if (queryString.startsWith("rollback")) { //rollback or rollback;
++            	if (!conn.getAutoCommit()) {
++            		conn.rollback();
++            		res.setResponseData("explicit transaction rollback".getBytes());
++            	} else {
++            		res.setResponseData("explicit transaction rollback requested but the connection is in auto-commit mode. skipping it".getBytes());
++            		res.setSuccessful(false);
++            	}
++            } else if(queryString.startsWith("commit")) { // commit or commit;
++            	if (!conn.getAutoCommit()) {
++            		conn.commit();
++            		res.setResponseData("explicit transaction commit".getBytes());
++            	} else {
++            		res.setResponseData("explicit transaction commit requested but the connection is in auto-commit mode. skipping it".getBytes());
++            		res.setSuccessful(false);
++            	}
++            } else {
++            	//only if we are not in the case of a commit or a rollback.
++            	if (SELECT.equals(_queryType)) {
++            		stmt = conn.createStatement();
++            		ResultSet rs = null;
++            		try {
++            			rs = stmt.executeQuery(getQuery());
++            			Data data = getDataFromResultSet(rs);
++            			res.setResponseData(data.toString().getBytes());
++            		} finally {
++            			close(rs);
++            		}
++            	} else if (CALLABLE.equals(_queryType)) {
++            		CallableStatement cstmt = getCallableStatement(conn);
++            		setArguments(cstmt);
++            		// A CallableStatement can return more than 1 ResultSets
++            		// plus a number of update counts. 
++            		boolean hasResultSet = cstmt.execute();
++            		String sb = resultSetsToString(cstmt,hasResultSet);
++            		res.setResponseData(sb.toString().getBytes());       	
++            	} else if (UPDATE.equals(_queryType)) {
++            		stmt = conn.createStatement();
++            		stmt.executeUpdate(getQuery());
++            		int updateCount = stmt.getUpdateCount();
++            		String results = updateCount + " updates";
++            		res.setResponseData(results.getBytes());
++            	} else if (PREPARED_SELECT.equals(_queryType)) {
++            		PreparedStatement pstmt = getPreparedStatement(conn);
++            		setArguments(pstmt);
++            		pstmt.executeQuery();
++            		String sb = resultSetsToString(pstmt,true);
++            		res.setResponseData(sb.toString().getBytes());
++            	} else if (PREPARED_UPDATE.equals(_queryType)) {
++            		PreparedStatement pstmt = getPreparedStatement(conn);
++            		setArguments(pstmt);
++            		pstmt.executeUpdate();
++            		String sb = resultSetsToString(pstmt,false);
++            		res.setResponseData(sb.toString().getBytes());
++            	} else { // User provided incorrect query type
++            		String results="Unexpected query type: "+_queryType;
++            		res.setResponseMessage(results);
++            		res.setSuccessful(false);
++            	}
++            }
+ 
+ 		} catch (SQLException ex) {
+ 			log.error("Error in JDBC sampling", ex);

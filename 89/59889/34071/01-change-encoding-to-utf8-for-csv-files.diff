@@ -1,0 +1,71 @@
+Index: src/core/org/apache/jmeter/report/core/AbstractSampleWriter.java
+===================================================================
+--- src/core/org/apache/jmeter/report/core/AbstractSampleWriter.java	(Revision 1753870)
++++ src/core/org/apache/jmeter/report/core/AbstractSampleWriter.java	(Arbeitskopie)
+@@ -25,8 +25,11 @@
+ import java.io.PrintWriter;
+ import java.io.UnsupportedEncodingException;
+ import java.io.Writer;
++import java.nio.charset.StandardCharsets;
+ 
+ import org.apache.commons.lang3.Validate;
++import org.apache.jmeter.save.SaveService;
++import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ 
+ /**
+@@ -45,7 +48,9 @@
+ 
+     private static final int BUF_SIZE = 10000;
+ 
+-    private static final String CHARSET = "ISO8859-1";
++    private static final String CHARSET = SaveService.getFileEncoding(StandardCharsets.UTF_8.displayName());
++    
++    private static org.apache.log.Logger log = LoggingManager.getLoggerForClass();
+ 
+     /** output writer to write samples to */
+     protected PrintWriter writer;
+@@ -72,7 +77,8 @@
+ 
+     /**
+      * Instructs this sample writer to write samples on the specified output
+-     * with ISO8859-1 encoding
++     * with UTG-8 encoding. The encoding can be overriden by the user through
++     * {@link SaveService#getFileEncoding(String)}
+      * 
+      * @param out
+      *            The output stream on which sample should be written
+@@ -83,7 +89,7 @@
+         try {
+             setWriter(new OutputStreamWriter(out, CHARSET));
+         } catch (UnsupportedEncodingException e) {
+-            // ignore iso8859-1 always supported
++            log.warn("Unsupported CHARSET: " + CHARSET, e);
+         }
+     }
+ 
+Index: src/core/org/apache/jmeter/report/core/CsvSampleReader.java
+===================================================================
+--- src/core/org/apache/jmeter/report/core/CsvSampleReader.java	(Revision 1753870)
++++ src/core/org/apache/jmeter/report/core/CsvSampleReader.java	(Arbeitskopie)
+@@ -25,9 +25,11 @@
+ import java.io.IOException;
+ import java.io.InputStreamReader;
+ import java.io.UnsupportedEncodingException;
++import java.nio.charset.StandardCharsets;
+ 
+ import org.apache.jmeter.samplers.SampleSaveConfiguration;
+ import org.apache.jmeter.save.CSVSaveService;
++import org.apache.jmeter.save.SaveService;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+@@ -46,7 +48,7 @@
+     private static final Logger LOG = LoggingManager.getLoggerForClass();
+     private static final int BUF_SIZE = 10000;
+ 
+-    private static final String CHARSET = "ISO8859-1";
++    private static final String CHARSET = SaveService.getFileEncoding(StandardCharsets.UTF_8.displayName());
+ 
+     private static final char DEFAULT_SEPARATOR =
+             JMeterUtils.getPropDefault("jmeter.save.saveservice.default_delimiter", ",").charAt(0); //$NON-NLS-1$ //$NON-NLS-2$

@@ -1,0 +1,20 @@
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(Revision 1860784)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(Arbeitskopie)
+@@ -951,10 +951,11 @@
+         }
+         if (totalDelay > 0) {
+             try {
+-                if (scheduler) {
+-                    // We reduce pause to ensure end of test is not delayed by a sleep ending after test scheduled end
+-                    // See Bug 60049
+-                    totalDelay = TIMER_SERVICE.adjustDelay(totalDelay, endTime);
++                // Stop test for this thread, if duration of schedule would end with the delay
++                // See Bug 60049 and 63490
++                if (scheduler && endTime - totalDelay <= System.currentTimeMillis()) {
++                    running = false;
++                    return;
+                 }
+                 TimeUnit.MILLISECONDS.sleep(totalDelay);
+             } catch (InterruptedException e) {

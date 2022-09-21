@@ -1,0 +1,30 @@
+Index: C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+--- C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/core/org/apache/jmeter/samplers/SampleResult.java	(revision 454855)
++++ C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/core/org/apache/jmeter/samplers/SampleResult.java	(working copy)
+@@ -699,7 +699,7 @@
+ 		}
+ 	}
+ 
+-	private void setTimes(long start, long end) {
++	public void setTimes(long start, long end) {
+ 		setStartTime(start);
+ 		setEndTime(end);
+ 	}	
+Index: C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/core/org/apache/jmeter/save/converters/SampleResultConverter.java
+===================================================================
+--- C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/core/org/apache/jmeter/save/converters/SampleResultConverter.java	(revision 454855)
++++ C:/Documents and Settings/ecerulm/workspace32jmeter/JMeter2_2/src/core/org/apache/jmeter/save/converters/SampleResultConverter.java	(working copy)
+@@ -348,8 +348,10 @@
+ 		res.setResponseMessage(ConversionHelp.decode(reader.getAttribute(ATT_RESPONSE_MESSAGE)));
+ 		res.setSuccessful(Converter.getBoolean(reader.getAttribute(ATT_SUCCESS), true));
+ 		res.setThreadName(ConversionHelp.decode(reader.getAttribute(ATT_THREADNAME)));
+-		res.setTime(Converter.getLong(reader.getAttribute(ATT_TIME)));
+-		res.setTimeStamp(Converter.getLong(reader.getAttribute(ATT_TIME_STAMP)));
++		long time = Converter.getLong(reader.getAttribute(ATT_TIME));
++		long timestamp = Converter.getLong(reader.getAttribute(ATT_TIME_STAMP));
++		res.setTimeStamp(timestamp);
++		res.setTimes(timestamp,timestamp+time);
+ 		res.setLatency(Converter.getLong(reader.getAttribute(ATT_LATENCY)));
+ 		res.setBytes(Converter.getInt(reader.getAttribute(ATT_BYTES)));
+         // ATT_GRP_THRDS and ATT_ALL_THRDS are write only

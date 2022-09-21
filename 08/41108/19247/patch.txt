@@ -1,0 +1,58 @@
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 486095)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -38,6 +38,7 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.timers.Timer;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.collections.HashTreeTraverser;
+ import org.apache.jorphan.collections.SearchByClass;
+@@ -53,6 +54,8 @@
+  * 
+  */
+ public class JMeterThread implements Runnable, Serializable {
++	private static final String CHECK_STOPPED_TEST_MS = "check_stopped_test_ms";
++
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+ 	// NOT USED private static Map samplers = new HashMap();
+@@ -276,6 +279,7 @@
+ 						stopThread();
+ 					} catch (Exception e) {
+ 						log.error("", e);
++						stopThread();
+ 					}
+ 				}
+ 				if (controller.isDone()) {
+@@ -479,7 +483,11 @@
+ 	private void rampUpDelay() {
+ 		if (initialDelay > 0) {
+ 			try {
+-				Thread.sleep(initialDelay);
++				long horizon = System.currentTimeMillis()+initialDelay;
++				long sleeptime = JMeterUtils.getPropDefault(CHECK_STOPPED_TEST_MS, 5000L);
++				while (running && horizon - System.currentTimeMillis() > 0 ) {
++				   Thread.sleep(sleeptime);
++				}
+ 			} catch (InterruptedException e) {
+ 			}
+ 		}
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 486095)
++++ bin/jmeter.properties	(working copy)
+@@ -24,6 +24,11 @@
+ # Netscape HTTP Cookie file
+ cookies=cookies
+ 
++# During rampup perior JMeter will periodically check if the user has
++# requested to stop the test. The default behavior is to check every 5000 ms 
++# Uncomment this line to change the default period
++check_stopped_test_ms=400
++
+ #---------------------------------------------------------------------------
+ # File format configuration for JMX and JTL files
+ #---------------------------------------------------------------------------

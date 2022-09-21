@@ -1,0 +1,246 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/modifier/AnchorModifier.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/AnchorModifier.java,v
+retrieving revision 1.14
+diff -u -r1.14 AnchorModifier.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/modifier/AnchorModifier.java	22 Feb 2004 19:23:15 -0000	1.14
++++ src/protocol/http/org/apache/jmeter/protocol/http/modifier/AnchorModifier.java	1 Jul 2004 20:26:13 -0000
+@@ -36,7 +36,7 @@
+ import org.apache.jmeter.processor.PreProcessor;
+ import org.apache.jmeter.protocol.http.parser.HtmlParsingUtils;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
+-import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.save.SaveService;
+@@ -75,10 +75,10 @@
+     	JMeterContext context = getThreadContext();
+         Sampler sam = context.getCurrentSampler();
+         SampleResult res = context.getPreviousResult();
+-        HTTPSampler sampler = null;
++        HTTPSamplerBase sampler = null;
+         HTTPSampleResult result = null;
+         if (res == null 
+-            || !(sam instanceof HTTPSampler)
++            || !(sam instanceof HTTPSamplerBase)
+             || !(res instanceof HTTPSampleResult))
+         {
+             log.info("Can't apply HTML Link Parser when the previous"
+@@ -87,7 +87,7 @@
+         }
+         else
+         {
+-            sampler = (HTTPSampler) sam;
++            sampler = (HTTPSamplerBase) sam;
+             result = (HTTPSampleResult) res;
+         }
+         List potentialLinks = new ArrayList();
+@@ -116,12 +116,12 @@
+         addFormUrls(html, result, sampler, potentialLinks);
+         if (potentialLinks.size() > 0)
+         {
+-            HTTPSampler url =
+-                (HTTPSampler) potentialLinks.get(
++            HTTPSamplerBase url =
++                (HTTPSamplerBase) potentialLinks.get(
+                     rand.nextInt(potentialLinks.size()));
+             sampler.setDomain(url.getDomain());
+             sampler.setPath(url.getPath());
+-            if (url.getMethod().equals(HTTPSampler.POST))
++            if (url.getMethod().equals(HTTPSamplerBase.POST))
+             {
+                 PropertyIterator iter = sampler.getArguments().iterator();
+                 while (iter.hasNext())
+@@ -185,7 +185,7 @@
+     private void addFormUrls(
+         Document html,
+         HTTPSampleResult result,
+-        HTTPSampler config,
++        HTTPSamplerBase config,
+         List potentialLinks)
+     {
+         NodeList rootList = html.getChildNodes();
+@@ -200,10 +200,10 @@
+         Iterator iter = urls.iterator();
+         while (iter.hasNext())
+         {
+-            HTTPSampler newUrl = (HTTPSampler) iter.next();
++            HTTPSamplerBase newUrl = (HTTPSamplerBase) iter.next();
+             try
+             {
+-                newUrl.setMethod(HTTPSampler.POST);
++                newUrl.setMethod(HTTPSamplerBase.POST);
+                 if (HtmlParsingUtils.isAnchorMatched(newUrl, config))
+                 {
+                     potentialLinks.add(newUrl);
+@@ -219,7 +219,7 @@
+     private void addAnchorUrls(
+         Document html,
+         HTTPSampleResult result,
+-        HTTPSampler config,
++        HTTPSamplerBase config,
+         List potentialLinks)
+     {
+         NodeList nodeList = html.getElementsByTagName("a");
+@@ -235,10 +235,10 @@
+             String hrefStr = namedItem.getNodeValue();
+             try
+             {
+-                HTTPSampler newUrl =
++                HTTPSamplerBase newUrl =
+                     HtmlParsingUtils.createUrlFromAnchor(
+                         hrefStr, result.getURL());
+-                newUrl.setMethod(HTTPSampler.GET);
++                newUrl.setMethod(HTTPSamplerBase.GET);
+                 log.debug("possible match: " + newUrl);
+                 if (HtmlParsingUtils.isAnchorMatched(newUrl, config))
+                 {
+@@ -270,8 +270,8 @@
+ 
+         public void testProcessingHTMLFile(String HTMLFileName) throws Exception
+         {
+-            HTTPSampler config =
+-                (HTTPSampler) SaveService
++            HTTPSamplerBase config =
++                (HTTPSamplerBase) SaveService
+                     .loadSubTree(
+                         new FileInputStream(
+                             System.getProperty("user.dir")
+@@ -279,8 +279,8 @@
+                     .getArray()[0];
+             config.setRunningVersion(true);
+             HTTPSampleResult result = new HTTPSampleResult();
+-            HTTPSampler context =
+-                (HTTPSampler) SaveService
++            HTTPSamplerBase context =
++                (HTTPSamplerBase) SaveService
+                     .loadSubTree(
+                         new FileInputStream(
+                             System.getProperty("user.dir")
+Index: src/protocol/http/org/apache/jmeter/protocol/http/modifier/ParamModifier.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/ParamModifier.java,v
+retrieving revision 1.13
+diff -u -r1.13 ParamModifier.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/modifier/ParamModifier.java	22 Feb 2004 19:23:15 -0000	1.13
++++ src/protocol/http/org/apache/jmeter/protocol/http/modifier/ParamModifier.java	1 Jul 2004 20:26:13 -0000
+@@ -23,7 +23,7 @@
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.processor.PreProcessor;
+-import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.TestListener;
+@@ -117,14 +117,14 @@
+     public void process()
+     {
+         Sampler sam = getThreadContext().getCurrentSampler();
+-        HTTPSampler sampler = null;
+-        if (!(sam instanceof HTTPSampler))
++        HTTPSamplerBase sampler = null;
++        if (!(sam instanceof HTTPSamplerBase))
+         {
+             return;
+         }
+         else
+         {
+-            sampler = (HTTPSampler) sam;
++            sampler = (HTTPSamplerBase) sam;
+         }
+         boolean modified = false;
+         PropertyIterator iter = sampler.getArguments().iterator();
+Index: src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java,v
+retrieving revision 1.29
+diff -u -r1.29 URLRewritingModifier.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	22 Feb 2004 19:23:15 -0000	1.29
++++ src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	1 Jul 2004 20:26:13 -0000
+@@ -25,6 +25,7 @@
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.processor.PreProcessor;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+@@ -97,9 +98,9 @@
+             }
+         }
+ 
+-        modify((HTTPSampler) sampler, value);
++        modify((HTTPSamplerBase) sampler, value);
+     }
+-    private void modify(HTTPSampler sampler, String value)
++    private void modify(HTTPSamplerBase sampler, String value)
+     {
+         if (isPathExtension())
+         {
+@@ -181,6 +182,8 @@
+     {
+         return getPropertyAsBoolean(PATH_EXTENSION_NO_EQUALS);
+     }
++    
++    // TODO: add test cases for new jakarta commons http client
+     public static class Test extends TestCase
+     {
+         private SampleResult response = null;
+Index: src/protocol/http/org/apache/jmeter/protocol/http/modifier/UserParameterModifier.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/UserParameterModifier.java,v
+retrieving revision 1.13
+diff -u -r1.13 UserParameterModifier.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/modifier/UserParameterModifier.java	22 Feb 2004 19:23:15 -0000	1.13
++++ src/protocol/http/org/apache/jmeter/protocol/http/modifier/UserParameterModifier.java	1 Jul 2004 20:26:13 -0000
+@@ -27,7 +27,7 @@
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.processor.PreProcessor;
+-import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+@@ -109,11 +109,11 @@
+     public void process()
+     {
+         Sampler entry = getThreadContext().getCurrentSampler();
+-        if (!(entry instanceof HTTPSampler))
++        if (!(entry instanceof HTTPSamplerBase))
+         {
+             return;
+         }
+-        HTTPSampler config = (HTTPSampler) entry;
++        HTTPSamplerBase config = (HTTPSamplerBase) entry;
+         Map currentUser = allAvailableUsers.getNextUserMods();
+         PropertyIterator iter = config.getArguments().iterator();
+         while (iter.hasNext())
+Index: src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java,v
+retrieving revision 1.12
+diff -u -r1.12 HtmlParsingUtils.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java	20 Jun 2004 01:23:40 -0000	1.12
++++ src/protocol/http/org/apache/jmeter/protocol/http/parser/HtmlParsingUtils.java	1 Jul 2004 20:26:14 -0000
+@@ -27,6 +27,7 @@
+ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.junit.JMeterTestCase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+@@ -76,8 +77,8 @@
+     }
+ 
+     public static synchronized boolean isAnchorMatched(
+-        HTTPSampler newLink,
+-        HTTPSampler config)
++        HTTPSamplerBase newLink,
++        HTTPSamplerBase config)
+         throws MalformedPatternException
+     {
+         boolean ok = true;

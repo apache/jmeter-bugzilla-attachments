@@ -1,0 +1,186 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 469835)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -253,6 +253,9 @@
+ java_request=Java Request
+ java_request_defaults=Java Request Defaults
+ jms_auth_not_required=Not Required
++jms_delivery_mode=Delivery Mode
++jms_persistent=Persistent
++jms_non_persistent=Non Persistent
+ jms_auth_required=Required
+ jms_authentication=Authentication
+ jms_client_caption=Receive client uses TopicSubscriber.receive() to listen for message.
+@@ -751,4 +754,4 @@
+ xpath_file_file_name=XML file to get values from 
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+-zh_tw=Chinese (Traditional)
+\ No newline at end of file
++zh_tw=Chinese (Traditional)
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java	(revision 469835)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java	(working copy)
+@@ -35,6 +35,7 @@
+ import org.apache.jorphan.gui.JLabeledChoice;
+ import org.apache.jorphan.gui.JLabeledTextArea;
+ import org.apache.jorphan.gui.JLabeledTextField;
++import org.apache.jorphan.gui.JLabeledRadio;
+ 
+ /**
+  * Configuration screen for Java Messaging Point-to-Point requests. <br>
+@@ -66,6 +67,14 @@
+ 
+ 	private JLabeledChoice oneWay = new JLabeledChoice(JMeterUtils.getResString("jms_communication_style"), labels);
+ 
++	private String persitent = JMeterUtils.getResString("jms_persistent");
++
++	private String non_persistent = JMeterUtils.getResString("jms_non_persistent");
++
++    private String[] delivery_modes = { persitent, non_persistent };
++
++    private JLabeledRadio deliveryMode = new JLabeledRadio(JMeterUtils.getResString("jms_delivery_mode"), delivery_modes, non_persistent);
++
+ 	private ArgumentsPanel jmsPropertiesPanel;
+ 
+ 	private ArgumentsPanel jndiPropertiesPanel;
+@@ -107,6 +116,8 @@
+ 		boolean isOneway = oneWay.getText().equals(JMeterUtils.getResString("jms_request"));
+ 		element.setProperty(new BooleanProperty(JMSSampler.IS_ONE_WAY, isOneway));
+ 
++        element.setProperty(JMSSampler.DELIVERY_MODE, deliveryMode.getText());
++
+ 		element.setProperty(JMSSampler.TIMEOUT, timeout.getText());
+ 		element.setProperty(JMSSampler.XML_DATA, soapXml.getText());
+ 
+@@ -227,6 +238,10 @@
+ 		onewayPanel.add(oneWay);
+ 		messageNorthPanel.add(onewayPanel, BorderLayout.NORTH);
+ 
++		JPanel deliveryModePanel = new JPanel(new BorderLayout());
++		deliveryModePanel.add(deliveryMode);
++		messageNorthPanel.add(deliveryModePanel, BorderLayout.CENTER);
++
+ 		JPanel timeoutPanel = new JPanel(new BorderLayout());
+ 		timeoutPanel.add(timeout);
+ 		messageNorthPanel.add(timeoutPanel, BorderLayout.SOUTH);
+@@ -274,4 +289,4 @@
+ 		return "jms_point_to_point";// TODO - probably wrong
+ 	}
+ 
+-}
+\ No newline at end of file
++}
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(revision 469835)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(working copy)
+@@ -31,6 +31,7 @@
+ import javax.jms.QueueSender;
+ import javax.jms.QueueSession;
+ import javax.jms.Session;
++import javax.jms.DeliveryMode;
+ import javax.jms.StreamMessage;
+ import javax.jms.TextMessage;
+ import javax.naming.Context;
+@@ -45,6 +46,7 @@
+ import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -79,6 +81,8 @@
+ 
+ 	public final static String QUEUE_CONNECTION_FACTORY_JNDI = "JMSSampler.queueconnectionfactory";
+ 
++    public final static String DELIVERY_MODE = "JMSSampler.DeliveryMode";
++
+ 	private static final Logger LOGGER = LoggingManager.getLoggerForClass();
+ 
+ 	//
+@@ -141,7 +145,7 @@
+ 				} else {
+ 					if (replyMsg instanceof TextMessage) {
+ 						res.setResponseData(((TextMessage) replyMsg).getText().getBytes());
+-                        res.setContentLength(((TextMessage) replyMsg).getText().getBytes().length);
++                                                res.setContentLength(((TextMessage) replyMsg).getText().getBytes().length);
+ 					} else {
+ 						res.setResponseData(replyMsg.toString().getBytes());
+ 					}
+@@ -283,21 +287,31 @@
+ 
+ 			session = connection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
+ 
++
++
+ 			if (LOGGER.isDebugEnabled()) {
+ 				LOGGER.debug("Session created");
+ 			}
+ 
++
+ 			if (getPropertyAsBoolean(IS_ONE_WAY)) {
+ 				producer = session.createSender(sendQueue);
++                if(getDeliveryMode().equals(JMeterUtils.getResString("jms_non_persistent"))) {
++                      producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
++                }
+ 			} else {
+ 
+ 				if (useTemporyQueue()) {
+ 					executor = new TemporaryQueueExecutor(session, sendQueue);
+ 				} else {
+ 					producer = session.createSender(sendQueue);
++                    if(getDeliveryMode().equals(JMeterUtils.getResString("jms_non_persistent"))) {
++                         producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
++                    }
+ 					executor = new FixedQueueExecutor(producer, getTimeout());
+ 				}
+ 			}
++			System.out.println("producer.getDeliveryMode() : " + producer.getDeliveryMode());
+ 			if (LOGGER.isDebugEnabled()) {
+ 				LOGGER.debug("Starting connection");
+ 			}
+@@ -449,4 +463,15 @@
+ 
+ 	}
+ 
++
++	public String getDeliveryMode() {
++		return getPropertyAsString(DELIVERY_MODE);
++
++	}
++
++	public void setDeliveryMode(String string) {
++		setProperty(DELIVERY_MODE, string);
++
++	}
++
+ }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/Receiver.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/Receiver.java	(revision 469835)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/Receiver.java	(working copy)
+@@ -74,14 +74,19 @@
+ 				if (reply != null) {
+ 
+ 					if (log.isDebugEnabled()) {
+-						log.debug("Received message, correlation id:" + reply.getJMSCorrelationID());
++						log.debug("Received message, message id:" + reply.getJMSMessageID());
+ 					}
+ 
++					if (reply.getJMSMessageID() != null) {
++						MessageAdmin.getAdmin().putReply(reply.getJMSMessageID(), reply);
++					}
++/*
+ 					if (reply.getJMSCorrelationID() == null) {
+ 						log.warn("Received message with correlation id null. Discarding message ...");
+ 					} else {
+ 						MessageAdmin.getAdmin().putReply(reply.getJMSCorrelationID(), reply);
+ 					}
++*/
+ 				}
+ 
+ 			} catch (JMSException e1) {

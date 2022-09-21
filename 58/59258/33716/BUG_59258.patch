@@ -1,0 +1,132 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1736813)
++++ bin/jmeter.properties	(working copy)
+@@ -1103,12 +1103,22 @@
+ # Set to 0 to disable the size check and display the whole response
+ #view.results.tree.max_size=10485760
+ 
++# Max number of Nodes retained in View Results Tree
++# When the limit is reached, JMeter will drop the oldest nodes (the first)
++# Setting to 0 disables the protection
++#view.results.tree.max_nodes=5000
++
+ # Order of Renderers in View Results Tree
+ # Note full class names should be used for non jmeter core renderers
+ # For JMeter core renderers, class names start with . and are automatically
+ # prefixed with org.apache.jmeter.visualizers
+ view.results.tree.renderers_order=.RenderAsText,.RenderAsRegexp,.RenderAsCssJQuery,.RenderAsXPath,.RenderAsHTML,.RenderAsHTMLWithEmbedded,.RenderAsDocument,.RenderAsJSON,.RenderAsXML
+ 
++# Max number of Rows in View Results in Table 
++# When the limit is reached, JMeter will drop the oldest rows (the first)
++# Setting to 0 disables the protection
++#view.results.table.max_rows=5000
++
+ # Maximum size of Document that can be parsed by Tika engine; defaut=10 * 1024 * 1024 (10MB)
+ # Set to 0 to disable the size check
+ #document.max_size=0
+Index: src/components/org/apache/jmeter/visualizers/TableVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(revision 1734700)
++++ src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(working copy)
+@@ -48,19 +48,23 @@
+ import org.apache.jorphan.gui.RendererUtils;
+ import org.apache.jorphan.gui.RightAlignRenderer;
+ import org.apache.jorphan.gui.layout.VerticalLayout;
++import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.reflect.Functor;
++import org.apache.log.Logger;
+ 
+ /**
+  * This class implements a statistical analyser that calculates both the average
+  * and the standard deviation of the sampling process. The samples are displayed
+  * in a JTable, and the statistics are displayed at the bottom of the table.
+  *
+- * created March 10, 2002
+- *
+  */
+ public class TableVisualizer extends AbstractVisualizer implements Clearable {
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 241L;
++    /** Logging. */
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final int MAX_ROWS_IN_TABLE = JMeterUtils.getPropDefault("view.results.table.max_rows", 5000); //$NON-NLS-1$
+ 
+     private static final String iconSize = JMeterUtils.getPropDefault(JMeter.TREE_ICON_SIZE, JMeter.DEFAULT_TREE_ICON_SIZE);
+ 
+@@ -197,6 +201,7 @@
+                             res.getConnectTime()
+                             );
+                     model.addRow(newS);
++                    applyOOMProtection();
+                 }
+                 updateTextFields(res);
+                 if (autoscroll.isSelected()) {
+@@ -206,6 +211,17 @@
+         });
+     }
+ 
++    /**
++     *  When the limit is reached, JMeter will drop the oldest rows (the first)
++     * Setting to 0 disables the protection
++     */
++    private void applyOOMProtection() {
++       if(MAX_ROWS_IN_TABLE > 0 && model.getRowCount() > MAX_ROWS_IN_TABLE) {
++           log.warn(getName()+":applying OUTOFMEMORY protection, removing nodes to keep only:"+MAX_ROWS_IN_TABLE + " nodes");
++           model.removeRow(0);
++       }
++    }
++
+     @Override
+     public synchronized void clearData() {
+         model.clearData();
+Index: src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 1734700)
++++ src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -52,6 +52,7 @@
+ import javax.swing.tree.DefaultMutableTreeNode;
+ import javax.swing.tree.DefaultTreeCellRenderer;
+ import javax.swing.tree.DefaultTreeModel;
++import javax.swing.tree.MutableTreeNode;
+ import javax.swing.tree.TreePath;
+ import javax.swing.tree.TreeSelectionModel;
+ 
+@@ -124,6 +125,8 @@
+     private static final String VIEWERS_ORDER =
+         JMeterUtils.getPropDefault("view.results.tree.renderers_order", ""); // $NON-NLS-1$ //$NON-NLS-2$
+ 
++    private static final int MAX_NODES_IN_TREE = JMeterUtils.getPropDefault("view.results.tree.max_nodes", 5000); //$NON-NLS-1$
++
+     private ResultRenderer resultsRender = null;
+ 
+     private TreeSelectionEvent lastSelectionEvent;
+@@ -156,6 +159,7 @@
+         // Add sample
+         DefaultMutableTreeNode currNode = new SearchableTreeNode(res, treeModel);
+         treeModel.insertNodeInto(currNode, root, root.getChildCount());
++        applyOOMProtection();
+         addSubResults(currNode, res);
+         // Add any assertion that failed as children of the sample node
+         AssertionResult[] assertionResults = res.getAssertionResults();
+@@ -176,6 +180,18 @@
+         }
+     }
+ 
++    /**
++     * When the limit is reached, JMeter will drop the oldest nodes (the first)
++     * Setting to 0 disables the protection
++     */
++    private void applyOOMProtection() {
++        if(MAX_NODES_IN_TREE > 0 && root.getChildCount() > MAX_NODES_IN_TREE) {
++            log.warn(getName()+":applying OUTOFMEMORY PROTECTION, removing nodes to keep only:"
++                    + MAX_NODES_IN_TREE + " nodes");
++            treeModel.removeNodeFromParent((MutableTreeNode)treeModel.getChild(root, 0));
++        }        
++    }
++
+     private void addSubResults(DefaultMutableTreeNode currNode, SampleResult res) {
+         SampleResult[] subResults = res.getSubResults();
+ 

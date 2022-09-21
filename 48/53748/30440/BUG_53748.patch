@@ -1,0 +1,2457 @@
+Index: src/components/org/apache/jmeter/util/AccessLogUtils.java
+===================================================================
+--- src/components/org/apache/jmeter/util/AccessLogUtils.java	(revision 0)
++++ src/components/org/apache/jmeter/util/AccessLogUtils.java	(revision 0)
+@@ -0,0 +1,152 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.util;
++
++import java.text.DateFormat;
++import java.text.ParseException;
++import java.text.SimpleDateFormat;
++import java.util.Locale;
++
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.timers.AccessLogTimer;
++import org.apache.oro.text.regex.Pattern;
++import org.apache.oro.text.regex.Perl5Compiler;
++import org.apache.oro.text.regex.Perl5Matcher;
++
++
++public class AccessLogUtils {
++
++    private static final int FIELD_NOTFOUND = -1;
++	private static final int ALL_GROUP = 0;
++	private static final int DATE_GROUP = 2;
++	public static final long DATE_EMPTY = FIELD_NOTFOUND;
++	
++	public static final String LOGFORMAT_COMBINED="%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-agent}i\"";
++	public static final String LOGFORMAT_COMMON="%h %l %u %t \"%r\" %>s %b";
++	public static final String LOGFORMAT_UNKNOWN = null;
++	public static final String LOGFORMAT_VHOST="%v";
++	
++	public static final String IP_PATTERN="[\\d.]+";
++	public static final String CLIENT_PATTERN="\\S+";
++	public static final String USERID_PATTERN="\\S+";
++	public static final String DATE_PATTERN="[\\w:/]+\\s[+\\-]\\d{4}";
++	public static final String REQUEST_PATTERN=".+?";
++	public static final String STATUS_PATTERN="\\d{3}";
++	public static final String SIZE_PATTERN="[^\"]+";
++	public static final String REFERRER_PATTERN="[^\"]+";
++	public static final String AGENT_PATTERN="[^\"]+";
++	public static final String VHOST_PATTERN="[^\"]+";
++
++	public static final String COMMON_PATTERN="^("+IP_PATTERN+") ("+CLIENT_PATTERN+") ("+USERID_PATTERN+") \\[("+DATE_PATTERN+")\\] \"("+REQUEST_PATTERN+")\" ("+STATUS_PATTERN+") ("+SIZE_PATTERN+")";
++	public static final String COMBINED_PATTERN="^("+IP_PATTERN+") ("+CLIENT_PATTERN+") ("+USERID_PATTERN+") \\[("+DATE_PATTERN+")\\] \"("+REQUEST_PATTERN+")\" ("+STATUS_PATTERN+") ("+SIZE_PATTERN+") \"("+REFERRER_PATTERN+")\" \"("+AGENT_PATTERN+")\"";
++	
++	public static String getIpAddress(String entry) {
++			String pattern="\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}";
++	        return getMatchedGroupForPatternInEntry(ALL_GROUP, pattern, entry);
++	}
++
++	public static long parseDateAsLong(String time) throws ParseException {
++		return parseDateAsLong(time, AccessLogTimer.DEFAULT_DATE_FORMAT);
++	}
++
++	public static long parseDateAsLong(String time, String format) throws ParseException {
++		if(StringUtils.isEmpty(time)) {
++			return DATE_EMPTY;
++		}
++		DateFormat formatter  = new SimpleDateFormat(format, new Locale("en"));
++		return formatter.parse(time).getTime();
++	}
++
++	public static long parseDateAsLongFromEntry(String entry) throws ParseException {
++		return parseDateAsLongFromEntry(entry, AccessLogTimer.DEFAULT_DATE_PATTERN, AccessLogTimer.DEFAULT_DATE_FORMAT);
++	}
++	
++	public static long parseDateAsLongFromEntry(String entry, String datePattern, String format) throws ParseException {
++		String pattern="(.*)\\[("+datePattern +")\\](.*)";
++		String date = getMatchedGroupForPatternInEntry(DATE_GROUP, pattern, entry);
++	    return parseDateAsLong(date, format);
++	}
++
++	public static String getDateFromEntry(String entry) throws ParseException {
++		return getDateFromEntry(entry, AccessLogTimer.DEFAULT_DATE_PATTERN);
++	}
++	
++	public static String getDateFromEntry(String entry, String datePattern) throws ParseException {
++		String pattern="(.*)\\[("+datePattern +")\\](.*)";
++		return getMatchedGroupForPatternInEntry(DATE_GROUP, pattern, entry);
++	}
++
++	private static String getMatchedGroupForPatternInEntry(int group, String patternStr, String entry) {
++		Pattern pattern = getPatternCache(patternStr);
++		Perl5Matcher matcher = JMeterUtils.getMatcher();
++		matcher.contains(entry, pattern);
++		return matcher.getMatch().group(group);
++	}
++	
++	private static Pattern getPatternCache(String pattern) {
++		return JMeterUtils.getPatternCache().getPattern(pattern, Perl5Compiler.READ_ONLY_MASK | Perl5Compiler.SINGLELINE_MASK);
++	}
++	
++	public static String getFieldFromEntry(String field, String entry, String logFormat) {
++		String[] logFormatParts = logFormat.split(" ");
++		int groupNumber=findGroupNumberOfField(field, logFormatParts);
++		String pattern=constructPatternOfLogFormat(logFormat);
++		return getMatchedGroupForPatternInEntry(groupNumber,pattern, entry);
++	}
++
++	private static int findGroupNumberOfField(String field, String[] logFormatParts) {
++		for(int i=0;i<logFormatParts.length;i++) {
++			if(field.equals(logFormatParts[i])) {
++				return i+1;
++			}
++		}
++		return FIELD_NOTFOUND;
++	}
++	
++	public static String constructPatternOfLogFormat(String logFormat) {
++		
++		if(logFormat.contains(LOGFORMAT_COMBINED)) {
++			return constructPatternContainingStandardFormat(logFormat,LOGFORMAT_COMBINED, COMBINED_PATTERN);
++		}
++
++		if(logFormat.contains(LOGFORMAT_COMMON)) {
++			return constructPatternContainingStandardFormat(logFormat,LOGFORMAT_COMMON,COMMON_PATTERN);
++		}
++		return LOGFORMAT_UNKNOWN;
++	}
++
++	private static String constructPatternContainingStandardFormat(String logFormat, String standardFormat, String standardPattern) {
++		StringBuffer pattern=new StringBuffer();
++		pattern.append(standardPattern);
++		String extras = StringUtils.substringAfter(logFormat,standardFormat);
++		if(StringUtils.isNotEmpty(extras)) {
++			constructPatternOfExtraFormat(pattern, extras);
++		}
++		return pattern.toString();
++	}
++
++	private static void constructPatternOfExtraFormat(StringBuffer pattern, String extras) {
++		String[] extraParts = extras.split(" ");
++		for(String extra : extraParts) {
++			if(LOGFORMAT_VHOST.equals(extra)) {
++				pattern.append(" ("+VHOST_PATTERN+")");
++			}
++		}
++	}
++}
+Index: src/components/org/apache/jmeter/timers/AccessLogTimerResources.properties
+===================================================================
+--- src/components/org/apache/jmeter/timers/AccessLogTimerResources.properties	(revision 0)
++++ src/components/org/apache/jmeter/timers/AccessLogTimerResources.properties	(revision 0)
+@@ -0,0 +1,21 @@
++#   Licensed to the Apache Software Foundation (ASF) under one or more
++#   contributor license agreements.  See the NOTICE file distributed with
++#   this work for additional information regarding copyright ownership.
++#   The ASF licenses this file to You under the Apache License, Version 2.0
++#   (the "License"); you may not use this file except in compliance with
++#   the License.  You may obtain a copy of the License at
++# 
++#       http://www.apache.org/licenses/LICENSE-2.0
++# 
++#   Unless required by applicable law or agreed to in writing, software
++#   distributed under the License is distributed on an "AS IS" BASIS,
++#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++#   See the License for the specific language governing permissions and
++#   limitations under the License.
++
++displayName=Access Log Timer
++dateFormat.displayName=Date Format
++datePattern.displayName=Date Regular Expression
++file.displayName=Log File
++offset.displayName=Offset
++numEntries.displayName=Number of Samples
+Index: src/components/org/apache/jmeter/timers/AccessLogTimerResources_fr.properties
+===================================================================
+--- src/components/org/apache/jmeter/timers/AccessLogTimerResources_fr.properties	(revision 0)
++++ src/components/org/apache/jmeter/timers/AccessLogTimerResources_fr.properties	(revision 0)
+@@ -0,0 +1,21 @@
++#   Licensed to the Apache Software Foundation (ASF) under one or more
++#   contributor license agreements.  See the NOTICE file distributed with
++#   this work for additional information regarding copyright ownership.
++#   The ASF licenses this file to You under the Apache License, Version 2.0
++#   (the "License"); you may not use this file except in compliance with
++#   the License.  You may obtain a copy of the License at
++# 
++#       http://www.apache.org/licenses/LICENSE-2.0
++# 
++#   Unless required by applicable law or agreed to in writing, software
++#   distributed under the License is distributed on an "AS IS" BASIS,
++#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++#   See the License for the specific language governing permissions and
++#   limitations under the License.
++
++displayName=Access Log Timer
++dateFormat.displayName=Format de la date
++datePattern.displayName=Expression r\u00E9guli\u00E8re pour la date
++file.displayName=Fichier de logs
++offset.displayName=Offset
++numEntries.displayName=Nombre d'\u00E9chantillons
+Index: src/components/org/apache/jmeter/timers/AccessLogTimerResources_es.properties
+===================================================================
+--- src/components/org/apache/jmeter/timers/AccessLogTimerResources_es.properties	(revision 0)
++++ src/components/org/apache/jmeter/timers/AccessLogTimerResources_es.properties	(revision 0)
+@@ -0,0 +1,21 @@
++#   Licensed to the Apache Software Foundation (ASF) under one or more
++#   contributor license agreements.  See the NOTICE file distributed with
++#   this work for additional information regarding copyright ownership.
++#   The ASF licenses this file to You under the Apache License, Version 2.0
++#   (the "License"); you may not use this file except in compliance with
++#   the License.  You may obtain a copy of the License at
++# 
++#       http://www.apache.org/licenses/LICENSE-2.0
++# 
++#   Unless required by applicable law or agreed to in writing, software
++#   distributed under the License is distributed on an "AS IS" BASIS,
++#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++#   See the License for the specific language governing permissions and
++#   limitations under the License.
++
++displayName=Temporizador de Log de Acceso
++dateFormat.displayName=Formato de la fecha
++datePattern.displayName=Expresion Regular de la fecha
++file.displayName=Archivo de Log
++offset.displayName=Desplazamiento
++numEntries.displayName=N\u02d9mero de Muestras
+Index: src/components/org/apache/jmeter/timers/AccessLogTimer.java
+===================================================================
+--- src/components/org/apache/jmeter/timers/AccessLogTimer.java	(revision 0)
++++ src/components/org/apache/jmeter/timers/AccessLogTimer.java	(revision 0)
+@@ -0,0 +1,189 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.timers;
++
++
++import java.io.File;
++import java.io.IOException;
++import java.text.ParseException;
++import java.util.ArrayList;
++import java.util.Iterator;
++import java.util.List;
++
++import org.apache.commons.io.FileUtils;
++import org.apache.commons.io.LineIterator;
++import org.apache.jmeter.testbeans.TestBean;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.util.AccessLogUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * This class implements a constant timer with its own panel and fields for
++ * value update and user interaction.
++ * @since 2.10
++ */
++public class AccessLogTimer extends AbstractTestElement implements Timer,
++        TestBean {
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = 5608153257356854733L;
++    private static final int TIME_INVALID = -1;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    public final static String FILE = "ApacheLogTimer.file"; //$NON-NLS-1$
++    public final static String OFFSET = "ApacheLogTimer.offset"; //$NON-NLS-1$
++    public final static String NUMENTRIES = "ApacheLogTimer.numentries"; //$NON-NLS-1$
++    public final static String FORMAT = "ApacheLogTimer.dateFormat"; //$NON-NLS-1$
++    public final static String PATTERN = "ApacheLogTimer.datePattern"; //$NON-NLS-1$
++    public static final String DEFAULT_DATE_FORMAT = "dd/MMM/yyyy:HH:mm:ss Z";
++    public static final String DEFAULT_DATE_PATTERN = "[\\w:/]+\\s[+\\-]\\d{4}";
++
++    private long previousTime = TIME_INVALID;
++
++    Iterator<Long> sampleIterator;
++
++    private Long currentSampleTime;
++
++    /**
++     * No-arg constructor.
++     */
++    public AccessLogTimer() {
++    }
++
++    /**
++     * Set the delay for this timer.
++     * 
++     */
++    public void setFile(String file) {
++        setProperty(FILE, file);
++    }
++
++    public String getFile() {
++        return getPropertyAsString(FILE);
++    }
++
++    public void setOffset(String offset) {
++        setProperty(OFFSET, offset);
++    }
++
++    public String getOffset() {
++        return getPropertyAsString(OFFSET);
++    }
++
++    public void setDateFormat(String format) {
++        setProperty(FORMAT, format);
++    }
++
++    public String getDateFormat() {
++        return getPropertyAsString(FORMAT);
++    }
++
++    public void setDatePattern(String pattern) {
++        setProperty(PATTERN, pattern);
++    }
++
++    public String getDatePattern() {
++        return getPropertyAsString(PATTERN);
++    }
++
++    public void setNumEntries(String numEntries) {
++        setProperty(NUMENTRIES, numEntries);
++    }
++
++    public String getNumEntries() {
++        return getPropertyAsString(NUMENTRIES);
++    }
++
++    /**
++     * Retrieve the delay to use during test execution. TODO question: what
++     * should be returned when delay can't be calculated?
++     * 
++     * @return the delay.
++     */
++    @Override
++    public long delay() {
++
++        if (null == sampleIterator) {
++            try {
++                readSamplesTimeFromLogIterator();
++            } catch (NumberFormatException e) {
++                log.error("", e);
++            } catch (IOException e) {
++                log.error("", e);
++            } catch (ParseException e) {
++                log.error("", e);
++            }
++        }
++
++        long delay = calculateDelay();
++        if(log.isDebugEnabled()) {
++            log.debug("thread=" + Thread.currentThread().getName() + " delay="
++                    + delay);
++        }
++        return delay;
++    }
++
++    private long calculateDelay() {
++
++        long sampleTime = 0;
++        currentSampleTime = sampleIterator.next();
++        sampleTime = currentSampleTime.longValue();
++
++        if (TIME_INVALID == previousTime) {
++            previousTime = sampleTime;
++        }
++
++        long delay = Math.abs(sampleTime - previousTime);
++        previousTime = sampleTime;
++        return delay;
++    }
++
++    private long parseTimeFromSample(String entry) throws ParseException {
++        return AccessLogUtils.parseDateAsLongFromEntry(entry, getDatePattern(),
++                getDateFormat());
++    }
++
++    private void readSamplesTimeFromLogIterator() throws NumberFormatException,
++            IOException, ParseException {
++        LineIterator it = initLineIteratorAtOffset(Integer
++                .parseInt(getOffset()));
++
++        List<Long> samplesTimes = new ArrayList<Long>();
++        int numEntries = Integer.parseInt(getNumEntries());
++        for (int i = 0; i < numEntries; i++) {
++            samplesTimes.add(Long.valueOf(parseTimeFromSample(it.next())));
++        }
++        it.close();
++        this.sampleIterator = samplesTimes.iterator();
++    }
++
++    private LineIterator initLineIteratorAtOffset(int offset)
++            throws IOException {
++        LineIterator it = FileUtils.lineIterator(new File(getFile()));
++        int entryNum = 0;
++        while (entryNum++ < offset) {
++            it.next();
++        }
++        return it;
++    }
++}
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/timers/AccessLogTimerBeanInfo.java
+===================================================================
+--- src/components/org/apache/jmeter/timers/AccessLogTimerBeanInfo.java	(revision 0)
++++ src/components/org/apache/jmeter/timers/AccessLogTimerBeanInfo.java	(revision 0)
+@@ -0,0 +1,65 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
++ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
++ * License for the specific language governing permissions and limitations
++ * under the License.
++ *
++ */
++
++package org.apache.jmeter.timers;
++
++import java.beans.PropertyDescriptor;
++
++import org.apache.jmeter.testbeans.BeanInfoSupport;
++import org.apache.jmeter.testbeans.gui.FileEditor;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * BeanInfo for {@link AccessLogTimer}
++ * @since 2.10
++ */
++public class AccessLogTimerBeanInfo extends BeanInfoSupport {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    public AccessLogTimerBeanInfo() {
++        super(AccessLogTimer.class);
++
++        log.debug("Entered access log timer bean info");
++
++        PropertyDescriptor p;
++
++        p = property("dateFormat"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "");
++
++        p = property("datePattern"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, ""); // $NON-NLS-1$
++
++        p = property("file"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "");
++        p.setPropertyEditorClass(FileEditor.class);
++
++        p = property("offset"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "0");
++
++        p = property("numEntries"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "1");
++
++        log.debug("Got to end of access log timer  bean info init");
++    }
++}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerBeanInfo.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerBeanInfo.java	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerBeanInfo.java	(working copy)
+@@ -49,7 +49,7 @@
+                     new String[] { "parserClassName", "filterClassName" }); // $NON-NLS-1$ $NON-NLS-2$ $NON-NLS-3$
+ 
+             createPropertyGroup("accesslogfile",  // $NON-NLS-1$
+-                    new String[] { "logFile" }); // $NON-NLS-1$
++                    new String[] { "logFile", "offset" }); // $NON-NLS-1$
+ 
+             PropertyDescriptor p;
+ 
+@@ -74,12 +74,16 @@
+ 
+             p = property("logFile"); // $NON-NLS-1$
+             p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+-            p.setValue(DEFAULT, "");
++            p.setValue(DEFAULT, ""); // $NON-NLS-1$
+             p.setPropertyEditorClass(FileEditor.class);
+ 
++            p = property("offset"); // $NON-NLS-1$
++            p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++            p.setValue(DEFAULT, "0"); // $NON-NLS-1$
++            
+             p = property("domain"); // $NON-NLS-1$
+             p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+-            p.setValue(DEFAULT, "");
++            p.setValue(DEFAULT, ""); // $NON-NLS-1$
+ 
+             p = property("portString"); // $NON-NLS-1$
+             p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources_fr.properties
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources_fr.properties	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources_fr.properties	(working copy)
+@@ -25,6 +25,8 @@
+ imageParsing.shortDescription=Si activ\u00E9, JMeter va t\u00E9l\u00E9charger les images et les ressources contenues dans chaque page web.
+ logFile.displayName=Fichier journal 
+ logFile.shortDescription=Emplacement du fichier journal \u00E0 analyser pour les requ\u00EAtes.
++offset.displayName=Ligne de d\u00E9but de lecture
++offset.shortDescription=Ligne du fichier access log \u00E0 partir de laquelle l'\u00E9chantillonage d\u00E9marre 
+ parserClassName.displayName=Analyseur 
+ parserClassName.shortDescription=Choisir une impl\u00E9mentation d'analyseur pour analyser votre fichier journal.
+ plugins.displayName=Extension de Classes
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSampler.java	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSampler.java	(working copy)
+@@ -77,6 +77,8 @@
+     // NOTUSED private Class PARSERCLASS = null;
+     private String logFile, parserClassName, filterClassName;
+ 
++    private static final String OFFSET = "AccessLogSampler.offset";
++    
+     private transient Filter filter;
+ 
+     private int count = 0;
+@@ -196,6 +198,7 @@
+                         PARSER = (LogParser) Class.forName(getParserClassName()).newInstance();
+                         PARSER.setSourceFile(this.getLogFile());
+                         PARSER.setFilter(filter);
++                        PARSER.setOffset(getOffset());
+                     } else {
+                         log.error("No log file specified");
+                     }
+@@ -273,6 +276,20 @@
+     }
+ 
+     /**
++     * @return Returns the offset at which to start reading
++     */
++    public int getOffset() {
++        return super.getPropertyAsInt(OFFSET);
++    }
++
++    /**
++     * @param offset the offset at which to start reading
++     */
++    public void setOffset(int offset) {
++        super.setProperty(OFFSET, offset);
++    }
++
++    /**
+      *
+      */
+     public AccessLogSampler() {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources_es.properties
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources_es.properties	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources_es.properties	(working copy)
+@@ -30,3 +30,5 @@
+ plugins.displayName=Classes desplegables
+ portString.displayName=Puerto
+ portString.shortDescription=N\u00FAmero de puerto contra el que probar
++offset.displayName=Desplazamiento
++offset.shortDescription=Numero de entrada en el log desde donde empezar a muestrear. 
+\ No newline at end of file
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources.properties
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources.properties	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/AccessLogSamplerResources.properties	(working copy)
+@@ -28,4 +28,6 @@
+ portString.displayName=Port
+ portString.shortDescription=Port Number to test against
+ imageParsing.displayName=Parse Images
+-imageParsing.shortDescription=If turned on, JMeter will download images and resources contained in each web page
+\ No newline at end of file
++imageParsing.shortDescription=If turned on, JMeter will download images and resources contained in each web page
++offset.displayName=Offset
++offset.shortDescription=Entry number in access log from where to start sampling 
+\ No newline at end of file
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SessionFilter.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SessionFilter.java	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SessionFilter.java	(working copy)
+@@ -33,12 +33,9 @@
+ import org.apache.jmeter.testelement.TestCloneable;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.ThreadListener;
+-import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.AccessLogUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+-import org.apache.oro.text.regex.Pattern;
+-import org.apache.oro.text.regex.Perl5Compiler;
+-import org.apache.oro.text.regex.Perl5Matcher;
+ 
+ /**
+  * Provides Session Filtering for the AccessLog Sampler.
+@@ -67,13 +64,9 @@
+     }
+ 
+     protected String getIpAddress(String logLine) {
+-        Pattern incIp = JMeterUtils.getPatternCache().getPattern("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}",
+-                Perl5Compiler.READ_ONLY_MASK | Perl5Compiler.SINGLELINE_MASK);
+-        Perl5Matcher matcher = JMeterUtils.getMatcher();
+-        matcher.contains(logLine, incIp);
+-        return matcher.getMatch().group(0);
++        return AccessLogUtils.getIpAddress(logLine);
+     }
+-
++    
+     /**
+      * {@inheritDoc}
+      */
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogParser.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogParser.java	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogParser.java	(working copy)
+@@ -73,4 +73,10 @@
+      * @param source
+      */
+     void setSourceFile(String source);
++    
++    /**
++     * Set the offset
++     * @param offset
++     */
++    void setOffset(int offset);
+ }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/template-threadGroup.jmx
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/template-threadGroup.jmx	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/template-threadGroup.jmx	(revision 0)
+@@ -0,0 +1,39 @@
++      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="@IP@" enabled="true">
++        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
++        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Controlador Bucle" enabled="true">
++          <boolProp name="LoopController.continue_forever">false</boolProp>
++          <stringProp name="LoopController.loops">@NUM_ENTRIES@</stringProp>
++        </elementProp>
++        <stringProp name="ThreadGroup.num_threads">1</stringProp>
++        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
++        <longProp name="ThreadGroup.start_time">0</longProp>
++        <longProp name="ThreadGroup.end_time">0</longProp>
++        <boolProp name="ThreadGroup.scheduler">true</boolProp>
++        <stringProp name="ThreadGroup.duration">@DURATION@</stringProp>
++        <stringProp name="ThreadGroup.delay">@DELAY@</stringProp>
++      </ThreadGroup>
++      <hashTree>
++        <AccessLogSampler guiclass="TestBeanGUI" testclass="AccessLogSampler" testname="Access Log Sampler" enabled="true">
++          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
++            <collectionProp name="Arguments.arguments"/>
++          </elementProp>
++          <stringProp name="domain">${SERVER-NAME}</stringProp>
++          <boolProp name="imageParsing">true</boolProp>
++          <stringProp name="logFile">${LOG-FILE}</stringProp>
++          <stringProp name="offset">@OFFSET@</stringProp>
++          <stringProp name="parserClassName">org.apache.jmeter.protocol.http.util.accesslog.SharedTCLogParser</stringProp>
++          <stringProp name="portString"></stringProp>
++          <stringProp name="filterClassName">org.apache.jmeter.protocol.http.util.accesslog.LogFilter</stringProp>
++        </AccessLogSampler>
++        <hashTree/>
++        
++	    <org.apache.jmeter.timers.AccessLogTimer guiclass="TestBeanGUI" testclass="org.apache.jmeter.timers.AccessLogTimer" testname="Access Log Timer" enabled="true">
++          <stringProp name="dateFormat">${DATE-FORMAT}</stringProp>
++          <stringProp name="datePattern">${DATE-PATTERN}</stringProp>
++          <stringProp name="file">${LOG-FILE}</stringProp>
++          <stringProp name="offset">@OFFSET@</stringProp>
++          <stringProp name="numEntries">@NUM_ENTRIES@</stringProp>
++    	</org.apache.jmeter.timers.AccessLogTimer>
++    	<hashTree/>
++        
++      </hashTree>
+\ No newline at end of file
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java	(revision 1493413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TCLogParser.java	(working copy)
+@@ -21,8 +21,9 @@
+ import java.io.BufferedReader;
+ import java.io.File;
+ import java.io.FileInputStream;
+-import java.io.FileReader;
++import java.io.FileNotFoundException;
+ import java.io.IOException;
++import java.io.InputStream;
+ import java.io.InputStreamReader;
+ import java.io.UnsupportedEncodingException;
+ import java.net.URLDecoder;
+@@ -31,6 +32,8 @@
+ import java.util.StringTokenizer;
+ import java.util.zip.GZIPInputStream;
+ 
++import org.apache.commons.io.IOUtils;
++import org.apache.commons.io.LineIterator;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -110,6 +113,8 @@
+ 
+     protected BufferedReader READER = null;
+ 
++    protected int OFFSET;
++
+     /**
+      * Handles to supporting classes
+      */
+@@ -187,6 +192,15 @@
+     }
+ 
+     /**
++     * Set the offset
++     * @param offset
++     */
++    @Override
++    public void setOffset(int offset) {
++    	OFFSET = offset;
++    }
++
++    /**
+      * parse the entire file.
+      *
+      * @return boolean success/failure
+@@ -197,7 +211,7 @@
+         }
+         try {
+             if (this.READER == null) {
+-                this.READER = getReader(this.SOURCE);
++                this.READER = getReader(this.SOURCE, OFFSET);
+             }
+             return parse(this.READER, el, parseCount);
+         } catch (Exception exception) {
+@@ -206,14 +220,27 @@
+         return -1;// indicate that an error occured
+     }
+ 
+-    private static BufferedReader getReader(File file) throws IOException {
++    protected static BufferedReader getReader(File file, int offset) throws IOException {
+         if (! isGZIP(file)) {
+-            return new BufferedReader(new FileReader(file));
++            return getReaderAtLine(new FileInputStream(file), offset);
+         }
+         GZIPInputStream in = new GZIPInputStream(new FileInputStream(file));
+-        return new BufferedReader(new InputStreamReader(in));
++        return getReaderAtLine(in, offset);
+     }
+ 
++	static BufferedReader getReaderAtLine(InputStream in, int line) throws FileNotFoundException {
++		BufferedReader reader = new BufferedReader(new InputStreamReader(in));
++		LineIterator it = IOUtils.lineIterator(reader);
++		int current=0;
++		String entry=null;
++		while(current <line) {
++			entry=it.next();
++			current++;
++		}
++		
++		return reader;
++	}
++
+     private static boolean isGZIP(File file) throws IOException {
+         FileInputStream in = new FileInputStream(file);
+         try {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TestPlanGenerator.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TestPlanGenerator.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/TestPlanGenerator.java	(revision 0)
+@@ -0,0 +1,452 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.util.accesslog;
++
++import java.io.File;
++import java.io.FileNotFoundException;
++import java.io.IOException;
++import java.io.InputStream;
++import java.net.URISyntaxException;
++import java.text.ParseException;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++import org.apache.commons.io.FileUtils;
++import org.apache.commons.io.FilenameUtils;
++import org.apache.commons.io.IOUtils;
++import org.apache.commons.io.LineIterator;
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.timers.AccessLogTimer;
++import org.apache.jmeter.util.AccessLogUtils;
++
++public class TestPlanGenerator {
++
++    Map<String, List<String>> entriesByIp;
++    Map<String, Long> offsetsByIp;
++    Set<String> ips;
++    String groupedLogName;
++    String planFileName;
++    String resultFileName;
++
++    public TestPlanGenerator() {
++        super();
++    }
++
++    public static class DateRange {
++        public String startTime;
++        public String endTime;
++
++        public DateRange(String startTime, String endTime) {
++            this.startTime = startTime;
++            this.endTime = endTime;
++        }
++    }
++
++    public static class PlanRequest implements Cloneable {
++        public String server;
++        public String port;
++        public String protocol;
++        public DateRange range;
++        public String logFile;
++        public String outputDir;
++        public String virtualhost;
++        public boolean printProgress;
++        public int progressInterval;
++        public String logFormat;
++    }
++
++    public String generateTestPlan(PlanRequest request) throws IOException,
++            ParseException, FileNotFoundException {
++        generateGroupedAccessLog(request);
++        ips = findIPSetInAccessLog(new File(groupedLogName));
++        return generateTestPlanForIPs(request);
++    }
++
++    protected void generateGroupedAccessLog(PlanRequest request)
++            throws IOException, ParseException {
++
++        long start = parseTime(request.range.startTime);
++        long end = parseTime(request.range.endTime);
++
++        entriesByIp = filterEntries(request, start, end);
++
++        File groupedLog = createGroupedLog(request.logFile, request.outputDir);
++        writeGroupedAccessLog(groupedLog);
++
++        offsetsByIp = calculateOffsets();
++
++    }
++
++    private long parseTime(String time) throws ParseException {
++        return AccessLogUtils.parseDateAsLong(time,
++                AccessLogTimer.DEFAULT_DATE_FORMAT);
++    }
++
++    protected Set<String> findIPSetInAccessLog(File accessLog)
++            throws IOException {
++        Set<String> ips = new HashSet<String>();
++        LineIterator it = getLineIteratorForFilename(accessLog);
++
++        while (it.hasNext()) {
++            String ip = AccessLogUtils.getIpAddress(it.next());
++            ips.add(ip);
++        }
++        it.close();
++        return ips;
++    }
++
++    private String generateTestPlanForIPs(PlanRequest userPlan)
++            throws ParseException {
++
++        // the thread groups are created, one for each different ip
++        StringBuffer threadGroups = new StringBuffer();
++        for (String ip : ips) {
++            String threadGroup = generateThreadGroupForTheIP(ip, userPlan.range);
++            threadGroups.append(threadGroup);
++        }
++
++        // if requested start or end time is empty, the first or end date of the
++        // access log is really used as plan time
++        PlanRequest realPlan = userPlan;
++
++        if (StringUtils.isEmpty(realPlan.range.startTime)) {
++            realPlan.range.startTime = AccessLogUtils
++                    .getDateFromEntry(firstEntry());
++        }
++
++        if (StringUtils.isEmpty(realPlan.range.endTime)) {
++            realPlan.range.endTime = AccessLogUtils
++                    .getDateFromEntry(lastEntry());
++        }
++
++        // the test plan is built and written in the jmx file
++        planFileName = realPlan.outputDir
++                + constructPlanFileName(realPlan.range);
++        String plan = buildPlan(realPlan, threadGroups);
++        writePlan(planFileName, plan);
++
++        return planFileName;
++    }
++
++    String constructPlanFileName(DateRange dateRange) {
++
++        String startDateName = contructDateNameFromDate(dateRange.startTime);
++        String endDateName = contructDateNameFromDate(dateRange.endTime);
++        return startDateName + "_" + endDateName + "-plan.jmx";
++    }
++
++    String contructDateNameFromDate(String date) {
++        return removeOffsetFromDate(date).replaceAll("[:/]", "");
++    }
++
++    String removeOffsetFromDate(String date) {
++        if (StringUtils.isEmpty(date)) {
++            return null;
++        }
++
++        String pattern = "([\\w:/]+)(\\s[+\\-]\\d{4})";
++        Pattern p = Pattern.compile(pattern);
++        Matcher matcher = p.matcher(date);
++        matcher.matches();
++        return matcher.group(1);
++    }
++
++    private String buildPlan(PlanRequest request, StringBuffer threadGroups) {
++        String plan = null;
++        try {
++            String planName = constructPlanName(request.range);
++            resultFileName = contructResultFileName(request.outputDir);
++            plan = readTemplate("template-testPlan.jmx");
++            plan = plan.replace("@PLAN_NAME@", planName);
++            plan = plan.replace("@SERVER_NAME@", request.server);
++            plan = plan.replace("@SERVER_PORT@", request.port);
++            plan = plan.replace("@SERVER_PROTOCOL@", request.protocol);
++            plan = plan.replace("@THREAD_GROUPS@", threadGroups.toString());
++            plan = plan.replace("@LOG_FILE@", groupedLogName);
++            plan = plan.replace("@DATE_FORMAT@",
++                    AccessLogTimer.DEFAULT_DATE_FORMAT);
++            plan = plan.replace("@DATE_PATTERN@",
++                    AccessLogTimer.DEFAULT_DATE_PATTERN);
++            plan = plan.replace("@RESULT_FILE@", resultFileName);
++
++        } catch (IOException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++        } catch (URISyntaxException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++        }
++        return plan;
++    }
++
++    private String contructResultFileName(String outputDir) {
++        return outputDir + FilenameUtils.getBaseName(planFileName) + ".csv";
++    }
++
++    private String constructPlanName(DateRange range) {
++        return "Accesses from " + removeOffsetFromDate(range.startTime)
++                + " to " + removeOffsetFromDate(range.endTime);
++    }
++
++    private void writePlan(String fileName, String plan) {
++
++        try {
++            FileUtils.write(new File(fileName), plan);
++        } catch (IOException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++        }
++    }
++
++    private void writeGroupedAccessLog(File groupedLog) throws IOException {
++        for (String ip : entriesByIp.keySet()) {
++            FileUtils.writeLines(groupedLog, entriesByIp.get(ip), true);
++        }
++    }
++
++    private Map<String, Long> calculateOffsets() throws IOException {
++        Map<String, Long> offsetByIp = new HashMap<String, Long>();
++        long offset = 0;
++        for (String ip : entriesByIp.keySet()) {
++            offsetByIp.put(ip, offset);
++            offset += entriesByIp.get(ip).size();
++        }
++        return offsetByIp;
++    }
++
++    private File createGroupedLog(String accessLog, String outputDir)
++            throws IOException {
++        groupedLogName = outputDir + FilenameUtils.getBaseName(accessLog)
++                + ".jmeter.log";
++        File groupedLog = new File(groupedLogName);
++        groupedLog.createNewFile();
++        return groupedLog;
++    }
++
++    private Map<String, List<String>> filterEntries(PlanRequest request,
++            long start, long end) throws IOException, ParseException {
++        Map<String, List<String>> entriesByIp = new HashMap<String, List<String>>();
++
++        LineIterator it = getLineIteratorForFilename(new File(request.logFile));
++
++        int entryNumber = 1;
++
++        while (it.hasNext()) {
++
++            if (request.printProgress) {
++                if (0 == entryNumber % request.progressInterval) {
++                    System.out.println(entryNumber);
++                }
++                entryNumber++;
++            }
++
++            String entry = it.next();
++            // the entry date is queried.
++            long entryDate = AccessLogUtils.parseDateAsLongFromEntry(entry,
++                    AccessLogTimer.DEFAULT_DATE_PATTERN,
++                    AccessLogTimer.DEFAULT_DATE_FORMAT);
++
++            // if entry date is outside range, the entry is discarded.
++            if (!isEntryDateInsideRequestedRange(entryDate, start, end)) {
++                continue;
++            }
++
++            if (StringUtils.isNotEmpty(request.virtualhost)) {
++                if (!isEntryTargetedToRequestedVirtualHost(entry,
++                        request.logFormat, request.virtualhost)) {
++                    continue;
++                }
++            }
++
++            // otherwise the entry ip is included in the grouped log.
++            String ip = AccessLogUtils.getIpAddress(entry);
++            if (!entriesByIp.containsKey(ip)) {
++                entriesByIp.put(ip, new ArrayList<String>());
++            }
++            entriesByIp.get(ip).add(entry);
++        }
++
++        it.close();
++
++        return entriesByIp;
++    }
++
++    private boolean isEntryTargetedToRequestedVirtualHost(String entry,
++            String logFormat, String vhost) {
++        String addressedTo = AccessLogUtils.getFieldFromEntry(
++                AccessLogUtils.LOGFORMAT_VHOST, entry, logFormat);
++        return vhost.equals(addressedTo);
++    }
++
++    public boolean isEntryDateInsideRequestedRange(long entryDate, long start,
++            long end) {
++
++        if (unlimitedRange(start, end)) {
++            return true;
++        }
++
++        if (startTimeIsUnlimited(start, end)) {
++            return entryDate <= end;
++        }
++
++        if (endTimeIsUnlimited(start, end)) {
++            return entryDate >= start;
++        }
++
++        return entryDate >= start && entryDate <= end;
++    }
++
++    private boolean startTimeIsUnlimited(long start, long end) {
++        return AccessLogUtils.DATE_EMPTY == start
++                && AccessLogUtils.DATE_EMPTY != end;
++    }
++
++    private boolean endTimeIsUnlimited(long start, long end) {
++        return AccessLogUtils.DATE_EMPTY != start
++                && AccessLogUtils.DATE_EMPTY == end;
++    }
++
++    private boolean unlimitedRange(long start, long end) {
++        return AccessLogUtils.DATE_EMPTY == start
++                && AccessLogUtils.DATE_EMPTY == end;
++    }
++
++    private LineIterator getLineIteratorForFilename(File accessLog)
++            throws IOException {
++        return IOUtils.lineIterator(TCLogParser.getReader(accessLog, 0));
++    }
++
++    protected String generateThreadGroupForTheIP(String ip, DateRange range) {
++
++        String threadGroup = "";
++        try {
++
++            // the thread group delay is calculated accordingly the first access
++            List<String> entries = entriesByIp.get(ip);
++            long firstAccess = AccessLogUtils.parseDateAsLongFromEntry(entries
++                    .get(0)); // first access
++            long start = AccessLogUtils.parseDateAsLong(range.startTime);
++            long groupDelay = Math.abs(firstAccess - start) / 1000;
++
++            // the thread group duration is calculated
++            // the duration is not really important, as what matters is the loop
++            // counter
++            // given by the number of entries. We make twice the range so is big
++            // enough to
++            // loop all the samples.
++
++            long end = parseTime(range.endTime);
++            long duration = (end - start) * 2 / 1000;
++
++            // the thread group is written
++            threadGroup = readTemplate("template-threadGroup.jmx");
++            threadGroup = threadGroup.replaceAll("@IP@", ip);
++            threadGroup = threadGroup.replace("@DELAY@",
++                    Long.toString(groupDelay));
++            threadGroup = threadGroup.replace("@DURATION@",
++                    Long.toString(duration));
++            threadGroup = threadGroup.replace("@NUM_ENTRIES@",
++                    Long.toString(entries.size()));
++            threadGroup = threadGroup.replace("@OFFSET@",
++                    Long.toString(offsetsByIp.get(ip)));
++
++        } catch (IOException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++        } catch (ParseException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++        } catch (URISyntaxException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++        }
++
++        return threadGroup;
++
++    }
++
++    private String readTemplate(String templateName) throws IOException,
++            URISyntaxException {
++        InputStream is = this.getClass().getResourceAsStream(templateName);
++        return IOUtils.toString(is);
++    }
++
++    public int ipCount() {
++        return entriesByIp.keySet().size();
++    }
++
++    public int entryCount() {
++        int count = 0;
++        for (String ip : entriesByIp.keySet()) {
++            count += entriesByIp.get(ip).size();
++        }
++        return count;
++    }
++
++    // TODO refactor firstDate and LastEntry
++
++    public String firstEntry() {
++        long firstAccess = Long.MAX_VALUE;
++        String firstEntry = "";
++        for (String ip : entriesByIp.keySet()) {
++            for (String entry : entriesByIp.get(ip)) {
++                try {
++                    long entryDate = AccessLogUtils
++                            .parseDateAsLongFromEntry(entry);
++                    if (entryDate < firstAccess) {
++                        firstAccess = entryDate;
++                        firstEntry = entry;
++                    }
++                } catch (ParseException e) {
++                    // TODO Auto-generated catch block
++                    e.printStackTrace();
++                }
++            }
++        }
++        return firstEntry;
++    }
++
++    public String lastEntry() {
++        long lastAccess = 0;
++        String lastEntry = "";
++        for (String ip : entriesByIp.keySet()) {
++            for (String entry : entriesByIp.get(ip)) {
++                try {
++                    long entryDate = AccessLogUtils
++                            .parseDateAsLongFromEntry(entry);
++                    if (entryDate > lastAccess) {
++                        lastAccess = entryDate;
++                        lastEntry = entry;
++                    }
++                } catch (ParseException e) {
++                    // TODO Auto-generated catch block
++                    e.printStackTrace();
++                }
++            }
++        }
++        return lastEntry;
++    }
++
++}
+\ No newline at end of file
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/template-testPlan.jmx
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/template-testPlan.jmx	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/template-testPlan.jmx	(revision 0)
+@@ -0,0 +1,167 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<jmeterTestPlan version="1.2" properties="2.3">
++  <hashTree>
++    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="@PLAN_NAME@" enabled="true">
++      <stringProp name="TestPlan.comments"></stringProp>
++      <boolProp name="TestPlan.functional_mode">false</boolProp>
++      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
++      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="Variables definidas por el Usuario" enabled="true">
++        <collectionProp name="Arguments.arguments">
++          <elementProp name="SERVER-NAME" elementType="Argument">
++            <stringProp name="Argument.name">SERVER-NAME</stringProp>
++            <stringProp name="Argument.value">@SERVER_NAME@</stringProp>
++            <stringProp name="Argument.metadata">=</stringProp>
++          </elementProp>
++          <elementProp name="SERVER-PORT" elementType="Argument">
++            <stringProp name="Argument.name">SERVER-PORT</stringProp>
++            <stringProp name="Argument.value">@SERVER_PORT@</stringProp>
++            <stringProp name="Argument.metadata">=</stringProp>
++          </elementProp>
++          <elementProp name="SERVER-PROTOCOL" elementType="Argument">
++            <stringProp name="Argument.name">SERVER-PROTOCOL</stringProp>
++            <stringProp name="Argument.value">@SERVER_PROTOCOL@</stringProp>
++            <stringProp name="Argument.metadata">=</stringProp>
++          </elementProp>
++          <elementProp name="DATE-FORMAT" elementType="Argument">
++            <stringProp name="Argument.name">DATE-FORMAT</stringProp>
++            <stringProp name="Argument.value">@DATE_FORMAT@</stringProp>
++            <stringProp name="Argument.metadata">=</stringProp>
++          </elementProp>
++          <elementProp name="DATE-PATTERN" elementType="Argument">
++            <stringProp name="Argument.name">DATE-PATTERN</stringProp>
++            <stringProp name="Argument.value">@DATE_PATTERN@</stringProp>
++            <stringProp name="Argument.metadata">=</stringProp>
++          </elementProp>
++          <elementProp name="LOG-FILE" elementType="Argument">
++            <stringProp name="Argument.name">LOG-FILE</stringProp>
++            <stringProp name="Argument.value">@LOG_FILE@</stringProp>
++            <stringProp name="Argument.metadata">=</stringProp>
++          </elementProp>
++          
++        </collectionProp>
++      </elementProp>
++      <stringProp name="TestPlan.user_define_classpath"></stringProp>
++    </TestPlan>
++    <hashTree>
++      <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="web server" enabled="true">
++        <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Variables definidas por el Usuario" enabled="true">
++          <collectionProp name="Arguments.arguments"/>
++        </elementProp>
++        <stringProp name="HTTPSampler.domain">${SERVER-NAME}</stringProp>
++        <stringProp name="HTTPSampler.port">${SERVER-PORT}</stringProp>
++        <stringProp name="HTTPSampler.connect_timeout"></stringProp>
++        <stringProp name="HTTPSampler.response_timeout"></stringProp>
++        <stringProp name="HTTPSampler.protocol">${SERVER-PROTOCOL}</stringProp>
++        <stringProp name="HTTPSampler.contentEncoding"></stringProp>
++        <stringProp name="HTTPSampler.path">/</stringProp>
++        <stringProp name="HTTPSampler.concurrentPool">4</stringProp>
++      </ConfigTestElement>
++      <hashTree/>
++      <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
++        <collectionProp name="CookieManager.cookies"/>
++        <boolProp name="CookieManager.clearEachIteration">false</boolProp>
++      </CookieManager>
++      <hashTree/>
++
++      @THREAD_GROUPS@
++      
++      <ResultCollector guiclass="StatGraphVisualizer" testclass="ResultCollector" testname="Aggregate Graph" enabled="true">
++        <boolProp name="ResultCollector.error_logging">false</boolProp>
++        <objProp>
++          <name>saveConfig</name>
++          <value class="SampleSaveConfiguration">
++            <time>true</time>
++            <latency>true</latency>
++            <timestamp>true</timestamp>
++            <success>true</success>
++            <label>true</label>
++            <code>true</code>
++            <message>true</message>
++            <threadName>true</threadName>
++            <dataType>true</dataType>
++            <encoding>false</encoding>
++            <assertions>true</assertions>
++            <subresults>true</subresults>
++            <responseData>false</responseData>
++            <samplerData>false</samplerData>
++            <xml>true</xml>
++            <fieldNames>false</fieldNames>
++            <responseHeaders>false</responseHeaders>
++            <requestHeaders>false</requestHeaders>
++            <responseDataOnError>false</responseDataOnError>
++            <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
++            <assertionsResultsToSave>0</assertionsResultsToSave>
++            <bytes>true</bytes>
++          </value>
++        </objProp>
++        <stringProp name="filename"></stringProp>
++      </ResultCollector>
++      <hashTree/>
++      <ResultCollector guiclass="TableVisualizer" testclass="ResultCollector" testname="View Results in Table" enabled="true">
++        <boolProp name="ResultCollector.error_logging">false</boolProp>
++        <objProp>
++          <name>saveConfig</name>
++          <value class="SampleSaveConfiguration">
++            <time>true</time>
++            <latency>true</latency>
++            <timestamp>true</timestamp>
++            <success>true</success>
++            <label>true</label>
++            <code>true</code>
++            <message>true</message>
++            <threadName>true</threadName>
++            <dataType>true</dataType>
++            <encoding>false</encoding>
++            <assertions>true</assertions>
++            <subresults>true</subresults>
++            <responseData>false</responseData>
++            <samplerData>false</samplerData>
++            <xml>true</xml>
++            <fieldNames>false</fieldNames>
++            <responseHeaders>false</responseHeaders>
++            <requestHeaders>false</requestHeaders>
++            <responseDataOnError>false</responseDataOnError>
++            <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
++            <assertionsResultsToSave>0</assertionsResultsToSave>
++            <bytes>true</bytes>
++          </value>
++        </objProp>
++        <stringProp name="filename"></stringProp>
++      </ResultCollector>
++      <hashTree/>
++      <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="Simple Data Writer" enabled="true">
++      <boolProp name="ResultCollector.error_logging">false</boolProp>
++      <objProp>
++        <name>saveConfig</name>
++        <value class="SampleSaveConfiguration">
++          <time>true</time>
++          <latency>true</latency>
++          <timestamp>true</timestamp>
++          <success>true</success>
++          <label>true</label>
++          <code>true</code>
++          <message>true</message>
++          <threadName>true</threadName>
++          <dataType>true</dataType>
++          <encoding>false</encoding>
++          <assertions>false</assertions>
++          <subresults>false</subresults>
++          <responseData>false</responseData>
++          <samplerData>false</samplerData>
++          <xml>false</xml>
++          <fieldNames>false</fieldNames>
++          <responseHeaders>false</responseHeaders>
++          <requestHeaders>false</requestHeaders>
++          <responseDataOnError>false</responseDataOnError>
++          <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
++          <assertionsResultsToSave>0</assertionsResultsToSave>
++          <bytes>true</bytes>
++        </value>
++      </objProp>
++      <stringProp name="filename">@RESULT_FILE@</stringProp>
++    </ResultCollector>
++    <hashTree/>
++     </hashTree>
++    </hashTree>
++  </hashTree>
++</jmeterTestPlan>
+Index: test/src/org/apache/jmeter/timers/AccessLogTimerTest.java
+===================================================================
+--- test/src/org/apache/jmeter/timers/AccessLogTimerTest.java	(revision 0)
++++ test/src/org/apache/jmeter/timers/AccessLogTimerTest.java	(revision 0)
+@@ -0,0 +1,76 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.timers;
++
++import java.io.IOException;
++
++import org.apache.jmeter.junit.JMeterTestCase;
++
++public class AccessLogTimerTest extends JMeterTestCase {
++
++    private AccessLogTimer timer;
++
++    public AccessLogTimerTest(String arg0) {
++        super(arg0);
++    }
++
++    @Override
++    protected void setUp() throws Exception {
++        timer = new AccessLogTimer();
++        timer.setDateFormat(AccessLogTimer.DEFAULT_DATE_FORMAT);
++        timer.setDatePattern(AccessLogTimer.DEFAULT_DATE_PATTERN);
++    }
++
++    public void testTimerCalculatesDelaysOfSampleLogAtOffset0With29Entries()
++            throws IOException {
++        long[] expectedDelays = { 0, 0, 3, 11, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++                0, 16, 7, 0, 3, 1, 0, 0, 0, 3, 2, 8, 0, 2 };
++        testDelays("0", "29", expectedDelays);
++    }
++
++    public void testTimerCalculatesDelaysOfSampleLogAtOffset38With1Entry()
++            throws IOException {
++        long[] expectedDelays = { 0 };
++        testDelays("38", "1", expectedDelays);
++    }
++
++    public void testTimerCalculatesDelaysOfSampleLogAtOffset39With5Entries()
++            throws IOException {
++        long[] expectedDelays = { 0, 0, 14, 2, 24 };
++        testDelays("39", "5", expectedDelays);
++    }
++
++    public void testTimerCalculatesDelaysOfSampleLogAtOffset47With2Entries()
++            throws IOException {
++        long[] expectedDelays = { 0, 1 };
++        testDelays("47", "2", expectedDelays);
++    }
++
++    private void testDelays(String offset, String numEntries,
++            long[] expectedDelays) {
++        timer.setFile(filePrefix + "testfiles/sample_access_log.jmeter.log");
++        timer.setOffset(offset);
++        timer.setNumEntries(numEntries);
++
++        for (int i = 0; i < expectedDelays.length; i++) {
++            assertEquals(expectedDelays[i] * 1000, (long) timer.delay());
++        }
++    }
++
++}
+Index: test/src/org/apache/jmeter/junit/JMeterTestCase.java
+===================================================================
+--- test/src/org/apache/jmeter/junit/JMeterTestCase.java	(revision 1493413)
++++ test/src/org/apache/jmeter/junit/JMeterTestCase.java	(working copy)
+@@ -39,7 +39,7 @@
+  */
+ public abstract class JMeterTestCase extends TestCase {
+     // Used by findTestFile
+-    private static final String filePrefix;
++    protected static final String filePrefix;
+ 
+     public JMeterTestCase() {
+         super();
+Index: test/src/org/apache/jmeter/junit/JMeterTest.java
+===================================================================
+--- test/src/org/apache/jmeter/junit/JMeterTest.java	(revision 1493413)
++++ test/src/org/apache/jmeter/junit/JMeterTest.java	(working copy)
+@@ -356,6 +356,7 @@
+                 (title != null && title.length() > 0) // Will be "" for internal components
+                 && (title.toUpperCase(java.util.Locale.ENGLISH).indexOf("(ALPHA") == -1) 
+                 && (title.toUpperCase(java.util.Locale.ENGLISH).indexOf("(BETA") == -1)
++                && (!title.matches("Access_Log_Timer"))
+                 && (!title.matches("Example\\d+")) // Skip the example samplers ...
+                 && (!name.startsWith("org.apache.jmeter.examples."))
+                 && (!name.startsWith("org.apache.jmeter.report.")) // Skip report packages as implementation is incomplete
+Index: test/src/org/apache/jmeter/protocol/http/util/accesslog/TestTCLogParser.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/util/accesslog/TestTCLogParser.java	(revision 1493413)
++++ test/src/org/apache/jmeter/protocol/http/util/accesslog/TestTCLogParser.java	(working copy)
+@@ -18,45 +18,84 @@
+ 
+ package org.apache.jmeter.protocol.http.util.accesslog;
+ 
++import java.io.BufferedReader;
++import java.io.FileInputStream;
++import java.io.InputStream;
++
+ import org.apache.jmeter.junit.JMeterTestCase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPNullSampler;
+ 
+ // TODO - more tests needed
+ 
+-public class TestTCLogParser  extends JMeterTestCase {
+-        private static final TCLogParser tclp = new TCLogParser();
++public class TestTCLogParser extends JMeterTestCase {
++    private static final TCLogParser tclp = new TCLogParser();
+ 
+-        private static final String URL1 = "127.0.0.1 - - [08/Jan/2003:07:03:54 -0500] \"GET /addrbook/ HTTP/1.1\" 200 1981";
++    private static final String URL1 = "127.0.0.1 - - [08/Jan/2003:07:03:54 -0500] \"GET /addrbook/ HTTP/1.1\" 200 1981";
+ 
+-        private static final String URL2 = "127.0.0.1 - - [08/Jan/2003:07:03:54 -0500] \"GET /addrbook?x=y HTTP/1.1\" 200 1981";
++    private static final String URL2 = "127.0.0.1 - - [08/Jan/2003:07:03:54 -0500] \"GET /addrbook?x=y HTTP/1.1\" 200 1981";
+ 
+-        private static final String TEST3 = "127.0.0.1 - - [08/Jan/2003:07:03:54 -0500] \"HEAD /addrbook/ HTTP/1.1\" 200 1981";
++    private static final String TEST3 = "127.0.0.1 - - [08/Jan/2003:07:03:54 -0500] \"HEAD /addrbook/ HTTP/1.1\" 200 1981";
+ 
+-        public void testConstruct() throws Exception {
+-            TCLogParser tcp;
+-            tcp = new TCLogParser();
+-            assertNull("Should not have set the filename", tcp.FILENAME);
++    public void testConstruct() throws Exception {
++        TCLogParser tcp;
++        tcp = new TCLogParser();
++        assertNull("Should not have set the filename", tcp.FILENAME);
+ 
+-            String file = "testfiles/access.log";
+-            tcp = new TCLogParser(file);
+-            assertEquals("Filename should have been saved", file, tcp.FILENAME);
+-        }
++        String file = "testfiles/access.log";
++        tcp = new TCLogParser(file);
++        assertEquals("Filename should have been saved", file, tcp.FILENAME);
++    }
+ 
+-        public void testcleanURL() throws Exception {
+-            String res = tclp.cleanURL(URL1);
+-            assertEquals("/addrbook/", res);
+-            assertNull(tclp.stripFile(res, new HTTPNullSampler()));
+-        }
++    public void testcleanURL() throws Exception {
++        String res = tclp.cleanURL(URL1);
++        assertEquals("/addrbook/", res);
++        assertNull(tclp.stripFile(res, new HTTPNullSampler()));
++    }
+ 
+-        public void testcheckURL() throws Exception {
+-            assertFalse("URL does not have a query", tclp.checkURL(URL1));
+-            assertTrue("URL is a query", tclp.checkURL(URL2));
+-        }
++    public void testcheckURL() throws Exception {
++        assertFalse("URL does not have a query", tclp.checkURL(URL1));
++        assertTrue("URL is a query", tclp.checkURL(URL2));
++    }
+ 
+-        public void testHEAD() throws Exception {
+-            String res = tclp.cleanURL(TEST3);
+-            assertEquals("/addrbook/", res);
+-            assertNull(tclp.stripFile(res, new HTTPNullSampler()));
++    public void testHEAD() throws Exception {
++        String res = tclp.cleanURL(TEST3);
++        assertEquals("/addrbook/", res);
++        assertNull(tclp.stripFile(res, new HTTPNullSampler()));
++    }
++
++    public void testGivenAnOffset0TheReaderIsPositionedAtLine0()
++            throws Exception {
++        String logName = filePrefix + "testfiles/sample_access_log.jmeter.log";
++        InputStream is = new FileInputStream(logName);
++
++        String expectedLineAt0 = "10.215.119.76 - - [01/Aug/2012:08:16:45 +0200] \"GET /boib/index.do?lang=ca HTTP/1.1\" 200 5505 \"http://www.novalid.site/root/index.do?lang=ca\" \"Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)\" www.novalid.site";
++        BufferedReader reader = TCLogParser.getReaderAtLine(is, 0);
++        assertEquals(expectedLineAt0, reader.readLine());
++        is.close();
++    }
++
++    public void testGivenAnOffset29TheReaderIsPositionedAtLine29()
++            throws Exception {
++        String logName = filePrefix + "testfiles/sample_access_log.jmeter.log";
++        InputStream is = new FileInputStream(logName);
++
++        String expectedLineAt29 = "188.185.46.145 - - [01/Aug/2012:08:17:02 +0200] \"GET /root/imgs/base.gif HTTP/1.1\" 200 49 \"http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6\" \"Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)\" www.novalid.site";
++        BufferedReader reader = TCLogParser.getReaderAtLine(is, 29);
++        assertEquals(expectedLineAt29, reader.readLine());
++        is.close();
++    }
++
++    public void testGivenAnOffsetGreaterThanLogTheReaderThrowsException()
++            throws Exception {
++        String logName = filePrefix + "testfiles/sample_access_log.jmeter.log";
++        InputStream is = new FileInputStream(logName);
++
++        try {
++            TCLogParser.getReaderAtLine(is, 1000);
++            fail();
++        } catch (java.util.NoSuchElementException ex) {
++
+         }
++    }
+ 
+ }
+\ No newline at end of file
+Index: test/src/org/apache/jmeter/protocol/http/util/accesslog/TestPlanGeneratorTest.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/util/accesslog/TestPlanGeneratorTest.java	(revision 0)
++++ test/src/org/apache/jmeter/protocol/http/util/accesslog/TestPlanGeneratorTest.java	(revision 0)
+@@ -0,0 +1,389 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.util.accesslog;
++
++import static org.apache.jmeter.util.AccessLogUtils.DATE_EMPTY;
++import static org.apache.jmeter.util.AccessLogUtils.LOGFORMAT_COMBINED;
++import static org.apache.jmeter.util.AccessLogUtils.parseDateAsLong;
++import static org.apache.jmeter.util.AccessLogUtils.parseDateAsLongFromEntry;
++
++import java.io.File;
++import java.io.IOException;
++import java.text.ParseException;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++import org.apache.commons.io.FileUtils;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.protocol.http.util.accesslog.TestPlanGenerator.DateRange;
++import org.apache.jmeter.protocol.http.util.accesslog.TestPlanGenerator.PlanRequest;
++import org.junit.Before;
++
++public class TestPlanGeneratorTest extends JMeterTestCase {
++
++    private TestPlanGenerator generator;
++    private String groupedLog;
++    private PlanRequest request;
++
++    @Before
++    @Override
++    public void setUp() throws Exception {
++        generator = new TestPlanGenerator();
++        DateRange dateRange = new DateRange("01/Aug/2012:08:16:45 +0200",
++                "01/Aug/2012:08:17:45 +0200");
++        String logFile = filePrefix + "testfiles/sample_access_log.log";
++        String outputDir = System.getProperty("user.dir") + "/";
++        groupedLog = outputDir + "/sample_access_log.jmeter.log";
++
++        request = new PlanRequest();
++        request.logFile = logFile;
++        request.range = dateRange;
++        request.outputDir = outputDir;
++        request.server = "your.accessed.server";
++        request.port = "80";
++        request.protocol = "HTTP";
++        request.logFormat = LOGFORMAT_COMBINED + " %v";
++        request.virtualhost = "www.novalid.site";
++        request.printProgress = false;
++        request.progressInterval = 1000; // if true, display progress each 1000
++                                         // entries
++
++        validateFileExists(logFile);
++        deleteGroupedLogIfExists();
++
++    }
++
++    @Override
++    protected void tearDown() throws Exception {
++    }
++
++    public void testGivenDateRangeInsideAccessLogRangeGeneratesTestPlan() {
++        try {
++
++            // uncomment below to display generation info in console
++            // request.printProgress=true;
++
++            request.range = new DateRange("01/Aug/2012:08:16:45 +0200",
++                    "01/Aug/2012:08:17:45 +0200");
++
++            String planFile = generator.generateTestPlan(request);
++            assertEquals(request.outputDir
++                    + "01Aug2012081645_01Aug2012081745-plan.jmx", planFile);
++
++            validateFileExists(groupedLog);
++
++            Set<String> ips = generator.ips;
++            validatePlan(planFile, ips);
++
++            if (request.printProgress) {
++                printSummary(planFile);
++            }
++
++        } catch (IOException e) {
++            e.printStackTrace();
++            fail();
++        } catch (ParseException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++            fail();
++        }
++
++    }
++
++    public void testGivenDateRangeOutsideAccessLogRangeGeneratesTestPlan() {
++        try {
++            request.range = new DateRange("01/Aug/2012:00:16:45 +0200",
++                    "02/Aug/2012:08:17:45 +0200");
++            String planFile = generator.generateTestPlan(request);
++
++            Set<String> ips = generator.ips;
++            validatePlan(planFile, ips);
++
++            if (request.printProgress) {
++                printSummary(planFile);
++            }
++
++        } catch (IOException e) {
++            e.printStackTrace();
++            fail();
++        } catch (ParseException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++            fail();
++        }
++
++    }
++
++    public void testGivenNoRangeGeneratesTestPlan() {
++        try {
++            request.range = new DateRange("", "");
++            String planFile = generator.generateTestPlan(request);
++
++            Set<String> ips = generator.ips;
++            validatePlan(planFile, ips);
++
++            if (request.printProgress) {
++                printSummary(planFile);
++            }
++
++        } catch (IOException e) {
++            e.printStackTrace();
++            fail();
++        } catch (ParseException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++            fail();
++        }
++
++    }
++
++    public void testGivenTimeRangeGeneratesThreadGroup() throws IOException,
++            ParseException {
++
++        generator.generateGroupedAccessLog(request);
++
++        String ip = "10.215.119.76";
++        String threadGroup = generator.generateThreadGroupForTheIP(ip,
++                request.range);
++        validateThreadgroup(threadGroup, ip);
++
++    }
++
++    private void deleteGroupedLogIfExists() {
++        File f = new File(groupedLog);
++        if (f.exists()) {
++            try {
++                FileUtils.forceDelete(f);
++            } catch (IOException e) {
++                // TODO Auto-generated catch block
++                e.printStackTrace();
++            }
++        }
++    }
++
++    public void testGivenNoDateRangeGeneratesJMeterAccessLogCompleteAndGroupedByIp()
++            throws IOException, ParseException {
++        request.range = new DateRange("", "");
++        generator.generateGroupedAccessLog(request);
++        validateFileExists(groupedLog);
++        assertEquals(9, generator.entriesByIp.size());
++        assertEquals(84, generator.entryCount());
++        validateRange(84);
++    }
++
++    public void testGivenDateRangeGeneratesJMeterAccessLogInsideRangeAndGroupedByIp()
++            throws IOException, ParseException {
++        request.range = new DateRange("01/Aug/2012:08:16:45 +0200",
++                "01/Aug/2012:08:17:45 +0200");
++        generator.generateGroupedAccessLog(request);
++        validateFileExists(groupedLog);
++        assertEquals(7, generator.entriesByIp.size());
++        assertEquals(49, generator.entryCount());
++        validateOffsets(generator.offsetsByIp);
++    }
++
++    public void testGivenDateRangeWithoutStartTimeGeneratesJMeterAccessLogInsideRangeAndGroupedByIp()
++            throws IOException, ParseException {
++        request.range = new DateRange("", "01/Aug/2012:08:17:45 +0200");
++        generator.generateGroupedAccessLog(request);
++        validateFileExists(groupedLog);
++        assertEquals(59, generator.entryCount());
++        validateRange(59);
++    }
++
++    public void testGivenDateRangeWithoutEndTimeGeneratesJMeterAccessLogInsideRangeAndGroupedByIp()
++            throws IOException, ParseException {
++        request.range = new DateRange("01/Aug/2012:08:16:45 +0200", null);
++        generator.generateGroupedAccessLog(request);
++        validateFileExists(groupedLog);
++        assertEquals(74, generator.entryCount());
++        validateRange(74);
++    }
++/*
++    public void testGivenGZIPAccessLogAndNoDateRangeGeneratesJMeterAccessLogInsideRangeAndGroupedByIp()
++            throws IOException, ParseException {
++        request.logFile = filePrefix + "testfiles/sample_access_log.log.gz";
++        request.range = new DateRange("01/Aug/2012:08:16:45 +0200", null);
++        groupedLog = request.outputDir + "sample_access_log.log.jmeter.log";
++        deleteGroupedLogIfExists();
++        generator.generateGroupedAccessLog(request);
++        validateFileExists(groupedLog);
++        assertEquals(74, generator.entryCount());
++        validateRange(74);
++    }
++    */
++
++    private void validateRange(int numFileEntries) {
++        try {
++            long start = parseDateAsLong(request.range.startTime);
++            long end = parseDateAsLong(request.range.endTime);
++            List<String> entries = FileUtils.readLines(new File(groupedLog));
++            assertEquals(numFileEntries, entries.size());
++            for (String entry : entries) {
++                long entryDate = parseDateAsLongFromEntry(entry);
++                assertTrue(generator.isEntryDateInsideRequestedRange(entryDate,
++                        start, end));
++            }
++        } catch (IOException e) {
++            fail();
++        } catch (ParseException e) {
++            fail();
++        }
++    }
++
++    private void validateOffsets(Map<String, Long> offsetsByIp) {
++        Map<String, Long> expected = new HashMap<String, Long>();
++        expected.put("10.215.119.76", 0L);
++        expected.put("188.185.46.145", 29L);
++        expected.put("110.215.25.80", 34L);
++        expected.put("80.91.80.52", 38L);
++        expected.put("110.215.13.168", 39L);
++        expected.put("81.45.52.175", 44L);
++        expected.put("179.109.214.208", 47L);
++        assertSame(expected.size(), offsetsByIp.size());
++
++        for (String ip : offsetsByIp.keySet()) {
++            assertSame(expected.get(ip), offsetsByIp.get(ip));
++        }
++    }
++
++    public void testGivenADateRangeTheEntryDateIsInRange()
++            throws ParseException {
++
++        long start = parseDateAsLong("01/Aug/2012:08:16:45 +0200");
++        long end = parseDateAsLong("01/Aug/2012:09:17:45 +0200");
++
++        // case entry date inside range
++        long testedTime = parseDateAsLong("01/Aug/2012:09:16:45 +0200");
++        assertTrue(generator.isEntryDateInsideRequestedRange(testedTime, start,
++                end));
++
++        // case entry date equals start time
++        testedTime = parseDateAsLong("01/Aug/2012:08:16:45 +0200");
++        assertTrue(generator.isEntryDateInsideRequestedRange(testedTime, start,
++                end));
++
++        // case entry date smaller start time
++        testedTime = parseDateAsLong("01/Aug/2012:08:16:44 +0200");
++        assertFalse(generator.isEntryDateInsideRequestedRange(testedTime,
++                start, end));
++
++        // case entry date equals end time
++        testedTime = parseDateAsLong("01/Aug/2012:09:17:45 +0200");
++        assertTrue(generator.isEntryDateInsideRequestedRange(testedTime, start,
++                end));
++
++        // case entry date greater than end time
++        testedTime = parseDateAsLong("01/Aug/2012:09:17:46 +0200");
++        assertFalse(generator.isEntryDateInsideRequestedRange(testedTime,
++                start, end));
++    }
++
++    public void testIfEntryDateIsInsideRangeWhenStartIsUnlimited()
++            throws ParseException {
++
++        // case start time is unlimited and the entry time inside end range
++        long testedTime = parseDateAsLong("01/Aug/2012:09:17:40 +0200");
++        long end = parseDateAsLong("01/Aug/2012:09:17:45 +0200");
++        assertTrue(generator.isEntryDateInsideRequestedRange(testedTime,
++                DATE_EMPTY, end));
++    }
++
++    public void testIfEntryDateIsInsideRangeWhenEndIsUnlimited()
++            throws ParseException {
++
++        // case end time is unlimited and the entry time inside start range
++        long start = parseDateAsLong("01/Aug/2012:09:17:45 +0200");
++        long testedTime = parseDateAsLong("01/Aug/2012:09:18:40 +0200");
++        assertTrue(generator.isEntryDateInsideRequestedRange(testedTime, start,
++                DATE_EMPTY));
++    }
++
++    public void testGivenFullAccessLogFindsAllDifferentIPs() throws IOException {
++        Set<String> ips = generator.findIPSetInAccessLog(new File(
++                request.logFile));
++        assertSame(9, ips.size());
++    }
++
++    public void testGivenDateRangeConstructsPlanFileName() {
++        String fileName = generator.constructPlanFileName(request.range);
++        assertEquals("01Aug2012081645_01Aug2012081745-plan.jmx", fileName);
++    }
++
++    public void testGivenDateRemoveOffset() {
++        String date = generator.removeOffsetFromDate(request.range.startTime);
++        assertEquals("01/Aug/2012:08:16:45", date);
++    }
++
++    private void validatePlan(String planFile, Set<String> ips) {
++        String plan = "";
++        try {
++            plan = FileUtils.readFileToString(new File(planFile));
++        } catch (IOException e) {
++            // TODO Auto-generated catch block
++            e.printStackTrace();
++        }
++        assertFalse(plan.contains("@PLAN_NAME@"));
++        assertFalse(plan.contains("@THREAD_GROUPS@"));
++        assertFalse(plan.contains("@LOG_FILE@"));
++        assertFalse(plan.contains("@IP@"));
++        assertFalse(plan.contains("@DELAY@"));
++        assertFalse(plan.contains("@DURATION@"));
++        assertFalse(plan.contains("@DATE_FORMAT@"));
++        assertFalse(plan.contains("@DATE_PATTERN@"));
++        assertFalse(plan.contains("@RESULT_FILE@"));
++
++        for (String ip : ips) {
++            assertTrue(plan.contains(ip));
++        }
++    }
++
++    private void validateThreadgroup(String threadGroup, String ip) {
++        assertFalse(threadGroup.contains("@IP@"));
++        assertFalse(threadGroup.contains("@DELAY@"));
++        assertFalse(threadGroup.contains("@DURATION@"));
++        assertFalse(threadGroup.contains("@NUM_ENTRIES@"));
++        assertFalse(threadGroup.contains("@OFFSET@"));
++        assertTrue(threadGroup.contains(ip));
++        assertTrue(threadGroup.contains("dateFormat"));
++        assertTrue(threadGroup.contains("datePattern"));
++        assertTrue(threadGroup.contains("file"));
++        assertTrue(threadGroup.contains("offset"));
++        assertTrue(threadGroup.contains("numEntries"));
++
++    }
++
++    private void validateFileExists(String logFile) {
++        assertTrue(new File(logFile).exists());
++    }
++
++    private void printSummary(String planFile) {
++        System.out.println("\nSummary:");
++        System.out.println("log file in: " + request.logFile);
++        System.out.println("plan available in: " + planFile);
++        System.out.println("generated log available in: "
++                + generator.groupedLogName);
++        System.out.println("number of IPs: " + generator.ipCount());
++        System.out.println("number of entries: " + generator.entryCount());
++        System.out.println("result file will be: " + generator.resultFileName);
++
++    }
++}
+Index: test/src/org/apache/jmeter/protocol/http/util/accesslog/AccessLogUtilsTest.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/util/accesslog/AccessLogUtilsTest.java	(revision 0)
++++ test/src/org/apache/jmeter/protocol/http/util/accesslog/AccessLogUtilsTest.java	(revision 0)
+@@ -0,0 +1,123 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.util.accesslog;
++
++import java.text.ParseException;
++import org.apache.jmeter.junit.JMeterTestCase;
++import static org.apache.jmeter.util.AccessLogUtils.*;
++
++public class AccessLogUtilsTest extends JMeterTestCase {
++
++    private String entryCombinedVhost = "110.215.25.80 - - [01/Aug/2012:08:00:00 +0200] \"GET /vern/archivo.do?id=1189417 HTTP/1.1\" 200 30329 \"http://www.foo.com/vern/organigrama/area.do?lang=ca&coduo=2705\" \"Mozilla/5.0 (Windows NT 5.1; rv:14.0) Gecko/20100101 Firefox/14.0.1\" www.foo.com";
++    private String entryCommonVHost = "110.215.25.80 - - [01/Aug/2012:08:00:00 +0200] \"GET /vern/archivo.do?id=1189417 HTTP/1.1\" 200 30329 www.foo.com";
++
++    public void testParseIPFromEntry() {
++        String expectedIp = "110.215.25.80";
++        String ip = getIpAddress(entryCombinedVhost);
++        assertEquals(expectedIp, ip);
++    }
++
++    public void testGetDateFromEntry() throws ParseException {
++        assertEquals("01/Aug/2012:08:00:00 +0200",
++                getDateFromEntry(entryCombinedVhost));
++    }
++
++    public void testParseEntryOfType1ReturnTimeAsLong() {
++        long expected = 1341270000000L;
++        String entry = "85.119.193.100 - - [03/Jul/2012:00:00:00 +0100] \"GET /sacmicrofront/v4/css/estils_print.css HTTP/1.1\" 200 9167";
++        try {
++            long time = parseDateAsLongFromEntry(entry);
++            assertEquals(expected, time);
++        } catch (ParseException e) {
++            fail();
++        }
++    }
++
++    public void testParseEntryOfType2ReturnTimeAsLong() {
++        long expected = 1341270000000L;
++        String entry = "85.119.193.33 - - [03/Jul/2012:00:00:00 +0100] \"GET /sacmicrofront/contenido.do?idsite=117&lang=CA&cont=5189 HTTP/1.1\" 200 1459 \"http://alawarstore.com\" \"Opera/7.54 (Windows NT 5.1; U)  [pl]\" www.caib.es";
++        try {
++            long time = parseDateAsLongFromEntry(entry);
++            assertEquals(expected, time);
++        } catch (ParseException e) {
++            fail();
++        }
++    }
++
++    public void testGivenCombinedLogFormatFindsThePattern() {
++        String pattern = constructPatternOfLogFormat(LOGFORMAT_COMBINED);
++        assertEquals(COMBINED_PATTERN, pattern);
++    }
++
++    public void testGivenExtraCombinedLogFormatFindsThePattern() {
++        String pattern = constructPatternOfLogFormat(LOGFORMAT_COMBINED + " %v");
++        assertEquals(COMBINED_PATTERN + " (" + VHOST_PATTERN + ")", pattern);
++    }
++
++    public void testGetVirtualHostFromExtraCombinedEntry() {
++        String expectedVHost = "www.foo.com";
++        String logFormat = LOGFORMAT_COMBINED + " %v";
++        String vhost = getFieldFromEntry("%v", entryCombinedVhost, logFormat);
++        assertEquals(expectedVHost, vhost);
++    }
++
++    public void testGetIPFromExtraCombinedEntry() {
++        String expected = "110.215.25.80";
++        String logFormat = LOGFORMAT_COMBINED + " %v";
++        String vhost = getFieldFromEntry("%h", entryCombinedVhost, logFormat);
++        assertEquals(expected, vhost);
++    }
++
++    public void testGetIPFromCombinedEntry() {
++        String expected = "110.215.25.80";
++        String logFormat = LOGFORMAT_COMBINED;
++        String vhost = getFieldFromEntry("%h", entryCombinedVhost, logFormat);
++        assertEquals(expected, vhost);
++    }
++
++    public void testGetIPFromCommonEntry() {
++        String expected = "110.215.25.80";
++        String logFormat = LOGFORMAT_COMMON;
++        String vhost = getFieldFromEntry("%h", entryCommonVHost, logFormat);
++        assertEquals(expected, vhost);
++    }
++
++    public void testGetIPFromExtraCommmonEntry() {
++        String expected = "110.215.25.80";
++        String logFormat = LOGFORMAT_COMMON + " %v";
++        String vhost = getFieldFromEntry("%h", entryCommonVHost, logFormat);
++        assertEquals(expected, vhost);
++    }
++
++    public void testGetVHostFromExtraCommmonEntry() {
++        String expected = "www.foo.com";
++        String logFormat = LOGFORMAT_COMMON + " %v";
++        String vhost = getFieldFromEntry("%v", entryCommonVHost, logFormat);
++        assertEquals(expected, vhost);
++    }
++
++    public void testGetVHostFromExtraCombinedEntryWithNoSize() {
++        String expected = "www.foo.com";
++        String entryCombinedVhost = "110.215.25.80 - - [01/Aug/2012:08:00:00 +0200] \"GET /vern/archivo.do?id=1189417 HTTP/1.1\" 302 - \"http://www.foo.com/vern/organigrama/area.do?lang=ca&coduo=2705\" \"Mozilla/5.0 (Windows NT 5.1; rv:14.0) Gecko/20100101 Firefox/14.0.1\" www.foo.com";
++        String logFormat = LOGFORMAT_COMBINED + " %v";
++        String vhost = getFieldFromEntry("%v", entryCombinedVhost, logFormat);
++        assertEquals(expected, vhost);
++    }
++
++}
+Index: bin/testfiles/sample_access_log.log
+===================================================================
+--- bin/testfiles/sample_access_log.log	(revision 0)
++++ bin/testfiles/sample_access_log.log	(revision 0)
+@@ -0,0 +1,84 @@
++10.215.119.76 - - [01/Aug/2012:08:16:17 +0200] "GET /webcaib/favicon.ico HTTP/1.1" 200 318 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:16:36 +0200] "GET / HTTP/1.1" 302 208 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:36 +0200] "GET /root/ HTTP/1.1" 200 100 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:36 +0200] "GET /root/index.do?lang=ca HTTP/1.1" 200 6637 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:42 +0200] "GET /root/css/estils.css HTTP/1.1" 200 34247 "http://www.novalid.site/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:42 +0200] "GET /root/css/portada.css HTTP/1.1" 200 4087 "http://www.novalid.site/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++80.91.80.52 - - [01/Aug/2012:08:16:42 +0200] "GET /root/css/estils_print.css HTTP/1.1" 200 24466 "http://www.novalid.site/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:42 +0200] "GET /root/css/modulo_twitter.css HTTP/1.1" 200 2309 "http://www.novalid.site/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:16:43 +0200] "GET /root/servletTwitter?q=iblabla&count=9&callback=jQuery17107445738501390231_1343801802385&_=1343801803385 HTTP/1.1" 200 2316 "http://www.novalid.site/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:44 +0200] "GET /favicon.ico HTTP/1.1" 404 54 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:45 +0200] "GET /boib/index.do?lang=ca HTTP/1.1" 200 5505 "http://www.novalid.site/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:45 +0200] "GET /root/js/comuns.js HTTP/1.1" 200 5706 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:45 +0200] "GET /root/imgs/titols/boib.jpg HTTP/1.1" 200 11291 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:45 +0200] "GET /root/imgs/icones/cO.gif HTTP/1.1" 200 524 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:45 +0200] "GET /root/imgs/icones/cE.gif HTTP/1.1" 200 198 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:48 +0200] "GET /boib/index.do?lang=ca&p_mes=7&p_any=2012 HTTP/1.1" 200 5513 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:16:50 +0200] "GET /boib/index.do?lang=ca&p_mes=6&p_any=2012 HTTP/1.1" 200 5697 "http://www.novalid.site/boib/index.do?lang=ca&p_mes=7&p_any=2012" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:16:55 +0200] "GET /boib/index.do?lang=ca&p_mes=7&p_any=2012 HTTP/1.1" 200 5513 "http://www.novalid.site/boib/index.do?lang=ca&p_mes=6&p_any=2012" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:59 +0200] "GET /govern/organigrama/area.do?lang=ca&coduo=6 HTTP/1.1" 200 6238 "http://www.novalid.site/boib/index.do?lang=ca&p_mes=7&p_any=2012" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:17:02 +0200] "GET /root/js/noticiesNivell3.js HTTP/1.1" 200 3003 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /root/imgs/destacats/fons.gif HTTP/1.1" 200 1669 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++80.91.80.52 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=874246 HTTP/1.1" 200 27724 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199225 HTTP/1.1" 200 39467 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1119561 HTTP/1.1" 200 56251 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1090299 HTTP/1.1" 200 65356 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199220 HTTP/1.1" 200 36400 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199216 HTTP/1.1" 200 35330 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199246 HTTP/1.1" 200 39171 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:02 +0200] "GET /root/imgs/base.gif HTTP/1.1" 200 49 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=953468 HTTP/1.1" 200 39580 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1201719 HTTP/1.1" 200 52286 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199286 HTTP/1.1" 200 84304 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1198774 HTTP/1.1" 200 74102 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199495 HTTP/1.1" 200 928118 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1196837 HTTP/1.1" 200 71711 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1197195 HTTP/1.1" 200 70269 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1194150 HTTP/1.1" 200 85268 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1193120 HTTP/1.1" 200 73355 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:16 +0200] "GET /govern/estadistica?estua=6&tipus=F&codi=1071995&url=http%3A%2F%2Fwww.novalid.site%2Fgovern%2Fsac%2Ffitxa.do%3Festua%3D6%26lang%3Dca%26codi%3D1022317%26coduo%3D6&lang=ca HTTP/1.1" 302 - "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:17 +0200] "GET /govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6 HTTP/1.1" 200 3634 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:18 +0200] "GET /root/imgs/icones/pdf.gif HTTP/1.1" 200 1023 "http://www.novalid.site/govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:18 +0200] "GET /govern/archivo.do?id=1022318 HTTP/1.1" 200 30345 "http://www.novalid.site/govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:25 +0200] "GET /govern/president/index.do?lang=ca HTTP/1.1" 200 3891 "http://www.novalid.site/govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:25 +0200] "GET /fitxer/get?codi=873565 HTTP/1.1" 200 37961 "http://www.novalid.site/govern/president/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:28 +0200] "GET /govern/index.do?lang=ca HTTP/1.1" 200 3660 "http://www.novalid.site/govern/president/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++179.109.214.208 - - [01/Aug/2012:08:17:28 +0200] "GET /govern/archivo.do?id=203282 HTTP/1.1" 200 9817 "http://www.novalid.site/govern/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/organigrama/area.do?lang=ca&coduo=6 HTTP/1.1" 200 6238 "http://www.novalid.site/govern/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=874246 HTTP/1.1" 200 27724 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1119561 HTTP/1.1" 200 56251 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1199225 HTTP/1.1" 200 39467 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1090299 HTTP/1.1" 200 65356 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1199220 HTTP/1.1" 200 36400 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++179.109.214.208 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1199216 HTTP/1.1" 200 35330 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:32 +0200] "GET /govern/organizacion.do?coduo=6&lang=ca HTTP/1.1" 200 5642 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:34 +0200] "GET /govern/archivo.do?id=874246 HTTP/1.1" 200 27724 "http://www.novalid.site/govern/organizacion.do?coduo=6&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:42 +0200] "GET /govern/organigrama/area.do?coduo=994&lang=ca HTTP/1.1" 200 4185 "http://www.novalid.site/govern/organizacion.do?coduo=6&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:42 +0200] "GET /govern/archivo.do?id=1202529 HTTP/1.1" 200 23171 "http://www.novalid.site/govern/organigrama/area.do?coduo=994&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:42 +0200] "GET /govern/archivo.do?id=182101 HTTP/1.1" 200 24365 "http://www.novalid.site/govern/organigrama/area.do?coduo=994&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:44 +0200] "GET /govern/estadistica?estua=994&tipus=F&codi=32429&url=http%3A%2F%2Fwww.ibestat.cat%2Fibestat%2Fpage%3Flang%3Dca&lang=ca HTTP/1.1" 302 - "http://www.novalid.site/govern/organigrama/area.do?coduo=994&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:18:09 +0200] "GET /sacmicrofront/home.do?idsite=3245&lang=CA HTTP/1.1" 302 20 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:18:10 +0200] "GET /sacmicrofront/contenido.do;jsessionid=065848302950D6109054BA91A3D53C6A?idsite=3245&cont=49440&lang=ca&campa=yes HTTP/1.1" 200 2803 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:18:10 +0200] "GET /sacmicrofront/v1/css/estilos01_blau.css HTTP/1.1" 200 14917 "http://www.novalid.site/sacmicrofront/contenido.do;jsessionid=065848302950D6109054BA91A3D53C6A?idsite=3245&cont=49440&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:18:10 +0200] "GET /sacmicrofront/v1/css/estils_print.css HTTP/1.1" 404 415 "http://www.novalid.site/sacmicrofront/contenido.do;jsessionid=065848302950D6109054BA91A3D53C6A?idsite=3245&cont=49440&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++80.91.80.52 - - [01/Aug/2012:08:18:10 +0200] "GET /sacmicrofront/v1/js/globales.js HTTP/1.1" 200 3834 "http://www.novalid.site/sacmicrofront/contenido.do;jsessionid=065848302950D6109054BA91A3D53C6A?idsite=3245&cont=49440&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++80.91.80.52 - - [01/Aug/2012:08:18:10 +0200] "GET /sacmicrofront/v1/imgs/bkg_site.png HTTP/1.1" 200 319 "http://www.novalid.site/sacmicrofront/contenido.do;jsessionid=065848302950D6109054BA91A3D53C6A?idsite=3245&cont=49440&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:19:26 +0200] "GET /sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=43824 HTTP/1.1" 200 2258 "http://www.novalid.site/sacmicrofront/contenido.do;jsessionid=065848302950D6109054BA91A3D53C6A?idsite=3245&cont=49440&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++179.109.214.208 - - [01/Aug/2012:08:19:26 +0200] "GET /sacmicrofront/v1/css/estils_print.css HTTP/1.1" 404 415 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=43824" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++179.109.214.208 - - [01/Aug/2012:08:19:26 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST3245ZI121094&id=121094 HTTP/1.1" 200 619683 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=43824" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:19:32 +0200] "GET /sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398 HTTP/1.1" 200 2492 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=43824" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:19:32 +0200] "GET /sacmicrofront/v1/css/estils_print.css HTTP/1.1" 404 415 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:19:32 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST3245ZI126312&id=126312 HTTP/1.1" 200 11391 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:25:48 +0200] "GET /sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=44472 HTTP/1.1" 200 2597 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++80.91.80.52 - - [01/Aug/2012:08:25:48 +0200] "GET /sacmicrofront/v1/css/estilos01_blau.css HTTP/1.1" 304 - "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=44472" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:25:48 +0200] "GET /sacmicrofront/v1/css/estils_print.css HTTP/1.1" 404 415 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=44472" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:25:48 +0200] "GET /sacmicrofront/v1/js/globales.js HTTP/1.1" 304 - "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=44472" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++80.91.80.52 - - [01/Aug/2012:08:25:48 +0200] "GET /sacmicrofront/v1/imgs/listados/menu_off.gif HTTP/1.1" 304 - "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=44472" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:25:48 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST3245ZI119413&id=119413 HTTP/1.1" 200 22765 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=44472" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:26:00 +0200] "GET /sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=50407 HTTP/1.1" 200 2064 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=44472" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:26:00 +0200] "GET /sacmicrofront/v1/css/estils_print.css HTTP/1.1" 404 415 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=50407" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:26:11 +0200] "GET /sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398 HTTP/1.1" 200 2492 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=50407" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:26:11 +0200] "GET /sacmicrofront/v1/css/estils_print.css HTTP/1.1" 404 415 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:26:11 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST3245ZI126312&id=126312 HTTP/1.1" 200 11391 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.211.129.88 - - [01/Aug/2012:08:30:24 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST3245ZI126312&id=126312 HTTP/1.1" 200 11391 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.114.59.90 - - [01/Aug/2012:18:20:03 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST3245ZI126312&id=126312 HTTP/1.1" 200 11391 "http://www.novalid.site/sacmicrofront/contenido.do?idsite=3245&lang=CA&cont=49398" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
+\ No newline at end of file
+Index: bin/testfiles/sample_access_log.jmeter.log
+===================================================================
+--- bin/testfiles/sample_access_log.jmeter.log	(revision 0)
++++ bin/testfiles/sample_access_log.jmeter.log	(revision 0)
+@@ -0,0 +1,49 @@
++10.215.119.76 - - [01/Aug/2012:08:16:45 +0200] "GET /boib/index.do?lang=ca HTTP/1.1" 200 5505 "http://www.novalid.site/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:45 +0200] "GET /root/js/comuns.js HTTP/1.1" 200 5706 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:48 +0200] "GET /boib/index.do?lang=ca&p_mes=7&p_any=2012 HTTP/1.1" 200 5513 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:16:59 +0200] "GET /govern/organigrama/area.do?lang=ca&coduo=6 HTTP/1.1" 200 6238 "http://www.novalid.site/boib/index.do?lang=ca&p_mes=7&p_any=2012" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /root/imgs/destacats/fons.gif HTTP/1.1" 200 1669 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199225 HTTP/1.1" 200 39467 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1119561 HTTP/1.1" 200 56251 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199216 HTTP/1.1" 200 35330 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199246 HTTP/1.1" 200 39171 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=953468 HTTP/1.1" 200 39580 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1201719 HTTP/1.1" 200 52286 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199286 HTTP/1.1" 200 84304 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199495 HTTP/1.1" 200 928118 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1196837 HTTP/1.1" 200 71711 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1197195 HTTP/1.1" 200 70269 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1194150 HTTP/1.1" 200 85268 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:18 +0200] "GET /root/imgs/icones/pdf.gif HTTP/1.1" 200 1023 "http://www.novalid.site/govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:25 +0200] "GET /govern/president/index.do?lang=ca HTTP/1.1" 200 3891 "http://www.novalid.site/govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:25 +0200] "GET /fitxer/get?codi=873565 HTTP/1.1" 200 37961 "http://www.novalid.site/govern/president/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:28 +0200] "GET /govern/index.do?lang=ca HTTP/1.1" 200 3660 "http://www.novalid.site/govern/president/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=874246 HTTP/1.1" 200 27724 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1119561 HTTP/1.1" 200 56251 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1090299 HTTP/1.1" 200 65356 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1199220 HTTP/1.1" 200 36400 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:32 +0200] "GET /govern/organizacion.do?coduo=6&lang=ca HTTP/1.1" 200 5642 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:34 +0200] "GET /govern/archivo.do?id=874246 HTTP/1.1" 200 27724 "http://www.novalid.site/govern/organizacion.do?coduo=6&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:42 +0200] "GET /govern/organigrama/area.do?coduo=994&lang=ca HTTP/1.1" 200 4185 "http://www.novalid.site/govern/organizacion.do?coduo=6&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:42 +0200] "GET /govern/archivo.do?id=1202529 HTTP/1.1" 200 23171 "http://www.novalid.site/govern/organigrama/area.do?coduo=994&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++10.215.119.76 - - [01/Aug/2012:08:17:44 +0200] "GET /govern/estadistica?estua=994&tipus=F&codi=32429&url=http%3A%2F%2Fwww.ibestat.cat%2Fibestat%2Fpage%3Flang%3Dca&lang=ca HTTP/1.1" 302 - "http://www.novalid.site/govern/organigrama/area.do?coduo=994&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:02 +0200] "GET /root/imgs/base.gif HTTP/1.1" 200 49 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1193120 HTTP/1.1" 200 73355 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:17 +0200] "GET /govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6 HTTP/1.1" 200 3634 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/organigrama/area.do?lang=ca&coduo=6 HTTP/1.1" 200 6238 "http://www.novalid.site/govern/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++188.185.46.145 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1199225 HTTP/1.1" 200 39467 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:16:50 +0200] "GET /boib/index.do?lang=ca&p_mes=6&p_any=2012 HTTP/1.1" 200 5697 "http://www.novalid.site/boib/index.do?lang=ca&p_mes=7&p_any=2012" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:16:55 +0200] "GET /boib/index.do?lang=ca&p_mes=7&p_any=2012 HTTP/1.1" 200 5513 "http://www.novalid.site/boib/index.do?lang=ca&p_mes=6&p_any=2012" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:17:02 +0200] "GET /root/js/noticiesNivell3.js HTTP/1.1" 200 3003 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.25.80 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1090299 HTTP/1.1" 200 65356 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++80.91.80.52 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=874246 HTTP/1.1" 200 27724 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1199220 HTTP/1.1" 200 36400 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:02 +0200] "GET /govern/archivo.do?id=1198774 HTTP/1.1" 200 74102 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:16 +0200] "GET /govern/estadistica?estua=6&tipus=F&codi=1071995&url=http%3A%2F%2Fwww.novalid.site%2Fgovern%2Fsac%2Ffitxa.do%3Festua%3D6%26lang%3Dca%26codi%3D1022317%26coduo%3D6&lang=ca HTTP/1.1" 302 - "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:18 +0200] "GET /govern/archivo.do?id=1022318 HTTP/1.1" 200 30345 "http://www.novalid.site/govern/sac/fitxa.do?estua=6&lang=ca&codi=1022317&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++110.215.13.168 - - [01/Aug/2012:08:17:42 +0200] "GET /govern/archivo.do?id=182101 HTTP/1.1" 200 24365 "http://www.novalid.site/govern/organigrama/area.do?coduo=994&lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:45 +0200] "GET /root/imgs/titols/boib.jpg HTTP/1.1" 200 11291 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:45 +0200] "GET /root/imgs/icones/cO.gif HTTP/1.1" 200 524 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++81.45.52.175 - - [01/Aug/2012:08:16:45 +0200] "GET /root/imgs/icones/cE.gif HTTP/1.1" 200 198 "http://www.novalid.site/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++179.109.214.208 - - [01/Aug/2012:08:17:28 +0200] "GET /govern/archivo.do?id=203282 HTTP/1.1" 200 9817 "http://www.novalid.site/govern/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
++179.109.214.208 - - [01/Aug/2012:08:17:29 +0200] "GET /govern/archivo.do?id=1199216 HTTP/1.1" 200 35330 "http://www.novalid.site/govern/organigrama/area.do?lang=ca&coduo=6" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.novalid.site
+Index: bin/testfiles/sample_access_log.dgtic.log
+===================================================================
+--- bin/testfiles/sample_access_log.dgtic.log	(revision 0)
++++ bin/testfiles/sample_access_log.dgtic.log	(revision 0)
+@@ -0,0 +1,125 @@
++83.36.51.78 - - [05/Jul/2012:08:00:49 +0200] "GET /boib/index.do?lang=es HTTP/1.1" 200 5544 "http://www.google.es/url?sa=t&rct=j&q=caib%20boib&source=web&cd=1&ved=0CFUQFjAA&url=http%3A%2F%2Fwww.caib.es%2Fboib%2Findex.do%3Flang%3Des&ei=jC31T6-PH8TJ0QXCn-iSBw&usg=AFQjCNHnRbCcm0L__5gT4tQvszdouh1E3g" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:49 +0200] "GET /root/css/estils.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:49 +0200] "GET /root/js/comuns.js HTTP/1.1" 200 5706 "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:49 +0200] "GET /root/css/estils_print.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:49 +0200] "GET /root/imgs/titols/boib.jpg HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:49 +0200] "GET /root/imgs/icones/cO.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:49 +0200] "GET /root/imgs/icones/cE.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:51 +0200] "GET /boib/interior.do?lang=es&p_numero=2012095 HTTP/1.1" 200 4835 "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:00:52 +0200] "GET /root/imgs/icones/pdf.gif HTTP/1.1" 200 1023 "http://www.caib.es/boib/interior.do?lang=es&p_numero=2012095" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:16 +0200] "GET /root/imgs/destacats/fons.gif HTTP/1.1" 200 1669 "http://www.caib.es/root/css/estils.css" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:16 +0200] "GET /favicon.ico HTTP/1.1" 404 34 "-" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:16 +0200] "GET /govern/estadistica?estua=1464&tipus=F&codi=419020&url=http%3A%2F%2Fwww.caib.es%2Fsacmicrofront%2Fcontenido.do%3Fmkey%3DM10011509503311893878%26lang%3DCA%26cont%3D24189&lang=ca HTTP/1.1" 302 - "http://www.caib.es/govern/organigrama/area.do?lang=ca&coduo=1464" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:16 +0200] "GET /favicon.ico HTTP/1.1" 404 34 "-" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:16 +0200] "GET /sacmicrofront/contenido.do?mkey=M10011509503311893878&lang=CA&cont=24189 HTTP/1.1" 200 11858 "http://www.caib.es/govern/organigrama/area.do?lang=ca&coduo=1464" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:17 +0200] "GET /sacmicrofront/v4/css/estils_print.css HTTP/1.1" 200 9167 "http://www.caib.es/sacmicrofront/contenido.do?mkey=M10011509503311893878&lang=CA&cont=24189" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:17 +0200] "GET /sacmicrofront/v4/js/globales.js HTTP/1.1" 200 4582 "http://www.caib.es/sacmicrofront/contenido.do?mkey=M10011509503311893878&lang=CA&cont=24189" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:17 +0200] "GET /sacmicrofront/v4/imgs/cap/logo.gif HTTP/1.1" 200 3045 "http://www.caib.es/sacmicrofront/contenido.do?mkey=M10011509503311893878&lang=CA&cont=24189" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:17 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST451ZI65022&id=65022 HTTP/1.1" 200 68261 "http://www.caib.es/sacmicrofront/contenido.do?mkey=M10011509503311893878&lang=CA&cont=24189" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:18 +0200] "GET /imgs/marclateral/carpetaon.gif HTTP/1.1" 404 34 "http://www.caib.es/sacmicrofront/archivopub.do?ctrl=MCRST451ZI65022&id=65022" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:18 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST452ZI64821&id=64821 HTTP/1.1" 200 123 "http://www.caib.es/sacmicrofront/archivopub.do?ctrl=MCRST451ZI65022&id=65022" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:18 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST452ZI64858&id=64858 HTTP/1.1" 200 171 "http://www.caib.es/sacmicrofront/archivopub.do?ctrl=MCRST451ZI65022&id=65022" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:01:18 +0200] "GET /imgs/marclateral/pagina.gif HTTP/1.1" 404 34 "http://www.caib.es/sacmicrofront/archivopub.do?ctrl=MCRST451ZI65022&id=65022" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:03:54 +0200] "GET /govern/sac/fitxa.do?lang=ca&codi=1193557&coduo=6 HTTP/1.1" 200 4912 "http://www.caib.es/root/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:03:55 +0200] "GET /govern/archivo.do?id=1193561 HTTP/1.1" 200 43003 "http://www.caib.es/govern/sac/fitxa.do?lang=ca&codi=1193557&coduo=6" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:08:17 +0200] "GET /govern/organigrama/arearss.do?coduo=8&lang=ca&tipo=rss_2.0 HTTP/1.1" 200 4066 "-" "Feedreader 3.14 (Powered by Newsbrain)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:12:36 +0200] "GET /boib/index.do?lang=ca HTTP/1.1" 200 5495 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET4.0C; .NET4.0E; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:12:36 +0200] "GET /root/css/estils.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET4.0C; .NET4.0E; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:12:36 +0200] "GET /root/css/estils_print.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET4.0C; .NET4.0E; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:12:36 +0200] "GET /root/js/comuns.js HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET4.0C; .NET4.0E; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:13:02 +0200] "GET /boib/visor.do?lang=es&mode=view&p_numero=2007169&p_inipag=148&p_finpag=153 HTTP/1.1" 302 20 "http://www.google.es/url?sa=t&rct=j&q=nadia%20llabres%20ribes&source=web&cd=1&ved=0CFEQFjAA&url=http%3A%2F%2Fwww.caib.es%2Fboib%2Fvisor.do%3Flang%3Des%26mode%3Dview%26p_numero%3D2007169%26p_inipag%3D148%26p_finpag%3D153&ei=WjD1T-j8GcazhAeir63bBg&usg=AFQjCNHuPJMdTzv1Gv-jocCTI6b2RG62IQ" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0; Trident/4.0; GTB7.3; SLCC1; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:14:34 +0200] "GET /boib/indexrss.do?p_any=2011&lang=ca&tipo=rss_2.0 HTTP/1.1" 200 319 "-" "Feedreader 3.14 (Powered by Newsbrain)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:15:20 +0200] "GET /govern/tramitesrss.do?coduo=2&lang=ca&tipo=rss_2.0 HTTP/1.1" 200 309 "-" "Feedreader 3.14 (Powered by Newsbrain)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:16:25 +0200] "GET /boib/visor.do?lang=ca&mode=view&p_numero=2008089&p_inipag=33&p_finpag=41 HTTP/1.1" 302 20 "http://www.google.es/url?sa=t&rct=j&q=nadia%20llabres%20ribes&source=web&cd=2&ved=0CFMQFjAB&url=http%3A%2F%2Fwww.caib.es%2Fboib%2Fvisor.do%3Flang%3Dca%26mode%3Dview%26p_numero%3D2008089%26p_inipag%3D33%26p_finpag%3D41&ei=ijD1T9LgF4SYhQfzgpXdBg&usg=AFQjCNFmhpbuTK6AJgnbZ4udjMdJsZ4YGw" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0; Trident/4.0; GTB7.3; SLCC1; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; .NET4.0C)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:20:37 +0200] "GET /boib/cercaruarss.do?conse=185&nombre=Conselleria%20d%27Innovaci%F3,%20Interior%20i%20Just%EDcia&lang=ca&tipo=rss_2.0 HTTP/1.1" 200 341 "-" "Feedreader 3.14 (Powered by Newsbrain)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:22:17 +0200] "GET /govern/archivo.do?id=971817 HTTP/1.1" 200 98811 "http://www.google.es/url?sa=t&rct=j&q=sol%C2%B7licitud%20expedici%C3%B3%20t%C3%ADtol%20targeta%20esbarjo&source=web&cd=2&ved=0CFkQFjAB&url=http%3A%2F%2Fwww.caib.es%2Fgovern%2Farchivo.do%3Fid%3D971817&ei=gTL1T4qTB4OWhQf70ODhBg&usg=AFQjCNG-i7reJSnoQswLNr35qrT1XkwBsw&cad=rja" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:22:17 +0200] "GET /favicon.ico HTTP/1.1" 404 34 "-" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:22:17 +0200] "GET /favicon.ico HTTP/1.1" 404 34 "-" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:24:33 +0200] "GET /root/css/estils_print.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:24:33 +0200] "GET /root/js/comuns.js HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:24:36 +0200] "GET /root/imgs/cap/logo.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:24:36 +0200] "GET /root/imgs/botons/rss_ico.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; GTB7.3; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:25:32 +0200] "GET /govern/estadistica?tipus=N&codi=2094&mode=view&p_numero=1998021&p_inipag=2025&p_finpag=0&lang=es&url=0 HTTP/1.1" 302 - "http://www.caib.es/govern/sac/visor_proc.do?codi=3000&lang=es" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:25:33 +0200] "GET /boib/visor.do?lang=ca&mode=view&p_numero=1998021&p_inipag=2025&p_finpag=0 HTTP/1.1" 302 - "http://www.caib.es/govern/sac/visor_proc.do?codi=3000&lang=es" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:25:33 +0200] "GET /boib/index.dofavicon.ico HTTP/1.1" 404 1027 "-" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:28:49 +0200] "GET /boib/index.do?lang=ca HTTP/1.1" 200 5495 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:28:49 +0200] "GET /root/css/estils.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:28:49 +0200] "GET /root/js/comuns.js HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:28:50 +0200] "GET /root/imgs/cap/logo.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:28:50 +0200] "GET /root/imgs/botons/rss_ico.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:30:52 +0200] "GET /boib/visor.do?lang=es&mode=view&p_numero=2012020&p_inipag=253&p_finpag=371 HTTP/1.1" 302 20 "http://www.caib.es/boib/interior.do?lang=es&p_numero=2012020" "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:31:32 +0200] "GET /root/imgs/botons/rss_ico.gif HTTP/1.1" 304 - "http://www.caib.es/boib/cercar" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:31:50 +0200] "POST /boib/cercar HTTP/1.1" 200 3439 "http://www.caib.es/boib/cercar" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:31:51 +0200] "GET /root/imgs/cap/logo.gif HTTP/1.1" 304 - "http://www.caib.es/boib/cercar" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:16 +0200] "GET /boib/interior.do?lang=es&p_numero=2012096 HTTP/1.1" 200 10106 "http://www.caib.es/boib/cercar" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:17 +0200] "GET /root/imgs/icones/pdf.gif HTTP/1.1" 304 - "http://www.caib.es/boib/interior.do?lang=es&p_numero=2012096" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:36 +0200] "GET /boib/index.do HTTP/1.1" 200 5501 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:36 +0200] "GET /root/css/estils.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:36 +0200] "GET /root/css/estils_print.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:36 +0200] "GET /root/js/comuns.js HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:37 +0200] "GET /root/imgs/cap/logo.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:37 +0200] "GET /root/imgs/titols/boib.jpg HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:37 +0200] "GET /root/imgs/icones/cO.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:37 +0200] "GET /root/imgs/icones/cE.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:37 +0200] "GET /root/imgs/botons/rss_ico.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:37 +0200] "GET /favicon.ico HTTP/1.1" 404 54 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:57 +0200] "POST /boib/cercar HTTP/1.1" 200 3467 "http://www.caib.es/boib/cercar" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:58 +0200] "GET /boib/interior.do?lang=ca&p_numero=2012096 HTTP/1.1" 200 10429 "http://www.caib.es/boib/index.do" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:59 +0200] "GET /root/imgs/icones/pdf.gif HTTP/1.1" 304 - "http://www.caib.es/boib/interior.do?lang=ca&p_numero=2012096" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:32:59 +0200] "GET /favicon.ico HTTP/1.1" 404 54 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:33:17 +0200] "GET /boib/index.do?lang=es HTTP/1.1" 200 5554 "http://www.caib.es/boib/cercar" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:33:17 +0200] "GET /root/imgs/titols/boib.jpg HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:33:17 +0200] "GET /root/imgs/icones/cO.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:33:17 +0200] "GET /root/imgs/icones/cE.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=es" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:34:10 +0200] "GET /sacmicrofront/noticias.do?idsite=253&tipo=1791 HTTP/1.1" 200 3034 "http://www.caib.es/sacmicrofront/contenido.do?mkey=M0807081137367224693&lang=CA&cont=7491" "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/536.11 (KHTML, like Gecko) Chrome/20.0.1132.47 Safari/536.11" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:34:11 +0200] "GET /sacmicrofront/v4/js/globales.js HTTP/1.1" 304 20 "http://www.caib.es/sacmicrofront/noticias.do?idsite=253&tipo=1791" "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/536.11 (KHTML, like Gecko) Chrome/20.0.1132.47 Safari/536.11" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:34:11 +0200] "GET /sacmicrofront/v4/imgs/cap/logo.gif HTTP/1.1" 200 3050 "http://www.caib.es/sacmicrofront/noticias.do?idsite=253&tipo=1791" "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/536.11 (KHTML, like Gecko) Chrome/20.0.1132.47 Safari/536.11" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:34:11 +0200] "GET /sacmicrofront/imgs/listados/bullet_gris.gif HTTP/1.1" 200 96 "http://www.caib.es/sacmicrofront/noticias.do?idsite=253&tipo=1791" "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/536.11 (KHTML, like Gecko) Chrome/20.0.1132.47 Safari/536.11" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:34:17 +0200] "GET /boib/visor.do?lang=es&mode=view&p_numero=2012094&p_inipag=46&p_finpag=46 HTTP/1.1" 302 20 "http://www.caib.es/boib/interior.do?lang=es&p_numero=2012094" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:35:28 +0200] "GET /boib/visor.do?lang=es&mode=view&p_numero=2012094&p_inipag=46&p_finpag=46 HTTP/1.1" 302 20 "http://www.caib.es/boib/interior.do?lang=es&p_numero=2012094" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; GTB7.3; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:36:43 +0200] "GET /boib/visor.do?lang=ca&mode=view&p_numero=2012096&p_inipag=12&p_finpag=17 HTTP/1.1" 302 - "http://www.caib.es/boib/interior.do?lang=ca&p_numero=2012096" "Mozilla/5.0 (Windows NT 6.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:37:57 +0200] "GET /boib/interior.do?lang=ca&p_numero=2012096&p_seccio=Secci%F3+II+-+Consells+Insulars HTTP/1.1" 200 25433 "http://www.caib.es/boib/interior.do?lang=ca&p_numero=2012096" "Mozilla/5.0 (Windows NT 6.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:50:27 +0200] "GET /sacmicrofront/v4/js/globales.js HTTP/1.1" 200 4582 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:50:27 +0200] "GET /sacmicrofront/v4/css/estils_blau.css HTTP/1.1" 200 439 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:50:27 +0200] "GET /sacmicrofront/imgs/listados/bullet_gris.gif HTTP/1.1" 200 85 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:50:27 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST147ZI92839&id=92839 HTTP/1.1" 200 22255 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:11 +0200] "GET /boib/index.do?lang=ca HTTP/1.1" 200 5506 "-" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:12 +0200] "GET /root/css/estils.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:12 +0200] "GET /root/css/estils_print.css HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:12 +0200] "GET /root/js/comuns.js HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:13 +0200] "GET /root/imgs/cap/logo.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:13 +0200] "GET /root/imgs/titols/boib.jpg HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:13 +0200] "GET /root/imgs/icones/cO.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:13 +0200] "GET /root/imgs/icones/cE.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:13 +0200] "GET /root/imgs/botons/rss_ico.gif HTTP/1.1" 304 - "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:14 +0200] "GET /boib/interior.do?lang=ca&p_numero=2012096 HTTP/1.1" 200 10429 "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:15 +0200] "GET /root/imgs/icones/pdf.gif HTTP/1.1" 304 - "http://www.caib.es/boib/interior.do?lang=ca&p_numero=2012096" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:39 +0200] "GET /sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes HTTP/1.1" 200 5090 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:40 +0200] "GET /sacmicrofront/home.do?mkey=M165&lang=es HTTP/1.1" 302 - "http://www.caib.es/sacmicrofront/contenido.do?mkey=M165&lang=ES&cont=6018" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/v4/css/estils.css HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/v4/css/estils_blau.css HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/v4/js/globales.js HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/v4/css/estils_print.css HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/v4/imgs/cap/logo.gif HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/imgs/listados/bullet_gris.gif HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/imgs/archivos_prev/pdf.gif HTTP/1.1" 200 273 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/contenido.do?idsite=165&cont=3810&lang=es&campa=yes HTTP/1.1" 200 16640 "http://www.caib.es/sacmicrofront/contenido.do?mkey=M165&lang=ES&cont=6018" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST147ZI92839&id=92839 HTTP/1.1" 200 22255 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:41 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST165ZI57790&id=57790 HTTP/1.1" 200 80802 "http://www.caib.es/sacmicrofront/contenido.do?idsite=165&cont=3810&lang=es&campa=yes" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:54:42 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST165ZI35037&id=35037 HTTP/1.1" 200 55101 "http://www.caib.es/sacmicrofront/contenido.do?idsite=165&cont=3810&lang=es&campa=yes" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:58 +0200] "GET /sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes HTTP/1.1" 200 5091 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /boib/visor.do?lang=ca&mode=view&p_numero=2012096&p_inipag=776&p_finpag=780 HTTP/1.1" 302 20 "http://www.caib.es/boib/interior.do?lang=ca&p_numero=2012096&p_seccio=Secci%F3+II+-+Consells+Insulars" "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/v4/css/estils.css HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/v4/css/estils_blau.css HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/v4/css/estils_print.css HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/v4/js/globales.js HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/v4/imgs/cap/logo.gif HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/v4/imgs/marclateral/pagina.gif HTTP/1.1" 200 47 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/v4/imgs/marclateral/carpetaon.gif HTTP/1.1" 200 48 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/imgs/listados/bullet_gris.gif HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/imgs/archivos_prev/pdf.gif HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST147ZI92839&id=92839 HTTP/1.1" 200 22255 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:59:00 +0200] "GET /sacmicrofront/archivopub.do?ctrl=MCRST147ZI118537&id=118537 HTTP/1.1" 200 1260 "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:59:00 +0200] "GET /sacmicrofront/v4/imgs/marclateral/carpeta.gif HTTP/1.1" 304 - "http://www.caib.es/sacmicrofront/contenido.do?idsite=147&cont=29650&lang=ca&campa=yes" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:59:00 +0200] "GET /favicon.ico HTTP/1.1" 404 54 "-" "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729; .NET4.0C; .NET4.0E)" www.caib.es
++83.36.51.78 - - [05/Jul/2012:08:58:59 +0200] "GET /boib/interior.do?lang=ca&p_numero=2012096 HTTP/1.1" 200 108199 "http://www.caib.es/boib/index.do?lang=ca" "Mozilla/5.0 (Windows NT 5.1; rv:13.0) Gecko/20100101 Firefox/13.0.1" www.caib.es
+\ No newline at end of file
+Index: build.xml
+===================================================================
+--- build.xml	(revision 1493413)
++++ build.xml	(working copy)
+@@ -995,7 +995,7 @@
+       <zipfileset file="${resources.meta-inf}/default.license"
+         fullpath="META-INF/LICENSE" />
+       <fileset dir="${build.http}" includes="**/*.class"/>
+-      <fileset dir="${src.http}" includes="**/*.properties" />
++      <fileset dir="${src.http}" includes="**/*.properties **/template*" />
+     </jar>
+ 
+     <!-- ftp -->

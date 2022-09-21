@@ -1,0 +1,325 @@
+Index: src/core/org/apache/jmeter/JMeter.java
+===================================================================
+--- src/core/org/apache/jmeter/JMeter.java	(revision 1518571)
++++ src/core/org/apache/jmeter/JMeter.java	(working copy)
+@@ -403,11 +403,12 @@
+ 
+     // Update classloader if necessary
+     private void updateClassLoader() {
+-            updatePath("search_paths",";"); //$NON-NLS-1$//$NON-NLS-2$
+-            updatePath("user.classpath",File.pathSeparator);//$NON-NLS-1$
++            updatePath("search_paths",";", true); //$NON-NLS-1$//$NON-NLS-2$
++            updatePath("user.classpath",File.pathSeparator, true);//$NON-NLS-1$
++            updatePath("plugin_dependency_paths",";", false);//$NON-NLS-1$
+     }
+ 
+-    private void updatePath(String property, String sep) {
++    private void updatePath(String property, String sep, boolean cp) {
+         String userpath= JMeterUtils.getPropDefault(property,"");// $NON-NLS-1$
+         if (userpath.length() <= 0) { return; }
+         log.info(property+"="+userpath); //$NON-NLS-1$
+@@ -418,11 +419,16 @@
+             if (!f.canRead() && !f.isDirectory()) {
+                 log.warn("Can't read "+path);
+             } else {
+-                log.info("Adding to classpath: "+path);
+-                try {
+-                    NewDriver.addPath(path);
+-                } catch (MalformedURLException e) {
+-                    log.warn("Error adding: "+path+" "+e.getLocalizedMessage());
++                if (cp) {
++                    log.info("Adding to classpath and loader: "+path);
++                    try {
++                        NewDriver.addPath(path);
++                    } catch (MalformedURLException e) {
++                        log.warn("Error adding: "+path+" "+e.getLocalizedMessage());
++                    }
++                } else {
++                    log.info("Adding to loader: "+path);
++                    NewDriver.addURL(path);
+                 }
+             }
+         }
+@@ -1175,4 +1181,4 @@
+ 
+         return socket;
+     }
+-}
+\ No newline at end of file
++}
+Index: src/core/org/apache/jmeter/NewDriver.java
+===================================================================
+--- src/core/org/apache/jmeter/NewDriver.java	(revision 1518571)
++++ src/core/org/apache/jmeter/NewDriver.java	(working copy)
+@@ -152,6 +152,21 @@
+         } catch (MalformedURLException e) {
+             e.printStackTrace();
+         }
++        if (furl.exists() && furl.isDirectory()) {
++            File[] jars = furl.listFiles(new FilenameFilter() {
++                @Override
++                public boolean accept(File f, String name) {
++                    return name.endsWith(".jar") && (new File(f, name)).isFile();// $NON-NLS-1$
++                }
++            });
++            for (int x = 0; x < jars.length; x++) {
++                try {
++                    loader.addURL(jars[x].toURI().toURL()); // See Java bug 4496398
++                } catch (MalformedURLException e) {
++                    e.printStackTrace();
++                }
++            }
++        }
+     }
+ 
+     /**
+@@ -179,6 +194,24 @@
+         StringBuilder sb = new StringBuilder(System.getProperty(JAVA_CLASS_PATH));
+         sb.append(CLASSPATH_SEPARATOR);
+         sb.append(path);
++        if (file.exists() && file.isDirectory()) {
++            File[] jars = file.listFiles(new FilenameFilter() {
++                @Override
++                public boolean accept(File f, String name) {
++                    return name.endsWith(".jar") && (new File(f, name)).isFile();// $NON-NLS-1$
++                }
++            });
++            for (int x = 0; x < jars.length; x++) {
++                try {
++                    loader.addURL(jars[x].toURI().toURL()); // See Java bug 4496398
++                    sb.append(CLASSPATH_SEPARATOR);
++                    sb.append(jars[x].getPath());
++                } catch (MalformedURLException e) {
++                    e.printStackTrace();
++                }
++            }
++        }
++
+         // ClassFinder needs this
+         System.setProperty(JAVA_CLASS_PATH,sb.toString());
+     }
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1518571)
++++ bin/jmeter.properties	(working copy)
+@@ -912,18 +912,35 @@
+ # Classpath configuration
+ #---------------------------------------------------------------------------
+ 
+-# List of paths (separated by ;) to search for additional JMeter extension classes
+-# - for example new GUI elements and samplers
+-# These are in addition to lib/ext. Do not use this for utility jars.
++# List of paths (separated by ;) to search for additional JMeter plugin classes,
++# for example new GUI elements and samplers.
++# A path item can either be a jar file or a directory.
++# Any jar file directly located in such a directory will be automatically included.
++# The given value is in addition to any jars found in the lib/ext directory.
++# Do not use this for utility ir plugin dependecy jars.
+ #search_paths=/app1/lib;/app2/lib
+ 
+-# Users can define additional classpath items by setting the property below
+-# - for example, utility jars or JUnit test cases
+-#
+-# Use the default separator for the host version of Java
++# List of paths that JMeter will search for utility and plugin dependency classes.
++# Use your platform path separator to separate multiple paths.
++# A path item can either be a jar file or a directory.
++# Any jar file directly located in such a directory will be automatically included.
++# The given value is in addition to any jars found in the lib directory.
++# All entries will be added to the class path of the system class loader
++# and also to the path of the JMeter internal loader.
+ # Paths with spaces may cause problems for the JVM
+-#user.classpath=../classes;../jars/jar1.jar
++#user.classpath=../classes;../lib;../app1/jar1.jar;../app2/jar2.jar
+ 
++# List of paths (separated by ;) that JMeter will search for utility
++# and plugin dependency classes.
++# A path item can either be a jar file or a directory.
++# Any jar file directly located in such a directory will be automatically included.
++# The given value is in addition to any jars found in the lib directory
++# or given by the user.classpath property.
++# All entries will be added to the path of the JMeter internal loader only.
++# For plugin dependencies using plugin_dependency_paths should be preferred over
++# user.classpath.
++#plugin_dependency_paths=../dependencies/lib;../app1/jar1.jar;../app2/jar2.jar
++
+ # Classpath finder
+ # ================
+ # The classpath finder currently needs to load every single JMeter class to find
+@@ -952,4 +969,4 @@
+ 
+ # Comma separated list of files that contain reference to templates and their description
+ # Path must be relative to jmeter root folder
+-#template.files=/bin/templates/templates.xml
+\ No newline at end of file
++#template.files=/bin/templates/templates.xml
+Index: bin/user.properties
+===================================================================
+--- bin/user.properties	(revision 1518571)
++++ bin/user.properties	(working copy)
+@@ -19,18 +19,35 @@
+ # Classpath configuration
+ #---------------------------------------------------------------------------
+ #
+-# List of paths (separated by ;) to search for additional JMeter extension classes
+-# - for example new GUI elements and samplers
+-# These are in addition to lib/ext. Do not use this for utility jars.
++# List of paths (separated by ;) to search for additional JMeter plugin classes,
++# for example new GUI elements and samplers.
++# A path item can either be a jar file or a directory.
++# Any jar file directly located in such a directory will be automatically included.
++# The given value is in addition to any jars found in the lib/ext directory.
++# Do not use this for utility ir plugin dependecy jars.
+ #search_paths=/app1/lib;/app2/lib
+ 
+-# Users can define additional classpath items by setting the property below
+-# - for example, utility jars or JUnit test cases
+-#
+-# Use the default separator for the host version of Java
++# List of paths that JMeter will search for utility and plugin dependency classes.
++# Use your platform path separator to separate multiple paths.
++# A path item can either be a jar file or a directory.
++# Any jar file directly located in such a directory will be automatically included.
++# The given value is in addition to any jars found in the lib directory.
++# All entries will be added to the class path of the system class loader
++# and also to the path of the JMeter internal loader.
+ # Paths with spaces may cause problems for the JVM
+-#user.classpath=../classes;../jars/jar1.jar
++#user.classpath=../classes;../lib;../app1/jar1.jar;../app2/jar2.jar
+ 
++# List of paths (separated by ;) that JMeter will search for utility
++# and plugin dependency classes.
++# A path item can either be a jar file or a directory.
++# Any jar file directly located in such a directory will be automatically included.
++# The given value is in addition to any jars found in the lib directory
++# or given by the user.classpath property.
++# All entries will be added to the path of the JMeter internal loader only.
++# For plugin dependencies using plugin_dependency_paths should be preferred over
++# user.classpath.
++#plugin_dependency_paths=../dependencies/lib;../app1/jar1.jar;../app2/jar2.jar
++
+ #---------------------------------------------------------------------------
+ # Logging configuration
+ #---------------------------------------------------------------------------
+Index: xdocs/changes.xml
+===================================================================
+--- xdocs/changes.xml	(revision 1518617)
++++ xdocs/changes.xml	(working copy)
+@@ -107,6 +107,15 @@
+ 
+ <h4>* ModuleController has been improved to better handle changes to referenced controllers</h4>
+ 
++<h4>* Improved class loader configuration</h4>
++<p>
++<ul>
++<li>New property "plugin_dependency_paths" for plugin dependencies</li>
++<li>Properties "search_paths", "user.classpath" and "plugin_dependency_paths"
++    now automatically add all jars form configured directories</li>
++</ul>
++</p>
++
+ <h4>* Best-practices section has been improved, ensure you read it to get the most out of JMeter</h4>
+ 
+ <h3><u>GUI and ergonomy Improvements:</u></h3>
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1518571)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -5569,13 +5569,17 @@
+ </p>
+ <p>
+ Test plan now provides an easy way to add classpath setting to a specific test plan. 
+-The feature is additive, meaning that you can add jar files or directories, but removing an entry requires restarting JMeter.
++The feature is additive, meaning that you can add jar files or directories,
++but removing an entry requires restarting JMeter.
+ Note that this cannot be used to add JMeter GUI plugins, because they are processed earlier.
+-However it can be useful for utility jars such as JDBC drivers. 
++However it can be useful for utility jars such as JDBC drivers. The jars are only added to
++the search path for the JMeter loader, not for the system class loader.
+ </p>
+ <p>
+ JMeter properties also provides an entry for loading additional classpaths.
+-In jmeter.properties, edit "user.classpath" to include additional libraries.
++In jmeter.properties, edit "user.classpath" or "plugin_dependency_paths" to include additional libraries.
++See <a href="get-started.html#classpath">JMeter's Classpath</a> and
++<a href="get-started.html#configuring_jmeter">Configuring JMeter</a> for details.
+ </p>
+ </description>
+ </component>
+Index: xdocs/usermanual/get-started.xml
+===================================================================
+--- xdocs/usermanual/get-started.xml	(revision 1518571)
++++ xdocs/usermanual/get-started.xml	(working copy)
+@@ -257,21 +257,26 @@
+ <p>JMeter automatically finds classes from jars in the following directories:</p>
+ <ul>
+ <li>JMETER_HOME/lib - used for utility jars</li>
+-<li>JMETER_HOME/lib/ext - used for JMeter components and add-ons</li>
++<li>JMETER_HOME/lib/ext - used for JMeter components and plugins</li>
+ </ul>
+ <p>If you have developed new JMeter components,
+ then you should jar them and copy the jar into JMeter's <b>lib/ext</b> directory.
+ JMeter will automatically find JMeter components in any jars found here.
++Do not use lib/ext for utility jars or dependency jars used by the plugins;
++it is only intended for JMeter components and plugins.
+ </p>
+-<p>Support jars (libraries etc) should be placed in the <b>lib</b> directory.</p>
+-
+-<p>If you don't want to put JMeter extension jars in the <b>lib/ext</b> directory,
++<p>If you don't want to put JMeter plugin jars in the <b>lib/ext</b> directory,
+ then define the property <b>search_paths</b> in jmeter.properties.
+-Do not use lib/ext for utility jars; it is only intended for JMeter components.
+ </p>
++<p>Utility and dependency jars (libraries etc) can be placed in the <b>lib</b> directory.</p>
++<p>If you don't want to put such jars in the <b>lib</b> directory,
++then define the property <b>user.classpath</b> or <b>plugin_dependency_paths</b>
++in jmeter.properties. See below for an explanation of the differences.
++</p>
+ <p>
+ Other jars (such as JDBC, JMS implementations and any other support libaries needed by the JMeter code)
+- should be placed in the <b>lib</b> directory - not the <b>lib/ext</b> directory</p>
++should be placed in the <b>lib</b> directory - not the <b>lib/ext</b> directory,
++or added to <b>user.classpath</b>.</p>
+ <p>Note: JMeter will only find .jar files, not .zip.</p>
+ <p>You can also install utility Jar files in $JAVA_HOME/jre/lib/ext, or you can set the property <b>user.classpath</b> in jmeter.properties</p>
+ <p>Note that setting the CLASSPATH environment variable will have no effect.
+@@ -543,14 +548,34 @@
+   You may list their classname or their class label (the string that appears
+   in JMeter's UI) here, and they will no longer appear in the menus.</property>
+   <property name="search_paths">
+-  List of paths (separated by ;) that JMeter will search for JMeter add-on classes;
+-  for example additional samplers.
+-  This is in addition to any jars found in the lib/ext directory.
++  List of paths (separated by ;) that JMeter will search for JMeter plugin classes,
++  for example additional samplers. A path item can either be a jar file or a directory.
++  Any jar file directly located in such a directory will be automatically included
++  in search_paths.
++  The given value is in addition to any jars found in the lib/ext directory.
+   </property>
+   <property name="user.classpath">
+-  List of paths that JMeter will search for utility classes.
+-  This is in addition to any jars found in the lib directory.
++  List of paths that JMeter will search for utility and plugin dependency classes.
++  Use your platform path separator to separate multiple paths.
++  A path item can either be a jar file or a directory.
++  Any jar file directly located in such a directory will be automatically included
++  in user.classpath.
++  The given value is in addition to any jars found in the lib directory.
++  All entries will be added to the class path of the system class loader
++  and also to the path of the JMeter internal loader.
+   </property>
++  <property name="plugin_dependency_paths">
++  List of paths (separated by ;) that JMeter will search for utility
++  and plugin dependency classes.
++  A path item can either be a jar file or a directory.
++  Any jar file directly located in such a directory will be automatically included
++  in plugin_dependency_paths.
++  The given value is in addition to any jars found in the lib directory
++  or given by the user.classpath property.
++  All entries will be added to the path of the JMeter internal loader only.
++  For plugin dependencies using plugin_dependency_paths should be preferred over
++  user.classpath.
++  </property>
+   <property name="user.properties">
+   Name of file containing additional JMeter properties. 
+   These are added after the initial property file, but before the -q and -J options are processed.

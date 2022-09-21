@@ -1,0 +1,143 @@
+Index: src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java	(revision 1304244)
++++ src/components/org/apache/jmeter/assertions/gui/BeanShellAssertionGui.java	(working copy)
+@@ -29,6 +29,7 @@
+ import javax.swing.JTextField;
+ 
+ import org.apache.jmeter.assertions.BeanShellAssertion;
++import org.apache.jmeter.gui.util.BeanShellTextArea;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -43,7 +44,7 @@
+ 
+     private JTextField parameters;// parameters to pass to script file (or script)
+ 
+-    private JTextArea scriptField;// script area
++    private BeanShellTextArea scriptField;// script area
+ 
+     public BeanShellAssertionGui() {
+         init();
+@@ -136,7 +137,7 @@
+     }
+ 
+     private JPanel createScriptPanel() {
+-        scriptField = new JTextArea();
++        scriptField = new BeanShellTextArea();
+         scriptField.setRows(4);
+         scriptField.setLineWrap(true);
+         scriptField.setWrapStyleWord(true);
+Index: src/core/org/apache/jmeter/gui/util/BeanShellTextArea.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/BeanShellTextArea.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/util/BeanShellTextArea.java	(working copy)
+@@ -0,0 +1,108 @@
++package org.apache.jmeter.gui.util;
++
++import java.awt.event.ActionEvent;
++import java.awt.event.KeyEvent;
++
++import javax.swing.AbstractAction;
++import javax.swing.JComponent;
++import javax.swing.JTextArea;
++import javax.swing.KeyStroke;
++import javax.swing.text.BadLocationException;
++import javax.swing.text.Document;
++
++public class BeanShellTextArea extends JTextArea {
++	private static final long serialVersionUID = -2943059989300009359L;
++
++	public BeanShellTextArea() {
++		super();
++		initListener();
++	}
++
++	private void initListener() {
++		registerKeyboardAction(new AutoIndentAction(), KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), JComponent.WHEN_FOCUSED);
++	}
++	
++	/* from http://www.jroller.com/santhosh/entry/autoindent_for_jtextarea */
++	private class AutoIndentAction extends AbstractAction { 
++		private static final long serialVersionUID = 1476242317203366836L;
++
++		
++		public void actionPerformed(ActionEvent ae) { 
++	        JTextArea comp = (JTextArea)ae.getSource();
++	        Document doc = comp.getDocument(); 
++	 
++	        if(!comp.isEditable()) 
++	            return; 
++	        try {
++	        	int line = comp.getLineOfOffset(comp.getCaretPosition());
++	            int start = comp.getLineStartOffset(line);
++	            int end = comp.getLineEndOffset(line);
++	            String str = doc.getText(start, end - start);
++	            
++	            String whiteSpace = getLeadingWhiteSpace(str);
++	            
++	            if(str.contains("{") && !str.contains("}")){
++	            	whiteSpace += "\t";
++	            } else if(!str.contains("{") && str.contains("}")) {
++	            	whiteSpace = getMatchingWhitespace(comp, doc, line);
++	            	doc.remove(start, end - start);
++	            	doc.insertString(start, whiteSpace + str.trim(), null);
++	            }
++	            
++	            doc.insertString(comp.getCaretPosition(), '\n' + whiteSpace, null);
++	            
++	            
++	        } catch(BadLocationException ex) { 
++	            // ignore
++	        } 
++	    } 
++	 
++	    private String getMatchingWhitespace(JTextArea comp, Document doc, int line) {
++			int count = 0;
++	    	for(; line >= 0; line--) {
++				try {
++		            int start = comp.getLineStartOffset(line);
++		            int end = comp.getLineEndOffset(line);
++		            String str = doc.getText(start, end - start);
++					if (str.contains("{"))
++						count--;
++					if (str.contains("}"))
++						count++;
++					
++					if(count == 0) {
++						return getLeadingWhiteSpace(str);
++					}
++					
++				} catch(Exception e) {
++					// ignore
++				}
++			}
++	    	
++			return "";
++		}
++
++		/** 
++	     *  Returns leading white space characters in the specified string. 
++	     */ 
++	    private String getLeadingWhiteSpace(String str) { 
++	        return str.substring(0, getLeadingWhiteSpaceWidth(str)); 
++	    } 
++	 
++	    /** 
++	     *  Returns the number of leading white space characters in the specified string. 
++	     */ 
++	    private int getLeadingWhiteSpaceWidth(String str) { 
++	        int whitespace = 0; 
++	        while(whitespace<str.length()) { 
++	            char ch = str.charAt(whitespace); 
++	            if(ch==' ' || ch=='\t') 
++	                whitespace++; 
++	            else 
++	                break; 
++	        } 
++	        return whitespace; 
++	    }
++
++	} 
++	
++}

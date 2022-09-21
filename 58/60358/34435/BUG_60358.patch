@@ -1,0 +1,53 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1768323)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -65,7 +65,6 @@
+ import org.apache.http.client.config.RequestConfig;
+ import org.apache.http.client.entity.UrlEncodedFormEntity;
+ import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
+-import org.apache.http.client.methods.HttpGet;
+ import org.apache.http.client.methods.HttpHead;
+ import org.apache.http.client.methods.HttpOptions;
+ import org.apache.http.client.methods.HttpPatch;
+@@ -308,6 +307,22 @@
+     protected HTTPHC4Impl(HTTPSamplerBase testElement) {
+         super(testElement);
+     }
++    
++    /**
++     * Implementation that allows GET method to have a body
++     */
++    public static final class HttpGet extends HttpEntityEnclosingRequestBase {
++
++        public HttpGet(final URI uri) {
++            super();
++            setURI(uri);
++        }
++
++        @Override
++        public String getMethod() {
++            return HTTPConstants.GET;
++        }
++    }
+ 
+     public static final class HttpDelete extends HttpEntityEnclosingRequestBase {
+ 
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java	(revision 1769202)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java	(working copy)
+@@ -36,12 +36,11 @@
+  */
+ public class HTTPSampleResult extends SampleResult {
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 241L;
+ 
+     /** Set of all HTTP methods, that have no body */
+     private static final Set<String> METHODS_WITHOUT_BODY = new HashSet<>(
+             Arrays.asList(
+-                    HTTPConstants.GET,
+                     HTTPConstants.HEAD,
+                     HTTPConstants.OPTIONS,
+                     HTTPConstants.TRACE));

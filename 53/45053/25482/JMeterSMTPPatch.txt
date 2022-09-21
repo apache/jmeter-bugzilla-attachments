@@ -1,0 +1,3231 @@
+Index: sampler/SmtpSampler.java
+===================================================================
+--- sampler/SmtpSampler.java	(revision 0)
++++ sampler/SmtpSampler.java	(revision 0)
+@@ -0,0 +1,513 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.smtp.sampler;
++
++import java.io.File;
++import java.io.IOException;
++import java.io.InputStream;
++import java.util.Date;
++import java.util.List;
++import java.util.Vector;
++
++import javax.mail.AuthenticationFailedException;
++import javax.mail.Message;
++import javax.mail.MessagingException;
++import javax.mail.internet.InternetAddress;
++
++import org.apache.jmeter.protocol.smtp.sampler.protocol.MailBodyProvider;
++import org.apache.jmeter.protocol.smtp.sampler.protocol.SendMailCommand;
++import org.apache.jmeter.protocol.smtp.sampler.tools.CounterOutputStream;
++import org.apache.jmeter.protocol.smtp.sampler.tools.UnexpectedSuccessException;
++
++import org.apache.jmeter.samplers.AbstractSampler;
++import org.apache.jmeter.samplers.Entry;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.JarUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Sampler-Class for JMeter - builds, starts and interprets the results of the
++ * sampler. Has to implement some standard-methods for JMeter in order to be
++ * integrated in the framework. All getter/setter methods just deliver/set
++ * values from/to the sampler, not from/to the message-object. Therefore, all
++ * these methods are also present in class SendMailCommand.
++ * 
++ * @see jmeter.smtpsampler.protocol.SendMailCommand
++ * @author Luca Maragnani / slightly extended by Michael Tschannen
++ * @version 1.0
++ */
++public class SmtpSampler extends AbstractSampler {
++
++	private static final long serialVersionUID = 1L;
++
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++    public final static String SERVER = "server";
++    public final static String SERVER_PORT = "serverPort";
++    public final static String USE_AUTH = "useAuth";
++    public final static String USERNAME = "username";
++    public final static String PASSWORD = "password";
++    public final static String MAIL_FROM = "SmtpSampler.mailFrom";
++    public final static String RECEIVER_TO = "SmtpSampler.receiverTo";
++    public final static String RECEIVER_CC = "SmtpSampler.receiverCC";
++    public final static String RECEIVER_BCC = "SmtpSampler.receiverBCC";
++
++    public final static String SUBJECT = "SmtpSampler.subject";
++    public final static String MESSAGE = "message";
++    public final static String INCLUDE_TIMESTAMP = "SmtpSampler.include_timestamp";
++    public final static String ATTACH_FILE = "SmtpSampler.attachFile";
++    public final static String MESSAGE_SIZE_STATS = "SmtpSampler.messageSizeStatistics";
++    public final static String CHECK_FOR_FAILURE = "checkForFailure";
++
++    public final static String USE_SSL = "useSSL";
++    public final static String USE_STARTTLS = "useStartTLS";
++    public final static String SSL_TRUST_ALL_CERTS = "trustAllCerts";
++    public final static String ENFORCE_STARTTLS = "enforceStartTLS";
++    public final static String USE_LOCAL_TRUSTSTORE = "useLocalTrustStore";
++    public final static String TRUSTSTORE_TO_USE = "trustStoreToUse";
++    public final static String USE_EML = "use_eml";
++    public final static String EML_MESSAGE_TO_SEND = "emlMessageToSend";
++
++    private static int classCount = 0;
++
++    /**
++     * Constructer for SMTP-Sampler, does nothing special.
++     * 
++     */
++    public SmtpSampler() {
++        classCount++;
++        trace("SmtpSampler()");
++    }
++
++    /**
++     * Performs the sample, and returns the result
++     * 
++     * @param e
++     *            Standard-method-header from JMeter
++     * @return sampleresult Result of the sample
++     * @see org.apache.jmeter.samplers.Sampler#sample(org.apache.jmeter.samplers.Entry)
++     */
++    public SampleResult sample(Entry e) {
++        trace("sample()");
++        Message message = null;
++        SampleResult res = new SampleResult();
++        boolean isOK = false; // Did sample succeed?
++        if(!JarUtils.isBouncyCastleAvailable()){
++        	res.setResponseCode("500");
++        	res.setResponseMessage(JMeterUtils
++ 			.getResString("bouncy_castle_unavailable_message"));
++        	res.setSampleLabel(JMeterUtils
++         			.getResString("bouncy_castle_unavailable"));
++        	return res;
++        }
++        // prepare message
++        SendMailCommand instance = new SendMailCommand();
++        try {
++            instance.setSmtpServer(getPropertyAsString(SmtpSampler.SERVER));
++            instance.setSmtpPort(getPropertyAsString(SmtpSampler.SERVER_PORT));
++
++            instance.setUseSSL(getPropertyAsBoolean(USE_SSL));
++            instance.setUseStartTLS(getPropertyAsBoolean(USE_STARTTLS));
++            instance
++                    .setTrustAllCerts(getPropertyAsBoolean(SSL_TRUST_ALL_CERTS));
++            instance.setEnforceStartTLS(getPropertyAsBoolean(ENFORCE_STARTTLS));
++
++            instance.setUseAuthentication(getPropertyAsBoolean(USE_AUTH));
++            instance.setUsername(getPropertyAsString(USERNAME));
++            instance.setPassword(getPropertyAsString(PASSWORD));
++
++            instance
++                    .setUseLocalTrustStore(getPropertyAsBoolean(USE_LOCAL_TRUSTSTORE));
++            instance.setTrustStoreToUse(getPropertyAsString(TRUSTSTORE_TO_USE));
++            instance.setEmlMessage(getPropertyAsString(EML_MESSAGE_TO_SEND));
++            instance.setUseEmlMessage(getPropertyAsBoolean(USE_EML));
++
++            if (!getPropertyAsBoolean(USE_EML)) { // part is only needed if we
++                // don't send an .eml-file
++
++                instance.setSender(getMailFrom());
++
++                // check if there are really mail-addresses in the fields and if
++                // there are multiple ones
++                List<InternetAddress> receiversTo = new Vector<InternetAddress>();
++                if (getPropertyAsString(SmtpSampler.RECEIVER_TO).matches(
++                        ".*@.*")) {
++                    String[] strReceivers = (getPropertyAsString(SmtpSampler.RECEIVER_TO))
++                            .split(";");
++                    for (int i = 0; i < strReceivers.length; i++) {
++                        receiversTo.add(new InternetAddress(strReceivers[i]
++                                .trim()));
++                    }
++                } else {
++                    receiversTo.add(new InternetAddress(getMailFrom()));
++                }
++
++                instance.setReceiverTo(receiversTo);
++
++                // check if there are really mail-addresses in the fields and if
++                // there are multiple ones
++                if (getPropertyAsString(SmtpSampler.RECEIVER_CC).matches(
++                        ".*@.*")) {
++                    List<InternetAddress> receiversCC = new Vector<InternetAddress>();
++                    String[] strReceivers = (getPropertyAsString(SmtpSampler.RECEIVER_CC))
++                            .split(";");
++                    for (int i = 0; i < strReceivers.length; i++) {
++                        receiversCC.add(new InternetAddress(strReceivers[i]
++                                .trim()));
++                    }
++                    instance.setReceiverCC(receiversCC);
++                }
++
++                // check if there are really mail-addresses in the fields and if
++                // there are multiple ones
++                if (getPropertyAsString(SmtpSampler.RECEIVER_BCC).matches(
++                        ".*@.*")) {
++                    List<InternetAddress> receiversBCC = new Vector<InternetAddress>();
++                    String[] strReceivers = (getPropertyAsString(SmtpSampler.RECEIVER_BCC))
++                            .split(";");
++                    for (int i = 0; i < strReceivers.length; i++) {
++                        receiversBCC.add(new InternetAddress(strReceivers[i]
++                                .trim()));
++                    }
++                    instance.setReceiverBCC(receiversBCC);
++                }
++
++                MailBodyProvider mb = new MailBodyProvider();
++                if (getPropertyAsString(MESSAGE) != null
++                        && !getPropertyAsString(MESSAGE).equals(""))
++                    mb.setBody(getPropertyAsString(MESSAGE));
++                instance.setMbProvider(mb);
++
++                if (!getAttachments().equals("")) {
++                    String[] attachments = getAttachments().split(";");
++                    for (String attachment : attachments) {
++                        instance.addAttachment(new File(attachment));
++                    }
++                }
++
++                instance
++                        .setSubject(getPropertyAsString(SUBJECT)
++                                + (getPropertyAsBoolean(INCLUDE_TIMESTAMP) ? " <<< current timestamp: "
++                                        + new Date().getTime() + " >>>"
++                                        : ""));
++            } else {
++            	
++            	// send an .eml-file
++
++            	if (getMailFrom().matches(".*@.*")) {
++            		instance.setSender(getMailFrom());
++            	}
++
++                // check if there are really mail-addresses in the fields and if
++                // there are multiple ones
++                if (getPropertyAsString(SmtpSampler.RECEIVER_TO).matches(
++                        ".*@.*")) {
++                	List<InternetAddress> receiversTo = new Vector<InternetAddress>();
++                    String[] strReceivers = (getPropertyAsString(SmtpSampler.RECEIVER_TO))
++                            .split(";");
++                    for (int i = 0; i < strReceivers.length; i++) {
++                        receiversTo.add(new InternetAddress(strReceivers[i]
++                                .trim()));
++                    }
++                    instance.setReceiverTo(receiversTo);
++                }
++
++                // check if there are really mail-addresses in the fields and if
++                // there are multiple ones
++                if (getPropertyAsString(SmtpSampler.RECEIVER_CC).matches(
++                        ".*@.*")) {
++                    List<InternetAddress> receiversCC = new Vector<InternetAddress>();
++                    String[] strReceivers = (getPropertyAsString(SmtpSampler.RECEIVER_CC))
++                            .split(";");
++                    for (int i = 0; i < strReceivers.length; i++) {
++                        receiversCC.add(new InternetAddress(strReceivers[i]
++                                .trim()));
++                    }
++                    instance.setReceiverCC(receiversCC);
++                }
++
++                // check if there are really mail-addresses in the fields and if
++                // there are multiple ones
++                if (getPropertyAsString(SmtpSampler.RECEIVER_BCC).matches(
++                        ".*@.*")) {
++                    List<InternetAddress> receiversBCC = new Vector<InternetAddress>();
++                    String[] strReceivers = (getPropertyAsString(SmtpSampler.RECEIVER_BCC))
++                            .split(";");
++                    for (int i = 0; i < strReceivers.length; i++) {
++                        receiversBCC.add(new InternetAddress(strReceivers[i]
++                                .trim()));
++                    }
++                    instance.setReceiverBCC(receiversBCC);
++                }
++
++                String subj = getPropertyAsString(SUBJECT);
++                if (subj.trim().length() > 0) {
++                	instance.setSubject(subj
++                            + (getPropertyAsBoolean(INCLUDE_TIMESTAMP) ? " <<< current timestamp: "
++                                    + new Date().getTime() + " >>>"
++                                    : ""));
++                }
++            }
++            // needed for measuring sending time
++            instance.setSynchronousMode(true);
++
++            message = instance.prepareMessage();
++
++            if (getPropertyAsBoolean(MESSAGE_SIZE_STATS)) {
++                // calculate message size
++                CounterOutputStream cs = new CounterOutputStream();
++                message.writeTo(cs);
++                res.setBytes(cs.getCount());
++            } else {
++                res.setBytes(-1);
++            }
++
++        } catch (Exception ex) {
++            log.debug("Error while preparing message", ex);
++            return res;
++        }
++
++        // Perform the sampling
++        res.sampleStart();
++
++        try {
++            instance.execute(message);
++
++            if (getCheckForFailure())
++                throw new UnexpectedSuccessException(
++                        "Expected failure but got success...");
++
++            // Set up the sample result details
++            res.setSamplerData("To: "
++                    + getPropertyAsString(SmtpSampler.RECEIVER_TO) + "\nCC: "
++                    + getPropertyAsString(SmtpSampler.RECEIVER_CC) + "\nBCC: "
++                    + getPropertyAsString(SmtpSampler.RECEIVER_BCC));
++            res.setDataType(SampleResult.TEXT);
++            res.setResponseCodeOK();
++            /*
++             * TODO if(instance.getSMTPStatusCode == 250)
++             * res.setResponseMessage("Message successfully sent!"); else
++             * res.setResponseMessage(instance.getSMTPStatusCodeIncludingMessage);
++             */
++            res.setResponseMessage("Message successfully sent!\n"
++            		+ instance.getServerResponse());
++            res.setSampleLabel(getName());
++            isOK = true;
++        }
++        // username / password incorrect
++        catch (AuthenticationFailedException afex) {
++            res.setSampleLabel(getName());
++            log.debug("", afex);
++            res.setResponseCode("500");
++            res
++                    .setResponseMessage("AuthenticationFailedException: authentication failed - wrong username / password!\n"
++                            + afex);
++        }
++        // SSL not supported, startTLS not supported, other messagingException
++        catch (MessagingException mex) {
++            if (getCheckForFailure()) {
++                res.setSampleLabel(getName());
++                res
++                        .setSamplerData(getPropertyAsString(SmtpSampler.RECEIVER_TO));
++                res.setDataType(SampleResult.TEXT);
++                res.setResponseCodeOK();
++                res.setResponseMessage("Sending message failed\n" + mex);
++                isOK = true;
++            } else {
++                res.setSampleLabel(getName());
++                mex.printStackTrace();
++                log.debug("", mex);
++                res.setResponseCode("500");
++                if (mex.getMessage().matches(
++                        ".*Could not connect to SMTP host.*465.*")
++                        && mex.getCause().getMessage().matches(
++                                ".*Connection timed out.*")) {
++                    res
++                            .setResponseMessage("MessagingException: Probably, SSL is not supported by the SMTP-Server!\n"
++                                    + mex);
++                } else if (mex.getMessage().matches(".*StartTLS failed.*")) {
++                    res
++                            .setResponseMessage("MessagingException: StartTLS not supported by server or initializing failed!\n"
++                                    + mex);
++                } else if (mex.getMessage().matches(".*send command to.*")
++                        && mex
++                                .getCause()
++                                .getMessage()
++                                .matches(
++                                        ".*unable to find valid certification path to requested target.*")) {
++                    res
++                            .setResponseMessage("MessagingException: Server certificate not trusted - perhaps you have to restart JMeter!\n"
++                                    + mex);
++                } else {
++                    res.setResponseMessage("Other MessagingException: "
++                            + mex.toString());
++                }
++            }
++        }
++        // general exception
++        catch (Exception ex) {
++            res.setSampleLabel(getName());
++            ex.printStackTrace();
++            log.debug("", ex);
++            res.setResponseCode("500");
++            if (null != ex.getMessage()
++                    && ex.getMessage().matches("Failed to build truststore")) {
++                res
++                        .setResponseMessage("Failed to build truststore - did not try to send mail!");
++            } else {
++                res.setResponseMessage("Other Exception: " + ex.toString());
++            }
++        }
++
++        res.sampleEnd();
++
++        try {
++            // process the sampler result
++            InputStream is = message.getInputStream();
++            StringBuffer sb = new StringBuffer();
++            byte[] buf = new byte[1024];
++            int read = is.read(buf);
++            while (read > 0) {
++                sb.append(new String(buf, 0, read));
++                read = is.read(buf);
++            }
++            res.setResponseData(sb.toString().getBytes());
++        } catch (IOException ex) {
++            ex.printStackTrace();
++        } catch (MessagingException ex) {
++            ex.printStackTrace();
++        }
++
++        res.setSuccessful(isOK);
++
++        return res;
++    }
++
++    /**
++     * 
++     * @return Sampler-title
++     */
++    private String getTitle() {
++        return this.getName();
++    }
++
++    /**
++     * @return FQDN or IP of mailserver
++     */
++    public String getDut() {
++        return getPropertyAsString(SERVER);
++    }
++
++    /**
++     * @return Mailserver-Port
++     */
++    public int getDutPort() {
++        return getPropertyAsInt(SERVER_PORT);
++    }
++
++    /**
++     * @return Sender's mail address
++     */
++    public String getMailFrom() {
++        return getPropertyAsString(MAIL_FROM);
++    }
++
++    /**
++     * @return Receiver in field "to"
++     */
++    public String getReceiverTo() {
++        return getPropertyAsString(RECEIVER_TO);
++    }
++
++    /**
++     * @return Receiver in field "cc"
++     */
++    public String getReceiverCC() {
++        return getPropertyAsString(RECEIVER_CC);
++    }
++
++    /**
++     * @return Receiver in field "bcc"
++     */
++    public String getReceiverBCC() {
++        return getPropertyAsString(RECEIVER_BCC);
++    }
++
++    /**
++     * @return Username for mailserver-login
++     */
++    public String getUsername() {
++        return getPropertyAsString(USERNAME);
++    }
++
++    /**
++     * @return Password for mailserver-login
++     */
++    public String getPassword() {
++        return getPropertyAsString(PASSWORD);
++    }
++
++    /**
++     * @return Mail-subject
++     */
++    public String getSubject() {
++        return this.getPropertyAsString(SUBJECT);
++    }
++
++    /**
++     * @return true if timestamp is included in subject
++     */
++    public boolean getIncludeTimestamp() {
++        return this.getPropertyAsBoolean(INCLUDE_TIMESTAMP);
++    }
++
++    /**
++     * @return Path to file(s) to attach
++     */
++    public String getAttachments() {
++        return this.getPropertyAsString(ATTACH_FILE);
++    }
++
++    /**
++     * @return true if authentication is used to access mailserver
++     */
++    public boolean getUseAuthentication() {
++        return this.getPropertyAsBoolean(USE_AUTH);
++    }
++
++    /**
++     * @return true if sampler result is positive when sending fails
++     */
++    public boolean getCheckForFailure() {
++        return this.getPropertyAsBoolean(CHECK_FOR_FAILURE);
++    }
++
++    /**
++     * Helper method - writes title, classcount, name, ... to logfile
++     * 
++     */
++    private void trace(String s) {
++        String tl = getTitle();
++        String tn = Thread.currentThread().getName();
++        String th = this.toString();
++        log.debug(tn + " (" + classCount + ") " + tl + " " + s + " " + th);
++    }
++}
+\ No newline at end of file
+
+Property changes on: sampler/SmtpSampler.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/gui/SmtpPanel.java
+===================================================================
+--- sampler/gui/SmtpPanel.java	(revision 0)
++++ sampler/gui/SmtpPanel.java	(revision 0)
+@@ -0,0 +1,1119 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.smtp.sampler.gui;
++
++import java.awt.GridBagConstraints;
++import java.awt.GridBagLayout;
++
++import javax.swing.BorderFactory;
++import javax.swing.JPanel;
++
++/**
++ * Class to build gui-components for SMTP-sampler. Getter-methods serve the
++ * input-data to the sampler-object, which provides them to the
++ * SendMailCommand-object.
++ * 
++ * @author luca / extended by Michael Tschannen
++ * @version 1.0
++ * 
++ */
++public class SmtpPanel extends javax.swing.JPanel {
++
++    /**
++	 * 
++	 */
++	private static final long serialVersionUID = 1L;
++	/**
++     * Creates new form SmtpPanel, standard constructer. Calls
++     * initComponents();.
++     * 
++     */
++    public SmtpPanel() {
++        initComponents();
++    }
++
++    /**
++     * Returns sender-address for e-mail from textfield
++     * 
++     * @return Sender
++     */
++    public String getMailFrom() {
++        return tfMailFrom.getText();
++    }
++
++    /**
++     * Returns receiver in field "to" from textfield
++     * 
++     * @return Receiver "to"
++     */
++    public String getReceiverTo() {
++        return tfMailTo.getText();
++    }
++
++    /**
++     * Returns receiver in field "cc" from textfield
++     * 
++     * @return Receiver "cc"
++     */
++    public String getReceiverCC() {
++        return tfMailToCC.getText();
++    }
++
++    /**
++     * Returns receiver in field "bcc" from textfield
++     * 
++     * @return Receiver "bcc"
++     */
++    public String getReceiverBCC() {
++        return tfMailToBCC.getText();
++    }
++
++    /**
++     * Returns message body, i.e. main-mime-part of message (from textfield)
++     * 
++     * @return Message body
++     */
++    public String getBody() {
++        return taMessage.getText();
++    }
++
++    /**
++     * Sets message body, i.e. main-mime-part of message in textfield
++     * 
++     * @param messageBodyText
++     *            Message body
++     */
++    public void setBody(String messageBodyText) {
++        this.taMessage.setText(messageBodyText);
++    }
++
++    /**
++     * Sets sender-address of e-mail in textfield
++     * 
++     * @param mailFrom
++     *            Sender
++     */
++    public void setMailFrom(String mailFrom) {
++        this.tfMailFrom.setText(mailFrom);
++    }
++
++    /**
++     * Sets receiver in textfield "to"
++     * 
++     * @param mailTo
++     *            Receiver "to"
++     */
++    public void setReceiverTo(String mailTo) {
++        this.tfMailTo.setText(mailTo);
++    }
++
++    /**
++     * Sets receiver in textfield "cc"
++     * 
++     * @param mailToCC
++     *            Receiver "cc"
++     */
++    public void setReceiverCC(String mailToCC) {
++        this.tfMailToCC.setText(mailToCC);
++    }
++
++    /**
++     * Sets receiver in textfield "bcc"
++     * 
++     * @param mailToBCC
++     *            Receiver "bcc"
++     */
++    public void setReceiverBCC(String mailToBCC) {
++        this.tfMailToBCC.setText(mailToBCC);
++    }
++
++    /**
++     * Returns path of file(s) to be attached in e-mail from textfield
++     * 
++     * @return File to attach
++     */
++    public String getAttachments() {
++        return tfAttachment.getText();
++    }
++
++    /**
++     * Sets path of file to be attached in e-mail in textfield
++     * 
++     * @param attachmentFolder
++     *            File to attach
++     */
++    public void setAttachments(String attachments) {
++        this.tfAttachment.setText(attachments);
++    }
++
++    /**
++     * Returns port of mail-server (standard 25 for SMTP/SMTP with StartTLS, 465
++     * for SSL) from textfield
++     * 
++     * @return Mail-server port
++     */
++    public String getDutPort() {
++        if (tfMailServerPort.getText().equalsIgnoreCase("")) {
++            return "25";
++        } 
++            return tfMailServerPort.getText();
++        
++    }
++
++    /**
++     * Sets port of mail-server (standard 25 for SMTP/SMTP with StartTLS, 465
++     * for SSL) in textfield
++     * 
++     * @param dutPort
++     *            Mail-server port
++     */
++    public void setDutPort(String dutPort) {
++        this.tfMailServerPort.setText(dutPort);
++    }
++
++    /**
++     * Returns mail-server to be used to send message (from textfield)
++     * 
++     * @return FQDN or IP of mail-server
++     */
++    public String getDut() {
++        return tfMailServer.getText();
++    }
++
++    /**
++     * Sets mail-server to be used to send message in textfield
++     * 
++     * @param dut
++     *            FQDN or IP of mail-server
++     */
++    public void setDut(String dut) {
++        this.tfMailServer.setText(dut);
++    }
++
++    /**
++     * Returns subject of the e-mail from textfield
++     * 
++     * @return Subject of e-mail
++     */
++    public String getSubject() {
++        return tfSubject.getText();
++    }
++
++    /**
++     * Sets subject of the e-mail in textfield
++     * 
++     * @param subject
++     *            Subject of e-mail
++     */
++    public void setSubject(String subject) {
++        this.tfSubject.setText(subject);
++    }
++
++    /**
++     * Returns if mail-server needs authentication (checkbox)
++     * 
++     * @return true if authentication is used
++     */
++    public boolean isUseAuth() {
++        return cbUseAuth.isSelected();
++    }
++
++    /**
++     * Returns if SSL is used to secure the SMTP-connection (checkbox)
++     * 
++     * @return true if SSL is used to secure the SMTP-connection
++     */
++    public boolean isUseSSL() {
++        return rbUseSSL.isSelected();
++    }
++
++    /**
++     * Sets SSL to be used to secure the SMTP-connection (checkbox)
++     * 
++     * @param useSSL
++     *            Use SSL to secure the connection
++     */
++    public void setUseSSL(boolean useSSL) {
++        rbUseSSL.setSelected(useSSL);
++    }
++
++    /**
++     * Returns if StartTLS is used to secure the connection (checkbox)
++     * 
++     * @return true if StartTLS is used to secure the connection
++     */
++    public boolean isUseStartTLS() {
++        return rbUseStartTLS.isSelected();
++    }
++
++    /**
++     * Sets StartTLS to be used to secure the SMTP-connection (checkbox)
++     * 
++     * @param useStartTLS
++     *            Use StartTLS to secure the connection
++     */
++    public void setUseStartTLS(boolean useStartTLS) {
++        rbUseStartTLS.setSelected(useStartTLS);
++    }
++
++    /**
++     * Returns if StartTLS is enforced (normally, SMTP uses plain
++     * SMTP-connection as fallback if "250-STARTTLS" isn't sent from the
++     * mailserver) (checkbox)
++     * 
++     * @return true if StartTLS is enforced
++     */
++    public boolean isEnforceStartTLS() {
++        return cbEnforceStartTLS.isSelected();
++    }
++
++    /**
++     * Enforces StartTLS to secure the SMTP-connection (checkbox)
++     * 
++     * @param enforceStartTLS
++     *            Enforce the use of StartTLS to secure the connection
++     * @see jmeter.smtpsampler.gui.SmtpPanel#isEnforceStartTLS()
++     */
++    public void setEnforceStartTLS(boolean enforceStartTLS) {
++        cbEnforceStartTLS.setSelected(enforceStartTLS);
++    }
++
++    /**
++     * Returns if all certificates are blindly trusted (using according
++     * SocketFactory) (checkbox)
++     * 
++     * @return true if all certificates are blindly trusted
++     */
++    public boolean isTrustAllCerts() {
++        return cbTrustAllCerts.isSelected();
++    }
++
++    /**
++     * Enforces JMeter to trust all certificates, no matter what CA is issuer
++     * (checkbox)
++     * 
++     * @param trustAllCerts
++     *            Trust all certificates
++     * @see jmeter.smtpsampler.gui.SmtpPanel#isTrustAllCerts()
++     */
++    public void setTrustAllCerts(boolean trustAllCerts) {
++        cbTrustAllCerts.setSelected(trustAllCerts);
++    }
++
++    /**
++     * Returns if local (pre-installed) truststore is used to avoid
++     * SSL-connection-exceptions (checkbox)
++     * 
++     * @return true if a local truststore is used
++     */
++    public boolean isUseLocalTrustStore() {
++        return cbUseLocalTrustStore.isSelected();
++    }
++
++    /**
++     * Set the use of a local (pre-installed) truststore to avoid
++     * SSL-connection-exceptions (checkbox)
++     * 
++     * @param useLocalTrustStore
++     *            Use local keystore
++     */
++    public void setUseLocalTrustStore(boolean useLocalTrustStore) {
++        cbUseLocalTrustStore.setSelected(useLocalTrustStore);
++    }
++
++    /**
++     * Returns the path to the local (pre-installed) truststore to be used to
++     * avoid SSL-connection-exceptions
++     * 
++     * @return Path to local truststore
++     */
++    public String getTrustStoreToUse() {
++        return tfTrustStoreToUse.getText();
++    }
++
++    /**
++     * Set the path to local (pre-installed) truststore to be used to avoid
++     * SSL-connection-exceptions
++     * 
++     * @param trustStoreToUse
++     *            Path to local truststore
++     */
++    public void setTrustStoreToUse(String trustStoreToUse) {
++        this.tfTrustStoreToUse.setText(trustStoreToUse);
++    }
++
++    /**
++     * Returns if an .eml-message is sent instead of the content of message-text
++     * area
++     * 
++     * @return true if .eml is sent, false if text area content is sent in
++     *         e-mail
++     */
++    public boolean isUseEmlMessage() {
++        return cbUseEmlMessage.isSelected();
++    }
++
++    /**
++     * Set the use of an .eml-message instead of the content of message-text
++     * area
++     * 
++     * @param useEmlMessage
++     *            Use eml message
++     */
++    public void setUseEmlMessage(boolean useEmlMessage) {
++        this.cbUseEmlMessage.setSelected(useEmlMessage);
++    }
++
++    /**
++     * Returns path to eml message to be sent
++     * 
++     * @return path to eml message to be sent
++     */
++    public String getEmlMessage() {
++        return tfEmlMessage.getText();
++    }
++
++    /**
++     * Set path to eml message to be sent
++     * 
++     * @param emlMessage
++     *            path to eml message to be sent
++     */
++    public void setEmlMessage(String emlMessage) {
++        this.tfEmlMessage.setText(emlMessage);
++    }
++
++    /**
++     * Returns if current timestamp is included in the subject (checkbox)
++     * 
++     * @return true if current timestamp is included in subject
++     */
++    public boolean isIncludeTimestamp() {
++        return cbIncludeTimestamp.isSelected();
++    }
++
++    /**
++     * Set timestamp to be included in the message-subject (checkbox)
++     * 
++     * @param includeTimestamp
++     *            Should timestamp be included in subject?
++     */
++    public void setIncludeTimestamp(boolean includeTimestamp) {
++        this.cbIncludeTimestamp.setSelected(includeTimestamp);
++    }
++
++    /**
++     * Returns if message size statistics are processed. Output of processing
++     * will be included in sample result. (checkbox)
++     * 
++     * @return True if message size will be calculated
++     */
++    public boolean isMessageSizeStatistics() {
++        return cbMessageSizeStats.isSelected();
++    }
++
++    /**
++     * Set message size to be calculated and included in sample result
++     * (checkbox)
++     * 
++     * @param val
++     *            Schould message size be calculated?
++     */
++    public void setMessageSizeStatistic(boolean val) {
++        this.cbMessageSizeStats.setSelected(val);
++    }
++
++    /**
++     * Returns if status Code 200 is set if sampler wasn't successful
++     * 
++     * @return True if failure should be expected
++     */
++    public boolean isCheckForFailure() {
++        return cbCheckForFailure.isSelected();
++    }
++
++    /**
++     * Assigns sampler to set return code 200 (successful) if sending the
++     * message failed
++     * 
++     * @param val
++     *            Schould failure be expected?
++     */
++    public void setCheckForFailure(boolean val) {
++        this.cbCheckForFailure.setSelected(val);
++    }
++
++    /**
++     * Main method of class, builds all gui-components for SMTP-sampler.
++     */
++    private void initComponents() {
++        GridBagConstraints gridBagConstraints, gridBagConstraintsMain;
++
++        jlAddressFrom = new javax.swing.JLabel();
++        jlAddressTo = new javax.swing.JLabel();
++        jlAddressToCC = new javax.swing.JLabel();
++        jlAddressToBCC = new javax.swing.JLabel();
++        jlMailServerPort = new javax.swing.JLabel();
++        jlMailServer = new javax.swing.JLabel();
++        jlAttachFile = new javax.swing.JLabel();
++        jlDutPortStandard = new javax.swing.JLabel();
++        jlUsername = new javax.swing.JLabel();
++        jlPassword = new javax.swing.JLabel();
++        jlTrustStoreToUse = new javax.swing.JLabel();
++        jlSubject = new javax.swing.JLabel();
++        jlMessage = new javax.swing.JLabel();
++
++        tfMailServer = new javax.swing.JTextField(30);
++        tfMailServerPort = new javax.swing.JTextField(6);
++        tfTrustStoreToUse = new javax.swing.JTextField(20);
++        tfMailFrom = new javax.swing.JTextField(25);
++        tfMailTo = new javax.swing.JTextField(25);
++        tfMailToCC = new javax.swing.JTextField(25);
++        tfMailToBCC = new javax.swing.JTextField(25);
++        tfAuthUsername = new javax.swing.JTextField(20);
++        tfAuthPassword = new javax.swing.JTextField(20);
++        tfSubject = new javax.swing.JTextField(20);
++        tfAttachment = new javax.swing.JTextField(30);
++        tfEmlMessage = new javax.swing.JTextField(30);
++
++        taMessage = new javax.swing.JTextArea(5, 20);
++
++        cbUseAuth = new javax.swing.JCheckBox();
++        rbUseNone = new javax.swing.JRadioButton("Use no security features");
++        rbUseSSL = new javax.swing.JRadioButton("Use SSL");
++        rbUseStartTLS = new javax.swing.JRadioButton("Use StartTLS");
++
++        cbTrustAllCerts = new javax.swing.JCheckBox();
++        cbEnforceStartTLS = new javax.swing.JCheckBox();
++        cbIncludeTimestamp = new javax.swing.JCheckBox();
++        cbMessageSizeStats = new javax.swing.JCheckBox();
++        cbCheckForFailure = new javax.swing.JCheckBox();
++        cbUseLocalTrustStore = new javax.swing.JCheckBox();
++        cbUseEmlMessage = new javax.swing.JCheckBox();
++
++        attachmentFileChooser = new javax.swing.JFileChooser();
++        emlFileChooser = new javax.swing.JFileChooser();
++
++        browseButton = new javax.swing.JButton();
++        emlBrowseButton = new javax.swing.JButton();
++
++        attachmentFileChooser
++                .addActionListener(new java.awt.event.ActionListener() {
++                    public void actionPerformed(java.awt.event.ActionEvent evt) {
++                        attachmentFolderFileChooserActionPerformed(evt);
++                    }
++                });
++
++        emlFileChooser.addActionListener(new java.awt.event.ActionListener() {
++            public void actionPerformed(java.awt.event.ActionEvent evt) {
++                emlFileChooserActionPerformed(evt);
++            }
++        });
++
++        setLayout(new GridBagLayout());
++
++        gridBagConstraintsMain = new GridBagConstraints();
++        gridBagConstraintsMain.fill = GridBagConstraints.HORIZONTAL;
++        gridBagConstraintsMain.anchor = GridBagConstraints.WEST;
++
++        gridBagConstraints = new GridBagConstraints();
++        gridBagConstraints.insets = new java.awt.Insets(2, 2, 2, 2);
++        gridBagConstraints.fill = GridBagConstraints.NONE;
++        gridBagConstraints.anchor = GridBagConstraints.WEST;
++
++        /*
++         * Server Settings
++         */
++        JPanel panelServerSettings = new JPanel(new GridBagLayout());
++        panelServerSettings.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(), "Server settings"));
++
++        jlMailServer.setText("Server:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 0;
++        panelServerSettings.add(jlMailServer, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 0;
++        panelServerSettings.add(tfMailServer, gridBagConstraints);
++
++        jlMailServerPort.setText("Port:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 1;
++        panelServerSettings.add(jlMailServerPort, gridBagConstraints);
++
++        JPanel panelServerPortSettings = new JPanel(new GridBagLayout());
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 0;
++        panelServerPortSettings.add(tfMailServerPort, gridBagConstraints);
++
++        jlDutPortStandard.setText("(Standard: 25)");
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 0;
++        panelServerPortSettings.add(jlDutPortStandard, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 1;
++        panelServerSettings.add(panelServerPortSettings, gridBagConstraints);
++
++        gridBagConstraintsMain.gridx = 0;
++        gridBagConstraintsMain.gridy = 0;
++        add(panelServerSettings, gridBagConstraintsMain);
++
++        /*
++         * E-Mail Settings
++         */
++        JPanel panelMailSettings = new JPanel(new GridBagLayout());
++        panelMailSettings.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(), "Mail settings"));
++
++        jlAddressFrom.setText("Address From:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 0;
++        panelMailSettings.add(jlAddressFrom, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 0;
++        panelMailSettings.add(tfMailFrom, gridBagConstraints);
++
++        jlAddressTo.setText("Address To:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 1;
++        panelMailSettings.add(jlAddressTo, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 1;
++        panelMailSettings.add(tfMailTo, gridBagConstraints);
++
++        jlAddressToCC.setText("Address To CC:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 2;
++        panelMailSettings.add(jlAddressToCC, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 2;
++        panelMailSettings.add(tfMailToCC, gridBagConstraints);
++
++        jlAddressToBCC.setText("Address To BCC:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 3;
++        panelMailSettings.add(jlAddressToBCC, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 3;
++        panelMailSettings.add(tfMailToBCC, gridBagConstraints);
++
++        gridBagConstraintsMain.gridx = 0;
++        gridBagConstraintsMain.gridy = 1;
++        add(panelMailSettings, gridBagConstraintsMain);
++
++        /*
++         * Auth Settings
++         */
++        JPanel panelAuthSettings = new JPanel(new GridBagLayout());
++        panelAuthSettings.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(), "Auth settings"));
++
++        cbUseAuth.setText("Use Auth");
++        cbUseAuth.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 0,
++                0, 0));
++        cbUseAuth.setMargin(new java.awt.Insets(0, 0, 0, 0));
++        cbUseAuth.addActionListener(new java.awt.event.ActionListener() {
++            public void actionPerformed(java.awt.event.ActionEvent evt) {
++                cbUseAuthActionPerformed(evt);
++            }
++        });
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 0;
++        panelAuthSettings.add(cbUseAuth, gridBagConstraints);
++
++        jlUsername.setText("Username:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 1;
++        gridBagConstraints.gridwidth = 1;
++        panelAuthSettings.add(jlUsername, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 1;
++        gridBagConstraints.gridwidth = 2;
++        panelAuthSettings.add(tfAuthUsername, gridBagConstraints);
++        tfAuthUsername.setEditable(false);
++
++        jlPassword.setText("Password:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 2;
++        gridBagConstraints.gridwidth = 1;
++        panelAuthSettings.add(jlPassword, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 2;
++        panelAuthSettings.add(tfAuthPassword, gridBagConstraints);
++        tfAuthPassword.setEditable(false);
++
++        gridBagConstraintsMain.gridx = 0;
++        gridBagConstraintsMain.gridy = 2;
++        add(panelAuthSettings, gridBagConstraintsMain);
++
++        /*
++         * Security Settings
++         */
++        JPanel panelSecuritySettings = new JPanel(new GridBagLayout());
++        panelSecuritySettings.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(), "Security settings"));
++
++        rbUseNone.setSelected(true);
++        bgSecuritySettings = new javax.swing.ButtonGroup();
++        bgSecuritySettings.add(rbUseNone);
++        bgSecuritySettings.add(rbUseSSL);
++        bgSecuritySettings.add(rbUseStartTLS);
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 0;
++        panelSecuritySettings.add(rbUseNone, gridBagConstraints);
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 1;
++        panelSecuritySettings.add(rbUseSSL, gridBagConstraints);
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 2;
++        panelSecuritySettings.add(rbUseStartTLS, gridBagConstraints);
++
++        rbUseNone.addItemListener(new java.awt.event.ItemListener() {
++            public void itemStateChanged(java.awt.event.ItemEvent evt) {
++                rbSecuritySettingsItemStateChanged(evt);
++            }
++        });
++        rbUseSSL.addItemListener(new java.awt.event.ItemListener() {
++            public void itemStateChanged(java.awt.event.ItemEvent evt) {
++                rbSecuritySettingsItemStateChanged(evt);
++            }
++        });
++        rbUseStartTLS.addItemListener(new java.awt.event.ItemListener() {
++            public void itemStateChanged(java.awt.event.ItemEvent evt) {
++                rbSecuritySettingsItemStateChanged(evt);
++            }
++        });
++
++        cbTrustAllCerts.setText("Trust all certificates");
++        cbTrustAllCerts.setBorder(javax.swing.BorderFactory.createEmptyBorder(
++                0, 0, 0, 0));
++        cbTrustAllCerts.setMargin(new java.awt.Insets(0, 0, 0, 0));
++        cbTrustAllCerts.setEnabled(false);
++      
++        String trustAllCertsToolTip = "<html><b>Enforces</b> JMeter to trust all certificates, whatever CA it comes from. <br />If not selected, you should install the server certificate manually <br />(using the corresponding option below)</html>";
++        cbTrustAllCerts.setToolTipText(trustAllCertsToolTip);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 1;
++        panelSecuritySettings.add(cbTrustAllCerts, gridBagConstraints);
++
++        cbEnforceStartTLS.setText("Enforce StartTLS");
++        cbEnforceStartTLS.setBorder(javax.swing.BorderFactory
++                .createEmptyBorder(0, 0, 0, 0));
++        cbEnforceStartTLS.setMargin(new java.awt.Insets(0, 0, 0, 0));
++        cbEnforceStartTLS.setEnabled(false);
++        cbEnforceStartTLS
++                .addActionListener(new java.awt.event.ActionListener() {
++                    public void actionPerformed(java.awt.event.ActionEvent evt) {
++                        cbEnforceStartTLSActionPerformed(evt);
++                    }
++                });
++
++        String enforceStartTLSToolTip = "<html><b>Enforces</b> the server to use StartTLS.<br />If not selected and the SMTP-Server doesn't support StartTLS, <br />a normal SMTP-Connection will be used as fallback instead. <br /><i>Please note</i> that this checkbox creates a file in \"/tmp/\", <br />so this will cause problems under windows.</html>";
++        cbEnforceStartTLS.setToolTipText(enforceStartTLSToolTip);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 2;
++        panelSecuritySettings.add(cbEnforceStartTLS, gridBagConstraints);
++
++        cbUseLocalTrustStore.setText("Use local truststore");
++        cbUseLocalTrustStore.setBorder(javax.swing.BorderFactory
++                .createEmptyBorder(0, 0, 0, 0));
++        cbUseLocalTrustStore.setMargin(new java.awt.Insets(0, 0, 0, 0));
++        cbUseLocalTrustStore.setEnabled(false);
++        cbUseLocalTrustStore
++                .addActionListener(new java.awt.event.ActionListener() {
++                    public void actionPerformed(java.awt.event.ActionEvent evt) {
++                        cbUseLocalTrustStoreActionPerformed(evt);
++                    }
++                });
++
++        String useLocalTrustStoreToolTip = "<html><b>Pleasae note:</b></html>";
++        cbUseLocalTrustStore.setToolTipText(useLocalTrustStoreToolTip);
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 5;
++        gridBagConstraints.gridwidth = 2;
++        panelSecuritySettings.add(cbUseLocalTrustStore, gridBagConstraints);
++
++        jlTrustStoreToUse.setText("Local truststore:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 6;
++        gridBagConstraints.gridwidth = 1;
++        panelSecuritySettings.add(jlTrustStoreToUse, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 6;
++        panelSecuritySettings.add(tfTrustStoreToUse, gridBagConstraints);
++
++        gridBagConstraintsMain.gridx = 0;
++        gridBagConstraintsMain.gridy = 3;
++        add(panelSecuritySettings, gridBagConstraintsMain);
++
++        /*
++         * (non-Javadoc) Message Settings
++         */
++        JPanel panelMessageSettings = new JPanel(new GridBagLayout());
++        panelMessageSettings.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(), "Message settings"));
++
++        jlSubject.setText("Subject:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 0;
++        panelMessageSettings.add(jlSubject, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 0;
++        panelMessageSettings.add(tfSubject, gridBagConstraints);
++
++        cbIncludeTimestamp.setText("Include timestamp in subject");
++        cbIncludeTimestamp.setBorder(javax.swing.BorderFactory
++                .createEmptyBorder(0, 0, 0, 0));
++        cbIncludeTimestamp.setMargin(new java.awt.Insets(0, 0, 0, 0));
++        gridBagConstraints.gridx = 2;
++        gridBagConstraints.gridy = 0;
++        panelMessageSettings.add(cbIncludeTimestamp, gridBagConstraints);
++
++        jlMessage.setText("Message:");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 1;
++        panelMessageSettings.add(jlMessage, gridBagConstraints);
++
++        taMessage.setBorder(javax.swing.BorderFactory.createBevelBorder(1));
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 1;
++        panelMessageSettings.add(taMessage, gridBagConstraints);
++
++        jlAttachFile.setText("Attach file(s):");
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 2;
++        panelMessageSettings.add(jlAttachFile, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 2;
++        panelMessageSettings.add(tfAttachment, gridBagConstraints);
++        tfAttachment.setText("separate multiple files with \";\"");
++
++        browseButton.setText("Browse");
++        browseButton.addActionListener(new java.awt.event.ActionListener() {
++            public void actionPerformed(java.awt.event.ActionEvent evt) {
++                browseButtonActionPerformed(evt);
++            }
++        });
++
++        gridBagConstraints.gridx = 2;
++        gridBagConstraints.gridy = 2;
++        panelMessageSettings.add(browseButton, gridBagConstraints);
++
++        cbUseEmlMessage.setText("Send .eml:");
++        cbUseEmlMessage.setSelected(false);
++        cbUseEmlMessage.addActionListener(new java.awt.event.ActionListener() {
++            public void actionPerformed(java.awt.event.ActionEvent evt) {
++                cbUseEmlMessageActionPerformed(evt);
++            }
++        });
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 3;
++        panelMessageSettings.add(cbUseEmlMessage, gridBagConstraints);
++
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 3;
++        tfEmlMessage.setEnabled(false);
++        panelMessageSettings.add(tfEmlMessage, gridBagConstraints);
++
++        emlBrowseButton.setText("Browse");
++        emlBrowseButton.addActionListener(new java.awt.event.ActionListener() {
++            public void actionPerformed(java.awt.event.ActionEvent evt) {
++                emlBrowseButtonActionPerformed(evt);
++            }
++        });
++        emlBrowseButton.setEnabled(false);
++
++        gridBagConstraints.gridx = 2;
++        gridBagConstraints.gridy = 3;
++        panelMessageSettings.add(emlBrowseButton, gridBagConstraints);
++
++        gridBagConstraintsMain.gridx = 0;
++        gridBagConstraintsMain.gridy = 4;
++        add(panelMessageSettings, gridBagConstraintsMain);
++
++        /*
++         * Additional Settings
++         */
++        JPanel panelAdditionalSettings = new JPanel(new GridBagLayout());
++        panelAdditionalSettings.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(), "Additional Settings"));
++
++        cbMessageSizeStats.setText("Calculate message size");
++        cbMessageSizeStats.setBorder(javax.swing.BorderFactory
++                .createEmptyBorder(0, 0, 0, 0));
++        cbMessageSizeStats.setMargin(new java.awt.Insets(0, 0, 0, 0));
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 0;
++        panelAdditionalSettings.add(cbMessageSizeStats, gridBagConstraints);
++
++        cbCheckForFailure.setText("Check for failure");
++        cbCheckForFailure.setBorder(javax.swing.BorderFactory
++                .createEmptyBorder(0, 0, 0, 0));
++        cbCheckForFailure.setMargin(new java.awt.Insets(0, 0, 0, 0));
++
++        gridBagConstraints.gridx = 0;
++        gridBagConstraints.gridy = 1;
++        panelAdditionalSettings.add(cbCheckForFailure, gridBagConstraints);
++
++        gridBagConstraintsMain.gridx = 0;
++        gridBagConstraintsMain.gridy = 5;
++        add(panelAdditionalSettings, gridBagConstraintsMain);
++    }
++
++    /**
++     * ActionPerformed-method for checkbox "useAuth"
++     * 
++     * @param evt
++     *            ActionEvent to be handeled
++     */
++    private void cbUseAuthActionPerformed(java.awt.event.ActionEvent evt) {
++        if (cbUseAuth.isSelected()) {
++            tfAuthUsername.setEditable(true);
++            tfAuthPassword.setEditable(true);
++        } else {
++            tfAuthUsername.setEditable(false);
++            tfAuthPassword.setEditable(false);
++        }
++    }
++
++    /**
++     * ActionPerformed-method for checkbox "useLocalTrustStore"
++     * 
++     * @param evt
++     *            ActionEvent to be handeled
++     */
++    private void cbUseLocalTrustStoreActionPerformed(
++            java.awt.event.ActionEvent evt) {
++        if (cbUseLocalTrustStore.isSelected()) {
++            tfTrustStoreToUse.setEditable(true);
++            cbTrustAllCerts.setSelected(false);
++        }
++    }
++
++    /**
++     * ActionPerformed-method for filechoser "attachmentFileChoser", creates
++     * FileChoser-Object
++     * 
++     * @param evt
++     *            ActionEvent to be handeled
++     */
++    private void attachmentFolderFileChooserActionPerformed(
++            java.awt.event.ActionEvent evt) {
++        // if(!tfAttachment.getText().isEmpty()) { //JAVA1.6
++        // as per https://bugs.privasphere.com/show_bug.cgi?id=2889
++        if (null != tfAttachment.getText() && 0 !=
++        // or should also trim()?
++                tfAttachment.getText().length()) {
++            tfAttachment
++                    .setText(tfAttachment.getText()
++                            + ";"
++                            + attachmentFileChooser.getSelectedFile()
++                                    .getAbsolutePath());
++        } else {
++            tfAttachment.setText(attachmentFileChooser.getSelectedFile()
++                    .getAbsolutePath());
++        }
++
++    }
++
++    /**
++     * ActionPerformed-method for button "browseButton", opens FileDialog-Object
++     * 
++     * @param evt
++     *            ActionEvent to be handeled
++     */
++    private void browseButtonActionPerformed(java.awt.event.ActionEvent evt) {
++        attachmentFileChooser.showOpenDialog(this);
++    }
++
++    private void cbUseEmlMessageActionPerformed(java.awt.event.ActionEvent evt) {
++        if (cbUseEmlMessage.isSelected()) {
++            tfEmlMessage.setEnabled(true);
++            emlBrowseButton.setEnabled(true);
++
++            /*tfMailFrom.setEnabled(false);
++            tfMailTo.setEnabled(false);
++            tfMailToCC.setEnabled(false);
++            tfMailToBCC.setEnabled(false);
++            tfSubject.setEnabled(false);*/
++            taMessage.setEnabled(false);
++            tfAttachment.setEnabled(false);
++            browseButton.setEnabled(false);
++        } else {
++            tfEmlMessage.setEnabled(false);
++            emlBrowseButton.setEnabled(false);
++
++            /*tfMailFrom.setEnabled(true);
++            tfMailTo.setEnabled(true);
++            tfMailToCC.setEnabled(true);
++            tfMailToBCC.setEnabled(true);
++            tfSubject.setEnabled(true);*/
++            taMessage.setEnabled(true);
++            tfAttachment.setEnabled(true);
++            browseButton.setEnabled(true);
++        }
++    }
++
++    /**
++     * ActionPerformed-method for filechoser "emlFileChoser", creates
++     * FileChoser-Object
++     * 
++     * @param evt
++     *            ActionEvent to be handeled
++     */
++    private void emlFileChooserActionPerformed(java.awt.event.ActionEvent evt) {
++        tfEmlMessage
++                .setText(emlFileChooser.getSelectedFile().getAbsolutePath());
++    }
++
++    /**
++     * ActionPerformed-method for button "emlButton", opens FileDialog-Object
++     * 
++     * @param evt
++     *            ActionEvent to be handeled
++     */
++    private void emlBrowseButtonActionPerformed(java.awt.event.ActionEvent evt) {
++        emlFileChooser.showOpenDialog(this);
++    }
++
++    /**
++     * ActionPerformed-method for checkbox "enforceStartTLS", empty method
++     * header
++     * 
++     * @param evt
++     *            ActionEvent to be handeled
++     */
++    private void cbEnforceStartTLSActionPerformed(java.awt.event.ActionEvent evt) {
++        // TODO add your handling code here
++    }
++
++    /**
++     * ItemStateChanged-method for radiobutton "securitySettings"
++     * 
++     * @param evt
++     *            ItemEvent to be handeled
++     */
++    private void rbSecuritySettingsItemStateChanged(java.awt.event.ItemEvent evt) {
++        if (evt.getSource() == rbUseNone) {
++        	if (tfMailServerPort.getText().trim().equals("465")) {
++        		tfMailServerPort.setText("25");
++        	}
++            cbTrustAllCerts.setEnabled(false);
++            cbTrustAllCerts.setSelected(false);
++            cbEnforceStartTLS.setEnabled(false);
++            cbEnforceStartTLS.setSelected(false);
++            cbUseLocalTrustStore.setSelected(false);
++            cbUseLocalTrustStore.setEnabled(false);
++            tfTrustStoreToUse.setEditable(false);
++        } else if (evt.getSource() == rbUseSSL) {
++        	if (tfMailServerPort.getText().trim().equals("255")) {
++        		tfMailServerPort.setText("465");
++        	}
++            cbTrustAllCerts.setEnabled(true);
++            cbEnforceStartTLS.setEnabled(false);
++            cbEnforceStartTLS.setSelected(false);
++            cbUseLocalTrustStore.setEnabled(true);
++            tfTrustStoreToUse.setEditable(false);
++        } else if (evt.getSource() == rbUseStartTLS) {
++        	if (tfMailServerPort.getText().trim().equals("465")) {
++        		tfMailServerPort.setText("25");
++        	}
++        	cbTrustAllCerts.setEnabled(false);
++            cbTrustAllCerts.setSelected(false);
++            cbEnforceStartTLS.setEnabled(true);
++            cbUseLocalTrustStore.setEnabled(true);
++            cbUseLocalTrustStore.setSelected(false);
++            tfTrustStoreToUse.setEditable(false);
++        }
++    }
++
++    /**
++     * Standard ItemStateChanged-Method, empty method header
++     * 
++     * @param evt
++     *            ItemEvent to be handeled
++     */
++    public void itemStateChanged(java.awt.event.ItemEvent evt) {
++        // TODO add your handling code here
++    }
++
++    // local vars
++    private javax.swing.JTextField tfMailFrom;
++    private javax.swing.JButton browseButton;
++    private javax.swing.JButton emlBrowseButton;
++    private javax.swing.JCheckBox cbTrustAllCerts;
++    private javax.swing.JCheckBox cbEnforceStartTLS;
++    protected javax.swing.JCheckBox cbUseAuth;
++    private javax.swing.JCheckBox cbUseLocalTrustStore;
++    protected javax.swing.JRadioButton rbUseNone;
++    protected javax.swing.JRadioButton rbUseSSL;
++    protected javax.swing.JRadioButton rbUseStartTLS;
++    protected javax.swing.ButtonGroup bgSecuritySettings;
++    private javax.swing.JTextField tfMailServer;
++    private javax.swing.JTextField tfMailServerPort;
++    private javax.swing.JTextField tfTrustStoreToUse;
++    private javax.swing.JTextField tfMailTo;
++    private javax.swing.JTextField tfMailToCC;
++    private javax.swing.JTextField tfMailToBCC;
++    private javax.swing.JTextField tfAttachment;
++    private javax.swing.JTextField tfEmlMessage;
++
++    private javax.swing.JTextArea taMessage;
++    private javax.swing.JLabel jlAddressFrom;
++    private javax.swing.JLabel jlAddressTo;
++    private javax.swing.JLabel jlAddressToCC;
++    private javax.swing.JLabel jlAddressToBCC;
++    private javax.swing.JLabel jlMailServerPort;
++    private javax.swing.JLabel jlMailServer;
++    private javax.swing.JLabel jlAttachFile;
++    private javax.swing.JLabel jlDutPortStandard;
++    private javax.swing.JLabel jlTrustStoreToUse;
++    private javax.swing.JLabel jlPassword;
++    private javax.swing.JLabel jlSubject;
++    private javax.swing.JLabel jlUsername;
++    private javax.swing.JLabel jlMessage;
++    private javax.swing.JFileChooser attachmentFileChooser;
++    private javax.swing.JFileChooser emlFileChooser;
++    protected javax.swing.JTextField tfAuthPassword;
++    protected javax.swing.JTextField tfAuthUsername;
++    protected javax.swing.JTextField tfSubject;
++    protected javax.swing.JCheckBox cbIncludeTimestamp;
++    protected javax.swing.JCheckBox cbMessageSizeStats;
++    protected javax.swing.JCheckBox cbCheckForFailure;
++    protected javax.swing.JCheckBox cbUseEmlMessage;
++}
+\ No newline at end of file
+
+Property changes on: sampler/gui/SmtpPanel.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/gui/SmtpSamplerGui.java
+===================================================================
+--- sampler/gui/SmtpSamplerGui.java	(revision 0)
++++ sampler/gui/SmtpSamplerGui.java	(revision 0)
+@@ -0,0 +1,210 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++
++package org.apache.jmeter.protocol.smtp.sampler.gui;
++
++import java.awt.BorderLayout;
++import java.awt.Component;
++
++import javax.swing.BorderFactory;
++import javax.swing.Box;
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++
++import org.apache.jmeter.protocol.smtp.sampler.SmtpSampler;
++
++import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.util.JarUtils;
++
++/**
++ * Class to build superstructure-gui for SMTP-panel, sets/gets value for a JMeter's testElement-object (i.e. also for save/load-purposes).
++ * This class extends AbstractSamplerGui, therefor most implemented methods are defined by JMeter's structure. 
++ *
++ * @author  luca / slightly extended by Michael Tschannen
++ * @version 1.0
++ * 
++ */
++public class SmtpSamplerGui extends AbstractSamplerGui {
++
++	/**
++	 * 
++	 */
++	private static final long serialVersionUID = 1L;
++	private SmtpPanel smtpPanel;
++
++	/** 
++	 * Creates new SmtpSamplerGui, standard constructer. Calls init();
++	 */
++	public SmtpSamplerGui() {
++		init();
++	}
++
++	/**
++	 * Method to be implemented by interface, overwritten by getStaticLabel(). Method has to be implemented by interface
++	 * @return Null-String
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#getLabelResource()
++	 */
++	public String getLabelResource() {
++		return null;
++	}
++	
++	/**
++	 * Overwrites getLabelResource(), sets a static label to the sampler
++	 * @return Static label for SMTP-Sampler
++	 * @see org.apache.jmeter.gui.AbstractJMeterGuiComponent#getStaticLabel()
++	 */
++	public String getStaticLabel() {
++		return "SMTP Sampler";
++	}
++
++	/**
++	 * Copy the data from the test element to the GUI, method has to be implemented by interface
++	 * @param element Test-element to be used as data-input
++	 * @see org.apache.jmeter.gui.AbstractJMeterGuiComponent#configure(org.apache.jmeter.testelement.TestElement)
++	 */
++	public void configure(TestElement element) {
++		if (smtpPanel == null)
++			smtpPanel = new SmtpPanel();
++		
++		smtpPanel.setDut(element.getPropertyAsString(SmtpSampler.SERVER));
++		smtpPanel.setDutPort(element.getPropertyAsString(SmtpSampler.SERVER_PORT));
++		smtpPanel.setMailFrom(element.getPropertyAsString(SmtpSampler.MAIL_FROM));
++		smtpPanel.setReceiverTo(element.getPropertyAsString(SmtpSampler.RECEIVER_TO));
++		smtpPanel.setReceiverCC(element.getPropertyAsString(SmtpSampler.RECEIVER_CC));
++		smtpPanel.setReceiverBCC(element.getPropertyAsString(SmtpSampler.RECEIVER_BCC));
++		
++		smtpPanel.setBody(element.getPropertyAsString(SmtpSampler.MESSAGE));
++		smtpPanel.setSubject(element.getPropertyAsString(SmtpSampler.SUBJECT));
++		smtpPanel.setIncludeTimestamp(element.getPropertyAsBoolean(SmtpSampler.INCLUDE_TIMESTAMP));
++		smtpPanel.setAttachments(element.getPropertyAsString(SmtpSampler.ATTACH_FILE));
++		
++		smtpPanel.setUseEmlMessage(element.getPropertyAsBoolean(SmtpSampler.USE_EML));
++		smtpPanel.setEmlMessage(element.getPropertyAsString(SmtpSampler.EML_MESSAGE_TO_SEND));
++		
++		smtpPanel.setUseSSL(element.getPropertyAsBoolean(SmtpSampler.USE_SSL));
++		smtpPanel.setUseStartTLS(element.getPropertyAsBoolean(SmtpSampler.USE_STARTTLS));
++		if(!element.getPropertyAsBoolean(SmtpSampler.USE_STARTTLS) && !element.getPropertyAsBoolean(SmtpSampler.USE_SSL)){
++			smtpPanel.rbUseNone.setSelected(true);
++		}
++		smtpPanel.setTrustAllCerts(element.getPropertyAsBoolean(SmtpSampler.SSL_TRUST_ALL_CERTS));
++		smtpPanel.setEnforceStartTLS(element.getPropertyAsBoolean(SmtpSampler.ENFORCE_STARTTLS));
++		smtpPanel.setUseLocalTrustStore(element.getPropertyAsBoolean(SmtpSampler.USE_LOCAL_TRUSTSTORE));
++		smtpPanel.setTrustStoreToUse(element.getPropertyAsString(SmtpSampler.TRUSTSTORE_TO_USE));
++		
++		smtpPanel.cbUseAuth.setSelected(element.getPropertyAsBoolean(SmtpSampler.USE_AUTH));
++		smtpPanel.tfAuthUsername.setText(element.getPropertyAsString(SmtpSampler.USERNAME));
++		smtpPanel.tfAuthUsername.setEditable(element.getPropertyAsBoolean(SmtpSampler.USE_AUTH));
++		smtpPanel.tfAuthPassword.setText(element.getPropertyAsString(SmtpSampler.PASSWORD));
++		smtpPanel.tfAuthPassword.setEditable(element.getPropertyAsBoolean(SmtpSampler.USE_AUTH));
++		
++		smtpPanel.setMessageSizeStatistic(element.getPropertyAsBoolean(SmtpSampler.MESSAGE_SIZE_STATS));
++		smtpPanel.setCheckForFailure(element.getPropertyAsBoolean(SmtpSampler.CHECK_FOR_FAILURE));
++
++		super.configure(element);
++	}
++
++	/** 
++	 * Creates a new TestElement and set up its data
++	 * @return Test-element for JMeter
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()
++	 */
++	public TestElement createTestElement() {
++		SmtpSampler sampler = new SmtpSampler();
++		modifyTestElement(sampler);
++		return sampler;
++	}
++
++	/** 
++	 * Modifies a given TestElement to mirror the data in the gui components
++	 * @param te TestElement for JMeter
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(org.apache.jmeter.testelement.TestElement)
++	 */
++	public void modifyTestElement(TestElement te) {
++		te.clear();
++		super.configureTestElement(te);
++		te.setProperty(SmtpSampler.SERVER, smtpPanel.getDut());
++		te.setProperty(SmtpSampler.SERVER_PORT, smtpPanel.getDutPort());
++		te.setProperty(SmtpSampler.MAIL_FROM, smtpPanel.getMailFrom());
++		te.setProperty(SmtpSampler.RECEIVER_TO, smtpPanel.getReceiverTo());
++		te.setProperty(SmtpSampler.RECEIVER_CC, smtpPanel.getReceiverCC());
++		te.setProperty(SmtpSampler.RECEIVER_BCC, smtpPanel.getReceiverBCC());
++		te.setProperty(SmtpSampler.SUBJECT, smtpPanel.getSubject());
++		te.setProperty(SmtpSampler.INCLUDE_TIMESTAMP, Boolean.toString(smtpPanel.isIncludeTimestamp()));
++		te.setProperty(SmtpSampler.MESSAGE, smtpPanel.getBody());
++		te.setProperty(SmtpSampler.ATTACH_FILE, smtpPanel.getAttachments());
++		
++		te.setProperty(SmtpSampler.USE_SSL, Boolean.toString(smtpPanel.isUseSSL()));
++		te.setProperty(SmtpSampler.USE_STARTTLS, Boolean.toString(smtpPanel.isUseStartTLS()));
++		te.setProperty(SmtpSampler.SSL_TRUST_ALL_CERTS, Boolean.toString(smtpPanel.isTrustAllCerts()));
++		te.setProperty(SmtpSampler.ENFORCE_STARTTLS, Boolean.toString(smtpPanel.isEnforceStartTLS()));
++		te.setProperty(SmtpSampler.USE_LOCAL_TRUSTSTORE, Boolean.toString(smtpPanel.isUseLocalTrustStore()));
++		te.setProperty(SmtpSampler.TRUSTSTORE_TO_USE, smtpPanel.getTrustStoreToUse());
++		
++		te.setProperty(SmtpSampler.USE_EML, smtpPanel.isUseEmlMessage());
++		te.setProperty(SmtpSampler.EML_MESSAGE_TO_SEND, smtpPanel.getEmlMessage());
++		
++		te.setProperty(SmtpSampler.USE_AUTH, Boolean.toString(smtpPanel.isUseAuth()));
++		te.setProperty(SmtpSampler.PASSWORD, smtpPanel.tfAuthPassword.getText());
++		te.setProperty(SmtpSampler.USERNAME, smtpPanel.tfAuthUsername.getText());
++		
++		te.setProperty(SmtpSampler.MESSAGE_SIZE_STATS, Boolean.toString(smtpPanel.isMessageSizeStatistics()));
++		te.setProperty(SmtpSampler.CHECK_FOR_FAILURE, Boolean.toString(smtpPanel.isCheckForFailure()));
++	}
++
++	/**
++	 * Helper method to set up the GUI screen
++	 */
++	private void init() {
++		// Standard setup
++		setLayout(new BorderLayout(0, 5));
++		setBorder(makeBorder());
++		add(makeTitlePanel(), BorderLayout.NORTH); // Add the standard title
++		
++		if(JarUtils.isBouncyCastleAvailable()){
++			// Specific setup
++			add(makeDataPanel(), BorderLayout.CENTER);
++		}else{
++			add(bcUnavailablePanel(), BorderLayout.CENTER);
++		}		
++	}
++
++
++	private Component bcUnavailablePanel() {
++ 		JPanel panel = new JPanel();
++ 		panel.setBorder(BorderFactory.createTitledBorder("ERROR"));
++ 		Box box = Box.createHorizontalBox();
++ 		box.add(new JLabel(JMeterUtils
++ 			.getResString("bouncy_castle_unavailable_message")));
++ 		panel.add(box);
++ 		return panel;
++	}
++
++	/**
++	 * Creates a sampler-gui-object, singleton-method
++	 * @return SmtpPanel-object
++	 * @return Panel for entering the data
++	 */
++	private Component makeDataPanel() {
++		if (smtpPanel == null)
++			smtpPanel = new SmtpPanel();	
++		return smtpPanel;
++	}
++}
+\ No newline at end of file
+
+Property changes on: sampler/gui/SmtpSamplerGui.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/gui/package-info.java
+===================================================================
+--- sampler/gui/package-info.java	(revision 0)
++++ sampler/gui/package-info.java	(revision 0)
+@@ -0,0 +1,24 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++/**
++* This package holds every classes in relation with the gui or gui-components.  
++*  
++* @since 1.0
++*/
++package org.apache.jmeter.protocol.smtp.sampler.gui;
+\ No newline at end of file
+
+Property changes on: sampler/gui/package-info.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/protocol/MailBodyProvider.java
+===================================================================
+--- sampler/protocol/MailBodyProvider.java	(revision 0)
++++ sampler/protocol/MailBodyProvider.java	(revision 0)
+@@ -0,0 +1,57 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++
++package org.apache.jmeter.protocol.smtp.sampler.protocol;
++
++/**
++ * Class to build and store message body. Does nothing more than handle the (text-)data to be included in the message body.
++ * 
++ * @author tschannen
++ * @version 1.0
++ */
++public class MailBodyProvider {
++	
++	private StringBuffer mailBody;
++	
++	/**
++	 * Standard-Constructor
++	 */
++	public MailBodyProvider() {
++		mailBody = new StringBuffer();
++		mailBody.append(">>>This is just a blind text<<<");
++	}
++
++	/**
++	 * Returns mail-body as a String
++	 * @return Mail-body
++	 * @throws Exception
++	 */
++	public String getMailBody() throws Exception {
++		return mailBody.toString();
++	}
++
++	/**
++	 * Sets string to be used as mailbody
++	 * @param mailBodyText Text to be set as mailbody
++	 */
++	public void setBody(String mailBodyText) {
++		mailBody = new StringBuffer();
++		mailBody.append(mailBodyText);
++	}
++}
+
+Property changes on: sampler/protocol/MailBodyProvider.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/protocol/SendMailCommand.java
+===================================================================
+--- sampler/protocol/SendMailCommand.java	(revision 0)
++++ sampler/protocol/SendMailCommand.java	(revision 0)
+@@ -0,0 +1,776 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.smtp.sampler.protocol;
++
++import java.io.BufferedReader;
++import java.io.ByteArrayInputStream;
++import java.io.ByteArrayOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.IOException;
++import java.io.InputStreamReader;
++import java.io.PrintStream;
++import java.security.Security;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Vector;
++
++import javax.activation.DataHandler;
++import javax.activation.FileDataSource;
++import javax.mail.BodyPart;
++import javax.mail.Message;
++import javax.mail.MessagingException;
++import javax.mail.Multipart;
++import javax.mail.Session;
++import javax.mail.Transport;
++import javax.mail.internet.InternetAddress;
++import javax.mail.internet.MimeBodyPart;
++import javax.mail.internet.MimeMessage;
++import javax.mail.internet.MimeMultipart;
++
++import org.apache.jmeter.services.FileServer;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * This class performs all tasks necessary to send a message (build message,
++ * prepare connection, send message). Provides getter-/setter-methods for an
++ * SmtpSampler-object to configure transport and message settings. The
++ * send-mail-command itself is started by the SmtpSampler-object.
++ * 
++ * @author luca / slightly extended by Michael Tschannen
++ * @version 1.0
++ */
++public class SendMailCommand {
++
++    /**
++     * Standard-Constructor
++     */
++    public SendMailCommand() {
++        headers = new HashMap<String, String>();
++        attachments = new Vector<File>();
++    }
++
++    // local vars
++    private static final Logger logger = LoggingManager.getLoggerForClass();
++    public static final String TRUST_ALL_SOCKET_FACTORY = "jmeter.smtpsampler.protocol.TrustAllSSLSocketFactory";
++
++    private boolean useSSL = false;
++    private boolean useStartTLS = false;
++    private boolean trustAllCerts = false;
++    private boolean enforceStartTLS = false;
++    private boolean startTLSSuccessful = false;
++    private boolean sendEmlMessage = false;
++    private String smtpServer;
++    private String smtpPort;
++    private String sender;
++    private String emlMessage;
++    private List<InternetAddress> receiverTo;
++    private List<InternetAddress> receiverCC;
++    private List<InternetAddress> receiverBCC;
++    private HashMap<String, String> headers;
++    private String subject = "";
++
++    private boolean useAuthentication = false;
++    private String username;
++    private String password;
++
++    private boolean useLocalTrustStore;
++    private String trustStoreToUse;
++
++    private List<File> attachments;
++
++    private MailBodyProvider mbProvider;
++
++    // needed to check starttls functionality
++    private PrintStream debugOutStream;
++    private BufferedReader debugReader;
++
++    // case we are measuring real time of spedition
++    private boolean synchronousMode;
++
++    private Session session;
++    private Message message;
++
++    private StringBuffer serverResponse = new StringBuffer();
++
++    /**
++     * Prepares message prior to be sent via execute()-method, i.e. sets
++     * properties such as protocol, authentication, etc.
++     * 
++     * @return Message-object to be sent to execute()-method
++     * @throws Exception
++     */
++    public Message prepareMessage() throws Exception {
++
++        java.util.Properties props = new java.util.Properties();
++
++        String protocol = getProtocol();
++
++        // set properties using JAF
++        props.put("mail." + protocol + ".host", smtpServer);
++        props.put("mail." + protocol + ".port", smtpPort);
++        props.put("mail." + protocol + ".auth", Boolean
++                .toString(useAuthentication));
++        // props.put("mail.debug","true");
++
++        if (useStartTLS) {
++            props.put("mail.smtp.starttls.enable", "true");
++            //props.put("mail.debug", "true");
++        }
++
++        if (trustAllCerts && protocol.equalsIgnoreCase("smtps")) {
++            props.setProperty("mail.smtps.socketFactory.class",
++                    TRUST_ALL_SOCKET_FACTORY);
++            props.setProperty("mail.smtps.socketFactory.fallback", "false");
++        }
++
++        session = Session.getInstance(props, null);
++
++        if (sendEmlMessage) {
++            message = new MimeMessage(session, new FileInputStream(emlMessage));
++        } else {
++            message = new MimeMessage(session);
++            // handle body and attachments
++            Multipart multipart = new MimeMultipart();
++            BodyPart body = new MimeBodyPart();
++            body.setText(mbProvider.getMailBody());
++            multipart.addBodyPart(body);
++
++            for (File f : attachments) {
++                BodyPart attach = new MimeBodyPart();
++                attach.setFileName(f.getName());
++                attach.setDataHandler(new DataHandler(new FileDataSource(f)));
++                multipart.addBodyPart(attach);
++            }
++
++            message.setContent(multipart);
++        }
++        
++        // set from field and subject
++        if (null != sender) {
++        	message.setFrom(new InternetAddress(sender));
++        }
++        if (null != subject) {
++        	message.setSubject(subject);
++        }
++        
++        if (receiverTo != null) {
++        	InternetAddress[] to = new InternetAddress[receiverTo.size()];
++        	receiverTo.toArray(to);
++        	message.setRecipients(Message.RecipientType.TO, to);
++        }
++
++        if (receiverCC != null) {
++
++        	InternetAddress[] cc = new InternetAddress[receiverCC.size()];
++        	receiverCC.toArray(cc);
++        	message.setRecipients(Message.RecipientType.CC, cc);
++        }
++
++        if (receiverBCC != null) {
++        	InternetAddress[] bcc = new InternetAddress[receiverBCC.size()];
++        	receiverBCC.toArray(bcc);
++        	message.setRecipients(Message.RecipientType.BCC, bcc);
++        }
++
++        for (String key : headers.keySet()) {
++        	message.setHeader(key, headers.get(key));
++        }
++
++        message.saveChanges();
++        return message;
++    }
++
++    /**
++     * Sends message to mailserver, including all necessary tasks. Contains 2
++     * ugly hacks to ensure the use of StartTLS if needed (see comments "UGLY
++     * HACK X") where logfiles are monitored
++     * 
++     * @param message
++     *            Message prior prepared by prepareMessage()
++     * @throws Exception
++     */
++    public void execute(Message message) throws Exception {
++
++        System.clearProperty("javax.net.ssl.trustStore");
++
++        if (useLocalTrustStore) {
++        	File truststore = new File(trustStoreToUse);
++        	logger.info("load local truststore - try to load truststore from: "+truststore.getAbsolutePath());
++        	if(!truststore.exists()){
++        		logger.info("load local truststore -Failed to load truststore from: "+truststore.getAbsolutePath());
++        		truststore = new File(FileServer.getFileServer().getBaseDir(), trustStoreToUse);
++        		logger.info("load local truststore -Attempting to read truststore from:  "+truststore.getAbsolutePath());
++        		if(!truststore.exists()){
++        			logger.info("load local truststore -Failed to load truststore from: "+truststore.getAbsolutePath() + ". Local truststore not available, aborting execution.");
++        			throw new IOException("Local truststore file not found. Also not available under : " + truststore.getAbsolutePath());
++        		}
++        	}
++            System.setProperty("javax.net.ssl.trustStore", truststore.getAbsolutePath());
++        }
++
++        /*
++         * UGLY HACK 1: redirect session-DebugOutput to ensure
++         * StartTLS-Support
++         */
++        ByteArrayOutputStream debugOutputStream = new ByteArrayOutputStream();
++        debugOutStream = new PrintStream(debugOutputStream);
++        session.setDebugOut(debugOutStream);
++        session.setDebug(true);
++        
++        Transport tr = session.getTransport(getProtocol());
++        SynchronousTransportListener listener = null;
++
++        if (synchronousMode) {
++            listener = new SynchronousTransportListener();
++            tr.addTransportListener(listener);
++        }
++
++        if (useAuthentication) {
++            tr.connect(smtpServer, username, password);
++        } else {
++            tr.connect();
++        }
++
++        tr.sendMessage(message, message.getAllRecipients());
++
++        if (synchronousMode) {
++            listener.attend();
++        }
++
++        tr.close();
++        logger.debug("transport closed");
++
++        /*
++         * UGLY HACK 2: read from redirected debug-output
++         */
++        debugOutStream.flush();
++        debugReader = new BufferedReader(new InputStreamReader(
++        		new ByteArrayInputStream(debugOutputStream.toByteArray())));
++        String line;
++        int i = 0;
++        while ((line = debugReader.readLine()) != null) {
++            logger.debug("server line " + i + ": " + line);
++            // unusable for the astf runs bom
++            //serverResponse.append(line);
++            //serverResponse.append("\n");
++            if (line.matches(".*Ready to start TLS.*")) {
++                if (useStartTLS && enforceStartTLS) {
++                    startTLSSuccessful = true;
++                }
++            }
++        }
++        debugReader.close();
++        debugOutStream.close();
++        session.setDebugOut(System.out);
++        if (useStartTLS && enforceStartTLS) {
++            if (!startTLSSuccessful) {
++                throw new MessagingException("StartTLS failed");
++            }
++        }
++        
++        logger.debug("message sent");
++        return;
++    }
++
++    /**
++     * Processes prepareMessage() and execute()
++     * 
++     * @throws Exception
++     */
++    public void execute() throws Exception {
++        execute(prepareMessage());
++    }
++
++    /**
++     * Returns FQDN or IP of SMTP-server to be used to send message - standard
++     * getter
++     * 
++     * @return FQDN or IP of SMTP-server
++     */
++    public String getSmtpServer() {
++        return smtpServer;
++    }
++
++    /**
++     * Sets FQDN or IP of SMTP-server to be used to send message - to be called
++     * by SmtpSampler-object
++     * 
++     * @param smtpServer
++     *            FQDN or IP of SMTP-server
++     */
++    public void setSmtpServer(String smtpServer) {
++        this.smtpServer = smtpServer;
++    }
++
++    /**
++     * Returns sender-address for current message - standard getter
++     * 
++     * @return sender-address
++     */
++    public String getSender() {
++        return sender;
++    }
++
++    /**
++     * Sets the sender-address for the current message - to be called by
++     * SmtpSampler-object
++     * 
++     * @param sender
++     *            Sender-address for current message
++     */
++    public void setSender(String sender) {
++        this.sender = sender;
++    }
++
++    /**
++     * Returns subject for current message - standard getter
++     * 
++     * @return Subject of current message
++     */
++    public String getSubject() {
++        return subject;
++    }
++
++    /**
++     * Sets subject for current message - called by SmtpSampler-object
++     * 
++     * @param subject
++     *            Subject for message of current message
++     */
++    public void setSubject(String subject) {
++        this.subject = subject;
++    }
++
++    /**
++     * Returns MailBodyProvider-Object for currend message
++     * 
++     * @see jmeter.smtpsampler.protocol.MailBodyProvider
++     * @return Current MailBody-Provider-Object
++     */
++    public MailBodyProvider getMbProvider() {
++        return mbProvider;
++    }
++
++    /**
++     * Sets MailBodyProvider-Object for currend message - to be called by
++     * SmtpSampler-object
++     * 
++     * @see jmeter.smtpsampler.protocol.MailBodyProvider
++     * @param mbProvider
++     *            MailBody-Provider to be used
++     */
++    public void setMbProvider(MailBodyProvider mbProvider) {
++        this.mbProvider = mbProvider;
++    }
++
++    /**
++     * Returns username to authenticate at the mailserver - standard getter
++     * 
++     * @return Username for mailserver
++     */
++    public String getUsername() {
++        return username;
++    }
++
++    /**
++     * Sets username to authenticate at the mailserver - to be called by
++     * SmtpSampler-object
++     * 
++     * @param username
++     *            Username for mailserver
++     */
++    public void setUsername(String username) {
++        this.username = username;
++    }
++
++    /**
++     * Returns password to authenticate at the mailserver - standard getter
++     * 
++     * @return Password for mailserver
++     */
++    public String getPassword() {
++        return password;
++    }
++
++    /**
++     * Sets password to authenticate at the mailserver - to be called by
++     * SmtpSampler-object
++     * 
++     * @param password
++     *            Password for mailserver
++     */
++    public void setPassword(String password) {
++        this.password = password;
++    }
++
++    /**
++     * Returns receivers of current message <InternetAddress> ("to") - standard
++     * getter
++     * 
++     * @return List of receivers
++     */
++    public List<InternetAddress> getReceiverTo() {
++        return receiverTo;
++    }
++
++    /**
++     * Sets receivers of current message ("to") - to be called by
++     * SmtpSampler-object
++     * 
++     * @param receiverTo
++     *            List of receivers <InternetAddress>
++     */
++    public void setReceiverTo(List<InternetAddress> receiverTo) {
++        this.receiverTo = receiverTo;
++    }
++
++    /**
++     * Returns receivers of current message <InternetAddress> ("cc") - standard
++     * getter
++     * 
++     * @return List of receivers
++     */
++    public List<InternetAddress> getReceiverCC() {
++        return receiverCC;
++    }
++
++    /**
++     * Sets receivers of current message ("cc") - to be called by
++     * SmtpSampler-object
++     * 
++     * @param receiverCC
++     *            List of receivers <InternetAddress>
++     */
++    public void setReceiverCC(List<InternetAddress> receiverCC) {
++        this.receiverCC = receiverCC;
++    }
++
++    /**
++     * Returns receivers of current message <InternetAddress> ("bcc") - standard
++     * getter
++     * 
++     * @return List of receivers
++     */
++    public List<InternetAddress> getReceiverBCC() {
++        return receiverBCC;
++    }
++
++    /**
++     * Sets receivers of current message ("bcc") - to be called by
++     * SmtpSampler-object
++     * 
++     * @param receiverBCC
++     *            List of receivers <InternetAddress>
++     */
++    public void setReceiverBCC(List<InternetAddress> receiverBCC) {
++        this.receiverBCC = receiverBCC;
++    }
++
++    /**
++     * Returns if authentication is used to access the mailserver - standard
++     * getter
++     * 
++     * @return True if authentication is used to access mailserver
++     */
++    public boolean isUseAuthentication() {
++        return useAuthentication;
++    }
++
++    /**
++     * Sets if authentication should be used to access the mailserver - to be
++     * called by SmtpSampler-object
++     * 
++     * @param useAuthentication
++     *            Should authentication be used to access mailserver?
++     */
++    public void setUseAuthentication(boolean useAuthentication) {
++        this.useAuthentication = useAuthentication;
++    }
++
++    /**
++     * Returns if SSL is used to send message - standard getter
++     * 
++     * @return True if SSL is used to transmit message
++     */
++    public boolean getUseSSL() {
++        return useSSL;
++    }
++
++    /**
++     * Sets SSL to secure the delivery channel for the message - to be called by
++     * SmtpSampler-object
++     * 
++     * @param useSSL
++     *            Should StartTLS be used to secure SMTP-connection?
++     */
++    public void setUseSSL(boolean useSSL) {
++        this.useSSL = useSSL;
++    }
++
++    /**
++     * Returns if StartTLS is used to transmit message - standard getter
++     * 
++     * @return True if StartTLS is used to transmit message
++     */
++    public boolean getUseStartTLS() {
++        return useStartTLS;
++    }
++
++    /**
++     * Sets StartTLS to secure the delivery channel for the message - to be
++     * called by SmtpSampler-object
++     * 
++     * @param useStartTLS
++     *            Should StartTLS be used to secure SMTP-connection?
++     */
++    public void setUseStartTLS(boolean useStartTLS) {
++        this.useStartTLS = useStartTLS;
++    }
++
++    /**
++     * Returns port to be used for SMTP-connection (standard 25 or 465) -
++     * standard getter
++     * 
++     * @return Port to be used for SMTP-connection
++     */
++    public String getSmtpPort() {
++        return smtpPort;
++    }
++
++    /**
++     * Sets port to be used for SMTP-connection (standard 25 or 465) - to be
++     * called by SmtpSampler-object
++     * 
++     * @param smtpPort
++     *            Port to be used for SMTP-connection
++     */
++    public void setSmtpPort(String smtpPort) {
++        this.smtpPort = smtpPort;
++    }
++
++    /**
++     * Returns if sampler should trust all certificates - standard getter
++     * 
++     * @return True if all Certificates are trusted
++     */
++    public boolean isTrustAllCerts() {
++        return trustAllCerts;
++    }
++
++    /**
++     * Determines if SMTP-sampler should trust all certificates, no matter what
++     * CA - to be called by SmtpSampler-object
++     * 
++     * @param trustAllCerts
++     *            Should all certificates be trusted?
++     */
++    public void setTrustAllCerts(boolean trustAllCerts) {
++        if (useSSL) {
++            if (trustAllCerts) {
++                Security.setProperty("ssl.SocketFactory.provider",
++                        TRUST_ALL_SOCKET_FACTORY);
++            } else {
++                Security.setProperty("ssl.SocketFactory.provider", "");
++            }
++        }
++        this.trustAllCerts = trustAllCerts;
++    }
++
++    /**
++     * Instructs object to enforce StartTLS and not to fallback to plain
++     * SMTP-connection - to be called by SmtpSampler-object
++     * 
++     * @param enforceStartTLS
++     *            Should StartTLS be enforced?
++     */
++    public void setEnforceStartTLS(boolean enforceStartTLS) {
++        this.enforceStartTLS = enforceStartTLS;
++    }
++
++    /**
++     * Returns if StartTLS is enforced to secure the connection, i.e. no
++     * fallback is used (plain SMTP) - standard getter
++     * 
++     * @return True if StartTLS is enforced
++     */
++    public boolean isEnforceStartTLS() {
++        return enforceStartTLS;
++    }
++
++    /**
++     * Returns headers for current message - standard getter
++     * 
++     * @return HashMap of headers for current message
++     */
++    public HashMap<String, String> getHeaders() {
++        return headers;
++    }
++
++    /**
++     * Sets headers for current message
++     * 
++     * @param headers
++     *            HashMap of headers for current message
++     */
++    public void setHeaders(HashMap<String, String> headers) {
++        this.headers = headers;
++    }
++
++    /**
++     * Adds a header-part to current HashMap of headers - to be called by
++     * SmtpSampler-object
++     * 
++     * @param headerName
++     *            Key for current header
++     * @param headerValue
++     *            Value for current header
++     */
++    public void addHeader(String headerName, String headerValue) {
++        if (this.headers == null)
++            this.headers = new HashMap<String, String>();
++        this.headers.put(headerName, headerValue);
++    }
++
++    /**
++     * Deletes all current headers in HashMap
++     */
++    public void clearHeaders() {
++        if (this.headers == null)
++            this.headers = new HashMap<String, String>();
++        else
++            this.headers.clear();
++    }
++
++    /**
++     * Returns all attachment for current message - standard getter
++     * 
++     * @return List of attachments for current message
++     */
++    public List<File> getAttachments() {
++        return attachments;
++    }
++
++    /**
++     * Adds attachments to current message
++     * 
++     * @param attachments
++     *            List of files to be added as attachments to current message
++     */
++    public void setAttachments(List<File> attachments) {
++        this.attachments = attachments;
++    }
++
++    /**
++     * Adds an attachment to current message - to be called by
++     * SmtpSampler-object
++     * 
++     * @param attachment
++     *            File-object to be added as attachment to current message
++     */
++    public void addAttachment(File attachment) {
++        this.attachments.add(attachment);
++    }
++
++    /**
++     * Clear all attachments for current message
++     */
++    public void clearAttachments() {
++        this.attachments.clear();
++    }
++
++    /**
++     * Returns if synchronous-mode is used for current message (i.e. time for
++     * delivery, ... is measured) - standard getter
++     * 
++     * @return True if synchronous-mode is used
++     */
++    public boolean isSynchronousMode() {
++        return synchronousMode;
++    }
++
++    /**
++     * Sets the use of synchronous-mode (i.e. time for delivery, ... is
++     * measured) - to be called by SmtpSampler-object
++     * 
++     * @param synchronousMode
++     *            Should synchronous-mode be used?
++     */
++    public void setSynchronousMode(boolean synchronousMode) {
++        this.synchronousMode = synchronousMode;
++    }
++
++    /**
++     * Returns which protocol should be used to transport message (smtps for
++     * SSL-secured connections or smtp for plain SMTP / StartTLS)
++     * 
++     * @return Protocol that is used to transport message
++     */
++    private String getProtocol() {
++        return (useSSL) ? "smtps" : "smtp";
++    }
++
++    /**
++     * Assigns the object to use a local truststore for SSL / StartTLS - to be
++     * called by SmtpSampler-object
++     * 
++     * @param useLocalTrustStore
++     *            Should a local truststore be used?
++     */
++    public void setUseLocalTrustStore(boolean useLocalTrustStore) {
++        this.useLocalTrustStore = useLocalTrustStore;
++    }
++
++    /**
++     * Sets the path to the local truststore to be used for SSL / StartTLS - to
++     * be called by SmtpSampler-object
++     * 
++     * @param trustStoreToUse
++     *            Path to local truststore
++     */
++    public void setTrustStoreToUse(String trustStoreToUse) {
++        this.trustStoreToUse = trustStoreToUse;
++    }
++
++    /**
++     * Sets the path to the local truststore to be used for SSL / StartTLS - to
++     * be called by SmtpSampler-object
++     * 
++     * @param trustStoreToUse
++     *            Path to local truststore
++     */
++    public void setUseEmlMessage(boolean sendEmlMessage) {
++        this.sendEmlMessage = sendEmlMessage;
++    }
++
++    /**
++     * Sets eml-message to be sent
++     * 
++     * @param emlMessage
++     *            path to eml-message
++     */
++    public void setEmlMessage(String emlMessage) {
++        this.emlMessage = emlMessage;
++    }
++
++    public StringBuffer getServerResponse() {
++        return this.serverResponse;
++    }
++}
+\ No newline at end of file
+
+Property changes on: sampler/protocol/SendMailCommand.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/protocol/SynchronousTransportListener.java
+===================================================================
+--- sampler/protocol/SynchronousTransportListener.java	(revision 0)
++++ sampler/protocol/SynchronousTransportListener.java	(revision 0)
+@@ -0,0 +1,98 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.smtp.sampler.protocol;
++
++import javax.mail.Transport;
++import javax.mail.event.TransportAdapter;
++import javax.mail.event.TransportEvent;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger; // this comes out of logkit.jar and not
++
++// commons-logger
++
++/**
++ * This class implements a listener for SMTP events and a monitor for all
++ * threads sending mail. The main purpose is to synchronize the send action with
++ * the end of communication with remote smtp server, so that sending time can be
++ * measured.
++ * 
++ * @author luca
++ */
++public class SynchronousTransportListener extends TransportAdapter {
++
++    private static final Logger logger = LoggingManager.getLoggerForClass();
++
++    /**
++     * Creates a new instance of SynchronousTransportListener
++     * 
++     */
++    public SynchronousTransportListener() {
++    }
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see javax.mail.event.TransportAdapter#messageDelivered(javax.mail.event.TransportEvent)
++     */
++    public void messageDelivered(TransportEvent e) {
++        logger.debug("Message delivered");
++        finish();
++    }
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see javax.mail.event.TransportAdapter#messageNotDelivered(javax.mail.event.TransportEvent)
++     */
++    public void messageNotDelivered(TransportEvent e) {
++        logger.debug("Message not delivered");
++        finish();
++    }
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see javax.mail.event.TransportAdapter#messagePartiallyDelivered(javax.mail.event.TransportEvent)
++     */
++    public void messagePartiallyDelivered(TransportEvent e) {
++        logger.debug("Message partially delivered");
++        finish();
++    }
++
++    boolean finished = false;
++
++    /**
++     * Synchronized-method
++     * 
++     * @throws InterruptedException
++     */
++    public synchronized void attend() throws InterruptedException {
++        if (!finished)
++            wait();
++    }
++
++    /**
++     * Synchronized-method
++     */
++    public synchronized void finish() {
++        finished = true;
++        notify();
++    }
++
++}
+
+Property changes on: sampler/protocol/SynchronousTransportListener.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/protocol/TrustAllSSLSocketFactory.java
+===================================================================
+--- sampler/protocol/TrustAllSSLSocketFactory.java	(revision 0)
++++ sampler/protocol/TrustAllSSLSocketFactory.java	(revision 0)
+@@ -0,0 +1,136 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.smtp.sampler.protocol;
++
++import java.io.IOException;
++import java.net.InetAddress;
++import java.net.Socket;
++import javax.net.SocketFactory;
++import javax.net.ssl.SSLContext;
++import javax.net.ssl.SSLSocketFactory;
++import javax.net.ssl.TrustManager;
++import javax.net.ssl.X509TrustManager;
++
++/**
++ * This class can be used as a SocketFactory with SSL-connections. 
++ * Its purpose is to ensure that all certificates - no matter from which CA -are accepted to secure the SSL-connection.
++ * It has to be kept in mind that a SocketFactory must not be used with StartTLS, because the javaMail-api assumes 
++ * to use SSL when using the socketFactory.class- or socketFactory.fallback-property.
++ * 
++ * @author luca
++ */
++public class TrustAllSSLSocketFactory extends SSLSocketFactory  {
++	
++	private SSLSocketFactory factory;
++
++	/**
++	 * Standard constructor
++	 */
++	public TrustAllSSLSocketFactory() {
++		try {
++			SSLContext sslcontext = SSLContext.getInstance( "TLS");
++			sslcontext.init( null, new TrustManager[]{
++				new X509TrustManager() {
++					public java.security.cert.X509Certificate[] getAcceptedIssuers() {
++						return null;
++					}
++					public void checkClientTrusted(
++							java.security.cert.X509Certificate[] certs, String authType) {
++					}
++					public void checkServerTrusted(
++							java.security.cert.X509Certificate[] certs, String authType) {
++					}
++				}
++			},
++					new java.security.SecureRandom());
++			factory = ( SSLSocketFactory) sslcontext.getSocketFactory();
++		} catch( Exception ex) {
++			ex.printStackTrace();
++		}
++	}
++	
++	/**
++	 * Factory method
++	 * @return New TrustAllSSLSocketFactory
++	 */
++	public static SocketFactory getDefault() {
++		return new TrustAllSSLSocketFactory();
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.ssl.SSLSocketFactory#createSocket(java.net.Socket, java.lang.String, int, boolean)
++	 */
++	public Socket createSocket( Socket socket, String s, int i, boolean
++			flag)
++			throws IOException {
++		return factory.createSocket( socket, s, i, flag);
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.SocketFactory#createSocket(java.net.InetAddress, int, java.net.InetAddress, int)
++	 */
++	public Socket createSocket( InetAddress inaddr, int i,
++			InetAddress inaddr1, int j) throws IOException {
++		return factory.createSocket( inaddr, i, inaddr1, j);
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.SocketFactory#createSocket(java.net.InetAddress, int)
++	 */
++	public Socket createSocket( InetAddress inaddr, int i) throws
++			IOException {
++		return factory.createSocket( inaddr, i);
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.SocketFactory#createSocket(java.lang.String, int, java.net.InetAddress, int)
++	 */
++	public Socket createSocket( String s, int i, InetAddress inaddr, int j)
++	throws IOException {
++		return factory.createSocket( s, i, inaddr, j);
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.SocketFactory#createSocket(java.lang.String, int)
++	 */
++	public Socket createSocket( String s, int i) throws IOException {
++		return factory.createSocket( s, i);
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.SocketFactory#createSocket()
++	 */
++	public Socket createSocket() throws IOException {
++		return factory.createSocket();
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.ssl.SSLSocketFactory#getDefaultCipherSuites()
++	 */
++	public String[] getDefaultCipherSuites() {
++		return factory.getSupportedCipherSuites();
++	}
++	
++	/* (non-Javadoc)
++	 * @see javax.net.ssl.SSLSocketFactory#getSupportedCipherSuites()
++	 */
++	public String[] getSupportedCipherSuites() {
++		return factory.getSupportedCipherSuites();
++	}
++}
+\ No newline at end of file
+
+Property changes on: sampler/protocol/TrustAllSSLSocketFactory.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/protocol/package-info.java
+===================================================================
+--- sampler/protocol/package-info.java	(revision 0)
++++ sampler/protocol/package-info.java	(revision 0)
+@@ -0,0 +1,25 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++/**
++* This package holds every classes concerning protocols, building messages, 
++* transmitting messages and similar. 
++*  
++* @since 1.0
++*/
++package org.apache.jmeter.protocol.smtp.sampler.protocol;
+\ No newline at end of file
+
+Property changes on: sampler/protocol/package-info.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/tools/CounterOutputStream.java
+===================================================================
+--- sampler/tools/CounterOutputStream.java	(revision 0)
++++ sampler/tools/CounterOutputStream.java	(revision 0)
+@@ -0,0 +1,55 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++
++package org.apache.jmeter.protocol.smtp.sampler.tools;
++
++import java.io.OutputStream;
++
++/**
++ * Utility-class to calculate message size.
++ * @author luca
++ */
++public class CounterOutputStream extends OutputStream {
++	int count = 0;
++	
++	public void close() {}
++	public void flush() {}
++	
++	/* (non-Javadoc)
++	 * @see java.io.OutputStream#write(byte[], int, int)
++	 */
++	public void write(byte[] b, int off, int len) {
++		count += len;
++	}
++	
++	/* (non-Javadoc)
++	 * @see java.io.OutputStream#write(int)
++	 */
++	public void write(int b) {	
++		count++;
++	}
++	
++	/**
++	 * Returns message size
++	 * @return Message size
++	 */
++	public int getCount() {
++		return count;
++	}
++}
+
+Property changes on: sampler/tools/CounterOutputStream.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: sampler/tools/UnexpectedSuccessException.java
+===================================================================
+--- sampler/tools/UnexpectedSuccessException.java	(revision 0)
++++ sampler/tools/UnexpectedSuccessException.java	(revision 0)
+@@ -0,0 +1,41 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.smtp.sampler.tools;
++
++/**
++ * In case we expect an error while sending email but the mail is sent, throw this. 
++ * @author luca
++ */
++public class UnexpectedSuccessException extends java.lang.Exception {
++	
++	/**
++	 * Creates a new instance of <code>UnexpectedSuccessException</code> without detail message.
++	 */
++	public UnexpectedSuccessException() {
++	}
++	
++	
++	/**
++	 * Constructs an instance of <code>UnexpectedSuccessException</code> with the specified detail message.
++	 * @param msg the detail message.
++	 */
++	public UnexpectedSuccessException(String msg) {
++		super(msg);
++	}
++}
+\ No newline at end of file
+
+Property changes on: sampler/tools/UnexpectedSuccessException.java
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 946591)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -771,6 +771,8 @@
+ size_assertion_label=Size in bytes\:
+ size_assertion_size_test=Size to Assert
+ size_assertion_title=Size Assertion
++bouncy_castle_unavailable_message=The jars for bouncy castle are unavailable, please add them to your classpath.
++bouncy_castle_unavailable=Bouncy Castle is unavailable
+ soap_action=Soap Action
+ soap_data_title=Soap/XML-RPC Data
+ soap_sampler_title=SOAP/XML-RPC Request
+
+Index: sampler/tools/package-info.java
+===================================================================
+--- sampler/tools/package-info.java	(revision 0)
++++ sampler/tools/package-info.java	(revision 0)
+@@ -0,0 +1,23 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++/**
++* This package holds additional classes, acting as helpers for the smtp-sampler.  
++*  
++* @since 1.0
++*/
++package org.apache.jmeter.protocol.smtp.sampler.tools;
+\ No newline at end of file
+
+Property changes on: sampler/tools/package-info.java
+___________________________________________________________________
+Added: svn:executable
+   + *

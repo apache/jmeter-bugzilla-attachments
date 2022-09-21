@@ -1,0 +1,37 @@
+diff -Nur jakarta-jmeter-2.3.1/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java jakarta-jmeter-2.3.1.fixed/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java
+--- jakarta-jmeter-2.3.1/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	2007-11-28 14:11:41.000000000 +0100
++++ jakarta-jmeter-2.3.1.fixed/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	2008-04-16 17:04:24.303335891 +0200
+@@ -169,7 +169,7 @@
+ 
+ 		parameterRegexp = JMeterUtils.getPatternCache().getPattern(
+                 // ;sessionid=value
+-				"[;\\?&]" + quotedArg + "=([^\"'>&\\s;]*)[&\\s\"'>;]?$?" +  // $NON-NLS-1$
++				"[;\\?&]" + quotedArg + "=([^\"'>&\\s;\\\\]*)[&\\s\"'>;]?$?" +  // $NON-NLS-1$
+                 
+                 // name="sessionid" value="value"
+                 "|\\s[Nn][Aa][Mm][Ee]\\s*=\\s*[\"']" + quotedArg
+diff -Nur jakarta-jmeter-2.3.1/test/src/org/apache/jmeter/protocol/http/modifier/TestURLRewritingModifier.java jakarta-jmeter-2.3.1.fixed/test/src/org/apache/jmeter/protocol/http/modifier/TestURLRewritingModifier.java
+--- jakarta-jmeter-2.3.1/test/src/org/apache/jmeter/protocol/http/modifier/TestURLRewritingModifier.java	2007-11-28 14:09:49.000000000 +0100
++++ jakarta-jmeter-2.3.1.fixed/test/src/org/apache/jmeter/protocol/http/modifier/TestURLRewritingModifier.java	2008-04-16 17:05:33.423309105 +0200
+@@ -177,6 +177,21 @@
+ 			}
+ 		}
+ 
++    public void testGrabSessionIdURLinJSON() throws Exception {
++			String html = "/index?param1=bla&sessionid=xyzxyzxyz\\'";
++			response = new SampleResult();
++			response.setResponseData(html.getBytes());
++			mod.setArgumentName("sessionid");
++			HTTPSamplerBase sampler = createSampler();
++			sampler.addArgument("sessionid", "xyzxyzxyz");
++			context.setCurrentSampler(sampler);
++			context.setPreviousResult(response);
++			mod.process();
++			Arguments args = sampler.getArguments();
++			assertEquals("xyzxyzxyz", ((Argument) args.getArguments().get(0).getObjectValue())
++					.getValue());
++		}
++
+         public void testCache() throws Exception {
+             String[] html = new String[] { 
+                     "<input name=\"sid\" value=\"myId\">", 

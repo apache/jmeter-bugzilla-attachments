@@ -1,0 +1,33 @@
+Index: src/jorphan/org/apache/jorphan/reflect/ClassFinder.java
+===================================================================
+--- src/jorphan/org/apache/jorphan/reflect/ClassFinder.java	(revision 780105)
++++ src/jorphan/org/apache/jorphan/reflect/ClassFinder.java	(working copy)
+@@ -411,12 +411,22 @@
+         if (file.isDirectory()) {
+             findClassesInPathsDir(strPath, file, listClasses);
+         } else if (file.exists()) {
+-            ZipFile zipFile = new ZipFile(file);
+-            Enumeration entries = zipFile.entries();
+-            while (entries.hasMoreElements()) {
+-                String strEntry = entries.nextElement().toString();
+-                if (strEntry.endsWith(DOT_CLASS)) {
+-                    listClasses.add(fixClassName(strEntry));
++            ZipFile zipFile = null;
++            try {
++                zipFile = new ZipFile(file);
++                Enumeration entries = zipFile.entries();
++                while (entries.hasMoreElements()) {
++                    String strEntry = entries.nextElement().toString();
++                    if (strEntry.endsWith(DOT_CLASS)) {
++                        listClasses.add(fixClassName(strEntry));
++                        }
++                    }
++            } catch (Exception e) {
++                log.warn("Can not open the jar " + strPath);
++            }
++            finally {
++                if(zipFile != null) {
++                    try {zipFile.close();} catch (Exception e) {}
+                 }
+             }
+         }

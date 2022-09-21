@@ -1,0 +1,44 @@
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(revision 1758287)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(working copy)
+@@ -19,9 +19,11 @@
+ package org.apache.jmeter.protocol.jdbc;
+ 
+ import java.io.IOException;
++import java.io.Reader;
+ import java.io.UnsupportedEncodingException;
+ import java.lang.reflect.Field;
+ import java.math.BigDecimal;
++import java.nio.CharBuffer;
+ import java.nio.charset.StandardCharsets;
+ import java.sql.CallableStatement;
+ import java.sql.Connection;
+@@ -305,6 +307,27 @@
+                                 jmvars.put(name, o.toString());
+                             }
+                         }
++                        else if ( o instanceof java.sql.Clob ) {
++                        	java.sql.Clob clob = (java.sql.Clob)o;
++                        	long rawClobLength = clob.length();
++                        	int contentBufferLength = rawClobLength > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int)rawClobLength;
++                        	
++                        	CharBuffer buffer = CharBuffer.allocate(contentBufferLength);
++                        	try {
++	                        	Reader clobReader = clob.getCharacterStream();
++	                        	int currentRead;
++	                        	int totalRead = 0;
++	                        	do {
++	                        	   currentRead = clobReader.read(buffer);
++	                        	   totalRead += currentRead;
++	                        	} while ( currentRead != -1 );
++	
++	                        	buffer.flip();
++                        	} catch ( IOException ioex ) {
++                        		sb.append( "Error processing clob: " + ioex.toString() );
++                        	}
++                        	jmvars.put(name, buffer.toString());
++                        }
+                         else {
+                             jmvars.put(name, o == null ? null : o.toString());
+                         }

@@ -1,0 +1,415 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1234426)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -529,6 +529,7 @@
+ menu_generative_controller=Echantillons
+ menu_listener=R\u00E9cepteurs
+ menu_logic_controller=Contr\u00F4leurs Logiques
++menu_logger_panel=Activer/D\u00E9sactiver la console 
+ menu_merge=Fusionner...
+ menu_modifiers=Modificateurs
+ menu_non_test_elements=El\u00E9ments hors test
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1234426)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -535,6 +535,7 @@
+ menu_generative_controller=Sampler
+ menu_listener=Listener
+ menu_logic_controller=Logic Controller
++menu_logger_panel=Enable/Disable Log Viewer 
+ menu_merge=Merge
+ menu_modifiers=Modifiers
+ menu_non_test_elements=Non-Test Elements
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(revision 1234426)
++++ src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(working copy)
+@@ -282,11 +282,14 @@
+         optionsMenu.add(lafMenu);
+ 
+         JCheckBoxMenuItem menuToolBar = makeCheckBoxMenuItemRes("menu_toolbar", ActionNames.TOOLBAR); //$NON-NLS-1$
++        JCheckBoxMenuItem menuLoggerPanel = makeCheckBoxMenuItemRes("menu_logger_panel", ActionNames.LOGGER_PANEL); //$NON-NLS-1$
+         GuiPackage guiInstance = GuiPackage.getInstance();
+         if (guiInstance != null) { //avoid error in ant task tests (good way?)
+             guiInstance.setMenuItemToolbar(menuToolBar);
++            guiInstance.setMenuItemLoggerPanel(menuLoggerPanel);
+         }
+         optionsMenu.add(menuToolBar);
++        optionsMenu.add(menuLoggerPanel);
+         
+         if (SSLManager.isSSLSupported()) {
+             sslManager = makeMenuItemRes("sslmanager", 'S', ActionNames.SSL_MANAGER, KeyStrokes.SSL_MANAGER); //$NON-NLS-1$
+Index: src/core/org/apache/jmeter/gui/MainFrame.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/MainFrame.java	(revision 1234426)
++++ src/core/org/apache/jmeter/gui/MainFrame.java	(working copy)
+@@ -104,6 +104,10 @@
+     private static final boolean DISPLAY_TOOLBAR =
+             JMeterUtils.getPropDefault("jmeter.toolbar.display", true); // $NON-NLS-1$
+ 
++    // Allow display/hide LoggerPanel
++    private static final boolean DISPLAY_LOGGER_PANEL =
++            JMeterUtils.getPropDefault("jmeter.loggerPanel.display", false); // $NON-NLS-1$
++
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     /** The menu bar. */
+@@ -115,6 +119,9 @@
+     /** The panel where the test tree is shown. */
+     private JScrollPane treePanel;
+ 
++    /** The LOG panel. */
++    private LoggerPanel logPanel;
++
+     /** The test tree. */
+     private JTree tree;
+ 
+@@ -407,8 +414,20 @@
+         treePanel = createTreePanel();
+         treeAndMain.setLeftComponent(treePanel);
+ 
++        JSplitPane topAndDown = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
++        topAndDown.setOneTouchExpandable(true);
++        topAndDown.setDividerLocation(0.8);
++        topAndDown.setResizeWeight(.8);
++        topAndDown.setContinuousLayout(true);
++        
+         mainPanel = createMainPanel();
+-        treeAndMain.setRightComponent(mainPanel);
++        topAndDown.setTopComponent(mainPanel);
++        
++        logPanel = createLogPanel();
++        logPanel.setVisible(DISPLAY_LOGGER_PANEL);
++        
++        topAndDown.setBottomComponent(logPanel);
++        treeAndMain.setRightComponent(topAndDown);
+ 
+         treeAndMain.setResizeWeight(.2);
+         treeAndMain.setContinuousLayout(true);
+@@ -423,6 +442,7 @@
+         setIconImage(JMeterUtils.getImage("jmeter.jpg").getImage());// $NON-NLS-1$
+     }
+ 
++
+     /**
+      * Support for Test Plan Dnd
+      * see BUG 52281 (when JDK6 will be minimum JDK target)
+@@ -488,6 +508,21 @@
+     private JScrollPane createMainPanel() {
+         return new JScrollPane();
+     }
++    
++    /**
++     * @return JScrollPane
++     */
++    private LoggerPanel createLogPanel() {
++        LoggerPanel loggerPanel = new LoggerPanel();
++        loggerPanel.setMinimumSize(new Dimension(0, 100));
++        loggerPanel.setPreferredSize(new Dimension(0, 150));
++        LoggingManager.addLogTargetToRootLogger(loggerPanel);
++        GuiPackage guiInstance = GuiPackage.getInstance();
++        guiInstance.setLoggerPanel(loggerPanel);
++        guiInstance.getMenuItemLoggerPanel().getModel().setSelected(DISPLAY_LOGGER_PANEL);
++
++        return loggerPanel;
++    }
+ 
+     /**
+      * Create and initialize the GUI representation of the test tree.
+Index: src/core/org/apache/jmeter/gui/LoggerPanel.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/LoggerPanel.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/LoggerPanel.java	(revision 0)
+@@ -0,0 +1,98 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui;
++
++import java.awt.BorderLayout;
++import java.awt.Dimension;
++
++import javax.swing.Box;
++import javax.swing.JPanel;
++import javax.swing.JScrollPane;
++import javax.swing.JTextArea;
++import javax.swing.SwingUtilities;
++import javax.swing.border.Border;
++import javax.swing.border.EmptyBorder;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.LogEvent;
++import org.apache.log.LogTarget;
++import org.apache.log.format.PatternFormatter;
++
++/**
++ * 
++ */
++public class LoggerPanel extends JPanel implements LogTarget {
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = 6911128494402594429L;
++    private JTextArea textArea;
++    private PatternFormatter format;
++
++    /**
++     * 
++     */
++    public LoggerPanel() {
++        init();
++        format = new PatternFormatter(LoggingManager.DEFAULT_PATTERN + "\n");
++    }
++
++    private void init() {
++        this.setLayout(new BorderLayout());
++
++        // MAIN PANEL
++        Border margin = new EmptyBorder(5, 5, 5, 5);
++
++        this.setBorder(margin);
++        
++        // TEXTAREA
++        textArea = new JTextArea();
++        textArea.setEditable(false);
++        textArea.setLineWrap(false);
++        JScrollPane areaScrollPane = new JScrollPane(textArea);
++
++        areaScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
++        areaScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
++
++        Box mainPanel = Box.createVerticalBox();
++        
++        areaScrollPane.setPreferredSize(new Dimension(mainPanel.getWidth(),mainPanel.getHeight()));
++        mainPanel.add(areaScrollPane);
++        this.add(mainPanel, BorderLayout.CENTER); 
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.log.LogTarget#processEvent(org.apache.log.LogEvent)
++     */
++    public void processEvent(final LogEvent logEvent) {
++        if(!GuiPackage.getInstance().getMenuItemLoggerPanel().getModel().isSelected()) {
++            return;
++        }
++        
++        SwingUtilities.invokeLater(new Runnable() {
++            public void run() {
++                synchronized (textArea) {
++                    textArea.append(format.format(logEvent));
++                    textArea.setCaretPosition(textArea.getText().length());
++                }
++            }
++        });
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1234426)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -630,6 +630,10 @@
+ 
+     private final List<Stoppable> stoppables = Collections.synchronizedList(new ArrayList<Stoppable>());
+ 
++    private JCheckBoxMenuItem menuItemLoggerPanel;
++
++    private LoggerPanel loggerPanel;
++
+     /**
+      * Sets the filepath of the current test plan. It's shown in the main frame
+      * title and used on saving.
+@@ -729,4 +733,35 @@
+         list.addAll(stoppables);
+         return list;
+     }
++
++    /**
++     * Set the menu item LoggerPanel.
++     * @param menuItemLoggerPanel
++     */
++    public void setMenuItemLoggerPanel(JCheckBoxMenuItem menuItemLoggerPanel) {
++        this.menuItemLoggerPanel = menuItemLoggerPanel;
++    }
++    
++    /**
++     * Get the menu item LoggerPanel.
++     *
++     * @return the menu item LoggerPanel
++     */
++    public JCheckBoxMenuItem getMenuItemLoggerPanel() {
++        return menuItemLoggerPanel;
++    }
++
++    /**
++     * @param loggerPanel LoggerPanel
++     */
++    public void setLoggerPanel(LoggerPanel loggerPanel) {
++        this.loggerPanel = loggerPanel;
++    }
++
++    /**
++     * @return the loggerPanel
++     */
++    public LoggerPanel getLoggerPanel() {
++        return loggerPanel;
++    }
+ }
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1234426)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -60,6 +60,7 @@
+     public static final String INSERT_AFTER     = "drag_n_drop.insert_after";//$NON-NLS-1$
+     public static final String INSERT_BEFORE    = "drag_n_drop.insert_before";//$NON-NLS-1$
+     public static final String LAF_PREFIX       = "laf:"; // Look and Feel prefix
++    public static final String LOGGER_PANEL     = "loggerPanel"; // $NON-NLS-1$
+     public static final String MERGE            = "merge"; // $NON-NLS-1$
+     public static final String OPEN             = "open"; // $NON-NLS-1$
+     public static final String OPEN_RECENT      = "open_recent"; // $NON-NLS-1$
+Index: src/core/org/apache/jmeter/gui/action/LoggerView.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/LoggerView.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/LoggerView.java	(revision 0)
+@@ -0,0 +1,70 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++
++import org.apache.jmeter.gui.GuiPackage;
++
++/**
++ * Hide / unhide LoggerPanel.
++ *
++ */
++public class LoggerView implements Command {
++
++    private static final Set<String> commands = new HashSet<String>();
++
++    static {
++        commands.add(ActionNames.LOGGER_PANEL);
++    }
++
++    /**
++     * Constructor for object.
++     */
++    public LoggerView() {
++    }
++
++    /**
++     * Gets the ActionNames attribute of the action
++     *
++     * @return the ActionNames value
++     */
++    public Set<String> getActionNames() {
++        return commands;
++    }
++
++    /**
++     * This method performs the actual command processing.
++     *
++     * @param e
++     *            the generic UI action event
++     */
++    public void doAction(ActionEvent e) {
++        if (ActionNames.LOGGER_PANEL.equals(e.getActionCommand())) {
++            GuiPackage guiInstance = GuiPackage.getInstance();
++            if (guiInstance.getMenuItemLoggerPanel().getModel().isSelected()) {
++                guiInstance.getLoggerPanel().setVisible(true);
++            } else {
++                guiInstance.getLoggerPanel().setVisible(false);
++            }
++        }
++    }
++}
+Index: src/jorphan/org/apache/jorphan/logging/LoggingManager.java
+===================================================================
+--- src/jorphan/org/apache/jorphan/logging/LoggingManager.java	(revision 1234425)
++++ src/jorphan/org/apache/jorphan/logging/LoggingManager.java	(working copy)
+@@ -52,7 +52,7 @@
+      * Predefined format patterns, selected by the property log_format_type (see
+      * jmeter.properties) The new-line is added later
+      */
+-    private static final String DEFAULT_PATTERN = "%{time:yyyy/MM/dd HH:mm:ss} %5.5{priority} - "  //$NON_NLS-1$
++    public static final String DEFAULT_PATTERN = "%{time:yyyy/MM/dd HH:mm:ss} %5.5{priority} - "  //$NON_NLS-1$
+             + "%{category}: %{message} %{throwable}"; //$NON_NLS-1$
+ 
+     private static final String PATTERN_THREAD_PREFIX = "%{time:yyyy/MM/dd HH:mm:ss} %5.5{priority} "  //$NON_NLS-1$
+@@ -329,7 +329,7 @@
+      * @param targetFile
+      *            (Writer)
+      */
+-    public static synchronized void setTarget(Writer targetFile) {
++    private static synchronized void setTarget(Writer targetFile) {
+         if (target == null) {
+             target = getTarget(targetFile, getFormat());
+             isTargetSystemOut = isWriterSystemOut;
+@@ -346,4 +346,14 @@
+     private static LogTarget getTarget(Writer targetFile, PatternFormatter fmt) {
+         return new WriterTarget(targetFile, fmt);
+     }
++
++    /**
++     * Add logTarget to root logger
++     * FIXME What's the clean way to add a LogTarget afterwards ?
++     * @param logTarget LogTarget
++     */
++    public static void addLogTargetToRootLogger(LogTarget logTarget) {
++        Hierarchy.getDefaultHierarchy().getRootLogger().setLogTargets(
++                new LogTarget[]{target, logTarget});
++    }
+ }
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1234281)
++++ bin/jmeter.properties	(working copy)
+@@ -121,6 +121,10 @@
+ # See https://issues.apache.org/bugzilla/show_bug.cgi?id=52026 for details
+ # N.B. the laf can be defined in user.properties.
+ 
++# LoggerPanl display
++# default:
++#jmeter.loggerPanel.display=false
++
+ # Toolbar display
+ # default:
+ #jmeter.toolbar.display=true

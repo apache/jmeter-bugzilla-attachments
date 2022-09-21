@@ -1,0 +1,31 @@
+Index: src/core/org/apache/jmeter/gui/action/Save.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Save.java	(revision 1188913)
++++ src/core/org/apache/jmeter/gui/action/Save.java	(working copy)
+@@ -96,9 +96,9 @@
+ 
+         String updateFile = GuiPackage.getInstance().getTestPlanFile();
+         if (!ActionNames.SAVE.equals(e.getActionCommand()) || updateFile == null) {
+-            JFileChooser chooser = FileDialoger.promptToSaveFile(GuiPackage.getInstance().getTreeListener()
++            JFileChooser chooser = FileDialoger.promptToSaveFile(updateFile == null ? GuiPackage.getInstance().getTreeListener()
+                     .getCurrentNode().getName()
+-                    + JMX_FILE_EXTENSION);
++                    + JMX_FILE_EXTENSION : updateFile);
+             if (chooser == null) {
+                 return;
+             }
+Index: src/core/org/apache/jmeter/gui/util/FileDialoger.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/FileDialoger.java	(revision 1188913)
++++ src/core/org/apache/jmeter/gui/util/FileDialoger.java	(working copy)
+@@ -124,7 +124,9 @@
+         }
+         String ext = ".jmx";//$NON-NLS-1$
+         if (filename != null) {
+-            jfc.setSelectedFile(new File(lastJFCDirectory, filename));
++            jfc.setSelectedFile(filename.lastIndexOf(System.getProperty("file.separator")) > 0 ?
++                    new File(filename) :
++                    new File(lastJFCDirectory, filename));
+             int i = -1;
+             if ((i = filename.lastIndexOf(".")) > -1) {//$NON-NLS-1$
+                 ext = filename.substring(i);

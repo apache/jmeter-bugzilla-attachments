@@ -1,0 +1,37 @@
+Index: Property.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/functions/org/apache/jmeter/functions/Property.java,v
+retrieving revision 1.1
+diff -u -r1.1 Property.java
+--- Property.java	23 Jun 2003 14:09:11 -0000	1.1
++++ Property.java	17 Jul 2003 17:33:52 -0000
+@@ -92,9 +92,10 @@
+ 	
+ 	// Number of parameters expected - used to reject invalid calls
+ 	private static final int MIN_PARAMETER_COUNT = 1;
+-	private static final int MAX_PARAMETER_COUNT = 2;
++	private static final int MAX_PARAMETER_COUNT = 3;
+ 	static {
+ 		desc.add(JMeterUtils.getResString("property_name_param"));
++		desc.add(JMeterUtils.getResString("property_default_param"));
+ 		desc.add(JMeterUtils.getResString("function_name_param"));
+ 	}
+ 
+@@ -112,9 +113,15 @@
+ 			throws InvalidVariableException {
+ 
+ 		String propertyName = ((CompoundVariable)values[0]).execute();
+-		String propertyValue = JMeterUtils.getPropDefault(propertyName,propertyName);
++
++		String defaultValue = propertyName;
+ 		if (values.length > 1) {
+-			String variableName = ((CompoundVariable)values[1]).execute();
++			defaultValue = ((CompoundVariable)values[1]).execute();
++		}
++
++		String propertyValue = JMeterUtils.getPropDefault(propertyName,defaultValue);
++		if (values.length > 2) {
++			String variableName = ((CompoundVariable)values[2]).execute();
+ 			getVariables().put(variableName,propertyValue);
+ 		}
+ 		return propertyValue;

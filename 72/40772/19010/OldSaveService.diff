@@ -1,0 +1,63 @@
+Index: C:/javaopt/eclipse/eclipse_workspaces/jmeter_workspace/JMeter2_2/src/core/org/apache/jmeter/save/OldSaveService.java
+===================================================================
+--- C:/javaopt/eclipse/eclipse_workspaces/jmeter_workspace/JMeter2_2/src/core/org/apache/jmeter/save/OldSaveService.java	(revision 454855)
++++ C:/javaopt/eclipse/eclipse_workspaces/jmeter_workspace/JMeter2_2/src/core/org/apache/jmeter/save/OldSaveService.java	(working copy)
+@@ -56,6 +56,40 @@
+ import org.xml.sax.SAXException;
+ 
+ /**
++ * This class is a wrapper for StringTokeniker that returns 
++ * empty tokens as "" (empty string)
++ * @author Ruben Laguna
++ *
++ */
++class MyStringTokenizer {
++	private StringTokenizer theSt;
++	private String delim;
++	boolean lbFlag = false;
++	
++	public MyStringTokenizer(String str, String delim) {
++		this.delim = delim;
++		theSt = new StringTokenizer(str,delim,true); 
++	}
++	
++	public String nextToken() {
++		while (theSt.hasMoreTokens()) {
++			String nextToken = theSt.nextToken();
++			if (delim.equals(nextToken)) {
++				if (lbFlag) {
++					return "";
++				} else {
++					lbFlag = true;
++				}
++			} else {
++				lbFlag = false;
++				return nextToken;
++			}
++		}
++		return "";
++	}
++	
++}
++/**
+  * This class provides a means for saving test results. Test results are
+  * typically saved in an XML file, but other storage mechanisms may also be
+  * used, for instance, CSV files or databases.
+@@ -63,6 +97,8 @@
+  * @version $Revision$ $Date$
+  */
+ public final class OldSaveService {
++
++	
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     // ---------------------------------------------------------------------
+@@ -143,7 +179,7 @@
+ 		SampleResult result = null;
+ 		long timeStamp = 0;
+ 		long elapsed = 0;
+-		StringTokenizer splitter = new StringTokenizer(inputLine, _saveConfig.getDelimiter());
++		MyStringTokenizer splitter = new MyStringTokenizer(inputLine, _saveConfig.getDelimiter());
+ 		String text = null;
+ 
+ 		try {

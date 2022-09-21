@@ -1,0 +1,39 @@
+From 29f9916b027494c6a5d1406d15006fde405a69f1 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Tue, 23 Dec 2014 15:40:37 +0100
+Subject: [PATCH 2/3] Use the constructor with an integer parameter, instead of
+ ignoring the parameter
+
+---
+ src/jorphan/org/apache/jorphan/reflect/ClassTools.java | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/jorphan/org/apache/jorphan/reflect/ClassTools.java b/src/jorphan/org/apache/jorphan/reflect/ClassTools.java
+index d77c3e9..49df1ec 100644
+--- a/src/jorphan/org/apache/jorphan/reflect/ClassTools.java
++++ b/src/jorphan/org/apache/jorphan/reflect/ClassTools.java
+@@ -64,8 +64,8 @@ public class ClassTools {
+         Object instance = null;
+         try {
+             Class<?> clazz = ClassUtils.getClass(className);
+-            clazz.getConstructor(new Class [] {Integer.TYPE});
+-            instance = ClassUtils.getClass(className).newInstance();
++            Constructor<?> constructor = clazz.getConstructor(new Class [] {Integer.TYPE});
++            instance = constructor.newInstance(parameter);
+         } catch (ClassNotFoundException e) {
+             throw new JMeterException(e);
+         } catch (InstantiationException e) {
+@@ -76,6 +76,10 @@ public class ClassTools {
+             throw new JMeterException(e);
+         } catch (NoSuchMethodException e) {
+             throw new JMeterException(e);
++        } catch (IllegalArgumentException e) {
++            throw new JMeterException(e);
++        } catch (InvocationTargetException e) {
++            throw new JMeterException(e);
+         }
+         return instance;
+     }
+-- 
+1.9.1
+

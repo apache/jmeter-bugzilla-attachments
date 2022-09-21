@@ -1,0 +1,143 @@
+Index: C:/work/jmeter/rel-2-2/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+===================================================================
+--- C:/work/jmeter/rel-2-2/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java	(revision 509982)
++++ C:/work/jmeter/rel-2-2/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java	(working copy)
+@@ -18,33 +18,30 @@
+ 
+ package org.apache.jmeter.gui.tree;
+ 
+-import java.awt.Container;
+-import java.awt.event.ActionEvent;
+-import java.awt.event.ActionListener;
+-import java.awt.event.KeyEvent;
+-import java.awt.event.KeyListener;
+-import java.awt.event.MouseEvent;
+-import java.awt.event.MouseListener;
+-import java.awt.event.MouseMotionListener;
+-
+-import javax.swing.JLabel;
+-import javax.swing.JMenuItem;
+-import javax.swing.JPopupMenu;
+-import javax.swing.JTree;
+-import javax.swing.event.TreeSelectionEvent;
+-import javax.swing.event.TreeSelectionListener;
+-import javax.swing.tree.TreeNode;
+-import javax.swing.tree.TreePath;
+-
+ import org.apache.jmeter.control.gui.TestPlanGui;
+ import org.apache.jmeter.control.gui.WorkBenchGui;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.MainFrame;
+ import org.apache.jmeter.gui.action.ActionNames;
++import org.apache.jmeter.gui.action.ActionRouter;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
++import javax.swing.*;
++import javax.swing.event.TreeSelectionEvent;
++import javax.swing.event.TreeSelectionListener;
++import javax.swing.tree.TreeNode;
++import javax.swing.tree.TreePath;
++import java.awt.*;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++import java.awt.event.KeyEvent;
++import java.awt.event.KeyListener;
++import java.awt.event.MouseEvent;
++import java.awt.event.MouseListener;
++import java.awt.event.MouseMotionListener;
++
+ /**
+  * @author Michael Stover Created March 11, 2001
+  * @version $Revision$ Last updated: $Date$
+@@ -88,9 +85,8 @@
+ 
+ 	/**
+ 	 * Sets the ActionHandler attribute of the JMeterTreeListener object.
+-	 * 
+-	 * @param ah
+-	 *            the new ActionHandler value
++	 *
++	 * @param ah the new ActionHandler value
+ 	 */
+ 	public void setActionHandler(ActionListener ah) {
+ 		actionHandler = ah;
+@@ -98,9 +94,8 @@
+ 
+ 	/**
+ 	 * Sets the JTree attribute of the JMeterTreeListener object.
+-	 * 
+-	 * @param tree
+-	 *            the new JTree value
++	 *
++	 * @param tree the new JTree value
+ 	 */
+ 	public void setJTree(JTree tree) {
+ 		this.tree = tree;
+@@ -108,9 +103,8 @@
+ 
+ 	/**
+ 	 * Sets the EndWindow attribute of the JMeterTreeListener object.
+-	 * 
+-	 * @param window
+-	 *            the new EndWindow value
++	 *
++	 * @param window the new EndWindow value
+ 	 */
+ 	public void setEndWindow(Container window) {
+ 		// endWindow = window;
+@@ -118,7 +112,7 @@
+ 
+ 	/**
+ 	 * Gets the JTree attribute of the JMeterTreeListener object.
+-	 * 
++	 *
+ 	 * @return tree the current JTree value.
+ 	 */
+ 	public JTree getJTree() {
+@@ -127,7 +121,7 @@
+ 
+ 	/**
+ 	 * Gets the CurrentNode attribute of the JMeterTreeListener object.
+-	 * 
++	 *
+ 	 * @return the CurrentNode value
+ 	 */
+ 	public JMeterTreeNode getCurrentNode() {
+@@ -143,7 +137,7 @@
+ 	public JMeterTreeNode[] getSelectedNodes() {
+ 		TreePath[] paths = tree.getSelectionPaths();
+ 		if (paths == null) {
+-			return new JMeterTreeNode[] { getCurrentNode() };
++			return new JMeterTreeNode[]{getCurrentNode()};
+ 		}
+ 		JMeterTreeNode[] nodes = new JMeterTreeNode[paths.length];
+ 		for (int i = 0; i < paths.length; i++) {
+@@ -267,7 +261,6 @@
+ 					|| draggedNodes[0].getUserObject() instanceof WorkBenchGui) {
+ 				dragging = false;
+ 			}
+-
+ 		}
+ 		changeSelectionIfDragging(e);
+ 	}
+@@ -279,6 +272,18 @@
+ 	}
+ 
+ 	public void keyPressed(KeyEvent e) {
++		if (e.getKeyCode() == KeyEvent.VK_C && e.isControlDown()) {
++			ActionRouter actionRouter = ActionRouter.getInstance();
++			actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.COPY));
++		}
++		if (e.getKeyCode() == KeyEvent.VK_V && e.isControlDown()) {
++			ActionRouter actionRouter = ActionRouter.getInstance();
++			actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.PASTE));
++		}
++		if (e.getKeyCode() == KeyEvent.VK_X && e.isControlDown()) {
++			ActionRouter actionRouter = ActionRouter.getInstance();
++			actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), ActionNames.CUT));
++		}
+ 	}
+ 
+ 	public void keyReleased(KeyEvent e) {

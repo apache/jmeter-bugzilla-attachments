@@ -1,0 +1,3669 @@
+? jakarta-jmeter/src/components/org/apache/jmeter/visualizers/ThreadWatcherTableDataModel.java
+? jakarta-jmeter/src/components/org/apache/jmeter/visualizers/ThreadWatcherVisualizer.java
+? jakarta-jmeter/src/core/org/apache/jmeter/engine/util/VisualizerEngineAssigner.java
+Index: jakarta-jmeter/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java,v
+retrieving revision 1.62
+diff -u -r1.62 StandardJMeterEngine.java
+--- jakarta-jmeter/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	23 Aug 2005 15:20:12 -0000	1.62
++++ jakarta-jmeter/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	26 Aug 2005 09:57:38 -0000
+@@ -1,19 +1,20 @@
++// $Header: /home/cvs/jakarta-jmeter/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java,v 1.43.2.9 2004/12/15 23:34:42 sebb Exp $
+ /*
+  * Copyright 2000-2004 The Apache Software Foundation.
+- * 
+- * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+- * use this file except in compliance with the License. You may obtain a copy
+- * of the License at
+- * 
+- * http://www.apache.org/licenses/LICENSE-2.0
+- * 
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
+  * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+- * License for the specific language governing permissions and limitations
+- * under the License.
+- *  
+- */
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++*/
+ 
+ package org.apache.jmeter.engine;
+ 
+@@ -29,8 +30,7 @@
+ import java.util.List;
+ import java.util.Map;
+ 
+-import org.apache.jmeter.testbeans.TestBean;
+-import org.apache.jmeter.testbeans.TestBeanHelper;
++import org.apache.jmeter.reporters.ResultCollector;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.TestPlan;
+@@ -47,310 +47,402 @@
+ import org.apache.log.Logger;
+ 
+ /**
++ * @version    $Revision: 1.43.2.9 $ Updated on: $Date: 2004/12/15 23:34:42 $
+  */
+-public class StandardJMeterEngine implements JMeterEngine, JMeterThreadMonitor, Runnable, Serializable {
+-	transient private static Logger log = LoggingManager.getLoggerForClass();
+-
+-	private transient Thread runningThread;
+-
+-	private static long WAIT_TO_DIE = 5 * 1000; // 5 seconds
+-
+-	private transient Map allThreads;
+-
+-	private boolean running = false;
+-
+-	private boolean serialized = false;
+-
+-	private volatile boolean schcdule_run = false;
+-
+-	private HashTree test;
+-
+-	private transient SearchByClass testListeners;
+-
+-	private String host = null;
+-
+-	private transient ListenerNotifier notifier;
+-
+-	// Allow engine and threads to be stopped from outside a thread
+-	// e.g. from beanshell server
+-	// Assumes that there is only one instance of the engine
+-	// at any one time so it is not guaranteed to work ...
+-	private static transient Map allThreadNames;
+-
+-	private static StandardJMeterEngine engine;
+-
++public class StandardJMeterEngine
++    implements JMeterEngine, JMeterThreadMonitor, Runnable, Serializable
++{
++    transient private static Logger log = LoggingManager.getLoggerForClass();
++    private transient Thread runningThread;
++    private static long WAIT_TO_DIE = 5 * 1000; //5 seconds
++    private transient Map allThreads;
++    private boolean running = false;
++    private boolean serialized = false;
++    private volatile boolean schcdule_run = false;
++    private HashTree test;
++    private transient SearchByClass testListeners;
++    private String host = null;
++    private transient ListenerNotifier notifier;
++    
++    // begin -------------------
++    private transient Map backupTrees;
++    private transient List engineMonitors;
++    // end ---------------------
++    
++    // Allow engine and threads to be stopped from outside a thread
++    // e.g. from beanshell server
++    // Assumes that there is only one instance of the engine
++    // at any one time so it is not guaranteed to work ...
++    private static transient Map allThreadNames;
++    private static StandardJMeterEngine engine;
+ 	private static Map allThreadsSave;
+-
+-	public static void stopEngineNow() {
+-		if (engine != null) // May be null if called from Unit test
+-			engine.stopTest(true);
+-	}
+-
+-	public static void stopEngine() {
+-		if (engine != null) // May be null if called from Unit test
+-			engine.stopTest(false);
+-	}
+-
+-	/*
+-	 * Allow functions etc to register for testStopped notification
+-	 */
+-	private static List testList = null;
+-
+-	public static synchronized void register(TestListener tl) {
+-		testList.add(tl);
+-	}
+-
+-	public static boolean stopThread(String threadName) {
+-		return stopThread(threadName, false);
+-	}
+-
+-	public static boolean stopThreadNow(String threadName) {
+-		return stopThread(threadName, true);
+-	}
+-
+-	private static boolean stopThread(String threadName, boolean now) {
+-		if (allThreadNames == null)
+-			return false;// e.g. not yet started
+-		JMeterThread thrd;
++    public static void stopEngineNow()
++    {
++    	if (engine != null) // May be null if called from Unit test
++    	  engine.stopTest(true);
++    }
++    public static void stopEngine()
++    {
++    	if (engine != null)  // May be null if called from Unit test
++    		engine.stopTest(false);
++    }
++    public static boolean stopThread(String threadName)
++    {
++    	return stopThread(threadName,false);
++    }
++    public static boolean stopThreadNow(String threadName)
++    {
++    	return stopThread(threadName,true);
++    }
++    private static boolean stopThread(String threadName, boolean now)
++    {
++    	if (allThreadNames == null) return false;// e.g. not yet started
++    	JMeterThread thrd;
+ 		try {
+-			thrd = (JMeterThread) allThreadNames.get(threadName);
+-		} catch (Exception e) {
+-			log.warn("stopThread: " + e);
+-			return false;
+-		}
+-		if (thrd != null) {
+-			thrd.stop();
+-			if (now) {
+-				Thread t = (Thread) allThreadsSave.get(thrd);
+-				if (t != null) {
+-					t.interrupt();
+-				}
+-
+-			}
+-			return true;
+-		} else {
+-			return false;
+-		}
+-	}
+-
+-	// End of code to allow engine to be controlled remotely
+-
+-	public StandardJMeterEngine() {
+-		allThreads = new HashMap();
+-		engine = this;
+-		allThreadNames = new HashMap();
+-		allThreadsSave = allThreads;
+-	}
+-
+-	public StandardJMeterEngine(String host) {
+-		this();
+-		this.host = host;
+-	}
+-
+-	public void configure(HashTree testTree) {
+-		test = testTree;
+-	}
+-
+-	public void setHost(String host) {
+-		this.host = host;
+-	}
+-
+-	protected HashTree getTestTree() {
+-		return test;
+-	}
+-
+-	protected void compileTree() {
+-		PreCompiler compiler = new PreCompiler();
+-		getTestTree().traverse(compiler);
+-	}
+-
+-	public void runTest() throws JMeterEngineException {
+-		try {
+-			runningThread = new Thread(this);
+-			runningThread.start();
+-		} catch (Exception err) {
+-			stopTest();
+-			StringWriter string = new StringWriter();
+-			PrintWriter writer = new PrintWriter(string);
+-			err.printStackTrace(writer);
+-			throw new JMeterEngineException(string.toString());
+-		}
+-	}
+-
+-	private void removeThreadGroups(List elements) {
+-		Iterator iter = elements.iterator();
+-		while (iter.hasNext()) {
+-			Object item = iter.next();
+-			if (item instanceof ThreadGroup) {
+-				iter.remove();
+-			} else if (!(item instanceof TestElement)) {
+-				iter.remove();
+-			}
+-		}
+-	}
+-
+-	protected void notifyTestListenersOfStart() {
+-		Iterator iter = testListeners.getSearchResults().iterator();
+-		while (iter.hasNext()) {
+-			TestListener tl = (TestListener) iter.next();
+-			if (tl instanceof TestBean)
+-				TestBeanHelper.prepare((TestElement) tl);
+-			if (host == null) {
+-				tl.testStarted();
+-			} else {
+-				tl.testStarted(host);
+-			}
+-		}
+-	}
+-
+-	protected void notifyTestListenersOfEnd() {
+-        log.info("Notifying test listeners of end of test");
+-		Iterator iter = testListeners.getSearchResults().iterator();
+-		while (iter.hasNext()) {
+-			TestListener tl = (TestListener) iter.next();
+-			if (tl instanceof TestBean)
+-				TestBeanHelper.prepare((TestElement) tl);
+-			if (host == null) {
+-				tl.testEnded();
+-			} else {
+-				tl.testEnded(host);
+-			}
+-		}
+-		log.info("Test has ended");
+-	}
+-
+-	private ListedHashTree cloneTree(ListedHashTree tree) {
+-		TreeCloner cloner = new TreeCloner(true);
+-		tree.traverse(cloner);
+-		return cloner.getClonedTree();
+-	}
+-
+-	public void reset() {
+-		if (running) {
+-			stopTest();
+-		}
+-	}
++    	    thrd = (JMeterThread)allThreadNames.get(threadName);
++    	} catch (Exception e) {
++    		log.warn("stopThread: "+e);
++    		return false;
++    	}
++    	if (thrd!= null)
++    	{
++    		thrd.stop();
++    		if (now)
++    		{
++    		    Thread t = (Thread) allThreadsSave.get(thrd);
++    		    if (t != null)
++    		    {
++    		        t.interrupt();
++    		    }
++    			
++    		}
++    		return true;
++    	}
++    	else
++    	{
++    		return false;
++    	}
++    }
++    // End of code to allow engine to be controlled remotely
++    
++    /*
++     * Allow functions etc to register for testStopped notification
++     */
++    private static List testList = null;
++    public static synchronized void register(TestListener tl)
++    {
++    	testList.add(tl);
++    }
++    
++    public StandardJMeterEngine()
++    {
++		// begin ------------
++		backupTrees = new HashMap();
++		engineMonitors = new ArrayList();
++		// end --------------
++		
++        allThreads = new HashMap();
++        engine=this;
++        allThreadNames = new HashMap();
++        allThreadsSave = allThreads;
++    }
++
++    public StandardJMeterEngine(String host)
++    {
++        this();
++        this.host = host;
++    }
++
++    public void configure(HashTree testTree)
++    {
++        test = testTree;
++    }
++
++    public void setHost(String host)
++    {
++        this.host = host;
++    }
++
++    protected HashTree getTestTree()
++    {
++        return test;
++    }
++
++    protected void compileTree()
++    {
++        PreCompiler compiler = new PreCompiler();
++        getTestTree().traverse(compiler);
++    }
++
++    public void runTest() throws JMeterEngineException
++    {
++        try
++        {
++            runningThread = new Thread(this);
++            runningThread.start();
++        }
++        catch (Exception err)
++        {
++            stopTest();
++            StringWriter string = new StringWriter();
++            PrintWriter writer = new PrintWriter(string);
++            err.printStackTrace(writer);
++            throw new JMeterEngineException(string.toString());
++        }
++    }
+ 
+-	public synchronized void threadFinished(JMeterThread thread) {
+-		try {
+-            allThreads.remove(thread);
+-            log.info("Ending thread " + thread.getThreadNum());
+-            if (!serialized && allThreads.size() == 0 && !schcdule_run) {
+-            	log.info("Stopping test");
+-            	stopTest();
++    private void removeThreadGroups(List elements)
++    {
++        Iterator iter = elements.iterator();
++        while (iter.hasNext())
++        {
++            Object item = iter.next();
++            if (item instanceof ThreadGroup)
++            {
++                iter.remove();
++            }
++            else if (!(item instanceof TestElement))
++            {
++                iter.remove();
+             }
+-        } catch (Throwable e) {
+-            log.fatalError("Call to threadFinished should never throw an exception - this can deadlock JMeter",e);
+         }
+-	}
+-
+-	public synchronized void stopTest() {
+-		Thread stopThread = new Thread(new StopTest());
+-		stopThread.start();
+-	}
+-
+-	public synchronized void stopTest(boolean b) {
+-		Thread stopThread = new Thread(new StopTest(b));
+-		stopThread.start();
+-	}
++    }
+ 
+-	private class StopTest implements Runnable {
+-		boolean now;
+-
+-		private StopTest() {
+-			now = true;
+-		}
+-
+-		private StopTest(boolean b) {
+-			now = b;
+-		}
++    protected void setMode()
++    {
++        SearchByClass testPlan = new SearchByClass(TestPlan.class);
++        getTestTree().traverse(testPlan);
++        Object[] plan = testPlan.getSearchResults().toArray();
++        ResultCollector.enableFunctionalMode(
++            ((TestPlan) plan[0]).isFunctionalMode());
++    }
++
++    protected void notifyTestListenersOfStart()
++    {
++        Iterator iter = testListeners.getSearchResults().iterator();
++        while (iter.hasNext())
++        {
++        	TestListener it = (TestListener)iter.next();
++        	log.info("Notifying test listener: " + it.getClass().getName());
++            if (host == null)
++            {
++                it.testStarted();
++            }
++            else
++            {
++                it.testStarted(host);
++            }
++        }
++        
++        // begin -------------------
++		for(Iterator it = engineMonitors.iterator(); it.hasNext();)
++		{
++			((JMeterEngineMonitor)it.next()).testStarted();
++		}
++		// end ---------------------
++    }
++
++    protected void notifyTestListenersOfEnd()
++    {
++    	log.info("Notifying listeners of end of test");
++    	
++        Iterator iter = testListeners.getSearchResults().iterator();
++        while (iter.hasNext())
++        {
++        	TestListener it = (TestListener)iter.next();
++        	log.info("Notifying test listener: " + it.getClass().getName());
++            if (host == null)
++            {
++                it.testEnded();
++            }
++            else
++            {
++                it.testEnded(host);
++            }
++        }
++        
++        // begin -------------------
++		for(Iterator it = engineMonitors.iterator(); it.hasNext();)
++		{
++			((JMeterEngineMonitor)it.next()).testFinished();
++		}
++		// end ---------------------
++		
++        log.info("Test has ended");
++    }
++
++    private ListedHashTree cloneTree(ListedHashTree tree)
++    {
++        TreeCloner cloner = new TreeCloner(true);
++        tree.traverse(cloner);
++        return cloner.getClonedTree();
++    }
++
++    public void reset()
++    {
++        if (running)
++        {
++            stopTest();
++        }
++    }
+ 
+-		public void run() {
+-			if (running) {
+-				running = false;
+-				if (now) {
+-					tellThreadsToStop();
+-				} else {
+-					stopAllThreads();
+-				}
+-				try {
+-					Thread.sleep(10 * allThreads.size());
+-				} catch (InterruptedException e) {
+-				}
+-				boolean stopped = verifyThreadsStopped();
+-				if (stopped || now) {
+-					notifyTestListenersOfEnd();
+-				}
+-			}
+-		}
+-	}
++    public synchronized void threadFinished(JMeterThread thread)
++    {		
++		// begin -----------------
++		
++		for(Iterator it = engineMonitors.iterator(); it.hasNext();)
++		{
++			((JMeterEngineMonitor)it.next()).threadFinished(thread);
++		}
++		
++		// end -------------------
++		
++        allThreads.remove(thread);
++        if (!serialized && allThreads.size() == 0 && !schcdule_run )
++        {
++            stopTest();
++        }
++    }
++    
++    public synchronized void threadStarted(JMeterThread thread)
++    {
++		// begin -----------------
++		
++		for(Iterator it = engineMonitors.iterator(); it.hasNext();)
++		{
++			((JMeterEngineMonitor)it.next()).threadStarted(thread);
++		}
++		
++		// end -------------------
++    }
++
++    public synchronized void stopTest()
++    {
++        Thread stopThread = new Thread(new StopTest());
++        stopThread.start();
++    }
++
++    public synchronized void stopTest(boolean b)
++    {
++        Thread stopThread = new Thread(new StopTest(b));
++        stopThread.start();
++    }
++    
++    public void askThreadsToStop()
++    {
++    	engine.stopTest(false);
++    }
++    
++    private class StopTest implements Runnable
++    {
++    	boolean now;
++    	private StopTest(){
++    		now=true;
++    	}
++    	private StopTest(boolean b){
++    		now=b;
++    	}
++        public void run()
++        {
++            if (running)
++            {
++                running = false;
++                if (now){
++                	tellThreadsToStop();
++                } else {
++                	stopAllThreads();
++                }
++                try
++                {
++                    Thread.sleep(10 * allThreads.size());
++                }
++                catch (InterruptedException e)
++                {}
++                boolean stopped=verifyThreadsStopped();
++                if (stopped || now){
++                    notifyTestListenersOfEnd();
++                }
++            }
++        }
++    }
+ 
+-	public void run() {
+-		log.info("Running the test!");
+-		running = true;
+-		testList = new ArrayList();
+-
+-		SearchByClass testPlan = new SearchByClass(TestPlan.class);
+-		getTestTree().traverse(testPlan);
+-		Object[] plan = testPlan.getSearchResults().toArray();
+-		if (plan.length == 0) {
++    public void run()
++    {
++        log.info("Running the test!");
++        running = true;
++        testList = new ArrayList();
++
++        SearchByClass testPlan = new SearchByClass(TestPlan.class);
++        getTestTree().traverse(testPlan);
++        Object[] plan = testPlan.getSearchResults().toArray();
++        if (plan.length == 0){
+ 			System.err.println("Could not find the TestPlan!");
+-			log.error("Could not find the TestPlan!");
+-			System.exit(1);
+-		}
+-		if (((TestPlan) plan[0]).isSerialized()) {
+-			serialized = true;
+-		}
+-        JMeterContextService.startTest();
+-		compileTree();
+-		/**
+-		 * Notification of test listeners needs to happen after function
+-		 * replacement, but before setting RunningVersion to true.
+-		 */
+-		testListeners = new SearchByClass(TestListener.class);
+-		getTestTree().traverse(testListeners);
+-		Collection col = testListeners.getSearchResults();
+-		col.addAll(testList);
+-		testList = null;
+-		notifyTestListenersOfStart();
+-		getTestTree().traverse(new TurnElementsOn());
+-
+-		List testLevelElements = new LinkedList(getTestTree().list(getTestTree().getArray()[0]));
+-		removeThreadGroups(testLevelElements);
+-		SearchByClass searcher = new SearchByClass(ThreadGroup.class);
+-		getTestTree().traverse(searcher);
+-		TestCompiler.initialize();
+-		// for each thread group, generate threads
+-		// hand each thread the sampler controller
+-		// and the listeners, and the timer
+-		JMeterThread[] threads;
+-		Iterator iter = searcher.getSearchResults().iterator();
+-
+-		/*
+-		 * Here's where the test really starts. Run a Full GC now: it's no harm
+-		 * at all (just delays test start by a tiny amount) and hitting one too
+-		 * early in the test can impair results for short tests.
+-		 */
+-		System.gc();
+-
+-		notifier = new ListenerNotifier();
+-
+-		schcdule_run = true;
+-		JMeterContextService.getContext().setSamplingStarted(true);
+-		int groupCount = 0;
+-		while (iter.hasNext()) {
+-			groupCount++;
+-			ThreadGroup group = (ThreadGroup) iter.next();
++        	log.error("Could not find the TestPlan!");
++        	System.exit(1);
++        }
++        if (((TestPlan) plan[0]).isSerialized())
++        {
++            serialized = true;
++        }
++        compileTree();
++        
++        /** 
++         * Notification of test listeners needs to happen after function replacement, but before
++         * setting RunningVersion to true.
++         */
++        testListeners = new SearchByClass(TestListener.class);
++        getTestTree().traverse(testListeners);
++        log.info("About to call test listeners");
++        Collection col = testListeners.getSearchResults();
++        col.addAll(testList);
++        testList=null;
++        notifyTestListenersOfStart();
++        
++        getTestTree().traverse(new TurnElementsOn());
++        
++        List testLevelElements =
++            new LinkedList(getTestTree().list(getTestTree().getArray()[0]));
++        removeThreadGroups(testLevelElements);
++        SearchByClass searcher = new SearchByClass(ThreadGroup.class);
++        
++        setMode();
++        getTestTree().traverse(searcher);
++        TestCompiler.initialize();
++        //for each thread group, generate threads
++        // hand each thread the sampler controller
++        // and the listeners, and the timer
++        JMeterThread[] threads;
++        Iterator iter = searcher.getSearchResults().iterator();
++
++        /*
++         * Here's where the test really starts. Run a Full GC now: it's no
++         * harm at all (just delays test start by a tiny amount) and
++         * hitting one too early in the test can impair results for short
++         * tests.
++         */
++        System.gc();
++        
++        
++        notifier = new ListenerNotifier();
++        
++        schcdule_run = true;
++        JMeterContextService.getContext().setSamplingStarted(true);
++        int groupCount = 0;
++        while (iter.hasNext())
++        {
++        	groupCount++;
++            ThreadGroup group = (ThreadGroup) iter.next();
+ 			int numThreads = group.getNumThreads();
+ 			boolean onErrorStopTest = group.getOnErrorStopTest();
+ 			boolean onErrorStopThread = group.getOnErrorStopThread();
+ 			String groupName = group.getName();
+ 			int rampUp = group.getRampUp();
+ 			float perThreadDelay = ((float) (rampUp * 1000) / (float) numThreads);
+-			threads = new JMeterThread[numThreads];
+-
+-			log.info("Starting " + numThreads + " threads for group " + groupName + ". Ramp up = " + rampUp + ".");
+-
++            threads = new JMeterThread[numThreads];
++			
++            log.info("Starting " + numThreads + " threads for group "+ groupName
++                + ". Ramp up = "+ rampUp + ".");
++            
+ 			if (onErrorStopTest) {
+ 				log.info("Test will stop on error");
+ 			} else if (onErrorStopThread) {
+@@ -359,151 +451,276 @@
+ 				log.info("Continue on error");
+ 			}
+ 
+-            ListedHashTree threadGroupTree = (ListedHashTree) searcher.getSubTree(group);
+-            threadGroupTree.add(group, testLevelElements);
+-			for (int i = 0; running && i < threads.length; i++) {
+-				threads[i] = new JMeterThread(cloneTree(threadGroupTree), this, notifier);
+-				threads[i].setThreadNum(i);
+-				threads[i].setThreadGroup(group);
+-				threads[i].setInitialContext(JMeterContextService.getContext());
+-				threads[i].setInitialDelay((int) (perThreadDelay * i));
+-				threads[i].setThreadName(groupName + " " + (groupCount) + "-" + (i + 1));
+-
+-				scheduleThread(threads[i], group);
+-
+-				// Set up variables for stop handling
+-				threads[i].setEngine(this);
++            for (int i = 0; running && i < threads.length; i++)
++            {
++                ListedHashTree threadGroupTree =
++                    (ListedHashTree) searcher.getSubTree(group);
++                threadGroupTree.add(group, testLevelElements);
++                threads[i] =
++                    new JMeterThread(
++                        cloneTree(threadGroupTree),
++                        this,
++                        notifier);
++                        
++                threads[i].setThreadNum(i);
++                threads[i].setInitialContext(JMeterContextService.getContext());
++                threads[i].setInitialDelay((int) (perThreadDelay * (float) i));
++                String threadName = groupName + " " + groupCount + "-" + (i + 1);
++                threads[i].setThreadName(threadName);
++                
++                // begin --------------
++                backupTrees.put(threadName, cloneTree(threadGroupTree));
++                // end ----------------
++
++                scheduleThread(threads[i], group);
++                
++                // Set up variables for stop handling
++                threads[i].setEngine(this);
+ 				threads[i].setOnErrorStopTest(onErrorStopTest);
+ 				threads[i].setOnErrorStopThread(onErrorStopThread);
+-
+-				Thread newThread = new Thread(threads[i]);
+-				newThread.setName(threads[i].getThreadName());
+-				allThreads.put(threads[i], newThread);
+-				if (serialized && !iter.hasNext() && i == threads.length - 1) // last
+-				// thread
++				
++				// begin -------------------
++				for(Iterator it = engineMonitors.iterator(); it.hasNext();)
+ 				{
+-					serialized = false;
+-				}
+-				newThread.start();
+-			}
+-			schcdule_run = false;
+-			if (serialized) {
+-				while (running && allThreads.size() > 0) {
+-					try {
+-						Thread.sleep(1000);
+-					} catch (InterruptedException e) {
+-					}
++					((JMeterEngineMonitor)it.next()).threadCreated(threads[i]);
+ 				}
+-			}
+-		}
+-	}
++				// end ---------------------
++				
++                Thread newThread = new Thread(threads[i]);
++                newThread.setName(threadName);
++                allThreads.put(threads[i], newThread);
++                allThreadNames.put(threadName,threads[i]);
++                if (serialized
++                    && !iter.hasNext()
++                    && i == threads.length - 1) //last thread
++                {
++                    serialized = false;
++                }
++                newThread.start();
++            }
++            schcdule_run = false;
++            if (serialized)
++            {
++                while (running && allThreads.size() > 0)
++                {
++                    try
++                    {
++                        Thread.sleep(1000);
++                    }
++                    catch (InterruptedException e)
++                    {}
++                }
++            }
++        }
++    }
+ 
+-	/**
+-	 * This will schedule the time for the JMeterThread.
+-	 * 
+-	 * @param thread
+-	 * @param group
+-	 */
+-	private void scheduleThread(JMeterThread thread, ThreadGroup group) {
+-		// if true the Scheduler is enabled
+-		if (group.getScheduler()) {
+-			long now = System.currentTimeMillis();
+-			// set the start time for the Thread
+-			if (group.getDelay() > 0) {// Duration is in seconds
+-				thread.setStartTime(group.getDelay() * 1000 + now);
+-			} else {
+-				long start = group.getStartTime();
+-				if (start < now)
+-					start = now; // Force a sensible start time
++    /**
++     * This will  schedule the time for the JMeterThread.
++     * 
++     * @param thread
++     * @param group
++     */
++    private void scheduleThread(JMeterThread thread, ThreadGroup group)
++    {            
++        //if true the Scheduler is enabled
++        if (group.getScheduler())
++        {
++        	long now = System.currentTimeMillis();
++			//set the start time for the Thread
++        	if (group.getDelay() > 0 ){// Duration is  in seconds
++				thread.setStartTime(group.getDelay()*1000+now);
++        	} else {
++        		long start = group.getStartTime();
++        		if (start < now) start = now; // Force a sensible start time
+ 				thread.setStartTime(start);
+-			}
+-
+-			// set the endtime for the Thread
+-			if (group.getDuration() > 0) {// Duration is in seconds
+-				thread.setEndTime(group.getDuration() * 1000 + (thread.getStartTime()));
+-			} else {
++        	}
++            
++			//set the endtime for the Thread
++            if (group.getDuration() > 0){// Duration is  in seconds
++				thread.setEndTime(group.getDuration()*1000+(thread.getStartTime()));
++            } else {
+ 				thread.setEndTime(group.getEndTime());
+-			}
+-
+-			// Enables the scheduler
+-			thread.setScheduled(true);
+-		}
+-	}
+-
+-	public synchronized void pauseTest(int milis) {
+-		Iterator iter = new HashSet(allThreads.keySet()).iterator();
+-		while (iter.hasNext()) {
+-			Thread t = (Thread) allThreads.get(iter.next());
+-			if (t != null && t.isAlive()) {
+-				try {
+-					Thread.sleep(milis);
+-				} catch (InterruptedException e) {
+-				}
+-			}
+-		}
+-	}
+-
+-	private boolean verifyThreadsStopped() {
+-		boolean stoppedAll = true;
+-		Iterator iter = new HashSet(allThreads.keySet()).iterator();
+-		while (iter.hasNext()) {
+-			Thread t = (Thread) allThreads.get(iter.next());
+-			if (t != null && t.isAlive()) {
+-				try {
+-					t.join(WAIT_TO_DIE);
+-				} catch (InterruptedException e) {
+-				}
+-				if (t.isAlive()) {
+-					stoppedAll = false;
+-					log.info("Thread won't die: " + t.getName());
+-				}
+-			}
+-		}
+-		return stoppedAll;
+-	}
++            }
+ 
+-	private void tellThreadsToStop() {
+-		Iterator iter = new HashSet(allThreads.keySet()).iterator();
+-		while (iter.hasNext()) {
+-			JMeterThread item = (JMeterThread) iter.next();
+-			item.stop();
+-			Thread t = (Thread) allThreads.get(item);
+-			if (t != null) {
+-				t.interrupt();
+-			} else {
+-				log.warn("Lost thread: " + item.getThreadName());
+-				allThreads.remove(item);
+-			}
+-		}
+-	}
++            //Enables the scheduler
++            thread.setScheduled(true);
++        }
++    }
+ 
+-	public void askThreadsToStop() {
+-		engine.stopTest(false);
+-	}
++    private boolean verifyThreadsStopped()
++    {
++    	boolean stoppedAll=true;
++        Iterator iter = new HashSet(allThreads.keySet()).iterator();
++        while (iter.hasNext())
++        {
++            Thread t = (Thread) allThreads.get(iter.next());
++            if (t != null && t.isAlive())
++            {
++                try
++                {
++                    t.join(WAIT_TO_DIE);
++                }
++                catch (InterruptedException e)
++                {}
++                if (t.isAlive())
++                {
++                	stoppedAll=false;
++                    log.info("Thread won't die: " + t.getName());
++                }
++            }
++        }
++        return stoppedAll;
++    }
+ 
+-	private void stopAllThreads() {
++    private void tellThreadsToStop()
++    {
++        Iterator iter = new HashSet(allThreads.keySet()).iterator();
++        while (iter.hasNext())
++        {
++            JMeterThread item = (JMeterThread) iter.next();
++            item.stop();
++            Thread t = (Thread) allThreads.get(item);
++            if (t != null)
++            {
++                t.interrupt();
++            }
++            else
++            {
++                log.warn("Lost thread: " + item.getThreadName());
++                allThreads.remove(item);
++            }
++        }
++    }
++    
++	private void stopAllThreads()
++	{
+ 		Iterator iter = new HashSet(allThreads.keySet()).iterator();
+-		while (iter.hasNext()) {
++		while (iter.hasNext())
++		{
+ 			JMeterThread item = (JMeterThread) iter.next();
+ 			item.stop();
+ 		}
+ 	}
+ 
+-	// Remote exit
+-	public void exit() {
+-		// Needs to be run in a separate thread to allow RMI call to return OK
+-		Thread t = new Thread() {
+-			public void run() {
+-				// log.info("Pausing");
+-				try {
+-					Thread.sleep(1000);
+-				} catch (InterruptedException e) {
+-				}
++    // Remote exit
++    public void exit()
++    {
++    	// Needs to be run in a separate thread to allow RMI call to return OK
++		Thread t = new Thread(){
++			public void run(){
++				//log.info("Pausing");
++				try
++                {
++                    Thread.sleep(1000);
++                }
++                catch (InterruptedException e)
++                {
++                }
+ 				log.info("Bye");
+ 				System.exit(0);
+-			}
++			};
+ 		};
+ 		log.info("Starting Closedown");
+ 		t.start();
+-	}
++    }
++    
++    // begin -------------
++    
++    public boolean restartThread(String threadName)
++    {
++    	JMeterThread jmt;
++    	
++    	try
++    	{
++			jmt = (JMeterThread)allThreadNames.get(threadName);
++		}
++		catch(Exception e)
++		{
++			log.warn("restartThread: "+e);
++    		return false;
++		}
++		
++		if (jmt != null)
++		{            
++            ListedHashTree tree = (ListedHashTree)backupTrees.get(threadName);
++            
++            JMeterThread newJmt = new JMeterThread(cloneTree(tree), this, notifier);
++            
++            newJmt.setThreadNum(jmt.getThreadNum());
++            newJmt.setInitialContext(jmt.getInitialContext());
++            newJmt.setInitialDelay(0);
++            newJmt.setThreadName(threadName);
++            newJmt.setEngine(this);
++			newJmt.setOnErrorStopTest(jmt.getOnErrorStopTest());
++			newJmt.setOnErrorStopThread(jmt.getOnErrorStopThread());
++				
++
++            Thread newThread = new Thread(newJmt);
++            newThread.setName(threadName);
++            allThreads.put(newJmt, newThread);
++            allThreadNames.put(threadName, newJmt);
++            
++			for(Iterator it = engineMonitors.iterator(); it.hasNext();)
++			{
++				((JMeterEngineMonitor)it.next()).threadCreated(newJmt);
++			}
++            
++            jmt = null;
++            
++            newThread.start();
++			
++			return true;
++		}
++		
++		return false;
++    }
++    
++    public JMeterThread getThread(String threadName)
++    {
++		if (allThreadNames == null) return null;// e.g. not yet started
++    	JMeterThread thrd;
++		try {
++    	    thrd = (JMeterThread)allThreadNames.get(threadName);
++    	} catch (Exception e) {
++    		log.warn("getThread: "+e);
++    		return null;
++    	}
++    	
++    	return thrd;
++    }
++    
++    public boolean isTestRunning()
++    {
++		Iterator iter = new HashSet(allThreads.keySet()).iterator();
++		
++		while (iter.hasNext())
++		{
++			JMeterThread item = (JMeterThread) iter.next();
++			
++			if (item.isRunning())
++			{
++				return true;
++			}
++		}
++		
++		return false;
++    }
++    
++    public void addEngineMonitor(JMeterEngineMonitor monitor)
++    {
++		if (!engineMonitors.contains(monitor))
++		{
++			engineMonitors.add(monitor);
++		}
++    }
++    
++    public void removeEngineMonitor(JMeterEngineMonitor monitor)
++    {
++		if (engineMonitors.contains(monitor))
++		{
++			engineMonitors.remove(monitor);
++		}
++    }
++    
++    // end ---------------
+ }
+Index: jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Start.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Start.java,v
+retrieving revision 1.16
+diff -u -r1.16 Start.java
+--- jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Start.java	12 Jul 2005 20:50:26 -0000	1.16
++++ jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Start.java	23 Aug 2005 10:50:01 -0000
+@@ -1,4 +1,4 @@
+-// $Header: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Start.java,v 1.16 2005/07/12 20:50:26 mstover1 Exp $
++// $Header: /home/cvs/jakarta-jmeter/src/core/org/apache/jmeter/gui/action/Start.java,v 1.13.2.1 2004/09/18 20:03:13 sebb Exp $
+ /*
+  * Copyright 2001-2004 The Apache Software Foundation.
+  *
+@@ -14,7 +14,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  * 
+- */
++*/
+ 
+ package org.apache.jmeter.gui.action;
+ 
+@@ -36,76 +36,114 @@
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
++// begin -----------------
++import org.apache.jmeter.engine.util.VisualizerEngineAssigner;
++import org.apache.jmeter.engine.JMeterEngine;
++// end -------------------
++
+ /**
+- * @author Michael Stover Created March 1, 2001
+- * @version $Revision: 1.16 $ Last updated: $Date: 2005/07/12 20:50:26 $
++ * @author    Michael Stover
++ * Created     March 1, 2001
++ * @version   $Revision: 1.13.2.1 $ Last updated: $Date: 2004/09/18 20:03:13 $
+  */
+-public class Start extends AbstractAction {
+-	private static Logger log = LoggingManager.getLoggerForClass();
+-
+-	private static Set commands = new HashSet();
+-	static {
+-		commands.add(JMeterMenuBar.ACTION_START);
+-		commands.add(JMeterMenuBar.ACTION_STOP);
+-		commands.add(JMeterMenuBar.ACTION_SHUTDOWN);
+-	}
+-
+-	private StandardJMeterEngine engine;
+-
+-	/**
+-	 * Constructor for the Start object.
+-	 */
+-	public Start() {
+-	}
+-
+-	/**
+-	 * Gets the ActionNames attribute of the Start object.
+-	 * 
+-	 * @return the ActionNames value
+-	 */
+-	public Set getActionNames() {
+-		return commands;
+-	}
+-
+-	public void doAction(ActionEvent e) {
+-		if (e.getActionCommand().equals(JMeterMenuBar.ACTION_START)) {
+-			popupShouldSave(e);
+-			startEngine();
+-		} else if (e.getActionCommand().equals(JMeterMenuBar.ACTION_STOP)) {
+-			if (engine != null) {
+-				GuiPackage.getInstance().getMainFrame().showStoppingMessage("");
+-				engine.stopTest();
+-				engine = null;
+-			}
+-		} else if (e.getActionCommand().equals(JMeterMenuBar.ACTION_SHUTDOWN)) {
+-			if (engine != null) {
+-				GuiPackage.getInstance().getMainFrame().showStoppingMessage("");
+-				engine.askThreadsToStop();
+-				engine = null;
+-			}
+-		}
+-	}
+-
+-	protected void startEngine() {
+-		GuiPackage gui = GuiPackage.getInstance();
+-		engine = new StandardJMeterEngine();
+-		HashTree testTree = gui.getTreeModel().getTestPlan();
+-		convertSubTree(testTree);
+-		DisabledComponentRemover remover = new DisabledComponentRemover(testTree);
+-		testTree.traverse(remover);
+-		testTree.add(testTree.getArray()[0], gui.getMainFrame());
+-		log.debug("test plan before cloning is running version: "
+-				+ ((TestPlan) testTree.getArray()[0]).isRunningVersion());
+-		TreeCloner cloner = new TreeCloner(false);
+-		testTree.traverse(cloner);
+-		engine.configure(cloner.getClonedTree());
+-		try {
+-			engine.runTest();
+-		} catch (JMeterEngineException e) {
+-			JOptionPane.showMessageDialog(gui.getMainFrame(), e.getMessage(), JMeterUtils
+-					.getResString("Error Occurred"), JOptionPane.ERROR_MESSAGE);
+-		}
+-		log.debug("test plan after cloning and running test is running version: "
+-				+ ((TestPlan) testTree.getArray()[0]).isRunningVersion());
+-	}
++public class Start extends AbstractAction
++{
++    private static Logger log = LoggingManager.getLoggerForClass();
++    
++
++    private static Set commands = new HashSet();
++    static {
++        commands.add(JMeterMenuBar.ACTION_START);
++        commands.add(JMeterMenuBar.ACTION_STOP);
++        commands.add(JMeterMenuBar.ACTION_SHUTDOWN);
++    }
++
++    private StandardJMeterEngine engine;
++
++    /**
++     * Constructor for the Start object.
++     */
++    public Start()
++    {
++    }
++
++    /**
++     * Gets the ActionNames attribute of the Start object.
++     *
++     *@return   the ActionNames value
++     */
++    public Set getActionNames()
++    {
++        return commands;
++    }
++
++    public void doAction(ActionEvent e)
++    {
++        if (e.getActionCommand().equals(JMeterMenuBar.ACTION_START))
++        {
++            startEngine();
++        }
++        else if (e.getActionCommand().equals(JMeterMenuBar.ACTION_STOP))
++        {
++        	if (engine != null)
++        	{
++	            GuiPackage.getInstance().getMainFrame().showStoppingMessage("");
++	            engine.stopTest();
++	            engine = null;
++        	}
++        }
++        else if (e.getActionCommand().equals(JMeterMenuBar.ACTION_SHUTDOWN))
++        {
++        	if (engine != null)
++        	{
++	        	GuiPackage.getInstance().getMainFrame().showStoppingMessage("");
++	        	engine.askThreadsToStop();
++	        	engine = null;
++        	}
++        }
++    }
++
++    protected void startEngine()
++    {
++        GuiPackage gui = GuiPackage.getInstance();
++        engine = new StandardJMeterEngine();
++        HashTree testTree = gui.getTreeModel().getTestPlan();        
++        convertSubTree(testTree);
++        DisabledComponentRemover remover =
++            new DisabledComponentRemover(testTree);
++        testTree.traverse(remover);
++        
++        // begin -------------------
++        //
++        // uses the VisualizerEngineAssigner class to assign the
++        // engine to the Visualizers.
++        
++        VisualizerEngineAssigner vea = new VisualizerEngineAssigner((JMeterEngine)engine);
++        testTree.traverse(vea);
++        
++        // end ---------------------
++        
++        testTree.add(testTree.getArray()[0], gui.getMainFrame());
++        log.debug(
++            "test plan before cloning is running version: "
++                + ((TestPlan) testTree.getArray()[0]).isRunningVersion());
++        TreeCloner cloner = new TreeCloner(false);
++        testTree.traverse(cloner);
++        engine.configure(cloner.getClonedTree());
++        try
++        {
++            engine.runTest();
++        }
++        catch (JMeterEngineException e)
++        {
++            JOptionPane.showMessageDialog(
++                gui.getMainFrame(),
++                e.getMessage(),
++                JMeterUtils.getResString("Error Occurred"),
++                JOptionPane.ERROR_MESSAGE);
++        }
++        log.debug(
++            "test plan after cloning and running test is running version: "
++                + ((TestPlan) testTree.getArray()[0]).isRunningVersion());
++    }
+ }
+Index: jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.160
+diff -u -r1.160 messages.properties
+--- jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties	25 Aug 2005 21:05:00 -0000	1.160
++++ jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties	24 Aug 2005 10:23:57 -0000
+@@ -1,7 +1,3 @@
+-# Warning: JMeterUtils.getResString() replaces space with '_'
+-# and converts keys to lowercase before lookup
+-# => All keys in this file must also be lower case or they won't match
+-#
+ about=About Apache JMeter
+ add=Add
+ add_as_child=Add as Child
+@@ -10,16 +6,7 @@
+ add_test=Add Test
+ add_user=Add User
+ add_value=Add Value
+-addtest=Add test
+ aggregate_report=Aggregate Report
+-aggregate_report_90%_line=90% Line
+-aggregate_report_bandwidth=KB/sec
+-aggregate_report_count=# Samples
+-aggregate_report_error%=Error %
+-aggregate_report_max=Max
+-aggregate_report_median=Median
+-aggregate_report_min=Min
+-aggregate_report_rate=Throughput
+ aggregate_report_total_label=TOTAL
+ als_message=Note\: The Access Log Parser is generic in design and allows you to plugin
+ als_message2=your own parser. To do so, implement the LogParser, add the jar to the
+@@ -42,13 +29,9 @@
+ assertion_title=Response Assertion
+ assertion_url_samp=URL Sampled
+ assertion_visualizer_title=Assertion Results
+-attribute=Attribute
+-attrs=Attributes
+ auth_base_url=Base URL
+ auth_manager_title=HTTP Authorization Manager
+ auths_stored=Authorizations Stored in the Authorization Manager
+-average=Average
+-bind=Thread Bind
+ browse=Browse...
+ bsf_sampler_title=BSF Sampler
+ bsf_script=Script to run
+@@ -72,12 +55,10 @@
+ clear=Clear
+ clear_all=Clear All
+ clear_cookies_per_iter=Clear cookies each iteration?
++cn=Chinese
+ column_delete_disallowed=Deleting this column is not permitted
+ column_number=Column number of CSV file | next | *alias
+-compare=Compare
+-comparefilt=Compare filter
+ config_element=Config Element
+-config_save_settings=Configure
+ configure_wsdl=Configure
+ constant_throughput_timer_memo=Add a delay between sampling to attain constant throughput
+ constant_timer_delay=Thread Delay (in milliseconds)\:
+@@ -87,16 +68,8 @@
+ cookie_manager_title=HTTP Cookie Manager
+ cookies_stored=Cookies Stored in the Cookie Manager
+ copy=Copy
+-corba_config_title=CORBA Sampler Config
+-corba_input_data_file=Input Data File\:
+-corba_methods=Choose method to invoke\:
+-corba_name_server=Name Server\:
+-corba_port=Port Number\:
+-corba_request_data=Input Data
+-corba_sample_title=CORBA Sampler
+ counter_config_title=Counter
+ counter_per_user=Track counter independently for each user
+-countlim=Size limit
+ csvread_file_file_name=CSV file to get values from | *alias
+ cut=Cut
+ cut_paste_function=Copy and paste function string
+@@ -111,7 +84,6 @@
+ database_testing_title=JDBC Request
+ database_url=JDBC URL\:
+ database_url_jdbc_props=Database URL and JDBC Driver
+-ddn=DN
+ de=German
+ default_parameters=Default Parameters
+ default_value_field=Default Value\:
+@@ -120,14 +92,9 @@
+ delete_parameter=Delete Variable
+ delete_test=Delete Test
+ delete_user=Delete User
+-deltest=deletion test
+-deref=Dereference aliases
+ disable=Disable
+-distribution_graph_title=Distribution Graph (alpha)
+-distribution_note1=The graph will update every 10 samples
+ dn=DN
+ domain=Domain
+-done=Done
+ duration=Duration (seconds)
+ duration_assertion_duration_test=Duration to Assert
+ duration_assertion_failure=The operation lasted too long\: It took {0} milliseconds, but should not have lasted longer than {1} milliseconds.
+@@ -142,10 +109,8 @@
+ encoded_value=URL Encoded Value
+ endtime=End Time  
+ entry_dn=Entry DN
+-entrydn=Entry DN
+ error_loading_help=Error loading help page
+ error_occurred=Error Occurred
+-es=Spanish
+ example_data=Sample Data
+ example_title=Example Sampler
+ exit=Exit
+@@ -174,9 +139,9 @@
+ foreach_input=Input variable prefix
+ foreach_output=Output variable name
+ foreach_use_separator=Add "_" before number ?
+-fr=French
+ ftp_sample_title=FTP Request Defaults
+ ftp_testing_title=FTP Request
++fr=French
+ function_dialog_menu_item=Function Helper Dialog
+ function_helper_title=Function Helper
+ function_name_param=Name of function.  Used to store values for use elsewhere in the testplan.
+@@ -219,7 +184,6 @@
+ headers_stored=Headers Stored in the Header Manager
+ help=Help
+ html_assertion_label=HTML Assertion
+-html_assertion_title=HTML Assertion
+ html_parameter_mask=HTML Parameter Mask
+ http_response_code=HTTP response code
+ http_url_rewriting_modifier_title=HTTP URL Re-writing Modifier
+@@ -229,12 +193,9 @@
+ if_controller_label=Condition
+ if_controller_title=If Controller
+ ignore_subcontrollers=Ignore sub-controller blocks
+-include_controller=Include Controller
+ include_equals=Include Equals?
+-include_path=Include Test Plan
+ increment=Increment
+ infinite=Forever
+-initial_context_factory=Initial Context Factory
+ insert_after=Insert After
+ insert_before=Insert Before
+ insert_parent=Insert Parent
+@@ -242,61 +203,11 @@
+ intsum_param_1=First int to add.
+ intsum_param_2=Second int to add - further ints can be summed by adding further arguments.
+ invalid_data=Invalid data
+-invalid_mail=Error occurred sending the e-mail
+-invalid_mail_address=One or more invalid e-mail addresses detected
+-invalid_mail_server=Problem contacting the e-mail server (see JMeter log file)
++invalid_mail_server=The mail-server is unknown.
+ iteration_counter_arg_1=TRUE, for each user to have own counter, FALSE for a global counter
+ iterator_num=Loop Count\:
+ java_request=Java Request
+ java_request_defaults=Java Request Defaults
+-jms_auth_not_required=Not Required
+-jms_auth_required=Required
+-jms_authentication=Authentication
+-jms_client_caption=Receive client uses TopicSubscriber.receive() to listen for message.
+-jms_client_caption2=MessageListener uses onMessage(Message) interface to listen for new messages.
+-jms_client_type=Client
+-jms_communication_style=Communication style
+-jms_concrete_connection_factory=Concrete Connection Factory
+-jms_config=Configuration
+-jms_config_title=JMS Configuration
+-jms_point_to_point=JMS Point-to-Point
+-jms_connection_factory=Connection Factory
+-jms_error_msg=Object message should read from an external file. Text input is currently selected, please remember to change it.
+-jms_file=File
+-jms_initial_context_factory=Initial Context Factory
+-jms_itertions=Number of samples to aggregate
+-jms_jndi_defaults_title=JNDI Default Configuration
+-jms_jndi_props=JNDI Properties
+-jms_message_title=Message properties
+-jms_message_type=Message Type
+-jms_msg_content=Content
+-jms_object_message=Object Message
+-jms_props=JMS Properties
+-jms_provider_url=Provider URL
+-jms_publisher=JMS Publisher
+-jms_pwd=Password
+-jms_queue=Queue
+-jms_queue_connection_factory=QueueConnection Factory
+-jms_queueing=JMS Resources
+-jms_random_file=Random File
+-jms_read_response=Read Response
+-jms_receive_queue=JNDI name Receive queue
+-jms_request=Request Only
+-jms_requestreply=Request Response
+-jms_sample_title= JMS Default Request
+-jms_send_queue=JNDI name Request queue
+-jms_subscriber_on_message=Use MessageListener.onMessage()
+-jms_subscriber_receive=Use TopicSubscriber.receive()
+-jms_subscriber_title=JMS Subscriber
+-jms_testing_title= Messaging Request
+-jms_text_message=Text Message
+-jms_timeout=Timeout (milliseconds)
+-jms_topic=Topic
+-jms_use_file=From file
+-jms_use_properties_file=Use jndi.properties file
+-jms_use_random_file=Random File
+-jms_use_text=Textarea
+-jms_user=User
+ jndi_config_title=JNDI Configuration
+ jndi_lookup_name=Remote Interface
+ jndi_lookup_title=JNDI Lookup Configuration
+@@ -312,30 +223,8 @@
+ jndi_testing_title=JNDI Request
+ jndi_url_jndi_props=JNDI Properties
+ jp=Japanese
+-junit_constructor_string=Constructor String Label
+-junit_do_setup_teardown=Do not call setUp and tearDown
+-junit_error_code=Error Code
+-junit_error_default_code=9999
+-junit_error_msg=Error Message
+-junit_error_default_msg=An unexpected error occured
+-junit_failure_code=Failure Code
+-junit_failure_default_code=0001
+-junit_failure_msg=Failure Message
+-junit_failure_default_msg=Test failed
+-junit_pkg_filter=Package Filter
+-junit_request=JUnit Request
+-junit_request_defaults=JUnit Request Defaults
+-junit_success_code=Success Code
+-junit_success_default_code=1000
+-junit_success_msg=Success Message
+-junit_success_default_msg=Test successful
+-junit_test_method=Test Method
+-junit_test_config=JUnit Test Parameters
+-ldap_argument_list=LDAPArgument List
+ ldap_sample_title=LDAP Request Defaults
+ ldap_testing_title=LDAP Request
+-ldapext_sample_title=LDAP Extended Request Defaults
+-ldapext_testing_title= LDAP Extended Request
+ load=Load
+ load_wsdl=Load WSDL
+ log_errors_only=Log Errors Only
+@@ -351,27 +240,15 @@
+ loop_controller_title=Loop Controller
+ looping_control=Looping Control
+ lower_bound=Lower Bound
+-mail_reader_account=Username:
+-mail_reader_all_messages=All
+-mail_reader_delete=Delete messages from the server
+-mail_reader_folder=Folder:
+-mail_reader_imap=IMAP
+-mail_reader_num_messages=Number of messages to retrieve:
+-mail_reader_password=Password:
+-mail_reader_pop3=POP3
+-mail_reader_server=Server:
+-mail_reader_server_type=Server Type:
+-mail_reader_title=Mail Reader Sampler
+-mail_sent=Mail sent successfully
+ mailer_attributes_panel=Mailing attributes
+ mailer_error=Couldn't send mail. Please correct any misentries.
+ mailer_visualizer_title=Mailer Visualizer
+ match_num_field=Match No. (0 for Random)\:
+ max=Maximum
+ maximum_param=The maximum value allowed for a range of values
++md5hex_assertion_md5hex_test=MD5Hex to Assert
+ md5hex_assertion_failure=Error asserting MD5 sum : got {0} but should have been {1}
+ md5hex_assertion_label=MD5Hex
+-md5hex_assertion_md5hex_test=MD5Hex to Assert
+ md5hex_assertion_title=MD5Hex Assertion
+ memory_cache=Memory Cache
+ menu_assertions=Assertions
+@@ -394,28 +271,25 @@
+ mimetype=Mimetype
+ minimum_param=The minimum value allowed for a range of values
+ minute=minute
+-modddn=Old entry name
+ modification_controller_title=Modification Controller
+ modification_manager_title=Modification Manager
+ modify_test=Modify Test
+-modtest=Modification test
+ module_controller_title=Module Controller
+-module_controller_warning=Could not find module: 
++monitor_equation_healthy=Healthy:  (busy/max) < 25%
+ monitor_equation_active=Active:  (busy/max) > 25%
++monitor_equation_warning=Warning:  (busy/max) > 67%
+ monitor_equation_dead=Dead:  no response
+-monitor_equation_healthy=Healthy:  (busy/max) < 25%
+ monitor_equation_load=Load:  ( (busy / max) * 50) + ( (used memory / max memory) * 50)
+-monitor_equation_warning=Warning:  (busy/max) > 67%
+-monitor_health_tab_title=Health
+ monitor_health_title=Monitor Results
++monitor_health_tab_title=Health
+ monitor_is_title=Use as Monitor
+-monitor_label_left_bottom=0 %
+-monitor_label_left_middle=50 %
+ monitor_label_left_top=100 %
+-monitor_label_right_active=Active
+-monitor_label_right_dead=Dead
++monitor_label_left_middle=50 %
++monitor_label_left_bottom=0 %
+ monitor_label_right_healthy=Healthy
++monitor_label_right_active=Active
+ monitor_label_right_warning=Warning
++monitor_label_right_dead=Dead
+ monitor_legend_health=Health
+ monitor_legend_load=Load
+ monitor_legend_memory_per=Memory % (used/total)
+@@ -427,11 +301,9 @@
+ monitor_performance_title=Performance Graph
+ name=Name\:
+ new=New
+-newdn=New distinghuised name
+ no=Norwegian
+ number_of_threads=Number of Threads\:
+ once_only_controller_title=Once Only Controller
+-opcode=opCode
+ open=Open...
+ option=Options
+ optional_tasks=Optional Tasks
+@@ -453,7 +325,6 @@
+ property_editor.value_is_invalid_message=The text you just entered is not a valid value for this property.\nThe property will be reverted to its previous value.
+ property_editor.value_is_invalid_title=Invalid input
+ property_name_param=Name of property
+-property_value_param=Value of property
+ property_tool_tip={0}\: {1}
+ property_undefined=Undefined
+ protocol=Protocol\:
+@@ -461,11 +332,9 @@
+ protocol_java_classname=Classname\:
+ protocol_java_config_tile=Configure Java Sample
+ protocol_java_test_title=Java Testing
+-provider_url=Provider URL
+ proxy_assertions=Add Assertions
+ proxy_cl_error=If specifying a proxy server, host and port must be given
+ proxy_headers=Capture HTTP Headers
+-proxy_regex=Regex matching
+ proxy_separators=Add Separators
+ proxy_target=Target Controller\:
+ proxy_title=HTTP Proxy Server
+@@ -497,64 +366,32 @@
+ remote_stop=Remote Stop
+ remote_stop_all=Remote Stop All
+ remove=Remove
+-rename=Rename entry
+ report=Report
+-reportpage=Report Page
+-report_plan=Report Plan
+ request_data=Request Data
+ restart=Restart
+ resultaction_title=Result Status Action Handler
+ resultsaver_errors=Save Failed Responses only
+ resultsaver_prefix=Filename prefix\:
+ resultsaver_title=Save Responses to a file
+-retobj=Return object
+ root=Root
+ root_title=Root
+ run=Run
+ running_test=Running test
+ runtime_controller_title=Runtime Controller
+ runtime_seconds=Runtime (seconds)
+-sample_result_save_configuration=Sample Result Save Configuration
+ sampler_on_error_action=Action to be taken after a Sampler error
+ sampler_on_error_continue=Continue
+ sampler_on_error_stop_test=Stop Test
+ sampler_on_error_stop_thread=Stop Thread
+-save=Save
++save=Save Test Plan
+ save?=Save?
+ save_all_as=Save Test Plan as
+ save_as=Save As...
+-save_as_image=Save As Image
+-save_assertionresultsfailuremessage=Save Assertion Results Failure Message
+-save_assertions=Save Assertion Results
+-save_asxml=Save As XML
+-save_code=Save Response Code
+-save_contentlength=Save Content Length
+-save_datatype=Save Data Type
+-save_encoding=Save Encoding
+-save_fieldnames=Save Field Names
+-save_graphics=Save Graph
+-save_label=Save Label
+-save_latency=Save Latency
+-save_message=Save Response Message
+-save_requestheaders=Save Request Headers
+-save_responsedata=Save Response Data
+-save_responseheaders=Save Response Headers
+-save_samplerdata=Save Sampler Data
+-save_subresults=Save Sub Results
+-save_success=Save Success
+-save_threadname=Save Thread Name
+-save_time=Save Time
+-save_timestamp=Save Time Stamp
+-sbind=Single bind/unbind
+ scheduler=Scheduler
+ scheduler_configuration=Scheduler Configuration
+-scope=Scope
+ search_base=Search base
+ search_filter=Search Filter
+ search_test=Search Test
+-searchbase=Search base
+-searchfilter=Search Filter
+-searchtest=Search test
+ second=second
+ secure=Secure
+ send_file=Send a File With the Request\:
+@@ -565,20 +402,26 @@
+ server=Server Name or IP\:
+ servername=Servername \:
+ session_argument_name=Session Argument Name
+-should_save=You should save your test plan before running it.  \nIf you are using supporting data files (ie, for CSV Data Set or _StringFromFile), \nthen it is particularly important to first save your test script.
+ shutdown=Shutdown
+ simple_config_element=Simple Config Element
+ simple_data_writer_title=Simple Data Writer
+ size_assertion_comparator_error_equal=been equal to
+ size_assertion_comparator_error_greater=been greater than
+ size_assertion_comparator_error_greaterequal=been greater or equal to
+-size_assertion_comparator_error_less=been less than
++size_assertion_comparator_error_less=been less then
+ size_assertion_comparator_error_lessequal=been less than or equal to
+ size_assertion_comparator_error_notequal=not been equal to
+ size_assertion_comparator_label=Type of Comparison
++size_assertion_equal=1
+ size_assertion_failure=The result was the wrong size\: It was {0} bytes, but should have {1} {2} bytes.
++size_assertion_greaterthan=3
++size_assertion_greaterthanequal=5
+ size_assertion_input_error=Please enter a valid positive integer.
+ size_assertion_label=Size in bytes\:
++size_assertion_lessthan=4
++size_assertion_lessthanequal=6
++size_assertion_notequal=2
++size_assertion_size=99999999
+ size_assertion_size_test=Size to Assert
+ size_assertion_title=Size Assertion
+ soap_action=Soap Action
+@@ -610,9 +453,6 @@
+ summariser_title=Generate Summary Results
+ switch_controller_label=Switch Value
+ switch_controller_title=Switch Controller
+-table_visualizer_bytes=Bytes
+-table_visualizer_sample_num=Sample #
+-table_visualizer_sample_time=Sample Time(ms)
+ tcp_config_title=TCP Sampler Config
+ tcp_nodelay=Set NoDelay
+ tcp_port=Port Number\:
+@@ -621,20 +461,10 @@
+ tcp_timeout=Timeout (milliseconds)\:
+ template_field=Template\:
+ test=Test
+-testconfiguration=Test Configuration
+-test_action_action=Action
+-test_action_duration=Duration
+-test_action_pause=Pause
+-test_action_stop=Stop
+-test_action_target=Target
+-test_action_target_test=All Threads
+-test_action_target_thread=Current Thread
+-test_action_title=Test Action
+ test_configuration=Test Configuration
+ test_plan=Test Plan
+ testplan.serialized=Run each Thread Group separately (i.e. run one group before starting the next)
+ testplan_comments=Comments\:
+-testt=Test
+ thread_delay_properties=Thread Delay Properties
+ thread_group_title=Thread Group
+ thread_properties=Thread Properties
+@@ -644,9 +474,7 @@
+ throughput_control_perthread_label=Per User
+ throughput_control_title=Throughput Controller
+ throughput_control_tplabel=Throughput
+-timelim=Time limit
+ transaction_controller_title=Transaction Controller
+-unbind=Thread Unbind
+ uniform_timer_delay=Constant Delay Offset (in milliseconds)\:
+ uniform_timer_memo=Adds a random delay with a uniform distribution
+ uniform_timer_range=Random Delay Maximum (in milliseconds)\:
+@@ -671,19 +499,16 @@
+ user_param_mod_help_note=(Do not change this.  Instead, modify the file of that name in JMeter's /bin directory)
+ user_parameters_table=Parameters
+ user_parameters_title=User Parameters
+-userdn=Username
+ username=Username
+-userpw=Password
+ value=Value
+ var_name=Reference Name
+ view_graph_tree_title=View Graph Tree
+ view_results_in_table=View Results in Table
++view_results_title=View Results
++view_results_tab_sampler=Sampler result
+ view_results_tab_request=Request
+ view_results_tab_response=Response data
+-view_results_tab_sampler=Sampler result
+-view_results_title=View Results
+ view_results_tree_title=View Results Tree
+-warning=Warning!
+ web_request=HTTP Request
+ web_server=Web Server
+ web_server_domain=Server Name or IP\:
+@@ -695,10 +520,10 @@
+ webservice_proxy_note2=will look at command line options. If no proxy host or port are provided by
+ webservice_proxy_note3=either, it will fail silently.
+ webservice_proxy_port=Proxy Port
+-webservice_sampler_title=WebService(SOAP) Request
++webservice_sampler_title=WebService(SOAP) Request (Beta Code)
+ webservice_soap_action=SOAPAction
+ webservice_use_proxy=Use HTTP Proxy
+-while_controller_label=Condition
++while_controller_label=Condition (blank/LAST or true)
+ while_controller_title=While Controller
+ workbench_title=WorkBench
+ wsdl_helper_error=The WSDL was not valid, please double check the url.
+@@ -709,23 +534,24 @@
+ xml_tolerant_button=Tolerant XML/HTML Parser
+ xml_validate_button=Validate XML
+ xml_whitespace_button=Ignore Whitespace
+-xmlschema_assertion_label=File Name:
+-xmlschema_assertion_title=XML Schema Assertion
+-xpath_assertion_button=Validate
+-xpath_assertion_check=Check XPath Expression
+-xpath_assertion_error=Error with XPath
+-xpath_assertion_failed=Invalid XPath Expression
+ xpath_assertion_label=XPath
+-xpath_assertion_negate=True if nothing matches
+ xpath_assertion_option=XML Parsing Options
++xpath_assertion_validation=Validate the XML against the DTD
++xpath_assertion_whitespace=Ignore whitespace
++xpath_assertion_title=XPath Assertion
++xpath_assertion_error=Error with XPath
+ xpath_assertion_test=XPath Assertion 
+ xpath_assertion_tidy=Try and tidy up the input
+-xpath_assertion_title=XPath Assertion
++xpath_assertion_check=Check XPath Expression
+ xpath_assertion_valid=Valid XPath Expression
+-xpath_assertion_validation=Validate the XML against the DTD
+-xpath_assertion_whitespace=Ignore whitespace
+-xpath_expression=XPath expression to match against
++xpath_assertion_failed=Invalid XPath Expression
++xpath_assertion_button=Validate
++xpath_assertion_negate=True if nothing matches
+ xpath_file_file_name=XML file to get values from 
++xpath_expression=XPath expression to match against
+ you_must_enter_a_valid_number=You must enter a valid number
+-zh_cn=Chinese (Simplified)
+-zh_tw=Chinese (Traditional)
+\ No newline at end of file
++# begin
++thread_watcher_visualizer_title=Thread Watcher
++thread_watcher_visualizer_status_run=Running
++thread_watcher_visualizer_status_stop=Stopped
++# end
+Index: jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThread.java,v
+retrieving revision 1.62
+diff -u -r1.62 JMeterThread.java
+--- jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThread.java	15 Aug 2005 20:33:07 -0000	1.62
++++ jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThread.java	25 Aug 2005 10:05:47 -0000
+@@ -1,4 +1,4 @@
+-// $Header: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThread.java,v 1.62 2005/08/15 20:33:07 mstover1 Exp $
++// $Header: /home/cvs/jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThread.java,v 1.48.2.7 2005/03/14 00:54:43 sebb Exp $
+ /*
+  * Copyright 2001-2004 The Apache Software Foundation.
+  *
+@@ -14,14 +14,15 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  * 
+- */
++*/
+ 
+ package org.apache.jmeter.threads;
+-
+ import java.util.Collection;
++import java.util.HashMap;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.ListIterator;
++import java.util.Map;
+ 
+ import org.apache.jmeter.assertions.Assertion;
+ import org.apache.jmeter.assertions.AssertionResult;
+@@ -33,12 +34,12 @@
+ import org.apache.jmeter.samplers.SampleEvent;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+-import org.apache.jmeter.testbeans.TestBeanHelper;
++import org.apache.jmeter.testbeans.TestBean;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestListener;
+-import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.timers.Timer;
+ import org.apache.jorphan.collections.HashTree;
++import org.apache.jorphan.collections.HashTreeTraverser;
+ import org.apache.jorphan.collections.SearchByClass;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JMeterStopTestException;
+@@ -49,495 +50,574 @@
+ /**
+  * The JMeter interface to the sampling process, allowing JMeter to see the
+  * timing, add listeners for sampling events and to stop the sampling process.
+- * 
+- * @version $Revision: 1.62 $ Last updated: $Date: 2005/08/15 20:33:07 $
++ *
++ * @author    unattributed
++ * @version   $Revision: 1.48.2.7 $ Last updated: $Date: 2005/03/14 00:54:43 $
+  */
+-public class JMeterThread implements Runnable, java.io.Serializable {
+-	transient private static Logger log = LoggingManager.getLoggerForClass();
+-
+-	// NOT USED private static Map samplers = new HashMap();
+-	private int initialDelay = 0;
+-
+-	private Controller controller;
+-
+-	private boolean running;
+-
+-	private HashTree testTree;
+-
+-	private transient TestCompiler compiler;
+-
+-	private JMeterThreadMonitor monitor;
+-
+-	private String threadName;
+-
+-	private transient JMeterContext threadContext;
+-
+-	private transient JMeterVariables threadVars;
+-
+-	private transient Collection testListeners;   // Elements that implement TestListener
+-
+-    private transient Collection threadListeners; // Elements that implement ThreadListener
+-
+-    private transient ListenerNotifier notifier;
+-
+-	private int threadNum = 0;
+-
+-	private long startTime = 0;
+-
+-	private long endTime = 0;
+-
+-	private boolean scheduler = false;
+-
+-	// based on this scheduler is enabled or disabled
+-
+-	private ThreadGroup threadGroup; // Gives access to parent thread
+-										// threadGroup
+-
+-	private StandardJMeterEngine engine = null; // For access to stop methods.
+-
++public class JMeterThread implements Runnable, java.io.Serializable
++{
++    transient private static Logger log = LoggingManager.getLoggerForClass();
++    static Map samplers = new HashMap();
++    int initialDelay = 0;
++    Controller controller;
++    private boolean running;
++    HashTree testTree;
++    TestCompiler compiler;
++    JMeterThreadMonitor monitor;
++    String threadName;
++    JMeterContext threadContext; // current working thread context
++    JMeterVariables threadVars;// Initial thread variables
++    Collection testListeners;
++    ListenerNotifier notifier;
++    int threadNum = 0;
++    long startTime = 0; 
++    long endTime = 0;
++    private boolean scheduler = false;
++    //based on this scheduler is enabled or disabled
++    
++    
++    private StandardJMeterEngine engine = null; // For access to stop methods.
+ 	private boolean onErrorStopTest;
+-
+ 	private boolean onErrorStopThread;
++    
++    public static final String PACKAGE_OBJECT = "JMeterThread.pack"; // $NON-NLS-1$
++    public static final String LAST_SAMPLE_OK = "JMeterThread.last_sample_ok"; // $NON-NLS-1$
++    
++    // begin ----------
++    private JMeterContext initialContext;
++    private boolean started = false;
++    // end ------------
+ 
+-	public static final String PACKAGE_OBJECT = "JMeterThread.pack"; // $NON-NLS-1$
+-
+-	public static final String LAST_SAMPLE_OK = "JMeterThread.last_sample_ok"; // $NON-NLS-1$
++    public JMeterThread()
++    {
++    }
+ 
+-	public JMeterThread() {
+-	}
++    public JMeterThread(
++        HashTree test,
++        JMeterThreadMonitor monitor,
++        ListenerNotifier note)
++    {
++        this.monitor = monitor;
++        threadVars = new JMeterVariables();
++        testTree = test;
++        compiler = new TestCompiler(testTree, threadVars);
++        controller = (Controller) testTree.getArray()[0];
++        SearchByClass threadListenerSearcher =
++            new SearchByClass(TestListener.class);
++        test.traverse(threadListenerSearcher);
++        testListeners = threadListenerSearcher.getSearchResults();
++        notifier = note;
++    }
+ 
+-	public JMeterThread(HashTree test, JMeterThreadMonitor monitor, ListenerNotifier note) {
+-		this.monitor = monitor;
+-		threadVars = new JMeterVariables();
+-		testTree = test;
+-		compiler = new TestCompiler(testTree, threadVars);
+-		controller = (Controller) testTree.getArray()[0];
+-        
+-		SearchByClass threadListenerSearcher = new SearchByClass(TestListener.class);
+-		test.traverse(threadListenerSearcher);
+-		testListeners = threadListenerSearcher.getSearchResults();
+-        
+-        SearchByClass testListenerSearcher = new SearchByClass(ThreadListener.class);
+-        test.traverse(testListenerSearcher);
+-        threadListeners = testListenerSearcher.getSearchResults();
++    public void setInitialContext(JMeterContext context)
++    {
++		// begin -------------------
++		initialContext = context;
++		// end ---------------------
+ 		
+-        notifier = note;
+-		running = true;
+-	}
++        threadVars.putAll(context.getVariables());
++    }
+ 
+-	public void setInitialContext(JMeterContext context) {
+-		threadVars.putAll(context.getVariables());
+-	}
+ 
+-	/**
+-	 * Checks whether the JMeterThread is Scheduled. author
+-	 * T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	public boolean isScheduled() {
+-		return this.scheduler;
+-	}
++    /**
++     * Checks whether the JMeterThread is Scheduled.
++     * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    public boolean isScheduled()
++    {
++        return this.scheduler;
++    }
+ 
+-	/**
+-	 * Enable the scheduler for this JMeterThread. author
+-	 * T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	public void setScheduled(boolean sche) {
+-		this.scheduler = sche;
+-	}
++    /**
++     * Enable the scheduler for this JMeterThread.
++     * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    public void setScheduled(boolean sche)
++    {
++        this.scheduler = sche;
++    }
+ 
+-	/**
+-	 * Set the StartTime for this Thread.
+-	 * 
+-	 * @param stime
+-	 *            the StartTime value. author
+-	 *            T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	public void setStartTime(long stime) {
+-		startTime = stime;
+-	}
+ 
+-	/**
+-	 * Get the start time value.
+-	 * 
+-	 * @return the start time value. author
+-	 *         T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	public long getStartTime() {
+-		return startTime;
+-	}
++    /**
++     * Set the StartTime for this Thread.
++     *
++     * @param stime the StartTime value.
++     * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    public void setStartTime(long stime)
++    {
++        startTime = stime;
++    }
+ 
+-	/**
+-	 * Set the EndTime for this Thread.
+-	 * 
+-	 * @param etime
+-	 *            the EndTime value. author
+-	 *            T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	public void setEndTime(long etime) {
+-		endTime = etime;
+-	}
++    /**
++     * Get the start time value.
++     *
++     * @return the start time value.
++     * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    public long getStartTime()
++    {
++        return startTime;
++    }
+ 
+-	/**
+-	 * Get the end time value.
+-	 * 
+-	 * @return the end time value. author
+-	 *         T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	public long getEndTime() {
+-		return endTime;
+-	}
++    /**
++     * Set the EndTime for this Thread.
++     *
++     * @param etime the EndTime value.
++     * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    public void setEndTime(long etime)
++    {
++        endTime = etime;
++    }
++    
++    /**
++     * Get the end time value.
++     *
++     * @return the end time  value.
++     * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    public long getEndTime()
++    {
++        return endTime;
++    }
+ 
+-	/**
+-	 * Check the scheduled time is completed.
+-	 * 
+-	 * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	private void stopScheduler() {
+-		long delay = System.currentTimeMillis() - endTime;
+-		if ((delay >= 0)) {
+-			running = false;
+-		}
+-	}
+ 
+-	/**
+-	 * Wait until the scheduled start time if necessary
+-	 * 
+-	 * Author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
+-	 */
+-	private void startScheduler() {
+-		long delay = (startTime - System.currentTimeMillis());
+-		if (delay > 0) {
+-			try {
+-				Thread.sleep(delay);
+-			} catch (Exception e) {
+-			}
+-		}
+-	}
++    /**
++     * Check the scheduled time is completed.
++     *
++     * author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    private void stopScheduler()
++    {
++        long delay = System.currentTimeMillis() - endTime;
++        if ((delay >= 0))
++        {
++            running = false;
++        }
++    }
+ 
+-	public void setThreadName(String threadName) {
+-		this.threadName = threadName;
+-	}
++    /**
++     * Wait until the scheduled start time if necessary
++     *
++     * Author T.Elanjchezhiyan(chezhiyan@siptech.co.in)
++     */
++    private void startScheduler()
++    {
++        long delay = (startTime - System.currentTimeMillis());
++        if (delay > 0)
++        {
++            try
++            {
++                Thread.sleep(delay);
++            }
++            catch (Exception e)
++            {
++            }
++        }
++    }
+ 
+-	/*
+-	 * See below for reason for this change. Just in case this causes problems,
+-	 * allow the change to be backed out
+-	 */
+-	private static final boolean startEarlier = org.apache.jmeter.util.JMeterUtils.getPropDefault(
+-			"jmeterthread.startearlier", true);
++    public void setThreadName(String threadName)
++    {
++        this.threadName = threadName;
++    }
+ 
+-	static {
+-		if (startEarlier) {
++	/*
++	 * See below for reason for this change.
++	 * Just in case this causes problems, allow the change to be backed out
++	*/
++	private static final boolean startEarlier =
++		org.apache.jmeter.util.JMeterUtils.getPropDefault("jmeterthread.startearlier",true);
++	
++	static{
++		if (startEarlier){
+ 			log.warn("jmeterthread.startearlier=true (see jmeter.properties)");
+ 		} else {
+-			log.info("jmeterthread.startearlier=false (see jmeter.properties)");
++			log.info("jmeterthread.startearlier=false (see jmeter.properties)");			
+ 		}
+ 	}
++	
++    public void run()
++    {
++        try
++        {
++            threadContext = JMeterContextService.getContext();
++            threadContext.setVariables(threadVars);
++            threadContext.setThreadNum(getThreadNum());
++            // initialise
++            threadContext.getVariables().put(LAST_SAMPLE_OK,"true"); // $NON-NLS-1$
++            testTree.traverse(compiler);
++            running = true;
++            //listeners = controller.getListeners();
++
++            if (scheduler)
++            {
++                //set the scheduler to start
++                startScheduler();
++            }
+ 
+-	public void run() {
+-		try {
+-			initRun();
+-			while (running) {
+-				Sampler sam;
+-				while (running && (sam = controller.next()) != null) {
+-					try {
+-						threadContext.setCurrentSampler(sam);
+-						SamplePackage pack = compiler.configureSampler(sam);
+-
+-						// Hack: save the package for any transaction
+-						// controllers
+-						threadContext.getVariables().putObject(PACKAGE_OBJECT, pack);
+-
+-						delay(pack.getTimers());
+-						Sampler sampler = pack.getSampler();
+-						sampler.setThreadContext(threadContext);
+-						sampler.setThreadName(threadName);
+-						TestBeanHelper.prepare(sampler);
+-						SampleResult result = sampler.sample(null); // TODO:
+-																	// remove
+-																	// this
+-																	// useless
+-																	// Entry
+-																	// parameter
+-						if (result != null) {
+-							result.setThreadName(threadName);
+-							threadContext.setPreviousResult(result);
+-							runPostProcessors(pack.getPostProcessors());
+-							checkAssertions(pack.getAssertions(), result);
+-							notifyListeners(pack.getSampleListeners(), result);
+-							compiler.done(pack);
+-							if (result.isStopThread() || (!result.isSuccessful() && onErrorStopThread)) {
+-								stopThread();
+-							}
+-							if (result.isStopTest() || (!result.isSuccessful() && onErrorStopTest)) {
+-								stopTest();
+-							}
+-						}
+-						if (scheduler) {
+-							// checks the scheduler to stop the iteration
+-							stopScheduler();
+-						}
+-
+-					} catch (JMeterStopTestException e) {
+-						log.info("Stopping Test: " + e.toString());
+-						stopTest();
+-					} catch (JMeterStopThreadException e) {
+-						log.info("Stopping Thread: " + e.toString());
+-						stopThread();
+-					} catch (Exception e) {
+-						log.error("", e);
++			rampUpDelay();
++            
++            log.info("Thread " + Thread.currentThread().getName() + " started");
++			/*
++			 *  Setting SamplingStarted before the contollers are initialised
++			 *  allows them to access the running values of functions and variables
++			 *  (however it does not seem to help with the listeners)
++			 */
++            if (startEarlier) threadContext.setSamplingStarted(true);
++            controller.initialize();
++            controller.addIterationListener(new IterationListener());
++			if (!startEarlier) threadContext.setSamplingStarted(true);
++            threadStarted();
++            while (running)
++            {
++                Sampler sam;
++                while (running && (sam=controller.next())!=null)
++                {
++                    try
++                    {
++                        threadContext.setCurrentSampler(sam);
++                        SamplePackage pack = compiler.configureSampler(sam);
++                        
++                        //Hack: save the package for any transaction controllers
++                        threadContext.getVariables().putObject(PACKAGE_OBJECT,pack);
++                        
++                        delay(pack.getTimers());
++                        Sampler sampler= pack.getSampler();
++                        sampler.setThreadContext(threadContext);
++                        sampler.setThreadName(threadName);
++                        if (sampler instanceof TestBean) ((TestBean)sampler).prepare();               
++                        SampleResult result = sampler.sample(null); // TODO: remove this useless Entry parameter
++                        result.setThreadName(threadName);
++                        threadContext.setPreviousResult(result);
++                        runPostProcessors(pack.getPostProcessors());
++                        checkAssertions(pack.getAssertions(), result);
++                        notifyListeners(pack.getSampleListeners(), result);
++                        compiler.done(pack);
++                        if (result.isStopThread() || (!result.isSuccessful() && onErrorStopThread)){
++                        	stopThread();
++                        }
++                        if (result.isStopTest() || (!result.isSuccessful() && onErrorStopTest)){
++                        	stopTest();
++                        }
++                        if (scheduler)
++                        {
++                            //checks the scheduler to stop the iteration
++                            stopScheduler();
++                        }
++
++                    }
++                    catch (JMeterStopTestException e)
++					{
++                    	log.info("Stopping Test: "+e.toString());
++                    	stopTest();
+ 					}
+-				}
+-				if (controller.isDone()) {
+-					running = false;
+-				}
+-			}
+-		}
+-		// Might be found by contoller.next()
+-		catch (JMeterStopTestException e) {
+-			log.info("Stopping Test: " + e.toString());
+-			stopTest();
+-		} catch (JMeterStopThreadException e) {
+-			log.info("Stop Thread seen: " + e.toString());
+-		} catch (Exception e) {
+-			log.error("Test failed!", e);
+-		} catch (ThreadDeath e) {
++                    catch (JMeterStopThreadException e)
++					{
++                    	log.info("Stopping Thread: "+e.toString());
++                    	stopThread();
++					}
++                    catch (Exception e)
++                    {
++                        log.error("", e);
++                    }
++                }
++                if (controller.isDone())
++                {
++                    running = false;
++                }
++            }
++        }
++        // Might be found by contoller.next()
++        catch (JMeterStopTestException e)
++		{
++        	log.info("Stopping Test: "+e.toString());
++        	stopTest();
++		}
++        catch (JMeterStopThreadException e)
++		{
++        	log.info("Stop Thread seen: "+e.toString());
++		}
++        catch (Exception e)
++        {
++            log.error("Test failed!", e);
++        }
++		catch (ThreadDeath e){
+ 			throw e; // Must not ignore this one
+-		} catch (Error e) {// Make sure errors are output to the log file
++		}
++		catch (Error e){// Make sure errors are output to the log file
+ 			log.error("Test failed!", e);
+-		} finally {
+-			threadContext.clear();
+-			log.info("Thread " + threadName + " is done");
+-			monitor.threadFinished(this);
+-			threadFinished();
+ 		}
+-	}
++        finally
++        {
++            threadContext.clear();
++            log.info("Thread " + threadName + " is done");
++            monitor.threadFinished(this);
++            threadFinished();
++        }
++    }
+ 
+ 	/**
+ 	 * 
+ 	 */
+-	protected void initRun() {
+-		JMeterContextService.incrNumberOfThreads();
+-		threadGroup.incrNumberOfThreads();
+-		threadContext = JMeterContextService.getContext();
+-		threadContext.setVariables(threadVars);
+-		threadContext.setThreadNum(getThreadNum());
+-		threadContext.getVariables().put(LAST_SAMPLE_OK, "true");
+-		threadContext.setThread(this);
+-		testTree.traverse(compiler);
+-		// listeners = controller.getListeners();
+-		if (scheduler) {
+-			// set the scheduler to start
+-			startScheduler();
+-		}
+-		rampUpDelay();
+-		log.info("Thread " + Thread.currentThread().getName() + " started");
+-		/*
+-		 * Setting SamplingStarted before the contollers are initialised allows
+-		 * them to access the running values of functions and variables (however
+-		 * it does not seem to help with the listeners)
+-		 */
+-		if (startEarlier)
+-			threadContext.setSamplingStarted(true);
+-		controller.initialize();
+-		controller.addIterationListener(new IterationListener());
+-		if (!startEarlier)
+-			threadContext.setSamplingStarted(true);
+-		threadStarted();
+-	}
+-
+-    private void processThreadListeners(boolean begin) {
+-        Iterator it = threadListeners.iterator();
+-        while (it.hasNext()){
+-            ThreadListener tl=(ThreadListener) it.next();
+-            if (begin) {
+-                tl.threadStarted();
+-            } else {
+-                tl.threadFinished();
+-            }
+-        }
+-        
+-    }
+-    
+ 	private void threadStarted() {
+-        processThreadListeners(true);
++		Traverser startup = new Traverser(true);
++        testTree.traverse(startup);
++        
++        // begin ------------
++        started = true;
++        monitor.threadStarted(this);
++        // end --------------
+ 	}
+ 
++    /**
++	 * 
++	 */
+ 	private void threadFinished() {
+-        processThreadListeners(false);
+-		JMeterContextService.decrNumberOfThreads();
+-		threadGroup.decrNumberOfThreads();
++		Traverser shut = new Traverser(false);
++        testTree.traverse(shut);
+ 	}
+ 
+-	public String getThreadName() {
+-		return threadName;
+-	}
+-
+-	public void stop() {
+-		running = false;
+-		log.info("Stopping " + threadName);
+-	}
+-
+-	private void stopTest() {
+-		running = false;
+-		log.info("Stop Test detected by thread " + threadName);
+-		// engine.stopTest();
+-		if (engine != null)
+-			engine.askThreadsToStop();
+-	}
+-
+-	private void stopThread() {
+-		running = false;
+-		log.info("Stop Thread detected by thread " + threadName);
+-	}
+-
+-	public void pauseThread(int milis) {
+-		try {
+-			Thread.sleep(milis);
+-		} catch (InterruptedException e) {
++    private class Traverser implements HashTreeTraverser
++    {
++    private boolean isStart = false;
++    private Traverser(boolean start)
++    {
++    isStart = start;
++    }
++		public void addNode(Object node, HashTree subTree) {
++			if (node instanceof TestElement) {
++				TestElement te = (TestElement) node;
++				if (isStart)
++				{
++					te.threadStarted();
++				}
++				else
++				{
++					te.threadFinished();
++				}
++			}
+ 		}
+-	}
+ 
+-	private void checkAssertions(List assertions, SampleResult result) {
+-		Iterator iter = assertions.iterator();
+-		while (iter.hasNext()) {
+-			Assertion assertion = (Assertion) iter.next();
+-			TestBeanHelper.prepare((TestElement) assertion);
+-			AssertionResult assertionResult = assertion.getResult(result);
+-			result.setSuccessful(result.isSuccessful() && !(assertionResult.isError() || assertionResult.isFailure()));
+-			result.addAssertionResult(assertionResult);
++		public void subtractNode() 
++		{
+ 		}
+-		threadContext.getVariables().put(LAST_SAMPLE_OK, JOrphanUtils.booleanToString(result.isSuccessful()));
+-	}
+ 
+-	private void runPostProcessors(List extractors) {
+-		ListIterator iter = extractors.listIterator(extractors.size());
+-		while (iter.hasPrevious()) {
+-			PostProcessor ex = (PostProcessor) iter.previous();
+-			TestBeanHelper.prepare((TestElement) ex);
+-			ex.process();
++		public void processPath()
++		{
+ 		}
+-	}
++    }
+ 
+-	private void delay(List timers) {
+-		int sum = 0;
+-		Iterator iter = timers.iterator();
+-		while (iter.hasNext()) {
+-			Timer timer = (Timer) iter.next();
+-			TestBeanHelper.prepare((TestElement) timer);
+-			sum += timer.delay();
+-		}
+-		if (sum > 0) {
+-			try {
+-				Thread.sleep(sum);
+-			} catch (InterruptedException e) {
+-				log.error("", e);
+-			}
+-		}
+-	}
++    public String getThreadName()
++    {
++        return threadName;
++    }
+ 
+-	private void notifyTestListeners() {
+-		threadVars.incIteration();
+-		Iterator iter = testListeners.iterator();
+-		while (iter.hasNext()) {
+-			TestListener listener = (TestListener) iter.next();
+-			if (listener instanceof TestElement) {
+-				listener.testIterationStart(new LoopIterationEvent(controller, threadVars.getIteration()));
+-				((TestElement) listener).recoverRunningVersion();
+-			} else {
+-				listener.testIterationStart(new LoopIterationEvent(controller, threadVars.getIteration()));
+-			}
+-		}
++    public void stop()
++    {
++        running = false;
++        log.info("Stopping " + threadName);
++    }
++	private void stopTest()
++	{
++		running = false;
++		log.info("Stop Test detected by thread " + threadName);
++		//engine.stopTest();
++		if (engine != null ) engine.askThreadsToStop();
++	}
++	private void stopThread()
++	{
++		running = false;
++		log.info("Stop Thread detected by thread " + threadName);
+ 	}
+ 
+-	private void notifyListeners(List listeners, SampleResult result) {
+-		SampleEvent event = new SampleEvent(result, controller.getPropertyAsString(TestElement.NAME));
+-		compiler.sampleOccurred(event);
+-		notifier.notifyListeners(event, listeners);
+ 
+-	}
++    private void checkAssertions(List assertions, SampleResult result)
++    {
++        Iterator iter = assertions.iterator();
++        while (iter.hasNext())
++        {
++        	Assertion assertion= (Assertion)iter.next();
++        	if (assertion instanceof TestBean) ((TestBean)assertion).prepare();
++            AssertionResult assertionResult = assertion.getResult(result);
++            result.setSuccessful(
++                result.isSuccessful()
++                    && !(assertionResult.isError() || assertionResult.isFailure()));
++            result.addAssertionResult(assertionResult);
++        }
++        threadContext.getVariables().put(LAST_SAMPLE_OK,
++        		JOrphanUtils.booleanToString(result.isSuccessful()));
++    }
+ 
+-	public void setInitialDelay(int delay) {
+-		initialDelay = delay;
+-	}
++    private void runPostProcessors(List extractors)
++    {
++        ListIterator iter = extractors.listIterator(extractors.size());
++        while (iter.hasPrevious())
++        {
++            PostProcessor ex = (PostProcessor) iter.previous();
++            if (ex instanceof TestBean) ((TestBean)ex).prepare();
++            ex.process();
++        }
++    }
+ 
+-	/**
+-	 * Initial delay if ramp-up period is active for this threadGroup.
+-	 */
+-	private void rampUpDelay() {
+-		if (initialDelay > 0) {
+-			try {
+-				Thread.sleep(initialDelay);
+-			} catch (InterruptedException e) {
+-			}
+-		}
+-	}
++    private void delay(List timers)
++    {
++        int sum = 0;
++        Iterator iter = timers.iterator();
++        while (iter.hasNext())
++        {
++        	Timer timer= (Timer) iter.next();
++        	if (timer instanceof TestBean) ((TestBean)timer).prepare();
++            sum += timer.delay();
++        }
++        if (sum > 0)
++        {
++            try
++            {
++                Thread.sleep(sum);
++            }
++            catch (InterruptedException e)
++            {
++                log.error("", e);
++            }
++        }
++    }
+ 
+-	/**
+-	 * Returns the threadNum.
+-	 */
+-	public int getThreadNum() {
+-		return threadNum;
+-	}
++    private void notifyTestListeners()
++    {
++        threadVars.incIteration();
++        Iterator iter = testListeners.iterator();
++        while (iter.hasNext())
++        {
++            TestListener listener = (TestListener)iter.next();
++            if(listener instanceof TestElement)
++            {
++                listener.testIterationStart(
++                    new LoopIterationEvent(
++                        controller,
++                        threadVars.getIteration()));
++                ((TestElement)listener).recoverRunningVersion();
++            }
++            else
++            {
++                listener.testIterationStart(
++                    new LoopIterationEvent(
++                        controller,
++                        threadVars.getIteration()));
++            }
++        }
++    }
+ 
+-	/**
+-	 * Sets the threadNum.
+-	 * 
+-	 * @param threadNum
+-	 *            the threadNum to set
+-	 */
+-	public void setThreadNum(int threadNum) {
+-		this.threadNum = threadNum;
+-	}
++    private void notifyListeners(List listeners, SampleResult result)
++    {
++        SampleEvent event =
++            new SampleEvent(
++                result,
++                controller.getPropertyAsString(TestElement.NAME));
++        compiler.sampleOccurred(event);
++        notifier.notifyListeners(event, listeners);
+ 
+-	private class IterationListener implements LoopIterationListener {
+-		/*
+-		 * (non-Javadoc)
+-		 * 
+-		 * @see LoopIterationListener#iterationStart(LoopIterationEvent)
+-		 */
+-		public void iterationStart(LoopIterationEvent iterEvent) {
+-			notifyTestListeners();
+-		}
+-		
+-		public void iterationEnd(LoopIterationEvent iterEvent)
+-		{}
+-	}
++    }
++    public void setInitialDelay(int delay)
++    {
++        initialDelay = delay;
++    }
+ 
+-	/**
+-	 * Save the engine instance for access to the stop methods
+-	 * 
+-	 * @param engine
+-	 */
+-	public void setEngine(StandardJMeterEngine engine) {
+-		this.engine = engine;
+-	}
++    /**
++     * Initial delay if ramp-up period is active for this group.
++     */
++    private void rampUpDelay()
++    {
++        if (initialDelay > 0)
++        {
++            try
++            {
++                Thread.sleep(initialDelay);
++            }
++            catch (InterruptedException e)
++            {}
++        }
++    }
++    
++    /**
++     * Returns the threadNum.
++     */
++    public int getThreadNum()
++    {
++        return threadNum;
++    }
+ 
+-	/**
+-	 * Should Test stop on sampler error?
+-	 * 
+-	 * @param b -
+-	 *            true or false
+-	 */
+-	public void setOnErrorStopTest(boolean b) {
+-		onErrorStopTest = b;
+-	}
++    /**
++     * Sets the threadNum.
++     * @param threadNum the threadNum to set
++     */
++    public void setThreadNum(int threadNum)
++    {
++        this.threadNum = threadNum;
++    }
++    
++    private class IterationListener implements LoopIterationListener
++    {
++        /* (non-Javadoc)
++         * @see LoopIterationListener#iterationStart(LoopIterationEvent)
++         */
++        public void iterationStart(LoopIterationEvent iterEvent)
++        {
++            notifyTestListeners();
++        }
++    }
++    /**
++     * Save the engine instance for access to the stop methods
++     * 
++     * @param engine
++     */
++    public void setEngine(StandardJMeterEngine engine)
++    {
++        this.engine = engine;
++    }
+ 
+-	/**
+-	 * Should Thread stop on Sampler error?
+-	 * 
+-	 * @param b -
+-	 *            true or false
+-	 */
+-	public void setOnErrorStopThread(boolean b) {
+-		onErrorStopThread = b;
+-	}
++    /**
++     * Should Test stop on sampler error?
++     * 
++     * @param b - true or false
++     */
++    public void setOnErrorStopTest(boolean b)
++    {
++        onErrorStopTest = b;
++    }
+ 
+-	public ThreadGroup getThreadGroup() {
+-		return threadGroup;
+-	}
++    /**
++     * Should Thread stop on Sampler error?
++     * 
++     * @param b - true or false
++     */
++    public void setOnErrorStopThread(boolean b)
++    {
++        onErrorStopThread = b;
++    }
++    
++    // begin --------------
++    
++    public boolean isRunning()
++    {
++		return running && started;
++    }
++    
++    public boolean getOnErrorStopTest()
++    {
++        return onErrorStopTest;
++    }
+ 
+-	public void setThreadGroup(ThreadGroup group) {
+-		this.threadGroup = group;
+-	}
++    public boolean getOnErrorStopThread()
++    {
++        return onErrorStopThread;
++    }
++    
++    public JMeterContext getInitialContext()
++    {
++		return initialContext;
++    }
++    
++    // end ----------------
+ 
+ }
+\ No newline at end of file
+Index: jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java,v
+retrieving revision 1.4
+diff -u -r1.4 JMeterThreadMonitor.java
+--- jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java	12 Jul 2005 20:50:42 -0000	1.4
++++ jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java	25 Aug 2005 09:57:19 -0000
+@@ -1,4 +1,4 @@
+-// $Header: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java,v 1.4 2005/07/12 20:50:42 mstover1 Exp $
++// $Header: /home/cvs/jakarta-jmeter/src/core/org/apache/jmeter/threads/JMeterThreadMonitor.java,v 1.3 2004/02/14 03:34:29 sebb Exp $
+ /*
+  * Copyright 2000-2004 The Apache Software Foundation.
+  *
+@@ -14,13 +14,18 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  * 
+- */
++*/
+ 
+ package org.apache.jmeter.threads;
+ 
+ /**
+- * @version $Revision: 1.4 $
++ * @version $Revision: 1.3 $
+  */
+-public interface JMeterThreadMonitor {
+-	public void threadFinished(JMeterThread thread);
++public interface JMeterThreadMonitor 
++{
++    public void threadFinished(JMeterThread thread);
++    
++    // being ---------------
++    public void threadStarted(JMeterThread thread);
++    // end -----------------
+ }
+Index: jakarta-jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java,v
+retrieving revision 1.29
+diff -u -r1.29 AbstractVisualizer.java
+--- jakarta-jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	12 Jul 2005 20:51:08 -0000	1.29
++++ jakarta-jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	25 Aug 2005 10:19:15 -0000
+@@ -1,4 +1,4 @@
+-// $Header: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java,v 1.29 2005/07/12 20:51:08 mstover1 Exp $
++// $Header: /home/cvs/jakarta-jmeter/src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java,v 1.23.2.1 2004/10/13 00:33:32 sebb Exp $
+ /*
+  * Copyright 2000-2004 The Apache Software Foundation.
+  *
+@@ -14,352 +14,359 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  * 
+- */
++*/
+ 
+ package org.apache.jmeter.visualizers.gui;
+ 
+ import java.awt.Component;
+ import java.awt.Container;
+-import java.awt.event.ActionEvent;
+-import java.awt.event.ActionListener;
+ import java.util.Arrays;
+ import java.util.Collection;
+ 
+-import javax.swing.JButton;
+ import javax.swing.JCheckBox;
+-import javax.swing.JComponent;
+ import javax.swing.JPopupMenu;
+ import javax.swing.event.ChangeEvent;
+ import javax.swing.event.ChangeListener;
+ 
+ import org.apache.jmeter.gui.AbstractJMeterGuiComponent;
+-import org.apache.jmeter.gui.GuiPackage;
+-import org.apache.jmeter.gui.SavePropertyDialog;
+ import org.apache.jmeter.gui.UnsharedComponent;
+ import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jmeter.gui.util.MenuFactory;
+ import org.apache.jmeter.reporters.AbstractListenerElement;
+ import org.apache.jmeter.reporters.ResultCollector;
+-import org.apache.jmeter.samplers.SampleResult;
+-import org.apache.jmeter.samplers.SampleSaveConfiguration;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+-import org.apache.jmeter.visualizers.Printable;
+ import org.apache.jmeter.visualizers.Visualizer;
+-import org.apache.jorphan.gui.ComponentUtil;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
++// begin -----------
++import org.apache.jmeter.engine.JMeterEngine;
++// end -------------
++
+ /**
+  * This is the base class for JMeter GUI components which can display test
+- * results in some way. It provides the following conveniences to developers:
+- * <ul>
+- * <li>Implements the
+- * {@link org.apache.jmeter.gui.JMeterGUIComponent JMeterGUIComponent} interface
+- * that allows your Gui visualizer to "plug-in" to the JMeter GUI environment.
+- * Provides implementations for the following methods:
+- * <ul>
+- * <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#configure(TestElement) configure(TestElement)}.
+- * Any additional parameters of your Visualizer need to be handled by you.</li>
+- * <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#createTestElement() createTestElement()}.
+- * For most purposes, the default
+- * {@link org.apache.jmeter.reporters.ResultCollector ResultCollector} created
+- * by this method is sufficient.</li>
+- * <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#getMenuCategories getMenuCategories()}.
+- * To control where in the GUI your visualizer can be added.</li>
+- * <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement) modifyTestElement(TestElement)}.
+- * Again, additional parameters you require have to be handled by you.</li>
+- * <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#createPopupMenu() createPopupMenu()}.</li>
+- * </ul>
+- * </li>
+- * <li>Provides convenience methods to help you make a JMeter-compatible GUI:
++ * results in some way.  It provides the following conveniences to developers:
+  * <ul>
+- * <li>{@link #makeTitlePanel()}. Returns a panel that includes the name of
+- * the component, and a FilePanel that allows users to control what file samples
+- * are logged to.</li>
+- * <li>{@link #getModel()} and {@link #setModel(ResultCollector)} methods for
+- * setting and getting the model class that handles the receiving and logging of
+- * sample results.</li>
+- * </ul>
+- * </li>
++ *   <li>Implements the
++ *     {@link org.apache.jmeter.gui.JMeterGUIComponent JMeterGUIComponent}
++ *     interface that allows your Gui visualizer to "plug-in" to the JMeter
++ *     GUI environment.  Provides implementations for the following methods:
++ *     <ul>
++ *       <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#configure(TestElement) configure(TestElement)}.
++ *         Any additional parameters of your Visualizer need to be handled by
++ *         you.</li>
++ *       <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#createTestElement() createTestElement()}.
++ *         For most purposes, the default
++ *         {@link org.apache.jmeter.reporters.ResultCollector ResultCollector}
++ *         created by this method is sufficient.</li>
++ *       <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#getMenuCategories getMenuCategories()}.
++ *         To control where in the GUI your visualizer can be added.</li>
++ *       <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement) modifyTestElement(TestElement)}.
++ *         Again, additional parameters you require have to be handled by
++ *         you.</li>
++ *       <li>{@link org.apache.jmeter.gui.JMeterGUIComponent#createPopupMenu() createPopupMenu()}.</li>
++ *     </ul></li>
++ *   <li>Provides convenience methods to help you make a JMeter-compatible GUI:
++ *     <ul>
++ *       <li>{@link #makeTitlePanel()}.  Returns a panel that includes the name
++ *         of the component, and a FilePanel that allows users to control what
++ *         file samples are logged to.</li>
++ *       <li>{@link #getModel()} and {@link #setModel(ResultCollector)} methods
++ *         for setting and getting the model class that handles the receiving
++ *         and logging of sample results.</li>
++ *     </ul></li>
+  * </ul>
+  * For most developers, making a new visualizer is primarly for the purpose of
+  * either calculating new statistics on the sample results that other
+  * visualizers don't calculate, or displaying the results visually in a new and
+- * interesting way. Making a new visualizer for either of these purposes is easy -
+- * just extend this class and implement the
++ * interesting way.  Making a new visualizer for either of these purposes is
++ * easy - just extend this class and implement the
+  * {@link org.apache.jmeter.visualizers.Visualizer#add(SampleResult) add(SampleResult)}
+- * method and display the results as you see fit. This AbstractVisualizer and
+- * the default
+- * {@link org.apache.jmeter.reporters.ResultCollector ResultCollector} handle
+- * logging and registering to receive SampleEvents for you - all you need to do
+- * is include the JPanel created by makeTitlePanel somewhere in your gui to
+- * allow users set the log file.
++ * method and display the results as you see fit.  This AbstractVisualizer and
++ * the default {@link org.apache.jmeter.reporters.ResultCollector ResultCollector}
++ * handle logging and registering to receive SampleEvents for you - all you need
++ * to do is include the JPanel created by makeTitlePanel somewhere in your gui
++ * to allow users set the log file.
+  * <p>
+  * If you are doing more than that, you may need to extend
+  * {@link org.apache.jmeter.reporters.ResultCollector ResultCollector} as well
+  * and modify the {@link #configure(TestElement)},
+  * {@link #modifyTestElement(TestElement)}, and {@link #createTestElement()}
+- * methods to create and modify your alternate ResultCollector. For an example
++ * methods to create and modify your alternate ResultCollector.  For an example
+  * of this, see the
+  * {@link org.apache.jmeter.visualizers.MailerVisualizer MailerVisualizer}.
+  * <p>
+- * 
+- * @version $Revision: 1.29 $
++ *
++ * @version   $Revision: 1.23.2.1 $
+  */
+-public abstract class AbstractVisualizer extends AbstractJMeterGuiComponent implements Visualizer, ChangeListener,
+-		UnsharedComponent, Printable {
+-	/** Logging. */
+-	private static transient Logger log = LoggingManager.getLoggerForClass();
+-
+-	/** A panel allowing results to be saved. */
+-	private FilePanel filePanel;
+-
+-	/** A checkbox choosing whether or not only errors should be logged. */
+-	private JCheckBox errorLogging;
+-
+-	private JButton saveConfigButton;
+-
+-	SampleSaveConfiguration saveConfig;
+-
+-	protected ResultCollector collector = new ResultCollector();
+-
+-	protected boolean isStats = false;
+-
+-	public AbstractVisualizer() {
+-		super();
+-
+-		errorLogging = new JCheckBox(JMeterUtils.getResString("log_errors_only"));
+-		saveConfigButton = new JButton(JMeterUtils.getResString("config_save_settings"));
+-		saveConfigButton.addActionListener(new ActionListener() {
+-			public void actionPerformed(ActionEvent e) {
+-				SavePropertyDialog d = new SavePropertyDialog(GuiPackage.getInstance().getMainFrame(), JMeterUtils
+-						.getResString("Sample Result Save Configuration"), true, collector.getSaveConfig());
+-				d.pack();
+-				ComponentUtil.centerComponentInComponent(GuiPackage.getInstance().getMainFrame(), d);
+-				d.setVisible(true);
+-			}
+-		});
+-
+-		filePanel = new FilePanel(JMeterUtils.getResString("file_visualizer_output_file"), ".jtl");
+-		filePanel.addChangeListener(this);
+-		filePanel.add(errorLogging);
+-		filePanel.add(saveConfigButton);
+-
+-	}
+-
+-	public boolean isStats() {
+-		return isStats;
+-	}
+-
+-	/**
+-	 * Gets the checkbox which selects whether or not only errors should be
+-	 * logged. Subclasses don't normally need to worry about this checkbox,
+-	 * because it is automatically added to the GUI in {@link #makeTitlePanel()},
+-	 * and the behavior is handled in this base class.
+-	 * 
+-	 * @return the error logging checkbox
+-	 */
+-	protected JCheckBox getErrorLoggingCheckbox() {
+-		return errorLogging;
+-	}
+-
+-	/**
+-	 * Provides access to the ResultCollector model class for extending
+-	 * implementations. Using this method and setModel(ResultCollector) is only
+-	 * necessary if your visualizer requires a differently behaving
+-	 * ResultCollector. Using these methods will allow maximum reuse of the
+-	 * methods provided by AbstractVisualizer in this event.
+-	 */
+-	protected ResultCollector getModel() {
+-		return collector;
+-	}
+-
+-	/**
+-	 * Gets the file panel which allows the user to save results to a file.
+-	 * Subclasses don't normally need to worry about this panel, because it is
+-	 * automatically added to the GUI in {@link #makeTitlePanel()}, and the
+-	 * behavior is handled in this base class.
+-	 * 
+-	 * @return the file panel allowing users to save results
+-	 */
+-	protected Component getFilePanel() {
+-		return filePanel;
+-	}
+-
+-	/**
+-	 * Sets the filename which results will be saved to. This will set the
+-	 * filename in the FilePanel. Subclasses don't normally need to call this
+-	 * method, because configuration of the FilePanel is handled in this base
+-	 * class.
+-	 * 
+-	 * @param filename
+-	 *            the new filename
+-	 * 
+-	 * @see #getFilePanel()
+-	 */
+-	public void setFile(String filename) {
+-		// TODO: Does this method need to be public? It isn't currently
+-		// called outside of this class.
+-		filePanel.setFilename(filename);
+-	}
+-
+-	/**
+-	 * Gets the filename which has been entered in the FilePanel. Subclasses
+-	 * don't normally need to call this method, because configuration of the
+-	 * FilePanel is handled in this base class.
+-	 * 
+-	 * @return the current filename
+-	 * 
+-	 * @see #getFilePanel()
+-	 */
+-	public String getFile() {
+-		// TODO: Does this method need to be public? It isn't currently
+-		// called outside of this class.
+-		return filePanel.getFilename();
+-	}
+-
+-	/**
+-	 * When a user right-clicks on the component in the test tree, or selects
+-	 * the edit menu when the component is selected, the component will be asked
+-	 * to return a JPopupMenu that provides all the options available to the
+-	 * user from this component.
+-	 * <p>
+-	 * This implementation returns menu items appropriate for most visualizer
+-	 * components.
+-	 * 
+-	 * @return a JPopupMenu appropriate for the component.
+-	 */
+-	public JPopupMenu createPopupMenu() {
+-		return MenuFactory.getDefaultVisualizerMenu();
+-	}
+-
+-	/**
+-	 * Invoked when the target of the listener has changed its state. This
+-	 * implementation assumes that the target is the FilePanel, and will update
+-	 * the result collector for the new filename.
+-	 * 
+-	 * @param e
+-	 *            the event that has occurred
+-	 */
+-	public void stateChanged(ChangeEvent e) {
+-		log.info("getting new collector");
+-		collector = (ResultCollector) createTestElement();
+-		try {
+-			collector.loadExistingFile();
+-		} catch (Exception err) {
+-			log.debug("Error occurred while loading file", err);
+-		}
+-	}
+-
+-	/**
+-	 * This is the list of menu categories this gui component will be available
+-	 * under. This implementation returns
+-	 * {@link org.apache.jmeter.gui.util.MenuFactory#LISTENERS}, which is
+-	 * appropriate for most visualizer components.
+-	 * 
+-	 * @return a Collection of Strings, where each element is one of the
+-	 *         constants defined in MenuFactory
+-	 */
+-	public Collection getMenuCategories() {
+-		return Arrays.asList(new String[] { MenuFactory.LISTENERS });
+-	}
+-
+-	/* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+-	public TestElement createTestElement() {
+-		if (collector == null) {
+-			collector = new ResultCollector();
+-		}
+-		modifyTestElement(collector);
+-		return (TestElement) collector.clone();
+-	}
+-
+-	/* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+-	public void modifyTestElement(TestElement c) {
+-		configureTestElement((AbstractListenerElement) c);
+-		if (c instanceof ResultCollector) {
+-			ResultCollector rc = (ResultCollector) c;
+-			rc.setErrorLogging(errorLogging.isSelected());
+-			rc.setFilename(getFile());
+-			collector = rc;
+-		}
+-	}
+-
+-	/* Overrides AbstractJMeterGuiComponent.configure(TestElement) */
+-	public void configure(TestElement el) {
+-		super.configure(el);
+-		setFile(el.getPropertyAsString(ResultCollector.FILENAME));
+-		ResultCollector rc = (ResultCollector) el;
+-		errorLogging.setSelected(rc.isErrorLogging());
+-		if (collector == null) {
+-			collector = new ResultCollector();
+-		}
+-		collector.setSaveConfig((SampleSaveConfiguration) rc.getSaveConfig().clone());
+-	}
+-
+-	/**
+-	 * This provides a convenience for extenders when they implement the
+-	 * {@link org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()}
+-	 * method. This method will set the name, gui class, and test class for the
+-	 * created Test Element. It should be called by every extending class when
+-	 * creating Test Elements, as that will best assure consistent behavior.
+-	 * 
+-	 * @param mc
+-	 *            the TestElement being created.
+-	 */
+-	protected void configureTestElement(AbstractListenerElement mc) {
+-		// TODO: Should the method signature of this method be changed to
+-		// match the super-implementation (using a TestElement parameter
+-		// instead of AbstractListenerElement)? This would require an
+-		// instanceof check before adding the listener (below), but would
+-		// also make the behavior a bit more obvious for sub-classes -- the
+-		// Java rules dealing with this situation aren't always intuitive,
+-		// and a subclass may think it is calling this version of the method
+-		// when it is really calling the superclass version instead.
+-		super.configureTestElement(mc);
+-		mc.setListener(this);
+-	}
+-
+-	/**
+-	 * Create a standard title section for JMeter components. This includes the
+-	 * title for the component and the Name Panel allowing the user to change
+-	 * the name for the component. The AbstractVisualizer also adds the
+-	 * FilePanel allowing the user to save the results, and the error logging
+-	 * checkbox, allowing the user to choose whether or not only errors should
+-	 * be logged.
+-	 * <p>
+-	 * This method is typically added to the top of the component at the
+-	 * beginning of the component's init method.
+-	 * 
+-	 * @return a panel containing the component title, name panel, file panel,
+-	 *         and error logging checkbox
+-	 */
+-	protected Container makeTitlePanel() {
+-		Container panel = super.makeTitlePanel();
+-		// Note: the file panel already includes the error logging checkbox,
+-		// so we don't have to add it explicitly.
+-		panel.add(getFilePanel());
+-		return panel;
+-	}
+-
+-	/**
+-	 * Provides extending classes the opportunity to set the ResultCollector
+-	 * model for the Visualizer. This is useful to allow maximum reuse of the
+-	 * methods from AbstractVisualizer.
+-	 * 
+-	 * @param collector
+-	 */
+-	protected void setModel(ResultCollector collector) {
+-		this.collector = collector;
+-	}
+-
+-	/**
+-	 * Subclasses need to over this method, if they wish to return something
+-	 * other than the Visualizer itself.
+-	 * 
+-	 * @return
+-	 */
+-	public JComponent getPrintableComponent() {
+-		return this;
+-	}
++public abstract class AbstractVisualizer
++    extends AbstractJMeterGuiComponent
++    implements Visualizer, ChangeListener, UnsharedComponent
++{
++    /** Logging. */
++    private static transient Logger log =LoggingManager.getLoggerForClass();
++
++    /** A panel allowing results to be saved. */
++    private FilePanel filePanel;
++    
++    /** A checkbox choosing whether or not only errors should be logged. */
++    private JCheckBox errorLogging;
++    
++    // begin -------------
++    private JMeterEngine engine;
++    // end ---------------
++    
++    protected ResultCollector collector;
++
++    public AbstractVisualizer()
++    {
++        super();
++        
++        errorLogging =
++            new JCheckBox(JMeterUtils.getResString("log_errors_only"));
++
++        filePanel = new FilePanel(
++                JMeterUtils.getResString("file_visualizer_output_file"),".jtl");
++        filePanel.addChangeListener(this);
++        filePanel.add(errorLogging);
++                
++    }
++
++    /**
++     * Gets the checkbox which selects whether or not only errors should be
++     * logged.  Subclasses don't normally need to worry about this checkbox,
++     * because it is automatically added to the GUI in
++     * {@link #makeTitlePanel()}, and the behavior is handled in this base
++     * class.
++     * 
++     * @return the error logging checkbox
++     */
++    protected JCheckBox getErrorLoggingCheckbox()
++    {
++        return errorLogging;
++    }
++
++    /**
++     * Provides access to the ResultCollector model class for extending
++     * implementations.  Using this method and setModel(ResultCollector) is
++     * only necessary if your visualizer requires a differently behaving
++     * ResultCollector.  Using these methods will allow maximum reuse of the
++     * methods provided by AbstractVisualizer in this event.
++     */
++    protected ResultCollector getModel()
++    {
++        return collector;
++    }
++
++   /**
++    * Gets the file panel which allows the user to save results to a file.
++    * Subclasses don't normally need to worry about this panel, because it
++    * is automatically added to the GUI in {@link #makeTitlePanel()}, and the
++    * behavior is handled in this base class.
++    * 
++    * @return the file panel allowing users to save results
++    */
++    protected Component getFilePanel()
++    {
++        return filePanel;
++    }
++
++    /**
++     * Sets the filename which results will be saved to.  This will set the
++     * filename in the FilePanel.  Subclasses don't normally need to call this
++     * method, because configuration of the FilePanel is handled in this base
++     * class.
++     * 
++     * @param filename the new filename
++     * 
++     * @see #getFilePanel()
++     */
++    public void setFile(String filename)
++    {
++        // TODO: Does this method need to be public?  It isn't currently
++        // called outside of this class.
++        filePanel.setFilename(filename);
++    }
++
++    /**
++     * Gets the filename which has been entered in the FilePanel.  Subclasses
++     * don't normally need to call this method, because configuration of the
++     * FilePanel is handled in this base class.
++     * 
++     * @return the current filename
++     * 
++     * @see #getFilePanel()
++     */
++    public String getFile()
++    {
++        // TODO: Does this method need to be public?  It isn't currently
++        // called outside of this class.
++        return filePanel.getFilename();
++    }
++    
++    
++
++    /**
++     * When a user right-clicks on the component in the test tree, or
++     * selects the edit menu when the component is selected, the 
++     * component will be asked to return a JPopupMenu that provides
++     * all the options available to the user from this component.
++     * <p>
++     * This implementation returns menu items appropriate for most
++     * visualizer components.
++     *
++     * @return   a JPopupMenu appropriate for the component.
++     */
++    public JPopupMenu createPopupMenu()
++    {
++        return MenuFactory.getDefaultVisualizerMenu();
++    }
++
++    /**
++     * Invoked when the target of the listener has changed its state.  This
++     * implementation assumes that the target is the FilePanel, and will
++     * update the result collector for the new filename.
++     * 
++     * @param e the event that has occurred
++     */
++    public void stateChanged(ChangeEvent e)
++    {
++        log.info("getting new collector");
++        collector = (ResultCollector) createTestElement();
++        try
++        {
++            collector.loadExistingFile();
++        }
++        catch (Exception err)
++        {
++            log.debug("Error occurred while loading file", err);
++        }
++    }
++
++    /**
++     * This is the list of menu categories this gui component will be available
++     * under. This implementation returns
++     * {@link org.apache.jmeter.gui.util.MenuFactory#LISTENERS}, which
++     * is appropriate for most visualizer components.
++     *
++     * @return   a Collection of Strings, where each element is one of the
++     *           constants defined in MenuFactory
++     */
++    public Collection getMenuCategories()
++    {
++        return Arrays.asList(new String[] { MenuFactory.LISTENERS });
++    }
++
++    /* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
++    public TestElement createTestElement()
++    {
++        if (collector == null)
++        {
++            collector = new ResultCollector();
++        }
++        modifyTestElement(collector);
++        return (TestElement) collector.clone();
++    }
++
++    /* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
++    public void modifyTestElement(TestElement c)
++    {
++        configureTestElement((AbstractListenerElement) c);
++        if (c instanceof ResultCollector)
++        {
++            ResultCollector rc = (ResultCollector) c;
++            rc.setErrorLogging(errorLogging.isSelected());
++            rc.setFilename(getFile());
++            collector = rc;
++        }
++    }
++
++    /* Overrides AbstractJMeterGuiComponent.configure(TestElement) */
++    public void configure(TestElement el)
++    {
++        super.configure(el);
++        setFile(el.getPropertyAsString(ResultCollector.FILENAME));
++        ResultCollector rc = (ResultCollector) el;
++        errorLogging.setSelected(rc.isErrorLogging());
++    }
++    
++    // begin ------------
++    //
++    // the get and set methods for the engine field.
++    
++    public void setEngine(JMeterEngine engine)
++    {
++		this.engine = engine;
++		
++		onEngineChange();
++    }
++    
++    public JMeterEngine getEngine()
++    {
++		return engine;
++    }
++    
++    protected void onEngineChange()
++    {
++    }
++    
++    // end --------------
++
++    /**
++     * This provides a convenience for extenders when they implement the
++     * {@link org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()} method.  This method
++     * will set the name, gui class, and test class for the created Test
++     * Element.  It should be called by every extending class when creating
++     * Test Elements, as that will best assure consistent behavior.
++     * 
++     * @param mc  the TestElement being created.
++     */
++    protected void configureTestElement(AbstractListenerElement mc)
++    {
++        // TODO: Should the method signature of this method be changed to
++        // match the super-implementation (using a TestElement parameter
++        // instead of AbstractListenerElement)?  This would require an
++        // instanceof check before adding the listener (below), but would
++        // also make the behavior a bit more obvious for sub-classes -- the
++        // Java rules dealing with this situation aren't always intuitive,
++        // and a subclass may think it is calling this version of the method
++        // when it is really calling the superclass version instead.
++        super.configureTestElement(mc);
++        mc.setListener(this);
++    }
++    
++    /**
++     * Create a standard title section for JMeter components.  This includes
++     * the title for the component and the Name Panel allowing the user to
++     * change the name for the component.  The AbstractVisualizer also adds
++     * the FilePanel allowing the user to save the results, and the
++     * error logging checkbox, allowing the user to choose whether or not only
++     * errors should be logged.
++     * <p>  
++     * This method is typically added to the top of the component at the
++     * beginning of the component's init method.
++     * 
++     * @return a panel containing the component title, name panel, file panel,
++     *         and error logging checkbox
++     */
++    protected Container makeTitlePanel()
++    {
++        Container panel = super.makeTitlePanel();
++        // Note: the file panel already includes the error logging checkbox,
++        // so we don't have to add it explicitly.
++        panel.add(getFilePanel());
++        return panel;
++    }
++
++    /**
++     * Provides extending classes the opportunity to set the ResultCollector
++     * model for the Visualizer.  This is useful to allow maximum reuse of the
++     * methods from AbstractVisualizer.
++     * @param collector
++     */
++    protected void setModel(ResultCollector collector)
++    {
++        this.collector = collector;
++    }
+ }
+\ No newline at end of file

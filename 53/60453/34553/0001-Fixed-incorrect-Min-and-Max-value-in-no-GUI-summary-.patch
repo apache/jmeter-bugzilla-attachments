@@ -1,0 +1,103 @@
+From 182308da83db9eb5138e0e47f3a1d54dcc1b7227 Mon Sep 17 00:00:00 2001
+From: LiuXP <liu.xp2003@gmail.com>
+Date: Sat, 24 Dec 2016 23:24:21 +0800
+Subject: [PATCH] Fixed incorrect Min and Max value in no GUI summary log.
+
+---
+ .../jmeter/reporters/SummariserRunningSample.java  |  8 +++++--
+ .../org/apache/jmeter/samplers/SampleResult.java   | 26 ++++++++++++++++++++++
+ .../jmeter/samplers/StatisticalSampleResult.java   | 10 +++++++++
+ 3 files changed, 42 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/reporters/SummariserRunningSample.java b/src/core/org/apache/jmeter/reporters/SummariserRunningSample.java
+index b13dda2..7867027 100644
+--- a/src/core/org/apache/jmeter/reporters/SummariserRunningSample.java
++++ b/src/core/org/apache/jmeter/reporters/SummariserRunningSample.java
+@@ -122,11 +122,15 @@ class SummariserRunningSample {
+         errorCount += res.getErrorCount();
+         long aTimeInMillis = res.getTime();
+         runningSum += aTimeInMillis;
+-        if (aTimeInMillis > max) {
++        if ( res.getSampleCount() == 1 && aTimeInMillis > max ) {
+             max = aTimeInMillis;
++        } else if (res.getSampleCount() > 1 && res.getMaxTime() > max) {
++            max = res.getMaxTime();
+         }
+-        if (aTimeInMillis < min) {
++        if ( res.getSampleCount() == 1 && aTimeInMillis < min ) {
+             min = aTimeInMillis;
++        } else if (res.getSampleCount() > 1 && res.getMinTime() < min ) {
++            min = res.getMinTime();
+         }
+         // We want end time to be current time so sample rates reflect real time
+         endTime = System.currentTimeMillis();
+diff --git a/src/core/org/apache/jmeter/samplers/SampleResult.java b/src/core/org/apache/jmeter/samplers/SampleResult.java
+index 066c35c..299409c 100644
+--- a/src/core/org/apache/jmeter/samplers/SampleResult.java
++++ b/src/core/org/apache/jmeter/samplers/SampleResult.java
+@@ -152,6 +152,12 @@ public class SampleResult implements Serializable, Cloneable, Searchable {
+ 
+     private long endTime = 0;
+ 
++    //Used in Statistical SampleResult
++    private long minTime = 0;
++
++    //Used in Statistical SampleResult
++    private long maxTime = 0;
++
+     private long idleTime = 0;// Allow for non-sample time
+ 
+     /** Start of pause (if any) */
+@@ -1055,6 +1061,26 @@ public class SampleResult implements Serializable, Cloneable, Searchable {
+         }
+     }
+ 
++    //Used in Statistical SampleResult
++    public void setMaxTime(long maxTime) {
++        this.maxTime = maxTime;
++    }
++
++    //Used in Statistical SampleResult
++    public  long getMaxTime() {
++        return this.maxTime;
++    }
++
++    //Used in Statistical SampleResult
++    public void setMinTime(long minTime) {
++        this.minTime = minTime;
++    }
++
++    //Used in Statistical SampleResult
++    public  long getMinTime() {
++        return this.minTime;
++    }
++
+     /**
+      * Set idle time pause.
+      * For use by SampleResultConverter/CSVSaveService.
+diff --git a/src/core/org/apache/jmeter/samplers/StatisticalSampleResult.java b/src/core/org/apache/jmeter/samplers/StatisticalSampleResult.java
+index 3d80762..c0cf101 100644
+--- a/src/core/org/apache/jmeter/samplers/StatisticalSampleResult.java
++++ b/src/core/org/apache/jmeter/samplers/StatisticalSampleResult.java
+@@ -84,8 +84,18 @@ public class StatisticalSampleResult extends SampleResult implements
+         // Set start/end times
+         if (getStartTime()==0){ // Bug 40954 - ensure start time gets started!
+             this.setStartTime(res.getStartTime());
++            this.setMinTime(res.getTime());
++            this.setMaxTime(res.getTime());
+         } else {
+             this.setStartTime(Math.min(getStartTime(), res.getStartTime()));
++            if ( res.getTime() > this.getMaxTime() )
++            {
++                this.setMaxTime(res.getTime());
++            }
++            if ( res.getTime() < this.getMinTime() )
++            {
++                this.setMinTime(res.getTime());
++            }
+         }
+         this.setEndTime(Math.max(getEndTime(), res.getEndTime()));
+ 
+-- 
+2.9.2.windows.1
+

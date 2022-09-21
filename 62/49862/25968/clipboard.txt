@@ -1,0 +1,142 @@
+### Eclipse Workspace Patch 1.0
+#P jmeterSVN
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(revision 991618)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(working copy)
+@@ -23,11 +23,15 @@
+ import java.io.InputStream;
+ import java.util.ArrayList;
+ import java.util.Date;
++import java.util.Enumeration;
+ import java.util.List;
+ 
+ import javax.mail.AuthenticationFailedException;
++import javax.mail.BodyPart;
++import javax.mail.Header;
+ import javax.mail.Message;
+ import javax.mail.MessagingException;
++import javax.mail.Multipart;
+ import javax.mail.internet.AddressException;
+ import javax.mail.internet.InternetAddress;
+ 
+@@ -206,11 +210,8 @@
+         try {
+             instance.execute(message);
+ 
+-            // Set up the sample result details
+-            res.setSamplerData(
+-                    "To: " + receiverTo
+-                    + "\nCC: " + receiverCC
+-                    + "\nBCC: " + receiverBcc);
++            // Set up the sample result details            
++            res.setSamplerData(getSamplerData(message));
+             res.setDataType(SampleResult.TEXT);
+             res.setResponseCodeOK();
+             /*
+@@ -282,7 +283,104 @@
+         return res;
+     }
+ 
+-    /**
++    private String getSamplerData(Message message) throws MessagingException, IOException {
++    	StringBuffer sb = new StringBuffer();
++        
++        sb.append("------------ Message Headers ------------\n");
++        Enumeration headers = message.getAllHeaders();
++        writeHeaders(headers, sb);
++        String from = InternetAddress.toString(message.getFrom());
++        if (from != null) {
++        	sb.append("From: ");
++        	sb.append(from);
++        	sb.append("\n");
++        }
++
++        String replyTo = InternetAddress.toString(message.getReplyTo());
++        if (replyTo != null) {
++        	sb.append("Reply-to: ");
++        	sb.append(replyTo);
++        	sb.append("\n");
++        }
++        String to = InternetAddress.toString(message.getRecipients(Message.RecipientType.TO));
++        if (to != null) {
++        	sb.append("To: ");
++        	sb.append(to);
++        	sb.append("\n");
++        }
++
++        String subject = message.getSubject();
++        if (subject != null) {
++        	sb.append("Subject: ");
++        	sb.append(subject);
++        	sb.append("\n");
++        }
++        sb.append("\n------------ Message Content ------------\n");
++        Object content = message.getContent();
++        if (content instanceof Multipart) {
++        	Multipart multipart = (Multipart) content;
++        	sb.append("Content-Type: ");
++        	sb.append(multipart.getContentType());
++        	sb.append("\n");
++        	for (int i = 0; i < multipart.getCount(); i++) {        		
++                BodyPart bodyPart = multipart.getBodyPart(i);
++                writeBodyPart(sb, bodyPart);
++            }
++		} else if(content instanceof BodyPart){
++			BodyPart bodyPart = (BodyPart) content;
++			writeBodyPart(sb, bodyPart);
++		}        
++		return sb.toString();
++	}
++
++	private void writeHeaders(Enumeration<Header> headers, StringBuffer sb)
++			throws MessagingException {
++        while (headers.hasMoreElements()) {
++        	Header header = headers.nextElement();
++        	if("From".equals(header.getName())
++        		|| "Reply-to".equals(header.getName())
++        		|| "To".equals(header.getName())
++        		|| "Subject".equals(header.getName())
++        		|| "Content-Type".equals(header.getName())){        		
++        		continue;
++        	}
++        	sb.append(header.getName());
++        	sb.append(": ");
++        	sb.append(header.getValue());
++        	sb.append("\n");
++        }
++	}
++
++	private void writeBodyPart(StringBuffer sb, BodyPart bodyPart)
++			throws MessagingException, IOException {
++		writeHeaders(bodyPart.getAllHeaders(), sb);
++		sb.append("ContentType = ");
++		sb.append(bodyPart.getContentType());
++		sb.append("\n");
++		String description = bodyPart.getDescription();
++		if(description != null){
++			sb.append("Description = ");
++			sb.append(description);
++			sb.append("\n");
++		}
++		
++		String disposition = bodyPart.getDisposition();
++		
++		if (disposition != null && (disposition.equals(BodyPart.ATTACHMENT))) {
++			sb.append("\n Attachment - ");
++			sb.append("Disposition = ");
++			sb.append(disposition);		    
++		    sb.append("; FileName = ");
++		    sb.append(bodyPart.getFileName());    
++		    sb.append("; FileSize = ");
++		    sb.append(bodyPart.getSize());
++		} else {
++        	sb.append("\n");
++		    sb.append(bodyPart.getContent());
++		}
++	}
++
++	/**
+      * Get the list of addresses or null.
+      * Null is treated differently from an empty list.
+      * @param propValue addresses separated by ";"

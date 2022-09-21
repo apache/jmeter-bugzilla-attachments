@@ -1,0 +1,118 @@
+Index: JDBCSampler.java
+===================================================================
+--- JDBCSampler.java	(revision 388876)
++++ JDBCSampler.java	(working copy)
+@@ -23,6 +23,7 @@
+ import java.sql.ResultSetMetaData;
+ import java.sql.SQLException;
+ import java.sql.Statement;
++import java.sql.CallableStatement;
+ 
+ import org.apache.avalon.excalibur.datasource.DataSourceComponent;
+ import org.apache.jmeter.samplers.Entry;
+@@ -45,6 +46,8 @@
+ 
+ 	public static final String QUERY = "query";
+ 	public static final String SELECT = "Select Statement";
++	public static final String UPDATE = "Update Statement";
++	public static final String STATEMENT = "Call Statement";
+ 
+ 	public String query = "";
+ 
+@@ -69,6 +72,7 @@
+ 		log.debug("DataSourceComponent: " + pool);
+ 		Connection conn = null;
+ 		Statement stmt = null;
++		CallableStatement cs = null;
+ 
+ 		try {
+ 
+@@ -88,14 +92,19 @@
+ 					Data data = getDataFromResultSet(rs);
+ 					res.setResponseData(data.toString().getBytes());
+ 				} finally {
+-					if (rs != null) {
+-						try {
+-							rs.close();
+-						} catch (SQLException exc) {
+-							log.warn("Error closing ResultSet", exc);
+-						}
+-					}
++					close(rs);
+ 				}
++			// execute stored procedure
++			} else if (STATEMENT.equals(getQueryType())) {
++				try {
++					cs = conn.prepareCall(getQuery());
++					cs.execute();
++					String results = "Executed";
++					res.setResponseData(results.getBytes());
++				} finally {
++					close(cs);
++				}
++			// Insert/Update/Delete statement
+ 			} else {
+ 				stmt.execute(getQuery());
+ 				int updateCount = stmt.getUpdateCount();
+@@ -112,20 +121,8 @@
+ 			res.setResponseMessage(ex.toString());
+ 			res.setSuccessful(false);
+ 		} finally {
+-			if (stmt != null) {
+-				try {
+-					stmt.close();
+-				} catch (SQLException ex) {
+-					log.warn("Error closing statement", ex);
+-				}
+-			}
+-			if (conn != null) {
+-				try {
+-					conn.close();
+-				} catch (SQLException ex) {
+-					log.warn("Error closing connection", ex);
+-				}
+-			}
++			close(stmt);
++			close(conn);
+ 		}
+ 
+ 		res.sampleEnd();
+@@ -164,6 +161,38 @@
+ 		return data;
+ 	}
+ 
++	public static void close(Connection c) {
++		try {
++			if (c != null) c.close();
++		} catch (SQLException e) {
++			log.warn("Error closing Connection", e);
++		}
++	}
++	
++	public static void close(Statement s) {
++		try {
++			if (s != null) s.close();
++		} catch (SQLException e) {
++			log.warn("Error closing Statement", e);
++		}
++	}
++
++	public static void close(CallableStatement cs) {
++		try {
++			if (cs != null) cs.close();
++		} catch (SQLException e) {
++			log.warn("Error closing CallableStatement", e);
++		}
++	}
++
++	public static void close(ResultSet rs) {
++		try {
++			if (rs != null) rs.close();
++		} catch (SQLException e) {
++			log.warn("Error closing ResultSet", e);
++		}
++	}
++
+ 	public String getQuery() {
+ 		return query;
+ 	}

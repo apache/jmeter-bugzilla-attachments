@@ -1,0 +1,54 @@
+diff --git a/src/core/src/main/java/org/apache/jmeter/gui/util/FileDialoger.java b/src/core/src/main/java/org/apache/jmeter/gui/util/FileDialoger.java
+index 23c795e..a8ad63e 100644
+--- a/src/core/src/main/java/org/apache/jmeter/gui/util/FileDialoger.java
++++ b/src/core/src/main/java/org/apache/jmeter/gui/util/FileDialoger.java
+@@ -180,18 +180,16 @@
+        } else {
+            jfc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        }
+-       if(!StringUtils.isEmpty(existingFileName)) {
+-           File existingFileStart = new File(existingFileName);
+-           if(existingFileStart.exists() && existingFileStart.canRead()) {
+-               jfc.setCurrentDirectory(new File(existingFileName));
+-           }
+-       }
+-       else if (lastJFCDirectory == null) {
++       if (!StringUtils.isEmpty(existingFileName)) {
++           setCurrentDirOnJFC(existingFileName);
++       } else if (lastJFCDirectory == null) {
+            String start = System.getProperty("user.dir", ""); //$NON-NLS-1$//$NON-NLS-2$
+ 
+            if (start.length() > 0) {
+-               jfc.setCurrentDirectory(new File(start));
++               setCurrentDirOnJFC(start);
+            }
++       } else {
++           setCurrentDirOnJFC(lastJFCDirectory);
+        }
+        clearFileFilters();
+        if(exts != null && exts.length > 0) {
+@@ -200,10 +198,6 @@
+            jfc.setAcceptAllFileFilterUsed(true);
+            jfc.setFileFilter(currentFilter);
+        }
+-       if(lastJFCDirectory==null) {
+-           lastJFCDirectory = System.getProperty("user.dir", ""); //$NON-NLS-1$//$NON-NLS-2$
+-       }
+-       jfc.setCurrentDirectory(new File(lastJFCDirectory));
+        int retVal = jfc.showOpenDialog(parentComponent);
+        lastJFCDirectory = jfc.getCurrentDirectory().getAbsolutePath();
+ 
+@@ -213,6 +207,13 @@
+        return null;
+    }
+ 
++    private static void setCurrentDirOnJFC(String currentDirName) {
++        File currentDir = new File(currentDirName);
++        if (currentDir.exists() && currentDir.canRead()) {
++            jfc.setCurrentDirectory(currentDir);
++        }
++    }
++
+     private static void clearFileFilters() {
+         FileFilter[] filters = jfc.getChoosableFileFilters();
+         for (FileFilter filter : filters) {

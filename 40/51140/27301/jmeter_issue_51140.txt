@@ -1,0 +1,152 @@
+Entry in message.properties:
+view_results_assertion_specific_failure_message=Specific failure message: 
+
+public class AssertionResult implements Serializable {
+     /** The failure message which can be provided by the user. */   
+    private String specificFailureMessage;
+	
+    public String getSpecificFailureMessage() {
+		return specificFailureMessage;
+	}
+
+	public void setSpecificFailureMessage(String specificErrorMessage) {
+		this.specificFailureMessage = specificErrorMessage;
+	}
+}
+
+public class AssertionLogGui extends AssertionGui {
+    
+    private JTextField specificErrorMessage;
+    
+    /**
+     * Create a new AssertionGui panel.
+     */
+    public AssertionLogGui() {
+    	super();
+    	JPanel panel = new JPanel();
+        panel.setBorder(BorderFactory.createTitledBorder("Save variable context into file (if activated in test scenario)"));
+        panel.setLayout(new GridLayout(0,2)); 
+        panel.add(new JLabel("File for success:"));
+        successFile = new JTextField(30);
+        panel.add(successFile);
+        
+        panel.add(new JLabel("File for failure:"));
+        failFile = new JTextField(30);
+        panel.add(failFile);
+        
+        panel.add(new JLabel("Variable pattern to write in file:"));
+        patternFile = new JTextField(30);
+        panel.add(patternFile);
+        
+        JPanel errorMessagePanel = new JPanel();
+        errorMessagePanel.setBorder(BorderFactory.createTitledBorder("Specific Failure Message"));
+        errorMessagePanel.setLayout(new GridLayout(0,1)); 
+        specificErrorMessage = new JTextField("",100);
+        errorMessagePanel.add(specificErrorMessage);
+    	
+        Box box = (Box)getComponent(0);
+        box.add(oep, 1);
+        box.add(panel, 2);
+        box.add(errorMessagePanel, 3);        
+    }
+	
+	 /* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+    public void modifyTestElement(TestElement el) {
+        super.modifyTestElement(el);
+        
+        if (el instanceof ResponseLogAssertion) {
+        	ResponseLogAssertion ra = (ResponseLogAssertion) el;
+        	ra.setFailVarFile(failFile.getText());
+        	ra.setSuccessVarFile(successFile.getText());
+        	ra.setVarFileString(patternFile.getText());
+        	ra.setErrorAction(oep.getOnErrorSetting());
+        	ra.setSpecificFailureMessage(specificErrorMessage.getText());
+        }
+    }
+	
+	@Override
+    public void configure(TestElement el) {
+        super.configure(el);
+        ResponseLogAssertion model = (ResponseLogAssertion) el;
+
+        failFile.setText(model.getFailVarFile());
+        successFile.setText(model.getSuccessVarFile());
+        patternFile.setText(model.getVarFileString());
+        specificErrorMessage.setText(model.getSpecificFailureMessage());
+        oep.configure(model.getErrorAction());
+    }
+}
+
+public class ResponseAssertion extends AbstractScopedAssertion implements Serializable, Assertion {
+   
+    private static final String SPECIFIC_FAILURE_MESSAGE = "Assertion.specific_failure_message"; // $NON-NLS-1$
+       
+    public String getSpecificFailureMessage() {
+    	return getPropertyAsString(SPECIFIC_FAILURE_MESSAGE);
+    }
+    public void setSpecificFailureMessage(String message) {
+    	setProperty(SPECIFIC_FAILURE_MESSAGE, message);
+    }
+        
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public AssertionResult getResult(SampleResult response) {
+		AssertionResult result;
+
+        // None of the other Assertions check the response status, so remove
+        // this check
+        // for the time being, at least...
+        // if (!response.isSuccessful())
+        // {
+        // result = new AssertionResult();
+        // result.setError(true);
+        // byte [] ba = response.getResponseData();
+        // result.setFailureMessage(
+        // ba == null ? "Unknown Error (responseData is empty)" : new String(ba)
+        // );
+        // return result;
+        // }
+
+        result = evaluateResponse(response);
+		result.setSpecificFailureMessage(getSpecificFailureMessage());       
+        return result;
+    }
+}
+
+public abstract class SamplerResultTab implements ResultRenderer {
+
+    @SuppressWarnings("boxing")
+    public void setupTabPane() {
+        StyledDocument statsDoc = stats.getStyledDocument();
+        try {
+            statsDoc.remove(0, statsDoc.getLength());
+            sampleDataField.setText(""); // $NON-NLS-1$
+            results.setText(""); // $NON-NLS-1$
+            if (userObject instanceof SampleResult) {
+                // ...           
+            } else if (userObject instanceof AssertionResult) {
+                assertionResult = (AssertionResult) userObject;
+
+                // We are displaying an AssertionResult
+                setupTabPaneForAssertionResult();
+
+                StringBuilder statsBuff = new StringBuilder(100);
+                statsBuff.append(JMeterUtils.getResString("view_results_assertion_error")).append(assertionResult.isError()).append(NL); //$NON-NLS-1$
+                statsBuff.append(JMeterUtils.getResString("view_results_assertion_failure")).append(assertionResult.isFailure()).append(NL); //$NON-NLS-1$
+                statsBuff.append(JMeterUtils.getResString("view_results_assertion_failure_message")).append(assertionResult.getFailureMessage()).append(NL); //$NON-NLS-1$
+                if (null != assertionResult.getSpecificFailureMessage() && !"".equals(assertionResult.getSpecificFailureMessage())) {
+                	statsBuff.append(JMeterUtils.getResString("view_results_assertion_specific_failure_message")).append(assertionResult.getSpecificFailureMessage()).append(NL); //$NON-NLS-1$
+                }
+                statsDoc.insertString(statsDoc.getLength(), statsBuff.toString(), null);
+            }
+            
+        } catch (BadLocationException exc) {
+            stats.setText(exc.getLocalizedMessage());
+        }
+    }
+}
+
+
+

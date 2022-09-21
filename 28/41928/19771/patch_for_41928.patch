@@ -1,0 +1,201 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(revision 521138)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(working copy)
+@@ -29,6 +29,9 @@
+ import java.net.URL;
+ import java.net.URLConnection;
+ 
++import java.util.Iterator;
++import java.util.Map;
++import java.util.Set;
+ import java.util.zip.GZIPInputStream;
+ 
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+@@ -179,25 +182,27 @@
+ 		}
+ 
+ 		conn.setRequestMethod(method);
+-		String hdrs = setConnectionHeaders(conn, u, getHeaderManager());
++		setConnectionHeaders(conn, u, getHeaderManager());
+ 		String cookies = setConnectionCookie(conn, u, getCookieManager());
+ 
+-        if (res != null) {
+-            res.setURL(u);
+-            res.setHTTPMethod(method);
+-            res.setRequestHeaders(hdrs);
+-            res.setCookies(cookies);
+-            if (method.equals(POST)) {
++        setConnectionAuthorization(conn, u, getAuthManager());
++
++		if (method.equals(POST)) {
++            if(res != null) {
+                 res.setQueryString(getQueryString());
+             }
+-        }
+-
+-		setConnectionAuthorization(conn, u, getAuthManager());
+-		if (method.equals(POST)) {
+ 			setPostHeaders(conn);
+ 		} else if (method.equals(PUT)) {
+             setPutHeaders(conn);
+         }
++        
++        if (res != null) {
++            res.setURL(u);
++            res.setHTTPMethod(method);
++            res.setRequestHeaders(getConnectionHeaders(conn));
++            res.setCookies(cookies);
++        }
++        
+ 		return conn;
+ 	}
+ 
+@@ -338,10 +343,9 @@
+ 	 * @param headerManager
+ 	 *            the <code>HeaderManager</code> containing all the cookies
+ 	 *            for this <code>UrlConfig</code>
+-	 * @return the headers as a string
+ 	 */
+-	private String setConnectionHeaders(HttpURLConnection conn, URL u, HeaderManager headerManager) {
+-		StringBuffer hdrs = new StringBuffer(100);
++	private void setConnectionHeaders(HttpURLConnection conn, URL u, HeaderManager headerManager) {
++        // Set all the headers from the HeaderManager
+ 		if (headerManager != null) {
+ 			CollectionProperty headers = headerManager.getHeaders();
+ 			if (headers != null) {
+@@ -351,16 +355,39 @@
+ 					String n = header.getName();
+ 					String v = header.getValue();
+ 					conn.setRequestProperty(n, v);
+-					hdrs.append(n);
+-					hdrs.append(": "); // $NON-NLS-1$
+-					hdrs.append(v);
+-					hdrs.append("\n"); // $NON-NLS-1$
+ 				}
+ 			}
+ 		}
+-		return hdrs.toString();
+ 	}
++    
++    /**
++     * Get all the headers for the <code>HttpURLConnection</code> passed in
++     * 
++     * @param conn
++     *            <code>HttpUrlConnection</code> which represents the URL
++     *            request
++     * @return the headers as a string
++     */
++    private String getConnectionHeaders(HttpURLConnection conn) {
++        // Get all the request properties, which are the headers set on the connection
++        StringBuffer hdrs = new StringBuffer(100);
++        Map requestHeaders = conn.getRequestProperties();
++        Set headerFields = requestHeaders.keySet();
++        for(Iterator i = headerFields.iterator(); i.hasNext();) {
++            String headerKey = (String)i.next();
++            // Exclude the COOKIE header, since cookie is reported separately in the sample
++            if(!HEADER_COOKIE.equalsIgnoreCase(headerKey)) {            
++                String headerValue = conn.getRequestProperty(headerKey);
++                hdrs.append(headerKey);
++                hdrs.append(": "); // $NON-NLS-1$
++                hdrs.append(headerValue);
++                hdrs.append("\n"); // $NON-NLS-1$
++            }
++        }
+ 
++        return hdrs.toString();
++    }
++
+ 	/**
+ 	 * Extracts all the required authorization for that particular URL request
+ 	 * and sets it in the <code>HttpURLConnection</code> passed in.
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(revision 521138)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(working copy)
+@@ -361,17 +402,16 @@
+ 			httpMethod.setRequestHeader(HEADER_CONNECTION, CONNECTION_CLOSE);
+ 		}
+ 
+-		String hdrs = setConnectionHeaders(httpMethod, u, getHeaderManager());
++		setConnectionHeaders(httpMethod, u, getHeaderManager());
+ 		String cookies = setConnectionCookie(httpMethod, u, getCookieManager());
+ 
+-		if (res != null) {
++        setConnectionAuthorization(httpClient, u, getAuthManager());
++
++        if (res != null) {
+             res.setURL(u);
+-            res.setRequestHeaders(hdrs);
+             res.setCookies(cookies);
+ 		}
+ 
+-		setConnectionAuthorization(httpClient, u, getAuthManager());
+-
+ 		return httpClient;
+ 	}
+ 
+@@ -434,10 +474,9 @@
+ 	 * @param headerManager
+ 	 *            the <code>HeaderManager</code> containing all the cookies
+ 	 *            for this <code>UrlConfig</code>
+-	 * @return the headers as a string
+ 	 */
+-	String setConnectionHeaders(HttpMethod method, URL u, HeaderManager headerManager) {
+-		StringBuffer hdrs = new StringBuffer(100);
++	private void setConnectionHeaders(HttpMethod method, URL u, HeaderManager headerManager) {
++        // Set all the headers from the HeaderManager
+ 		if (headerManager != null) {
+ 			CollectionProperty headers = headerManager.getHeaders();
+ 			if (headers != null) {
+@@ -453,16 +492,36 @@
+ 					if (! HEADER_CONTENT_LENGTH.equalsIgnoreCase(n)){
+ 						String v = header.getValue();
+ 						method.addRequestHeader(n, v);
+-						hdrs.append(n);
+-						hdrs.append(": "); // $NON-NLS-1$
+-						hdrs.append(v);
+-						hdrs.append("\n"); // $NON-NLS-1$
+ 					}
+ 				}
+ 			}
+ 		}
+-		return hdrs.toString();
+ 	}
++    
++    /**
++     * Get all the request headers for the <code>HttpMethod</code>
++     * 
++     * @param method
++     *            <code>HttpMethod</code> which represents the request
++     * @return the headers as a string
++     */
++    private String getConnectionHeaders(HttpMethod method) {
++        // Get all the request headers
++        StringBuffer hdrs = new StringBuffer(100);        
++        Header[] requestHeaders = method.getRequestHeaders();
++        for(int i = 0; i < requestHeaders.length; i++) {
++            // Exclude the COOKIE header, since cookie is reported separately in the sample
++            if(!HEADER_COOKIE.equalsIgnoreCase(requestHeaders[i].getName())) {
++                hdrs.append(requestHeaders[i].getName());
++                hdrs.append(": "); // $NON-NLS-1$
++                hdrs.append(requestHeaders[i].getValue());
++                hdrs.append("\n"); // $NON-NLS-1$
++            }
++        }
++        
++        return hdrs.toString();
++    }
++    
+ 
+ 	/**
+ 	 * Extracts all the required authorization for that particular URL request
+@@ -574,6 +633,8 @@
+                 setPutHeaders((PutMethod) httpMethod);
+             }
+ 
++            res.setRequestHeaders(getConnectionHeaders(httpMethod));
++
+ 			int statusCode = client.executeMethod(httpMethod);
+ 
+ 			// Request sent. Now get the response:

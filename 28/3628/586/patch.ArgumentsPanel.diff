@@ -1,0 +1,121 @@
+--- \jakarta-jmeter-cvs\jakarta-jmeter\src\org\apache\jmeter\config\gui\ArgumentsPanel.java	Thu Jul 26 00:34:44 2001
++++ \jakarta-jmeter-nightly\2001.09.15\jakarta-jmeter\src\org\apache\jmeter\config\gui\ArgumentsPanel.java	Thu Sep 20 13:32:52 2001
+@@ -117,9 +117,14 @@
+ 	 ***********************************************************/
+ 	public void keyReleased(KeyEvent e)
+ 	{
+-		tableModel.setValueAt(table.getValueAt(table.getSelectedRow(), table.getSelectedColumn()),
+-				table.getSelectedRow(), table.getSelectedColumn());
+-		this.repaint();
++		/* Note sure why we have code here, so I commented it out. Seems to work fine. [khammond]
++		if (tableModel.getRowCount() > 0)
++		{
++			tableModel.setValueAt(table.getValueAt(table.getSelectedRow(), table.getSelectedColumn()),
++					table.getSelectedRow(), table.getSelectedColumn());
++			this.repaint();
++		}
++		*/
+ 	}
+ 
+ 	/************************************************************
+@@ -148,15 +153,67 @@
+ 	public void actionPerformed(ActionEvent e)
+ 	{
+ 		String action = e.getActionCommand();
++
+ 		if(action.equals("Delete"))
+ 		{
+-			tableModel.removeRow(table.getSelectedRow());
+-			tableModel.fireTableDataChanged();
++			if (tableModel.getRowCount() > 0)
++			{
++				// If a table cell is being edited, we must cancel the editing before 
++				// deleting the row
++				if (table.isEditing())
++				{
++					TableCellEditor cellEditor = table.getCellEditor(table.getEditingRow(), table.getEditingColumn());
++					cellEditor.cancelCellEditing();
++				}
++
++				int rowSelected = table.getSelectedRow();
++
++				tableModel.removeRow(rowSelected);
++				tableModel.fireTableDataChanged();
++
++				// Disable the DELETE button if no rows remaining after delete
++				if (tableModel.getRowCount() == 0)
++				{
++					delete.setEnabled(false);
++				}
++
++				// Table still contains one or more rows, so highlight (select)
++				// the appropriate one. 
++				else
++				{
++					int rowToSelect = rowSelected;
++
++					if (rowSelected >= tableModel.getRowCount())
++					{
++						rowToSelect = rowSelected - 1;
++					}
++
++					table.setRowSelectionInterval(rowToSelect, rowToSelect);
++				}
++			}
+ 		}
+ 		else if(action.equals("Add"))
+ 		{
++			// If a table cell is being edited, we should accept the current value
++			// and stop the editing before adding a new row.
++			if (table.isEditing())
++			{
++				TableCellEditor cellEditor = table.getCellEditor(table.getEditingRow(), table.getEditingColumn());
++				cellEditor.stopCellEditing();
++			}
++
+ 			tableModel.addNewRow();
+ 			tableModel.fireTableDataChanged();
++
++			// Enabled the DELETE button if it is currently disabled.
++			if (!delete.isEnabled())
++			{
++				delete.setEnabled(true);
++			}
++
++			// Highlight (select) the appropriate row.
++			int rowToSelect = tableModel.getRowCount() - 1;
++			table.setRowSelectionInterval(rowToSelect, rowToSelect);
+ 		}
+ 	}
+ 
+@@ -178,13 +235,22 @@
+ 
+ 		scroller.setColumnHeaderView(table.getTableHeader());
+ 		this.add(scroller);
++
++		// ADD button
+ 		add = new JButton(JMeterUtils.getResString("add"));
++		add.setMnemonic('A');
+ 		add.setActionCommand("Add");
++		add.addActionListener(this);
++
++		// DELETE button
+ 		delete = new JButton(JMeterUtils.getResString("delete"));
++		delete.setEnabled(false);  // disabled by default
++		delete.setMnemonic('D');
+ 		delete.setActionCommand("Delete");
+-		JPanel buttonPanel = new JPanel();
+-		add.addActionListener(this);
+ 		delete.addActionListener(this);
++
++		// Button Panel
++		JPanel buttonPanel = new JPanel();
+ 		buttonPanel.add(add);
+ 		buttonPanel.add(delete);
+ 		this.add(buttonPanel);
+@@ -322,5 +388,4 @@
+ 			}
+ 		}
+ 	}
+-
+ }

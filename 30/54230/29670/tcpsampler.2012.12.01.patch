@@ -1,0 +1,368 @@
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1416461)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -1255,9 +1255,11 @@
+ 		If "Re-use connection" is selected, connections are shared between Samplers in the same thread,
+ 		provided that the exact same host name string and port are used. 
+ 		Different hosts/port combinations will use different connections, as will different threads. 
++		And both of "Re-use connection" and "Close connetion" are selected, the socket will be closed after running the sampler. 
++		On the next sampler, another socket will be created. You may want to close a socket at the end of each thread loop.
+ 		<br></br>
+ 		If an error is detected - or "Re-use connection" is not selected - the socket is closed. 
+-		Another socket will be reopened on the next sample.
++		Also another socket will be reopened on the next sample.
+ 		<br></br>
+ 		The following properties can be used to control its operation:
+ 		</p>
+@@ -1329,6 +1331,7 @@
+   <property name="ServerName or IP" required="Yes">Name or IP of TCP server</property>
+   <property name="Port Number" required="Yes">Port to be used</property>
+   <property name="Re-use connection" required="Yes">If selected, the connection is kept open. Otherwise it is closed when the data has been read.</property>
++  <property name="Close connection" required="Yes">If selected, the connection will be closed after running the sampler.</property>
+   <property name="Connect Timeout" required="No">Connect Timeout (milliseconds, 0 disables).</property>
+   <property name="Response Timeout" required="No">Response Timeout (milliseconds, 0 disables).</property>
+   <property name="Set Nodelay" required="Yes">See java.net.Socket.setTcpNoDelay().
+@@ -3739,7 +3742,8 @@
+   <property name="TCPClient classname" required="No">Name of the TCPClient class. Defaults to the property tcp.handler, failing that TCPClientImpl.</property>
+   <property name="ServerName or IP" required="">Name or IP of TCP server</property>
+   <property name="Port Number" required="">Port to be used</property>
+-  <property name="Re-use connection" required="Yes">If selected, the connection is kept open. Otherwise it is closed when the data has been read.</property>
++  <property name="SO_LINGER" required="No">Enable/disable SO_LINGER with the specified linger time in seconds when a socket is created. If you set "SO_LINGER" value as 0, you may prevent large numbers of sockets sitting around with a TIME_WAIT status.</property>
++  <property name="End of line(EOL) byte value" required="No">Byte value for end of line, set this to a value outside the range -128 to +127 to skip eol checking. You may set this in jmeter.properties file as well with eolByte property. If you set this in TCP Sampler Config and in jmeter.properties file at the same time, the setting value in the TCP Sampler Config will be used.</property>
+   <property name="Connect Timeout" required="No">Connect Timeout (milliseconds, 0 disables).</property>
+   <property name="Response Timeout" required="No">Response Timeout (milliseconds, 0 disables).</property>
+   <property name="Set Nodelay" required="">Should the nodelay property be set?</property>
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1416461)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -801,6 +801,9 @@
+ retobj=Return object
+ return_code_config_box_title=Return Code Configuration
+ reuseconnection=Re-use connection
++closeconnection=Close connection
++solinger=SO_LINGER:
++eolbyte=End of line(EOL) byte value: 
+ revert_project=Revert
+ revert_project?=Revert project?
+ root=Root
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	(revision 1416461)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	(working copy)
+@@ -19,11 +19,16 @@
+ package org.apache.jmeter.protocol.tcp.config.gui;
+ 
+ import java.awt.BorderLayout;
++import java.awt.Dimension;
++import java.awt.event.ItemEvent;
++import java.awt.event.ItemListener;
+ 
++import javax.swing.BorderFactory;
+ import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JTextArea;
++import javax.swing.JTextField;
+ 
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.config.gui.AbstractConfigGui;
+@@ -49,16 +54,29 @@
+ 
+     private JCheckBox setNoDelay;
+ 
++    private JCheckBox closeConnection;
++    
++    private JTextField soLinger;
++    
++    private JTextField eolByte;
++    
+     private JTextArea requestData;
+ 
+     private boolean displayName = true;
+ 
++    private boolean displayOptionsPanelForSampler = false;
++    
+     public TCPConfigGui() {
+         this(true);
+     }
+ 
+     public TCPConfigGui(boolean displayName) {
++        this(displayName, false);
++    }
++
++    public TCPConfigGui(boolean displayName, boolean displayOptionsPanelForSampler) {
+         this.displayName = displayName;
++        this.displayOptionsPanelForSampler = displayOptionsPanelForSampler;
+         init();
+     }
+ 
+@@ -73,14 +91,21 @@
+         // N.B. this will be a config element, so we cannot use the getXXX() methods
+         classname.setText(element.getPropertyAsString(TCPSampler.CLASSNAME));
+         serverPanel.setServer(element.getPropertyAsString(TCPSampler.SERVER));
+-        // Default to original behaviour, i.e. re-use connection
+-        reUseConnection.setSelected(element.getPropertyAsBoolean(TCPSampler.RE_USE_CONNECTION,true));
+         serverPanel.setPort(element.getPropertyAsString(TCPSampler.PORT));
+         // filename.setText(element.getPropertyAsString(TCPSampler.FILENAME));
+         serverPanel.setResponseTimeout(element.getPropertyAsString(TCPSampler.TIMEOUT));
+         serverPanel.setConnectTimeout(element.getPropertyAsString(TCPSampler.TIMEOUT_CONNECT));
+-        setNoDelay.setSelected(element.getPropertyAsBoolean(TCPSampler.NODELAY));
+         requestData.setText(element.getPropertyAsString(TCPSampler.REQUEST));
++
++        if (displayOptionsPanelForSampler) {
++            // Default to original behaviour, i.e. re-use connection
++            reUseConnection.setSelected(element.getPropertyAsBoolean(TCPSampler.RE_USE_CONNECTION, true));
++            closeConnection.setSelected(element.getPropertyAsBoolean(TCPSampler.CLOSE_CONNECTION, false));
++            setNoDelay.setSelected(element.getPropertyAsBoolean(TCPSampler.NODELAY));
++        }else{
++            soLinger.setText(element.getPropertyAsString(TCPSampler.SO_LINGER));
++            eolByte.setText(element.getPropertyAsString(TCPSampler.EOL_BYTE));
++        }
+     }
+ 
+     @Override
+@@ -101,13 +126,20 @@
+         // N.B. this will be a config element, so we cannot use the setXXX() methods
+         element.setProperty(TCPSampler.CLASSNAME, classname.getText(), "");
+         element.setProperty(TCPSampler.SERVER, serverPanel.getServer());
+-        element.setProperty(TCPSampler.RE_USE_CONNECTION, reUseConnection.isSelected());
+         element.setProperty(TCPSampler.PORT, serverPanel.getPort());
+         // element.setProperty(TCPSampler.FILENAME, filename.getText());
+-        element.setProperty(TCPSampler.NODELAY, setNoDelay.isSelected());
+         element.setProperty(TCPSampler.TIMEOUT, serverPanel.getResponseTimeout());
+-        element.setProperty(TCPSampler.TIMEOUT_CONNECT, serverPanel.getConnectTimeout(),"");
++        element.setProperty(TCPSampler.TIMEOUT_CONNECT, serverPanel.getConnectTimeout(), "");
+         element.setProperty(TCPSampler.REQUEST, requestData.getText());
++
++        if (displayOptionsPanelForSampler) {
++            element.setProperty(TCPSampler.RE_USE_CONNECTION, reUseConnection.isSelected());
++            element.setProperty(TCPSampler.CLOSE_CONNECTION, closeConnection.isSelected());
++            element.setProperty(TCPSampler.NODELAY, setNoDelay.isSelected());
++        }else{
++            element.setProperty(TCPSampler.SO_LINGER, soLinger.getText());
++            element.setProperty(TCPSampler.EOL_BYTE, eolByte.getText());
++        }
+     }
+ 
+     /**
+@@ -120,44 +152,80 @@
+         serverPanel.clear();
+         classname.setText(""); //$NON-NLS-1$
+         requestData.setText(""); //$NON-NLS-1$
+-        reUseConnection.setSelected(true);
+-        setNoDelay.setSelected(false);
+-    }
+ 
++        if (displayOptionsPanelForSampler) {
++            reUseConnection.setSelected(true);
++            closeConnection.setSelected(false);
++            setNoDelay.setSelected(false);
++        }else{
++            soLinger.setText(""); //$NON-NLS-1$
++            eolByte.setText(""); //$NON-NLS-1$
++        }
++    }
+ 
+     private JPanel createNoDelayPanel() {
+-        JLabel label = new JLabel(JMeterUtils.getResString("tcp_nodelay")); // $NON-NLS-1$
+-
+-        setNoDelay = new JCheckBox();
+-        label.setLabelFor(setNoDelay);
+-
+-        JPanel nodelayPanel = new JPanel(new BorderLayout(5, 0));
+-        nodelayPanel.add(label, BorderLayout.WEST);
+-        nodelayPanel.add(setNoDelay, BorderLayout.CENTER);
++        setNoDelay = new JCheckBox(JMeterUtils.getResString("tcp_nodelay")); // $NON-NLS-1$
++        JPanel nodelayPanel = new JPanel();
++        nodelayPanel.add(setNoDelay);
+         return nodelayPanel;
+     }
+ 
+     private JPanel createClosePortPanel() {
+-        JLabel label = new JLabel(JMeterUtils.getResString("reuseconnection")); //$NON-NLS-1$
+-
+-        reUseConnection = new JCheckBox("", true);
+-        label.setLabelFor(reUseConnection);
++        reUseConnection = new JCheckBox(JMeterUtils.getResString("reuseconnection"), true); //$NON-NLS-1$
++        reUseConnection.addItemListener(new ItemListener() {
++            @Override
++            public void itemStateChanged(final ItemEvent e) {
++                if (e.getStateChange() == ItemEvent.SELECTED) {
++                    closeConnection.setEnabled(true);
++                } else {
++                    closeConnection.setEnabled(false);
++                    closeConnection.setSelected(true);
++                }
++            }
++        });
+ 
+-        JPanel closePortPanel = new JPanel(new BorderLayout(5, 0));
+-        closePortPanel.add(label, BorderLayout.WEST);
+-        closePortPanel.add(reUseConnection, BorderLayout.CENTER);
++        JPanel closePortPanel = new JPanel();
++        closePortPanel.add(reUseConnection);
+         return closePortPanel;
+     }
+ 
++    private JPanel createCloseConnectionPanel() {
++        closeConnection = new JCheckBox(JMeterUtils.getResString("closeconnection"), false); //$NON-NLS-1$
++
++        JPanel closeConnectionPanel = new JPanel();
++        closeConnectionPanel.add(closeConnection);
++        return closeConnectionPanel;
++    }
++
++    private JPanel createSoLingerPanel() {
++        JLabel soLingerLable = new JLabel(JMeterUtils.getResString("solinger")); //$NON-NLS-1$ 
++        soLinger = new JTextField(5); // 5 columns size
++        soLinger.setMaximumSize(new Dimension(50, 20));
++        soLingerLable.setLabelFor(soLinger);
++        JPanel soLingerPanel = new JPanel();
++        soLingerPanel.add(soLingerLable);
++        soLingerPanel.add(soLinger);
++        return soLingerPanel;
++    }
++    
++    private JPanel createEolBytePanel() {
++        JLabel eolByteLabel = new JLabel(JMeterUtils.getResString("eolbyte")); //$NON-NLS-1$ 
++        eolByte = new JTextField(3); // 3 columns size 
++        eolByteLabel.setLabelFor(eolByte);
++        
++        JPanel eolBytePanel = new JPanel();
++        eolBytePanel.add(eolByteLabel);
++        eolBytePanel.add(eolByte);
++        return eolBytePanel;
++    }
++
+     private JPanel createRequestPanel() {
+-        JLabel reqLabel = new JLabel(JMeterUtils.getResString("tcp_request_data")); // $NON-NLS-1$
+         requestData = new JTextArea(3, 0);
+         requestData.setLineWrap(true);
+-        reqLabel.setLabelFor(requestData);
+ 
+-        JPanel reqDataPanel = new JPanel(new BorderLayout(5, 0));
+-        reqDataPanel.add(reqLabel, BorderLayout.WEST);
+-        reqDataPanel.add(requestData, BorderLayout.CENTER);
++        final JPanel reqDataPanel = new VerticalPanel();
++        reqDataPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils.getResString("tcp_request_data"))); // $NON-NLS-1$
++        reqDataPanel.add(requestData);
+         return reqDataPanel;
+     }
+ 
+@@ -192,12 +260,19 @@
+         mainPanel.add(serverPanel);
+         
+         HorizontalPanel optionsPanel = new HorizontalPanel();
+-        optionsPanel.add(createClosePortPanel());
+-        optionsPanel.add(createNoDelayPanel());
++        if (displayOptionsPanelForSampler) {
++            optionsPanel.add(createClosePortPanel());
++            optionsPanel.add(createCloseConnectionPanel());
++            optionsPanel.add(createNoDelayPanel());
++        }else{
++            optionsPanel.add(createSoLingerPanel());
++            optionsPanel.add(createEolBytePanel());
++        }
+         mainPanel.add(optionsPanel);
+         mainPanel.add(createRequestPanel());
+ 
+         // mainPanel.add(createFilenamePanel());
+         add(mainPanel, BorderLayout.CENTER);
+     }
++
+ }
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/control/gui/TCPSamplerGui.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/control/gui/TCPSamplerGui.java	(revision 1416461)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/control/gui/TCPSamplerGui.java	(working copy)
+@@ -92,7 +92,7 @@
+ 
+         VerticalPanel mainPanel = new VerticalPanel();
+ 
+-        tcpDefaultPanel = new TCPConfigGui(false);
++        tcpDefaultPanel = new TCPConfigGui(false, true);
+         mainPanel.add(tcpDefaultPanel);
+ 
+         loginPanel = new LoginConfigGui(false);
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	(revision 1416461)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	(working copy)
+@@ -82,6 +82,12 @@
+     public static final String REQUEST = "TCPSampler.request"; //$NON-NLS-1$
+ 
+     public static final String RE_USE_CONNECTION = "TCPSampler.reUseConnection"; //$NON-NLS-1$
++    
++    public static final String CLOSE_CONNECTION = "TCPSampler.closeConnection"; //$NON-NLS-1$
++    
++    public static final String SO_LINGER = "TCPSampler.soLinger"; //$NON-NLS-1$
++    
++    public static final String EOL_BYTE = "TCPSampler.EolByte"; //$NON-NLS-1$
+     //-- JMX file constants - do not change
+ 
+     private static final String TCPKEY = "TCP"; //$NON-NLS-1$ key for HashMap
+@@ -168,6 +174,9 @@
+                 closeSocket(socketKey); // Bug 44910 - close previous socket (if any)
+                 SocketAddress sockaddr = new InetSocketAddress(getServer(), getPort());
+                 con = new Socket();
++                if (!"".equals(getPropertyAsString(SO_LINGER,""))){
++                	con.setSoLinger(true, getSoLinger());
++                }
+                 con.connect(sockaddr, getConnectTimeout());
+                 if(log.isDebugEnabled()) {
+                     log.debug("Created new connection " + con); //$NON-NLS-1$
+@@ -227,6 +236,31 @@
+     public boolean isReUseConnection() {
+         return getPropertyAsBoolean(RE_USE_CONNECTION);
+     }
++    
++    public void setCloseConnection(String close) {
++    	this.setProperty(CLOSE_CONNECTION, close);
++    }
++    
++    public boolean isCloseConnection() {
++    	return getPropertyAsBoolean(CLOSE_CONNECTION);
++    }
++    
++    public void setSoLinger(String soLinger) {
++    	this.setProperty(SO_LINGER, soLinger, "");
++    }
++    
++    public int getSoLinger() {
++    	return getPropertyAsInt(SO_LINGER,0);
++    }
++    
++    public void setEolByte(String eol) {
++        this.setProperty(EOL_BYTE, eol);
++    }
++    
++    public int getEolByte() {
++        return getPropertyAsInt(EOL_BYTE);
++    }
++    
+ 
+     public void setPort(String newFilename) {
+         this.setProperty(PORT, newFilename);
+@@ -323,6 +357,11 @@
+         }
+         try {
+             TCPClient = (TCPClient) javaClass.newInstance();
++            if (!"".equals(getPropertyAsString(EOL_BYTE,""))){
++                TCPClient.setEolByte(getEolByte());
++                log.info("Using eolByte=" + getEolByte());
++            }
++
+             if (log.isDebugEnabled()) {
+                 log.debug(this + "Created: " + getClassname() + "@" + Integer.toHexString(TCPClient.hashCode())); //$NON-NLS-1$
+             }
+@@ -381,7 +420,7 @@
+             // Set if we were successful or not
+             res.setSuccessful(isSuccessful);
+ 
+-            if (!isReUseConnection()) {
++            if (!isReUseConnection() || isCloseConnection()) {
+                 closeSocket(socketKey);
+             }
+         }

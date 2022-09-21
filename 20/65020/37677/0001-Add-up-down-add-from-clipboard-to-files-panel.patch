@@ -1,0 +1,266 @@
+From 221d0d7bb50c0892ab4abc415ff1595ca5a36326 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Fri, 1 Jan 2021 15:45:24 +0100
+Subject: [PATCH] Add up/down/add from clipboard to files panel
+
+---
+ .../protocol/http/gui/HTTPFileArgsPanel.java  | 178 ++++++++++++++++++
+ 1 file changed, 178 insertions(+)
+
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/HTTPFileArgsPanel.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/HTTPFileArgsPanel.java
+index 9bbe30c43c..38b920784c 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/HTTPFileArgsPanel.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/gui/HTTPFileArgsPanel.java
+@@ -19,18 +19,24 @@ package org.apache.jmeter.protocol.http.gui;
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Component;
++import java.awt.Rectangle;
++import java.awt.datatransfer.DataFlavor;
++import java.awt.datatransfer.UnsupportedFlavorException;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.io.File;
++import java.io.IOException;
+ import java.util.Iterator;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+ import javax.swing.JButton;
+ import javax.swing.JFileChooser;
++import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+ import javax.swing.JTable;
++import javax.swing.JViewport;
+ import javax.swing.ListSelectionModel;
+ 
+ import org.apache.commons.lang3.StringUtils;
+@@ -43,6 +49,8 @@ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.gui.GuiUtils;
+ import org.apache.jorphan.gui.ObjectTableModel;
+ import org.apache.jorphan.reflect.Functor;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ 
+ /*
+  * Note: this class is currently only suitable for use with HTTSamplerBase.
+@@ -78,9 +86,18 @@ public class HTTPFileArgsPanel extends JPanel implements ActionListener {
+     /** Command for browsing filesystem to set path of selected row in table. */
+     private static final String BROWSE = "browse"; // $NON-NLS-1$
+ 
++    /** Command for adding rows from the clipboard */
++    private static final String ADD_FROM_CLIPBOARD = "addFromClipboard"; // $NON-NLS-1$
++
+     /** Command for removing a row from the table. */
+     private static final String DELETE = "delete"; // $NON-NLS-1$
+ 
++    /** Command for moving a row up in the table. */
++    private static final String UP = "up"; // $NON-NLS-1$
++
++    /** Command for moving a row down in the table. */
++    private static final String DOWN = "down"; // $NON-NLS-1$
++
+     private static final String FILEPATH = "send_file_filename_label"; // $NON-NLS-1$
+ 
+     /** The parameter name column title of file table. */
+@@ -89,6 +106,11 @@ public class HTTPFileArgsPanel extends JPanel implements ActionListener {
+     /** The mime type column title of file table. */
+     private static final String MIMETYPE = "send_file_mime_label"; //$NON-NLS-1$
+ 
++    /** When pasting from the clipboard, split lines on linebreak */
++    private static final String CLIPBOARD_LINE_DELIMITERS = "\n"; //$NON-NLS-1$
++
++    /** When pasting from the clipboard, split parameters on tab */
++    private static final String CLIPBOARD_ARG_DELIMITERS = "\t"; //$NON-NLS-1$
+ 
+     /**
+      * Create a new HTTPFileArgsPanel as an embedded component
+@@ -203,6 +225,12 @@ public class HTTPFileArgsPanel extends JPanel implements ActionListener {
+         String action = e.getActionCommand();
+         if (action.equals(ADD)) {
+             addFile(""); //$NON-NLS-1$
++        } else if (action.equals(ADD_FROM_CLIPBOARD)) {
++            addFromClipboard();
++        } else if (action.equals(UP)) {
++            moveUp();
++        } else if (action.equals(DOWN)) {
++            moveDown();
+         }
+         runCommandOnSelectedFile(action);
+     }
+@@ -330,16 +358,32 @@ public class HTTPFileArgsPanel extends JPanel implements ActionListener {
+         delete = new JButton(JMeterUtils.getResString("delete")); // $NON-NLS-1$
+         delete.setActionCommand(DELETE);
+ 
++        // A button for adding new arguments to the table from the clipboard
++        JButton addFromClipboard = new JButton(JMeterUtils.getResString("add_from_clipboard")); // $NON-NLS-1$
++        addFromClipboard.setActionCommand(ADD_FROM_CLIPBOARD);
++
++        JButton up = new JButton(JMeterUtils.getResString("up")); // $NON-NLS-1$
++        up.setActionCommand(UP);
++
++        JButton down = new JButton(JMeterUtils.getResString("down")); // $NON-NLS-1$
++        down.setActionCommand(DOWN);
++
+         checkDeleteAndBrowseStatus();
+ 
+         JPanel buttonPanel = new JPanel();
+         buttonPanel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+         add.addActionListener(this);
+         browse.addActionListener(this);
++        addFromClipboard.addActionListener(this);
+         delete.addActionListener(this);
++        up.addActionListener(this);
++        down.addActionListener(this);
+         buttonPanel.add(add);
+         buttonPanel.add(browse);
++        buttonPanel.add(addFromClipboard);
+         buttonPanel.add(delete);
++        buttonPanel.add(up);
++        buttonPanel.add(down);
+         return buttonPanel;
+     }
+ 
+@@ -364,4 +408,138 @@ public class HTTPFileArgsPanel extends JPanel implements ActionListener {
+         pane.setPreferredSize(pane.getMinimumSize());
+         return GuiUtils.emptyBorder(pane);
+     }
++
++
++    /**
++     * Move a row down
++     */
++    private void moveDown() {
++        //get the selected rows before stopping editing
++        // or the selected rows will be unselected
++        int[] rowsSelected = table.getSelectedRows();
++        GuiUtils.stopTableEditing(table);
++
++        if (rowsSelected.length > 0 && rowsSelected[rowsSelected.length - 1] < table.getRowCount() - 1) {
++            table.clearSelection();
++            for (int i = rowsSelected.length - 1; i >= 0; i--) {
++                int rowSelected = rowsSelected[i];
++                tableModel.moveRow(rowSelected, rowSelected + 1, rowSelected + 1);
++            }
++            for (int rowSelected : rowsSelected) {
++                table.addRowSelectionInterval(rowSelected + 1, rowSelected + 1);
++            }
++
++            scrollToRowIfNotVisible(rowsSelected[0]+1);
++        }
++    }
++
++    /**
++     * ensure that a row is visible in the viewport
++     * @param rowIndex row index
++     */
++    private void scrollToRowIfNotVisible(int rowIndex) {
++        if(table.getParent() instanceof JViewport) {
++            Rectangle visibleRect = table.getVisibleRect();
++            final int cellIndex = 0;
++            Rectangle cellRect = table.getCellRect(rowIndex, cellIndex, false);
++            if (visibleRect.y > cellRect.y) {
++                table.scrollRectToVisible(cellRect);
++            } else {
++                Rectangle rect2 = table.getCellRect(rowIndex + getNumberOfVisibleRows(table), cellIndex, true);
++                int width = rect2.y - cellRect.y;
++                table.scrollRectToVisible(new Rectangle(cellRect.x, cellRect.y, cellRect.width, cellRect.height + width));
++            }
++        }
++    }
++
++    /**
++     * @param table {@link JTable}
++     * @return number of visible rows
++     */
++    private static int getNumberOfVisibleRows(JTable table) {
++        Rectangle vr = table.getVisibleRect();
++        int first = table.rowAtPoint(vr.getLocation());
++        vr.translate(0, vr.height);
++        return table.rowAtPoint(vr.getLocation()) - first;
++    }
++
++    /**
++     *  Move a row down
++     */
++    private void moveUp() {
++        //get the selected rows before stopping editing
++        // or the selected rows will be unselected
++        int[] rowsSelected = table.getSelectedRows();
++        GuiUtils.stopTableEditing(table);
++
++        if (rowsSelected.length > 0 && rowsSelected[0] > 0) {
++            table.clearSelection();
++            for (int rowSelected : rowsSelected) {
++                tableModel.moveRow(rowSelected, rowSelected + 1, rowSelected - 1);
++            }
++
++            for (int rowSelected : rowsSelected) {
++                table.addRowSelectionInterval(rowSelected - 1, rowSelected - 1);
++            }
++
++            scrollToRowIfNotVisible(rowsSelected[0]-1);
++        }
++    }
++
++    private void addFromClipboard() {
++        addFromClipboard(CLIPBOARD_LINE_DELIMITERS, CLIPBOARD_ARG_DELIMITERS);
++    }
++
++    /**
++     * Add values from the clipboard
++     * @param lineDelimiter Delimiter string to split clipboard into lines
++     * @param argDelimiter Delimiter string to split line into key-value pair
++     */
++    private void addFromClipboard(String lineDelimiter, String argDelimiter) {
++        GuiUtils.stopTableEditing(table);
++        int rowCount = table.getRowCount();
++        try {
++            String clipboardContent = GuiUtils.getPastedText();
++            if(clipboardContent == null) {
++                return;
++            }
++            String[] clipboardLines = clipboardContent.split(lineDelimiter);
++            for (String clipboardLine : clipboardLines) {
++                String[] clipboardCols = clipboardLine.split(argDelimiter);
++                if (clipboardCols.length > 0) {
++                    HTTPFileArg argument = createHTTPFileArgFromClipboard(clipboardCols);
++                    if (argument != null) {
++                        tableModel.addRow(argument);
++                    }
++                }
++            }
++            if (table.getRowCount() > rowCount) {
++                checkDeleteAndBrowseStatus();
++
++                // Highlight (select) and scroll to the appropriate rows.
++                int rowToSelect = tableModel.getRowCount() - 1;
++                table.setRowSelectionInterval(rowCount, rowToSelect);
++                table.scrollRectToVisible(table.getCellRect(rowCount, 0, true));
++            }
++        } catch (IOException ioe) {
++            JOptionPane.showMessageDialog(this,
++                    "Could not add read file arguments from clipboard:\n" + ioe.getLocalizedMessage(), "Error",
++                    JOptionPane.ERROR_MESSAGE);
++        } catch (UnsupportedFlavorException ufe) {
++            JOptionPane.showMessageDialog(this,
++                    "Could not add retrieve " + DataFlavor.stringFlavor.getHumanPresentableName()
++                            + " from clipboard" + ufe.getLocalizedMessage(), "Error", JOptionPane.ERROR_MESSAGE);
++        }
++    }
++
++    private HTTPFileArg createHTTPFileArgFromClipboard(String[] clipboardCols) {
++        if (clipboardCols.length == 1) {
++            return new HTTPFileArg(clipboardCols[0]);
++        } else if (clipboardCols.length == 2) {
++            return new HTTPFileArg(clipboardCols[0], clipboardCols[1], "");
++        } else if (clipboardCols.length == 3) {
++            return new HTTPFileArg(clipboardCols[0], clipboardCols[1], clipboardCols[2]);
++        }
++        return null;
++    }
+ }
+-- 
+2.25.1
+

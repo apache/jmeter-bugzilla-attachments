@@ -1,0 +1,17 @@
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/DefaultSamplerCreator.java b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/DefaultSamplerCreator.java
+index c548e4c..425a712 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/DefaultSamplerCreator.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/DefaultSamplerCreator.java
+@@ -199,7 +199,11 @@ public class DefaultSamplerCreator extends AbstractSamplerCreator {
+                 // It is the most common post request, with parameter name and values
+                 // We also assume this if no content type is present, to be most backwards compatible,
+                 // but maybe we should only parse arguments if the content type is as expected
+-                sampler.parseArguments(postData.trim(), contentEncoding); //standard name=value postData
++                if (postData.trim().indexOf('=') >= 0) {
++                    sampler.parseArguments(postData.trim(), contentEncoding); //standard name=value postData
++                } else {
++                    sampler.addNonEncodedArgument("", postData, ""); //used when postData has seems to be not of the format name=value
++                }
+             } else if (postData.length() > 0) {
+                 if (isBinaryContent(contentType)) {
+                     try {

@@ -1,0 +1,99 @@
+Index: src/components/org/apache/jmeter/extractor/HtmlExtractor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/HtmlExtractor.java	(revision 1837275)
++++ src/components/org/apache/jmeter/extractor/HtmlExtractor.java	(working copy)
+@@ -171,7 +171,7 @@
+                 getExtractorImpl().extract(expression, attribute, matchNumber, inputString, result, found, "-1");
+             } else {
+                 if (inputString==null && log.isWarnEnabled()) {
+-                    log.warn("No variable '{}' found to process by CSS/JQuery Extractor '{}', skipping processing",
++                    log.warn("No variable '{}' found to process by HTML Extractor '{}', skipping processing",
+                             getVariableName(), getName());
+                 }
+                 return Collections.emptyList();
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1837275)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -432,8 +432,8 @@
+ html_assertion_file=Write JTidy report to file
+ html_assertion_label=HTML Assertion
+ html_assertion_title=HTML Assertion
+-html_extractor_title=CSS/JQuery Extractor
+-html_extractor_type=CSS/JQuery Extractor Implementation
++html_extractor_title=HTML Extractor
++html_extractor_type=HTML Extractor Implementation
+ http_implementation=Implementation:
+ http_response_code=HTTP response code
+ http_url_rewriting_modifier_title=HTTP URL Re-writing Modifier
+Index: src/functions/org/apache/jmeter/functions/RandomFromMultipleVars.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/RandomFromMultipleVars.java	(revision 1837275)
++++ src/functions/org/apache/jmeter/functions/RandomFromMultipleVars.java	(working copy)
+@@ -38,7 +38,7 @@
+  * Those kind of variables are extracted by:
+  * - Regular Expression extractor
+  * - JSON extractor
+- * - CSS/JQuery extractor
++ * - HTML extractor
+  * - XPath Extractor
+  * 
+  * @since 3.1
+Index: xdocs/changes.xml
+===================================================================
+--- xdocs/changes.xml	(revision 1837275)
++++ xdocs/changes.xml	(working copy)
+@@ -230,6 +230,7 @@
+     <li><bug>62252</bug>HTTP header merging logic does not correspond to the documentation</li>
+     <li><bug>62554</bug>BoundaryExtractor : Field to check is not reset</li>
+     <li><bug>62553</bug>Random element might return same value even if property "Per thread user (User)" is set to TRUE</li>
++    <li><bug>62593</bug>Rename CSS/JQuery Extractor to HTML Extractor. Contributed by orimarko at gmail.com</li>
+ </ul>
+ 
+ <h3>Functions</h3>
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1837275)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -5661,8 +5661,8 @@
+     and <a href="regular_expressions.html"> for further information on JMeter regular expressions.</a></p>
+ </component>
+ 
+-<component name="CSS/JQuery Extractor" index="&sect-num;.8.2"  width="826" height="276" screenshot="css_extractor_attr.png">
+-<description><p>Allows the user to extract values from a server response using a CSS/JQuery selector like syntax.  As a post-processor,
++<component name="HTML Extractor" index="&sect-num;.8.2"  width="826" height="276" screenshot="css_extractor_attr.png">
++<description><p>Allows the user to extract values from a server HTML response using a CSS/JQuery selector like syntax.  As a post-processor,
+ this element will execute after each Sample request in its scope, applying the CSS/JQuery expression, extracting the requested nodes,
+ extracting the node as text or attribute value and store the result into the given variable name.</p></description>
+ <properties>
+@@ -5684,7 +5684,7 @@
+         For match number = <code>0</code> or negative, all qualifying samples will be processed.
+         For match number > <code>0</code>, matching will stop as soon as enough matches have been found.
+         </property>
+-        <property name="CSS/JQuery extractor Implementation" required="False">
++        <property name="HTML Implementation" required="False">
+         2 Implementations for CSS/JQuery based syntax are supported:
+         <ul>
+                 <li><a href="http://jsoup.org/" >JSoup</a></li>
+@@ -5836,7 +5836,7 @@
+            <li>"<code>Use Tidy</code>" should be checked on for HTML response. Such response is converted to valid XHTML (XML compatible HTML) using Tidy</li>
+            <li>"<code>Use Tidy</code>" should be unchecked for both XHTML or XML response (for example RSS)</li>
+        </ul>
+-       <note>For HTML, CSS/JQuery Extractor is the correct and performing solution. Don't use XPath for HTML extractions.</note>
++       <note>For HTML, HTML Extractor is the correct and performing solution. Don't use XPath for HTML extractions.</note>
+        </property>
+ <property name="Quiet"  required="If Tidy is selected">Sets the Tidy Quiet flag</property>
+ <property name="Report Errors"  required="If Tidy is selected">If a Tidy error occurs, then set the Assertion accordingly</property>
+Index: xdocs/usermanual/functions.xml
+===================================================================
+--- xdocs/usermanual/functions.xml	(revision 1837275)
++++ xdocs/usermanual/functions.xml	(working copy)
+@@ -703,7 +703,7 @@
+ The variables can be simple or multi-valued as they can be generated by the following extractors:
+ <ul>
+     <li><a href="component_reference.html#Regular_Expression_Extractor">Regular Expression Extractor</a></li>
+-    <li><a href="component_reference.html#CSS/JQuery_Extractor">CSS/JQuery Extractor</a></li>
++    <li><a href="component_reference.html#HTML_Extractor">HTML Extractor</a></li>
+     <li><a href="component_reference.html#JSON_Extractor">JSON Extractor</a></li>
+     <li><a href="component_reference.html#XPath_Assertion">XPath Assertion</a></li>
+ </ul>

@@ -1,0 +1,229 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1755399)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -784,6 +784,8 @@
+ ramp_up=Ramp-Up Period (in seconds)\:
+ random_control_title=Random Controller
+ random_order_control_title=Random Order Controller
++random_multi_result_source_variable=Source Variable(s) (use | as separator)
++random_multi_result_target_variable=Target Variable
+ random_string_chars_to_use=Chars to use for random string generation
+ random_string_length=Random string length
+ realm=Realm
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1755399)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -769,6 +769,8 @@
+ ramp_up=Dur\u00E9e de mont\u00E9e en charge (en secondes) \:
+ random_control_title=Contr\u00F4leur Al\u00E9atoire
+ random_order_control_title=Contr\u00F4leur d'Ordre al\u00E9atoire
++random_multi_result_source_variable=Variable(s) source (separateur |)
++random_multi_result_target_variable=Variable cible
+ random_string_chars_to_use=Caract\u00E8res \u00E0 utiliser pour la g\u00E9n\u00E9ration de la cha\u00EEne al\u00E9atoire
+ random_string_length=Longueur de cha\u00EEne al\u00E9atoire
+ realm=Univers (realm)
+Index: src/functions/org/apache/jmeter/functions/RandomFromMultipleVars.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/RandomFromMultipleVars.java	(revision 0)
++++ src/functions/org/apache/jmeter/functions/RandomFromMultipleVars.java	(revision 0)
+@@ -0,0 +1,151 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.LinkedList;
++import java.util.List;
++import java.util.concurrent.ThreadLocalRandom;
++
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Provides a RandomFromMultiResult function which returns a random element from a multi valued extracted variable.
++ * Those kind of variable are extracted by:
++ * - Regular Expression extractor
++ * - JSON PATH extractor
++ * - CSS/JQuery extractor
++ * - XPath Extractor
++ * 
++ * @since 3.1
++ */
++public class RandomFromMultipleVars extends AbstractFunction {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final List<String> desc = new LinkedList<>();
++    private static final String KEY = "__RandomFromMultipleVars"; //$NON-NLS-1$
++    private static final String SEPARATOR = "\\|"; //$NON-NLS-1$
++    static {
++        desc.add(JMeterUtils.getResString("random_multi_result_source_variable")); //$NON-NLS-1$
++        desc.add(JMeterUtils.getResString("random_multi_result_target_variable")); //$NON-NLS-1$
++    }
++
++    private CompoundVariable variablesNamesSplitBySeparator;
++    private CompoundVariable varName;
++
++    /**
++     * No-arg constructor.
++     */
++    public RandomFromMultipleVars() {
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public String execute(SampleResult previousResult, Sampler currentSampler)
++            throws InvalidVariableException {
++
++        String variablesNamesSplitBySeparatorValue = variablesNamesSplitBySeparator.execute().trim();
++        JMeterVariables vars = getVariables();
++        String outputValue = "";
++        String separator = "";
++        if (vars != null) { // vars will be null on TestPlan
++            List<String> results = new ArrayList<>();
++            String[] variables = variablesNamesSplitBySeparatorValue.split(SEPARATOR);
++            for (String varName : variables) {
++                if(!StringUtils.isEmpty(varName)) {
++                    extractVariableValuesToList(varName, vars, results);
++                }
++            }
++
++            if(results.size() > 0) {
++                int randomIndex = ThreadLocalRandom.current().nextInt(0, results.size());
++                outputValue = results.get(randomIndex);                
++            } else {
++                if(log.isDebugEnabled()) {
++                    log.debug("RandomFromMultiResult didn't find <var>_matchNr in variables :'"+variablesNamesSplitBySeparatorValue
++                            +"' using separator:'"+separator+"', will return empty value");
++                }
++            }
++
++            if (varName != null) {
++                final String varTrim = varName.execute().trim();
++                if (varTrim.length() > 0){ 
++                    vars.put(varTrim, outputValue);
++                }
++            }
++        }    
++        return outputValue;
++
++    }
++
++    /**
++     * @param variableName String
++     * @param vars {@link JMeterVariables}
++     * @param results {@link List} where results are stored
++     * @throws NumberFormatException
++     */
++    private void extractVariableValuesToList(String variableName,
++            JMeterVariables vars, List<String> results)
++            throws NumberFormatException {
++        String matchNumberAsStr = vars.get(variableName+"_matchNr");
++        if(!StringUtils.isEmpty(matchNumberAsStr)) {
++            int matchNumber = Integer.parseInt(matchNumberAsStr);
++            for (int i = 1; i <= matchNumber; i++) {
++                results.add(vars.get(variableName+"_"+i));
++            }
++        } else {
++            String value = vars.get(variableName);
++            if(!StringUtils.isEmpty(value)) {
++                results.add(vars.get(variableName));
++            }
++        }
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++        checkParameterCount(parameters, 1, 2);
++        Object[] values = parameters.toArray();
++        variablesNamesSplitBySeparator = (CompoundVariable) values[0];
++        if (values.length>1){
++            varName = (CompoundVariable) values[1];
++        }
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public String getReferenceKey() {
++        return KEY;
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public List<String> getArgumentDesc() {
++        return desc;
++    }
++
++}
+Index: xdocs/usermanual/functions.xml
+===================================================================
+--- xdocs/usermanual/functions.xml	(revision 1754759)
++++ xdocs/usermanual/functions.xml	(working copy)
+@@ -122,6 +122,7 @@
+         <tr><td>Calculation</td><td> <a href="#__intSum">intSum</a></td><td>add int numbers</td><td>1.8.1</td></tr>
+         <tr><td>Calculation</td><td> <a href="#__longSum">longSum</a></td><td>add long numbers</td><td>2.3.2</td></tr>
+         <tr><td>Calculation</td><td> <a href="#__Random">Random</a></td><td>generate a random number</td><td>1.9</td></tr>
++        <tr><td>Calculation</td><td> <a href="#__RandomFromMultipleVars">RandomFromMultipleVars</a></td><td>extracts an element from the values of a set of variables separated by <code>|</code></td><td>3.1</td></tr>
+         <tr><td>Calculation</td><td> <a href="#__RandomString">RandomString</a></td><td>generate a random string</td><td>2.6</td></tr>
+         <tr><td>Calculation</td><td> <a href="#__UUID">UUID</a></td><td>generate a random type 4 UUID</td><td>2.9</td></tr>
+         <tr><td>Scripting</td><td> <a href="#__BeanShell">BeanShell</a></td><td>run a BeanShell script</td><td>1.X</td></tr>
+@@ -648,6 +649,34 @@
+ </p>
+ </component>
+ 
++<component index="&sect-num;.5.8" name="__RandomFromMultipleVars">
++<description><p>The RandomFromMultipleVars function returns a random value based on the variable values provided by <code>Source Variables</code>.</p>
++The variables can be simple or multi-valued as they can be generated by the following extractors:
++<ul>
++    <li><a href="component_reference.html#Regular_Expression_Extractor">Regular Expression Extractor</a></li>
++    <li><a href="component_reference.html#CSS/JQuery_Extractor">CSS/JQuery Extractor</a></li>
++    <li><a href="component_reference.html#JSON_Path_PostProcessor">JSON Path PostProcessor</a></li>
++    <li><a href="component_reference.html#XPath_Assertion">XPath Assertion</a></li>
++</ul>
++
++Multi-value vars are the ones that are extracted when you set <code>-1</code> for <code>Match Numbers</code>. 
++This leads to creation of match number variable called <code>varName_matchNr</code> and for each value to the creation of variable <code>varName_n</code> where n = 1, 2, 3 etc.
++
++</description>
++
++<properties>
++        <property name="Source Variables" required="Yes">Variable names separated by <code>|</code> that contain the values that will be used as input for random computation</property>
++        <property name="Variable Name" required="No">A reference name for reusing the value
++                computed by this function.</property>
++</properties>
++<p>Examples:
++<source>${__RandomFromMultipleVars(val)}</source> will return a random string based on content of variable val taking into account wether they are multi-value or not<br/>
++<source>${__RandomFromMultipleVars(val1|val2)}</source> will return a random string based on content of variables val1 and val2 taking into account wether they are multi-value or not<br/>
++<source>${__RandomFromMultipleVars(val1|val2, MYVAR)}</source> will return a random string based on content of variables val1 and val2 taking into account wether they are multi-value or not and store the result in <code>MYVAR</code><br/>
++</p>
++</component>
++
++
+ <component index="&sect-num;.5.8" name="__UUID">
+ <description>
+ <p>The UUID function returns a pseudo random type 4 Universally Unique IDentifier (UUID).</p>

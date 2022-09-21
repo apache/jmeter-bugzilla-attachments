@@ -1,0 +1,53 @@
+diff --git a/src/core/org/apache/jmeter/threads/JMeterThread.java b/src/core/org/apache/jmeter/threads/JMeterThread.java
+index fc2f018..b00a4f8 100644
+--- a/src/core/org/apache/jmeter/threads/JMeterThread.java
++++ b/src/core/org/apache/jmeter/threads/JMeterThread.java
+@@ -308,27 +308,20 @@ public class JMeterThread implements Runnable, Interruptible {
+      * @param threadContext 
+      */
+     private void triggerEndOfLoopOnParentControllers(Sampler sam, JMeterContext threadContext) {
+-        
++        // Find parent controllers of current sampler
++        FindTestElementsUpToRootTraverser pathToRootTraverser = null;
+         TransactionSampler transactionSampler = null;
+         if(sam instanceof TransactionSampler) {
+             transactionSampler = (TransactionSampler) sam;
+-        }
+-
+-        Sampler realSampler = findRealSampler(sam);
+-        
+-        // Find parent controllers of current sampler
+-        FindTestElementsUpToRootTraverser pathToRootTraverser = null;
+-        if(realSampler instanceof TransactionSampler) {
+-            pathToRootTraverser = new FindTestElementsUpToRootTraverser(((TransactionSampler) realSampler).getTransactionController());
++            pathToRootTraverser = new FindTestElementsUpToRootTraverser(transactionSampler.getTransactionController());
+         } else {
+-            pathToRootTraverser = new FindTestElementsUpToRootTraverser(realSampler);
++            pathToRootTraverser = new FindTestElementsUpToRootTraverser(sam);
+         }
+         testTree.traverse(pathToRootTraverser);
+         
+         // Trigger end of loop condition on all parent controllers of current sampler
+         List<Controller> controllersToReinit = pathToRootTraverser.getControllersToRoot();
+         for (Controller parentController : controllersToReinit) {
+-            System.out.println("Will trigger " + parentController.getName());
+             if(parentController instanceof AbstractThreadGroup) {
+                 AbstractThreadGroup tg = (AbstractThreadGroup) parentController;
+                 tg.startNextLoop();
+@@ -347,16 +340,6 @@ public class JMeterThread implements Runnable, Interruptible {
+         }
+     }
+ 
+-    private Sampler findRealSampler(Sampler sam) {
+-        Sampler realSampler = sam;
+-
+-        while(realSampler instanceof TransactionSampler) {
+-            realSampler = ((TransactionSampler) realSampler).getSubSampler();
+-        }
+-       
+-        return realSampler;
+-    }
+-
+     /**
+      * Process the current sampler, handling transaction samplers.
+      *

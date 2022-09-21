@@ -1,0 +1,39 @@
+### Eclipse Workspace Patch 1.0
+#P jmeterSVN
+Index: src/core/org/apache/jmeter/reporters/ResultCollector.java
+===================================================================
+--- src/core/org/apache/jmeter/reporters/ResultCollector.java	(revision 946591)
++++ src/core/org/apache/jmeter/reporters/ResultCollector.java	(working copy)
+@@ -46,6 +46,7 @@
+ import org.apache.jmeter.samplers.SampleSaveConfiguration;
+ import org.apache.jmeter.save.CSVSaveService;
+ import org.apache.jmeter.save.SaveService;
++import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+@@ -291,6 +292,11 @@
+         boolean parsedOK = false;
+         String filename = getFilename();
+         File file = new File(filename);
++        if(!file.isAbsolute()){
++            log.info("loading file with relative path: " +filename);
++            file = new File(FileServer.getFileServer().getBaseDir(), filename);
++            log.info("file path set to: "+file.getAbsolutePath());
++        }
+         if (file.exists()) {
+             BufferedReader dataReader = null;
+             BufferedInputStream bufferedInputStream = null;
+@@ -375,6 +381,12 @@
+         if (filename == null || filename.length() == 0) {
+             return null;
+         }
++        File file = new File(filename);
++        if(!file.isAbsolute()){
++            log.info("loading file with relative path: " +filename);
++            filename = FileServer.getFileServer().getBaseDir() +File.separator+ filename;
++            log.info("file path set to: "+file.getAbsolutePath());
++        }
+         FileEntry fe = files.get(filename);
+         PrintWriter writer = null;
+         boolean trimmed = true;

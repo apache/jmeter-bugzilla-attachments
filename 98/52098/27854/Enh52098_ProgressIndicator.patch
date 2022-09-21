@@ -1,0 +1,116 @@
+Index: MainFrame.java
+===================================================================
+--- MainFrame.java	(revision 1188913)
++++ MainFrame.java	(working copy)
+@@ -34,7 +34,6 @@
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+ import javax.swing.BoxLayout;
+-import javax.swing.ImageIcon;
+ import javax.swing.JButton;
+ import javax.swing.JComponent;
+ import javax.swing.JDialog;
+@@ -43,6 +42,7 @@
+ import javax.swing.JMenu;
+ import javax.swing.JPanel;
+ import javax.swing.JPopupMenu;
++import javax.swing.JProgressBar;
+ import javax.swing.JScrollPane;
+ import javax.swing.JSplitPane;
+ import javax.swing.JToolBar;
+@@ -102,14 +102,8 @@
+     /** The test tree. */
+     private JTree tree;
+ 
+-    /** An image which is displayed when a test is running. */
+-    private ImageIcon runningIcon = JMeterUtils.getImage("thread.enabled.gif");// $NON-NLS-1$
+-
+-    /** An image which is displayed when a test is not currently running. */
+-    private ImageIcon stoppedIcon = JMeterUtils.getImage("thread.disabled.gif");// $NON-NLS-1$
+-
+     /** The button used to display the running/stopped image. */
+-    private JButton runningIndicator;
++    private JProgressBar runningIndicator;
+ 
+     /** The x coordinate of the last location where a component was dragged. */
+     private int previousDragXLocation = 0;
+@@ -123,9 +117,6 @@
+     /** A message dialog shown while JMeter threads are stopping. */
+     private JDialog stoppingMessage;
+ 
+-    private JLabel totalThreads;
+-    private JLabel activeThreads;
+-
+     /**
+      * Create a new JMeter frame.
+      *
+@@ -141,13 +132,16 @@
+         // this.actionHandler = actionHandler;
+ 
+         // TODO: Make the running indicator its own class instead of a JButton
+-        runningIndicator = new JButton(stoppedIcon);
+-        runningIndicator.setMargin(new Insets(0, 0, 0, 0));
+-        runningIndicator.setBorder(BorderFactory.createEmptyBorder());
++        runningIndicator = new JProgressBar();
++        runningIndicator.setString("0 / 0");
++        runningIndicator.setStringPainted(true);
++        int stringWidth = (int) runningIndicator.getFontMetrics(runningIndicator.getFont()).getStringBounds(
++                "100000 / 100000", runningIndicator.getGraphics()).getWidth();
++        Dimension dim = new Dimension(stringWidth + 10, runningIndicator.getMinimumSize().height);
++        runningIndicator.setMinimumSize(dim);
++        runningIndicator.setMaximumSize(dim);
++        runningIndicator.setPreferredSize(dim);
+ 
+-        totalThreads = new JLabel("0"); // $NON-NLS-1$
+-        activeThreads = new JLabel("0"); // $NON-NLS-1$
+-
+         tree = makeTree(treeModel, treeListener);
+ 
+         GuiPackage.getInstance().setMainFrame(this);
+@@ -307,8 +301,8 @@
+     public void updateCounts() {
+         SwingUtilities.invokeLater(new Runnable() {
+             public void run() {
+-                activeThreads.setText(Integer.toString(JMeterContextService.getNumberOfThreads()));
+-                totalThreads.setText(Integer.toString(JMeterContextService.getTotalThreads()));
++                runningIndicator.setString(Integer.toString(JMeterContextService.getNumberOfThreads()) + " / "
++                        + Integer.toString(JMeterContextService.getTotalThreads()));
+             }
+         });
+     }
+@@ -343,9 +337,8 @@
+      */
+     public void testStarted(String host) {
+         hosts.add(host);
+-        runningIndicator.setIcon(runningIcon);
+-        activeThreads.setText("0"); // $NON-NLS-1$
+-        totalThreads.setText("0"); // $NON-NLS-1$
++        runningIndicator.setIndeterminate(true);
++        runningIndicator.setString("0/0");
+         menuBar.setRunning(true, host);
+     }
+ 
+@@ -369,7 +362,7 @@
+     public void testEnded(String host) {
+         hosts.remove(host);
+         if (hosts.size() == 0) {
+-            runningIndicator.setIcon(stoppedIcon);
++            runningIndicator.setIndeterminate(false);
+             JMeterContextService.endTest();
+         }
+         menuBar.setRunning(false, host);
+@@ -441,13 +434,9 @@
+         guiInstance.getMenuItemToolbar().getModel().setSelected(DISPLAY_TOOLBAR);
+         toolPanel.add(toolbar);
+ 
+-        toolPanel.add(Box.createRigidArea(new Dimension(10, 15)));
+         toolPanel.add(Box.createGlue());
+-        toolPanel.add(activeThreads);
+-        toolPanel.add(new JLabel(" / "));
+-        toolPanel.add(totalThreads);
+-        toolPanel.add(Box.createRigidArea(new Dimension(10, 15)));
+         toolPanel.add(runningIndicator);
++        toolPanel.add(Box.createRigidArea(new Dimension(5, 15)));
+         return toolPanel;
+     }
+ 

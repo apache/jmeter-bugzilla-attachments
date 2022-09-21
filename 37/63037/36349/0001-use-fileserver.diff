@@ -1,0 +1,91 @@
+Index: src/functions/org/apache/jmeter/functions/FileRowColContainer.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/FileRowColContainer.java	(Revision 1848778)
++++ src/functions/org/apache/jmeter/functions/FileRowColContainer.java	(Arbeitskopie)
+@@ -19,7 +19,6 @@
+ package org.apache.jmeter.functions;
+ 
+ import java.io.BufferedReader;
+-import java.io.File;
+ import java.io.FileNotFoundException;
+ import java.io.IOException;
+ import java.nio.charset.Charset;
+@@ -28,6 +27,7 @@
+ import java.util.List;
+ import java.util.StringTokenizer;
+ 
++import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+@@ -75,7 +75,7 @@
+ 
+     private void load() throws IOException, FileNotFoundException {
+         try (BufferedReader myBread = 
+-                Files.newBufferedReader(new File(fileName).toPath(), 
++                Files.newBufferedReader(FileServer.getFileServer().getResolvedFile(fileName).toPath(), 
+                         Charset.defaultCharset())) {
+             String line = myBread.readLine();
+             /*
+Index: test/src/org/apache/jmeter/functions/TestFileRowColContainer.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestFileRowColContainer.java	(Revision 1848778)
++++ test/src/org/apache/jmeter/functions/TestFileRowColContainer.java	(Arbeitskopie)
+@@ -23,9 +23,14 @@
+ import static org.junit.Assert.assertTrue;
+ import static org.junit.Assert.fail;
+ 
++import java.io.File;
+ import java.nio.file.NoSuchFileException;
+ 
+ import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.services.FileServer;
++import org.apache.jmeter.util.JMeterUtils;
++import org.junit.After;
++import org.junit.Before;
+ import org.junit.Test;
+ 
+ /**
+@@ -35,7 +40,20 @@
+  */
+ public class TestFileRowColContainer extends JMeterTestCase {
+ 
+-    @Test(expected=NoSuchFileException.class)
++    private String defaultBase = null;
++
++    @Before
++    public void setUp() {
++        defaultBase = FileServer.getDefaultBase();
++        FileServer.getFileServer().setBase(new File(JMeterUtils.getJMeterHome() + "/bin"));
++    }
++
++    @After
++    public void tearDown() {
++        FileServer.getFileServer().setBase(new File(defaultBase));
++    }
++
++    @Test(expected = NoSuchFileException.class)
+     public void testNull() throws Exception {
+         new FileRowColContainer(findTestPath("testfiles/xyzxyz"));
+     }
+@@ -55,6 +73,20 @@
+     }
+ 
+     @Test
++    public void testRowNumRelative() throws Exception {
++        FileRowColContainer f = new FileRowColContainer("testfiles/unit/TestFileRowColContainer.csv");
++        assertNotNull(f);
++        assertEquals("Expected 4 lines", 4, f.getSize());
++
++        assertEquals(0, f.nextRow());
++        assertEquals(1, f.nextRow());
++        assertEquals(2, f.nextRow());
++        assertEquals(3, f.nextRow());
++        assertEquals(0, f.nextRow());
++
++    }
++
++    @Test
+     public void testColumns() throws Exception {
+         FileRowColContainer f = new FileRowColContainer(findTestPath("testfiles/unit/TestFileRowColContainer.csv"));
+         assertNotNull(f);

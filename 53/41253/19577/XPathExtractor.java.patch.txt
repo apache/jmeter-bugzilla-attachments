@@ -1,0 +1,36 @@
+--- XPathExtractor.java.original	Tue Feb 13 10:07:06 2007
++++ XPathExtractor.java	Tue Feb 13 10:02:39 2007
+@@ -36,6 +36,7 @@
+ import org.apache.jorphan.util.JMeterError;
+ import org.apache.log.Logger;
+ import org.apache.xpath.XPathAPI;
++import org.apache.xpath.objects.XObject;
+ import org.w3c.dom.Document;
+ import org.w3c.dom.Element;
+ import org.w3c.dom.Node;
+@@ -184,7 +185,9 @@
+      throws TransformerException
+     {
+      	String val = null;
+-		NodeList matches = XPathAPI.selectNodeList(d,query);
++      XObject xObject = XPathAPI.eval(d, query);
++      if (xObject.getType() == XObject.CLASS_NODESET) {
++        NodeList matches = xObject.nodelist();
+ 		int length = matches.getLength();
+         vars.put(concat(refName,MATCH_NR), String.valueOf(length));
+         for (int i = 0 ; i < length; i++) {
+@@ -205,5 +208,13 @@
+ 		}
+         vars.remove(concat(refName,String.valueOf(length+1)));
+     }
+-    
++      else {
++        val = xObject.toString();
++        vars.put(concat(refName, MATCH_NR), "1");
++        vars.put(refName, val);
++        vars.put(concat(refName, "1"), val);
++        vars.remove(concat(refName, "2"));
++      }
++    }
++
+ }

@@ -1,0 +1,82 @@
+--- jmeter-results-detail-report_21.xsl.old	2006-06-06 15:48:26.000000000 -0700
++++ jmeter-results-detail-report_21.xsl	2006-06-07 09:59:52.000000000 -0700
+@@ -139,16 +139,20 @@
+ 			<th>Failures</th>
+ 			<th>Success Rate</th>
+ 			<th>Average Time</th>
++			<th>Throughput</th>
+ 			<th>Min Time</th>
+ 			<th>Max Time</th>
+ 		</tr>
+ 		<tr valign="top">
++			<xsl:variable name="startTime" select="(/testResults/*)[1]/@ts" />
++			<xsl:variable name="finalTime" select="(/testResults/*)[position()=last()]/@ts + (/testResults/*)[position()=last()]/@t" />
+ 			<xsl:variable name="allCount" select="count(/testResults/*)" />
+ 			<xsl:variable name="allFailureCount" select="count(/testResults/*[attribute::s='false'])" />
+ 			<xsl:variable name="allSuccessCount" select="count(/testResults/*[attribute::s='true'])" />
+ 			<xsl:variable name="allSuccessPercent" select="$allSuccessCount div $allCount" />
+ 			<xsl:variable name="allTotalTime" select="sum(/testResults/*/@t)" />
+ 			<xsl:variable name="allAverageTime" select="$allTotalTime div $allCount" />
++			<xsl:variable name="allThroughput" select="1000 * $allCount div ($finalTime - $startTime)" />
+ 			<xsl:variable name="allMinTime">
+ 				<xsl:call-template name="min">
+ 					<xsl:with-param name="nodes" select="/testResults/*/@t" />
+@@ -181,6 +185,11 @@
+ 				</xsl:call-template>
+ 			</td>
+ 			<td>
++				<xsl:call-template name="display-throughput">
++					<xsl:with-param name="value" select="$allThroughput" />
++				</xsl:call-template>
++			</td>
++			<td>
+ 				<xsl:call-template name="display-time">
+ 					<xsl:with-param name="value" select="$allMinTime" />
+ 				</xsl:call-template>
+@@ -203,11 +212,14 @@
+ 			<th>Failures</th>
+ 			<th>Success Rate</th>
+ 			<th>Average Time</th>
++			<th>Throughput</th>
+ 			<th>Min Time</th>
+ 			<th>Max Time</th>
+ 			<th></th>
+ 		</tr>
+ 		<xsl:for-each select="/testResults/*[not(@lb = preceding::*/@lb)]">
++			<xsl:variable name="start" select="(../*[@lb = current()/@lb])[1]/@ts" />
++			<xsl:variable name="final" select="(../*[@lb = current()/@lb])[position()=last()]/@ts + (../*[@lb = current()/@lb])[position()=last()]/@t" />
+ 			<xsl:variable name="label" select="@lb" />
+ 			<xsl:variable name="count" select="count(../*[@lb = current()/@lb])" />
+ 			<xsl:variable name="failureCount" select="count(../*[@lb = current()/@lb][attribute::s='false'])" />
+@@ -215,6 +227,7 @@
+ 			<xsl:variable name="successPercent" select="$successCount div $count" />
+ 			<xsl:variable name="totalTime" select="sum(../*[@lb = current()/@lb]/@t)" />
+ 			<xsl:variable name="averageTime" select="$totalTime div $count" />
++			<xsl:variable name="throughput" select="1000 * $count div ($final - $start)" />
+ 			<xsl:variable name="minTime">
+ 				<xsl:call-template name="min">
+ 					<xsl:with-param name="nodes" select="../*[@lb = current()/@lb]/@t" />
+@@ -258,6 +271,11 @@
+ 					</xsl:call-template>
+ 				</td>
+ 				<td>
++				<xsl:call-template name="display-throughput">
++					<xsl:with-param name="value" select="$throughput" />
++				</xsl:call-template>
++				</td>
++				<td>
+ 					<xsl:call-template name="display-time">
+ 						<xsl:with-param name="value" select="$minTime" />
+ 					</xsl:call-template>
+@@ -378,6 +396,11 @@
+ 	</xsl:choose>
+ </xsl:template>
+ 
++<xsl:template name="display-throughput">
++	<xsl:param name="value" />
++	<xsl:value-of select="format-number($value,'0.0 requests/s')" />
++</xsl:template>
++
+ <xsl:template name="display-percent">
+ 	<xsl:param name="value" />
+ 	<xsl:value-of select="format-number($value,'0.00%')" />

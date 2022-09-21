@@ -1,0 +1,228 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1825273)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -483,8 +483,6 @@
+ 
+     private volatile HttpUriRequest currentRequest; // Accessed from multiple threads
+ 
+-    private volatile boolean resetSSLContext;
+-
+     protected HTTPHC4Impl(HTTPSamplerBase testElement) {
+         super(testElement);
+     }
+@@ -539,6 +537,7 @@
+             log.debug("Start : sample {} method {} followingRedirect {} depth {}", 
+                     url, method, areFollowingRedirect, frameDepth);            
+         }
++        JMeterVariables jMeterVariables = JMeterContextService.getContext().getVariables();
+ 
+         HTTPSampleResult res = createSampleResult(url, method);
+ 
+@@ -549,7 +548,7 @@
+         clientContext.setAttribute(CONTEXT_ATTRIBUTE_AUTH_MANAGER, getAuthManager());
+ 
+         try {
+-            httpClient = setupClient(url, clientContext);
++            httpClient = setupClient(jMeterVariables, url, clientContext);
+             URI uri = url.toURI();
+             if (method.equals(HTTPConstants.POST)) {
+                 httpRequest = new HttpPost(uri);
+@@ -589,7 +588,7 @@
+             return res;
+         }
+ 
+-        setupClientContextBeforeSample(localContext);
++        setupClientContextBeforeSample(jMeterVariables, localContext);
+         
+         res.sampleStart();
+ 
+@@ -609,7 +608,7 @@
+ 
+             // Needs to be done after execute to pick up all the headers
+             final HttpRequest request = (HttpRequest) localContext.getAttribute(HttpCoreContext.HTTP_REQUEST);
+-            extractClientContextAfterSample(localContext);
++            extractClientContextAfterSample(jMeterVariables, localContext);
+             // We've finished with the request, so we can add the LocalAddress to it for display
+             if (localAddress != null) {
+                 request.addHeader(HEADER_LOCAL_ADDRESS, localAddress.toString());
+@@ -718,14 +717,14 @@
+     /**
+      * Store in JMeter Variables the UserToken so that the SSL context is reused
+      * See <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=57804">Bug 57804</a>
++     * @param jMeterVariables {@link JMeterVariables}
+      * @param localContext {@link HttpContext}
+      */
+-    private void extractClientContextAfterSample(HttpContext localContext) {
++    private void extractClientContextAfterSample(JMeterVariables jMeterVariables, HttpContext localContext) {
+         Object userToken = localContext.getAttribute(HttpClientContext.USER_TOKEN);
+         if(userToken != null) {
+             log.debug("Extracted from HttpContext user token:{} storing it as JMeter variable:{}", userToken, JMETER_VARIABLE_USER_TOKEN);
+             // During recording JMeterContextService.getContext().getVariables() is null
+-            JMeterVariables jMeterVariables = JMeterContextService.getContext().getVariables();
+             if (jMeterVariables != null) {
+                 jMeterVariables.putObject(JMETER_VARIABLE_USER_TOKEN, userToken); 
+             }
+@@ -735,12 +734,12 @@
+     /**
+      * Configure the UserToken so that the SSL context is reused
+      * See <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=57804">Bug 57804</a>
++     * @param jMeterVariables {@link JMeterVariables}
+      * @param localContext {@link HttpContext}
+      */
+-    private void setupClientContextBeforeSample(HttpContext localContext) {
++    private void setupClientContextBeforeSample(JMeterVariables jMeterVariables, HttpContext localContext) {
+         Object userToken = null;
+         // During recording JMeterContextService.getContext().getVariables() is null
+-        JMeterVariables jMeterVariables = JMeterContextService.getContext().getVariables();
+         if(jMeterVariables != null) {
+             userToken = jMeterVariables.getObject(JMETER_VARIABLE_USER_TOKEN);            
+         }
+@@ -934,7 +933,7 @@
+         }
+     }
+ 
+-    private CloseableHttpClient setupClient(URL url, HttpClientContext clientContext) throws GeneralSecurityException {
++    private CloseableHttpClient setupClient(JMeterVariables jMeterVariables, URL url, HttpClientContext clientContext) throws GeneralSecurityException {
+ 
+         Map<HttpClientKey, Pair<CloseableHttpClient, PoolingHttpClientConnectionManager>> mapHttpClientPerHttpClientKey = 
+                 HTTPCLIENTS_CACHE_PER_THREAD_AND_HTTPCLIENTKEY.get();
+@@ -972,7 +971,7 @@
+             httpClient = pair != null ? pair.getLeft() : null;
+         }
+ 
+-        resetSSLStateIfNeeded(url, clientContext, pair);
++        resetStateIfNeeded(jMeterVariables, clientContext, mapHttpClientPerHttpClientKey);
+ 
+         if (httpClient == null) { // One-time init for this client
+             DnsResolver resolver = this.testElement.getDNSResolver();
+@@ -1080,21 +1079,36 @@
+      *  <li>Close current Idle or Expired connections that hold SSL State</li>
+      *  <li>Remove HttpClientContext.USER_TOKEN from {@link HttpClientContext}</li>
+      * </ul>
+-     * @param url {@link URL}
++     * @param jMeterVariables {@link JMeterVariables}
+      * @param clientContext {@link HttpClientContext}
+-     * @param pair {@link Pair} holding {@link CloseableHttpClient} and {@link PoolingHttpClientConnectionManager}
++     * @param mapHttpClientPerHttpClientKey Map of {@link Pair} holding {@link CloseableHttpClient} and {@link PoolingHttpClientConnectionManager}
+      */
+-    private void resetSSLStateIfNeeded(URL url, HttpClientContext clientContext,
+-            Pair<CloseableHttpClient, PoolingHttpClientConnectionManager> pair) {
+-        if (resetSSLContext && HTTPConstants.PROTOCOL_HTTPS.equalsIgnoreCase(url.getProtocol())) {
+-            if(pair != null) {
+-                PoolingHttpClientConnectionManager poolingHttpClientConnectionManager = pair.getRight();
+-                poolingHttpClientConnectionManager.closeExpiredConnections();
+-                poolingHttpClientConnectionManager.closeIdleConnections(1L, TimeUnit.MICROSECONDS);
+-            }
++    private void resetStateIfNeeded(JMeterVariables jMeterVariables, 
++            HttpClientContext clientContext,
++            Map<HttpClientKey, Pair<CloseableHttpClient, PoolingHttpClientConnectionManager>> mapHttpClientPerHttpClientKey) {
++        if (resetSSLContext.get()) {
++            closeCurrentConnections(mapHttpClientPerHttpClientKey);
+             clientContext.removeAttribute(HttpClientContext.USER_TOKEN);
+             ((JsseSSLManager) SSLManager.getInstance()).resetContext();
+-            resetSSLContext = false;
++            resetSSLContext.set(false);
++        }
++        if (closeConnections.get()) {
++            closeCurrentConnections(mapHttpClientPerHttpClientKey);
++            clientContext.removeAttribute(HttpClientContext.USER_TOKEN);
++            closeConnections.set(false);
++        }
++    }
++
++    /**
++     * @param mapHttpClientPerHttpClientKey
++     */
++    private void closeCurrentConnections(
++            Map<HttpClientKey, Pair<CloseableHttpClient, PoolingHttpClientConnectionManager>> mapHttpClientPerHttpClientKey) {
++        for (Pair<CloseableHttpClient, PoolingHttpClientConnectionManager> pair :
++                mapHttpClientPerHttpClientKey.values()) {
++            PoolingHttpClientConnectionManager poolingHttpClientConnectionManager = pair.getRight();
++            poolingHttpClientConnectionManager.closeExpiredConnections();
++            poolingHttpClientConnectionManager.closeIdleConnections(1L, TimeUnit.MICROSECONDS);
+         }
+     }
+ 
+@@ -1700,8 +1714,11 @@
+ 
+     @Override
+     protected void notifyFirstSampleAfterLoopRestart() {
+-        log.debug("notifyFirstSampleAfterLoopRestart");
+-        resetSSLContext = !USE_CACHED_SSL_CONTEXT;
++        log.debug("notifyFirstSampleAfterLoopRestart called "
++                + "with config(reuse.http.connections={}, https.use.cached.ssl.context={})",
++                REUSE_HTTP_CONNECTIONS, USE_CACHED_SSL_CONTEXT);
++        closeConnections.set(!REUSE_HTTP_CONNECTIONS);
++        resetSSLContext.set(!USE_CACHED_SSL_CONTEXT);
+     }
+ 
+     @Override
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHCAbstractImpl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHCAbstractImpl.java	(revision 1825265)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHCAbstractImpl.java	(working copy)
+@@ -78,10 +78,28 @@
+     // -1 means not defined
+     protected static final int SO_TIMEOUT = JMeterUtils.getPropDefault("httpclient.timeout", -1);
+     
++    // Control reuse of HTTP connections in subsequent iterations
++    protected static final boolean REUSE_HTTP_CONNECTIONS = 
++            JMeterUtils.getPropDefault("reuse.http.connections", false);//$NON-NLS-1$
++
+     // Control reuse of cached SSL Context in subsequent iterations
+     protected static final boolean USE_CACHED_SSL_CONTEXT = 
+             JMeterUtils.getPropDefault("https.use.cached.ssl.context", true);//$NON-NLS-1$
+ 
++    /**
++     *  Whether SSL State/Context should be reset
++     *  Shared state for any HC based implementation, because SSL contexts are the same 
++     */
++    protected static final ThreadLocal<Boolean> resetSSLContext =
++            ThreadLocal.withInitial(() -> Boolean.FALSE);
++
++    /**
++     *  Whether connections should be closed
++     *  Shared state for any HC based implementation, 
++     */
++    protected static final ThreadLocal<Boolean> closeConnections =
++            ThreadLocal.withInitial(() -> Boolean.FALSE);
++    
+     static {
+         if(!StringUtils.isEmpty(JMeterUtils.getProperty("httpclient.timeout"))) { //$NON-NLS-1$
+             log.warn("You're using property 'httpclient.timeout' that will soon be deprecated for HttpClient3.1, you should either set "
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java	(revision 1825265)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java	(working copy)
+@@ -36,8 +36,6 @@
+ 
+     private transient HTTPAbstractImpl impl;
+     
+-    private transient volatile boolean notifyFirstSampleAfterLoopRestart;
+-
+     public HTTPSamplerProxy(){
+         super();
+     }
+@@ -66,11 +64,6 @@
+                 return errorResult(ex, new HTTPSampleResult());
+             }
+         }
+-        // see https://bz.apache.org/bugzilla/show_bug.cgi?id=51380
+-        if(notifyFirstSampleAfterLoopRestart) {
+-            impl.notifyFirstSampleAfterLoopRestart();
+-            notifyFirstSampleAfterLoopRestart = false;
+-        }
+         return impl.sample(u, method, areFollowingRedirect, depth);
+     }
+ 
+@@ -97,6 +90,8 @@
+      */
+     @Override
+     public void testIterationStart(LoopIterationEvent event) {
+-        notifyFirstSampleAfterLoopRestart = true;
++        if (impl != null) {
++            impl.notifyFirstSampleAfterLoopRestart();
++        }
+     }
+ }

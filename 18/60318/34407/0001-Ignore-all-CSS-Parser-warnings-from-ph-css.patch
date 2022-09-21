@@ -1,0 +1,266 @@
+From 70b20cf1ac21b1eb7246cd785582c870e603ba15 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Fri, 28 Oct 2016 21:44:02 +0200
+Subject: [PATCH] Ignore all CSS Parser warnings from ph-css
+
+---
+ LICENSE                                            |  2 +-
+ bin/jmeter.properties                              |  3 +
+ build.properties                                   |  4 +-
+ eclipse.classpath                                  |  2 +-
+ lib/aareadme.txt                                   |  2 +-
+ res/maven/ApacheJMeter_parent.pom                  |  2 +-
+ .../jmeter/protocol/http/parser/CssParser.java     | 25 +++++---
+ .../jmeter/protocol/http/parser/TestCssParser.java | 69 ++++++++++++++++++++++
+ xdocs/changes.xml                                  |  3 +-
+ xdocs/usermanual/properties_reference.xml          |  4 ++
+ 10 files changed, 102 insertions(+), 14 deletions(-)
+ create mode 100644 test/src/org/apache/jmeter/protocol/http/parser/TestCssParser.java
+
+diff --git a/LICENSE b/LICENSE
+index 010e633..4ceb693 100644
+--- a/LICENSE
++++ b/LICENSE
+@@ -247,7 +247,7 @@ The following software is provided under the Apache License V 2.0 (as above):
+ * json-smart-2.2.1.jar
+ * mongo-java-driver-2.11.3.jar
+ * ph-commons-6.2.4.jar
+-* ph-css-4.1.5.jar
++* ph-css-4.1.6.jar
+ 
+ - Software produced outside the ASF which is available under other licenses (not AL 2.0):
+ For details, please see the files under: licenses/bin
+diff --git a/bin/jmeter.properties b/bin/jmeter.properties
+index 59c3dd7..63bca73 100644
+--- a/bin/jmeter.properties
++++ b/bin/jmeter.properties
+@@ -738,6 +738,9 @@ cssParser.types=text/css
+ # It can be disabled by setting its value to 0
+ #css.parser.cache.size=400
+ 
++# Let the CSS Parser ingore all css errors
++#css.parser.ignore_all_css_errors=true
++
+ #---------------------------------------------------------------------------
+ # HTML Parser configuration
+ #---------------------------------------------------------------------------
+diff --git a/build.properties b/build.properties
+index 9afd8f9..e438c71 100644
+--- a/build.properties
++++ b/build.properties
+@@ -259,10 +259,10 @@ mongo-java-driver.jar       = mongo-java-driver-${mongo-java-driver.version}.jar
+ mongo-java-driver.loc       = ${maven2.repo}/org/mongodb/mongo-java-driver/${mongo-java-driver.version}
+ mongo-java-driver.md5       = 90647a53231eb75715fda30759ff4ff7
+ 
+-ph-css.version              = 4.1.5
++ph-css.version              = 4.1.6
+ ph-css.jar                  = ph-css-${ph-css.version}.jar
+ ph-css.loc                  = ${maven2.repo}/com/helger/ph-css/${ph-css.version}
+-ph-css.md5                  = 6074b8d10596a3211a20075710abcbe2
++ph-css.md5                  = a6836c05d98defcac7d9aad246c25b5e
+ 
+ ph-commons.version          = 6.2.4
+ ph-commons.jar              = ph-commons-${ph-commons.version}.jar
+diff --git a/eclipse.classpath b/eclipse.classpath
+index 971494c..e6da835 100644
+--- a/eclipse.classpath
++++ b/eclipse.classpath
+@@ -83,7 +83,7 @@
+ 	<classpathentry kind="lib" path="lib/logkit-2.0.jar"/>
+ 	<classpathentry kind="lib" path="lib/mail-1.5.0-b01.jar"/>
+ 	<classpathentry kind="lib" path="lib/mongo-java-driver-2.11.3.jar"/>
+-	<classpathentry kind="lib" path="lib/ph-css-4.1.5.jar"/>
++	<classpathentry kind="lib" path="lib/ph-css-4.1.6.jar"/>
+ 	<classpathentry kind="lib" path="lib/ph-commons-6.2.4.jar"/>
+ 	<classpathentry kind="lib" path="lib/oro-2.0.8.jar"/>
+ 	<classpathentry kind="lib" path="lib/rhino-1.7.7.1.jar"/>
+diff --git a/lib/aareadme.txt b/lib/aareadme.txt
+index fc4c51e..7dd1f27 100644
+--- a/lib/aareadme.txt
++++ b/lib/aareadme.txt
+@@ -163,7 +163,7 @@ jsoup-1.9.2
+ http://www.jsoup.org/
+ - CSS/JQuery like extractor
+ 
+-ph-css-4.1.5
++ph-css-4.1.6
+ --------
+ https://github.com/phax/ph-css
+ - CssParser
+diff --git a/res/maven/ApacheJMeter_parent.pom b/res/maven/ApacheJMeter_parent.pom
+index 19c8f89..42b741f 100644
+--- a/res/maven/ApacheJMeter_parent.pom
++++ b/res/maven/ApacheJMeter_parent.pom
+@@ -92,7 +92,7 @@ under the License.
+       <junit.version>4.12</junit.version>
+       <logkit.version>2.0</logkit.version>
+       <mongo-java-driver.version>2.11.3</mongo-java-driver.version>
+-      <ph-css.version>4.1.5</ph-css.version>
++      <ph-css.version>4.1.6</ph-css.version>
+       <ph-commons.version>6.2.4</ph-commons.version>
+       <rsyntaxtextarea.version>2.6.0</rsyntaxtextarea.version>
+       <slf4j-api.version>1.7.21</slf4j-api.version>
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
+index 2ac07e2..500568d 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
+@@ -45,6 +45,8 @@ import com.helger.css.handler.LoggingCSSParseExceptionCallback;
+ import com.helger.css.parser.ParseException;
+ import com.helger.css.reader.CSSReader;
+ import com.helger.css.reader.CSSReaderSettings;
++import com.helger.css.reader.errorhandler.DoNothingCSSInterpretErrorHandler;
++import com.helger.css.reader.errorhandler.ICSSInterpretErrorHandler;
+ import com.helger.css.reader.errorhandler.LoggingCSSParseErrorHandler;
+ 
+ /**
+@@ -59,6 +61,7 @@ public class CssParser implements LinkExtractorParser {
+      * 
+      */
+     private static final int CSS_URL_CACHE_MAX_SIZE = JMeterUtils.getPropDefault("css.parser.cache.size", 400);
++    private static final boolean IGNORE_ALL_CSS_ERRORS = JMeterUtils.getPropDefault("css.parser.ignore_all_css_errors", true);
+     
+     /**
+      * 
+@@ -121,13 +124,21 @@ public class CssParser implements LinkExtractorParser {
+             
+             if(urlCollection == null) {
+                 String cssContent = new String(data, encoding);
+-                final CascadingStyleSheet aCSS = CSSReader.readFromStringStream(cssContent,
+-                            new CSSReaderSettings()
+-                                .setBrowserCompliantMode(true)
+-                                .setFallbackCharset(Charset.forName(encoding))
+-                                .setCSSVersion (ECSSVersion.CSS30)
+-                                .setCustomErrorHandler(new LoggingCSSParseErrorHandler())
+-                                .setCustomExceptionHandler (new CustomLoggingCSSParseExceptionCallback(baseUrl)));
++                final CSSReaderSettings cssSettings = new CSSReaderSettings()
++                        .setBrowserCompliantMode(true)
++                        .setFallbackCharset(Charset.forName(encoding))
++                        .setCSSVersion(ECSSVersion.CSS30)
++                        .setCustomErrorHandler(
++                                new LoggingCSSParseErrorHandler())
++                        .setCustomExceptionHandler(
++                                new CustomLoggingCSSParseExceptionCallback(
++                                        baseUrl));
++                if (IGNORE_ALL_CSS_ERRORS) {
++                    cssSettings
++                            .setInterpretErrorHandler(new DoNothingCSSInterpretErrorHandler());
++                }
++                final CascadingStyleSheet aCSS = CSSReader
++                        .readFromStringStream(cssContent, cssSettings);
+                 final List<URLString> list = new ArrayList<>();
+                 urlCollection = new URLCollection(list);
+                 final URLCollection localCollection = urlCollection;
+diff --git a/test/src/org/apache/jmeter/protocol/http/parser/TestCssParser.java b/test/src/org/apache/jmeter/protocol/http/parser/TestCssParser.java
+new file mode 100644
+index 0000000..8f10c7d
+--- /dev/null
++++ b/test/src/org/apache/jmeter/protocol/http/parser/TestCssParser.java
+@@ -0,0 +1,69 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.parser;
++
++import static org.junit.Assert.assertThat;
++
++import java.net.MalformedURLException;
++import java.net.URL;
++import java.nio.charset.StandardCharsets;
++import java.util.List;
++
++import org.apache.commons.collections.IteratorUtils;
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.hamcrest.CoreMatchers;
++import org.junit.Test;
++
++public class TestCssParser extends JMeterTestCase {
++
++    private final CssParser parser = new CssParser();
++
++    @Test
++    public void testGetEmbeddedResourceURLsNoUrls() throws Exception {
++        CssParser nonIgnoreParser = new CssParser();
++        List<?> result = extractUrls(nonIgnoreParser, "..");
++        assertThat(result.isEmpty(), CoreMatchers.is(true));
++    }
++
++    @Test
++    public void testGetEmbeddedResourceURLsnOneUrl() throws Exception {
++        List<?> result;
++        result = extractUrls("@import url(http://example.com/abc.css);");
++        assertThat(result.isEmpty(), CoreMatchers.is(false));
++    }
++
++    @Test
++    public void testIsReusable() {
++        assertThat(parser.isReusable(), CoreMatchers.is(true));
++    }
++
++    private List<?> extractUrls(String css) throws LinkExtractorParseException,
++            MalformedURLException {
++        return extractUrls(parser, css);
++    }
++
++    private List<?> extractUrls(CssParser parser, String css)
++            throws LinkExtractorParseException, MalformedURLException {
++        List<?> result = IteratorUtils.toList(parser.getEmbeddedResourceURLs(
++                "Mozilla", css.getBytes(StandardCharsets.UTF_8), new URL(
++                        "http://example.org/"), StandardCharsets.UTF_8
++                        .displayName()));
++        return result;
++    }
++}
+diff --git a/xdocs/changes.xml b/xdocs/changes.xml
+index 0bae5b2..c577126 100644
+--- a/xdocs/changes.xml
++++ b/xdocs/changes.xml
+@@ -104,6 +104,7 @@ Summary
+     <li><bug>60229</bug>Add a new metric : sent_bytes. Implemented by Philippe Mouawad (p.mouawad at ubik-ingenierie.com) and contributed by Ubik Load Pack (support at ubikloadpack.com)</li>
+     <li><bug>53039</bug>HTTP Request : Be able to handle responses which size exceeds <code>2147483647</code> bytes</li>
+     <li><bug>60265</bug>HTTP Request : In Files Upload Tab you cannot resize columns</li>
++    <li>Ignore CSS warnings when parsing with ph-css library.</li>
+ </ul>
+ 
+ <h3>Other samplers</h3>
+@@ -196,7 +197,7 @@ Summary
+ <ch_section>Non-functional changes</ch_section>
+ <ul>
+     <li>Updated to jsoup-1.9.2 (from 1.8.3)</li>
+-    <li>Updated to ph-css 4.1.5 (from 4.1.4)</li>
++    <li>Updated to ph-css 4.1.6 (from 4.1.4)</li>
+     <li>Updated to tika-core and tika-parsers 1.13 (from 1.12)</li>
+     <li>Updated to commons-io 2.5 (from 2.4)</li>
+     <li>Updated to commons-net 3.5 (from 3.4)</li>
+diff --git a/xdocs/usermanual/properties_reference.xml b/xdocs/usermanual/properties_reference.xml
+index 27511c8..756388c 100644
+--- a/xdocs/usermanual/properties_reference.xml
++++ b/xdocs/usermanual/properties_reference.xml
+@@ -899,6 +899,10 @@ log_level.org.apache.http.client=DEBUG
+     parsing the CSS. By default the cache size is 400. It can be disabled by setting its value to 0.<br/>
+     Defaults to: <code>400</code>
+ </property>
++<property name="css.parser.ignore_all_css_errors">
++    Let the CSS Parser ignore all CSS errors.<br/>
++    Defaults to: <code>true</code>
++</property>
+ <property name="htmlParser.className" required="Yes">
+     Define the HTML parser to be used.<br/>
+     Do not comment this property.<br/>
+-- 
+2.7.4
+

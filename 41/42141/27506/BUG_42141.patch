@@ -1,0 +1,65 @@
+Index: src/core/org/apache/jmeter/gui/action/Save.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Save.java	(revision 1166194)
++++ src/core/org/apache/jmeter/gui/action/Save.java	(working copy)
+@@ -21,6 +21,7 @@
+ import java.awt.event.ActionEvent;
+ import java.io.File;
+ import java.io.FileOutputStream;
++import java.util.Arrays;
+ import java.util.HashSet;
+ import java.util.Iterator;
+ import java.util.LinkedList;
+@@ -30,6 +31,7 @@
+ import javax.swing.JOptionPane;
+ 
+ import org.apache.commons.io.FilenameUtils;
++import org.apache.commons.lang.StringUtils;
+ import org.apache.jmeter.exceptions.IllegalUserActionException;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
+@@ -96,8 +98,8 @@
+ 
+         String updateFile = GuiPackage.getInstance().getTestPlanFile();
+         if (!ActionNames.SAVE.equals(e.getActionCommand()) || updateFile == null) {
+-            JFileChooser chooser = FileDialoger.promptToSaveFile(GuiPackage.getInstance().getTreeListener()
+-                    .getCurrentNode().getName()
++            JFileChooser chooser = FileDialoger.promptToSaveFile(removeForbiddenChars(GuiPackage.getInstance().getTreeListener()
++                    .getCurrentNode().getName())
+                     + JMX_FILE_EXTENSION);
+             if (chooser == null) {
+                 return;
+@@ -152,6 +154,33 @@
+         GuiPackage.getInstance().updateCurrentGui();
+     }
+ 
++	/**
++	 * Remove OS related chars and Non ASCII characters BUG 42141
++	 */
++	private static String removeForbiddenChars(String name) 
++	{
++        String[] forbiddenChars = new String[] {
++                "'", "\"", "<", ">", "|", " ",
++                "\\", "/", "?", "!", "&", ";", ",", ".", ":", "=", "+", "(",
++				")", "{", "}", "[", "]", "@", "#", "%", "^", "$", "*" };
++        String[] replacementChars = new String[forbiddenChars.length];
++        Arrays.fill(replacementChars, "");
++        String escapedOsSeparators = StringUtils.replaceEachRepeatedly(name,
++                forbiddenChars, replacementChars);
++        // TODO When only JDK6 is supported use Normalizer.normalize(text,
++        // Form.NFD).replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
++        StringBuilder builder = new StringBuilder();
++        char[] charArray = escapedOsSeparators.toCharArray();
++        for (int i = 0; i < charArray.length; i++) {
++            String charAsString = String.valueOf(new char[] { charArray[i] });
++            if (StringUtils.isAsciiPrintable(charAsString)) 
++			{
++                builder.append(charAsString);
++            }
++        }
++        return builder.toString();
++    }
++
+     // package protected to allow access from test code
+     void convertSubTree(HashTree tree) {
+         Iterator<Object> iter = new LinkedList<Object>(tree.list()).iterator();

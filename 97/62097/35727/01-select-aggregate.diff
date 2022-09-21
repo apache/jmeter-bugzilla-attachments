@@ -1,0 +1,32 @@
+Index: src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatVisualizer.java	(Revision 1823947)
++++ src/components/org/apache/jmeter/visualizers/StatVisualizer.java	(Arbeitskopie)
+@@ -90,6 +90,8 @@
+ 
+     private Deque<SamplingStatCalculator> newRows = new ConcurrentLinkedDeque<>();
+ 
++    private volatile boolean dataChanged;
++
+     public StatVisualizer() {
+         super();
+         model = StatGraphVisualizer.createObjectTableModel();
+@@ -131,6 +133,7 @@
+         synchronized(lock) {
+             tot.addSample(res);
+         }
++        dataChanged = true;
+     }
+ 
+     /**
+@@ -179,6 +182,10 @@
+         this.add(opts,BorderLayout.SOUTH);
+ 
+         new Timer(REFRESH_PERIOD, e -> {
++            if (!dataChanged) {
++                return;
++            }
++            dataChanged = false;
+             synchronized (lock) {
+                 while (!newRows.isEmpty()) {
+                     model.insertRow(newRows.pop(), model.getRowCount() - 1);

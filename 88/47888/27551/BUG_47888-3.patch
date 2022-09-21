@@ -1,0 +1,169 @@
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1172765)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -1440,7 +1440,7 @@
+ <br></br>7. The sampler reports unexpected exceptions as errors.
+ There are some important differences between standard JUnit test runners and JMeter's
+ implementation. Rather than make a new instance of the class for each test, JMeter
+-creates 1 instance per sampler and reuses it.<br></br>
++creates 1 instance per sampler and reuses it. This can be changed with property "Create a new Instance per sample"<br></br>
+ The current implementation of the sampler will try to create an instance using the string constructor first. If the test class does not declare a string constructor, the sampler will look for an empty constructor. Example below:&lt;br>
+ &lt;br>
+ Empty Constructor:&lt;br>
+@@ -1486,6 +1486,7 @@
+      this option should be checked.</property>
+   <property name="Append assertion errors" required="Yes">Whether or not to append assertion errors to the response message.</property>
+   <property name="Append runtime exceptions" required="Yes">Whether or not to append runtime exceptions to the response message. Only applies if "Append assertion errors" is not selected.</property>
++  <property name="Create a new Instance per sample" required="Yes">Whether or not to create a new JUnit instance for each sample. Defaults to false, meaning JUnit TestCase is created one and reused.</property>
+ </properties>
+ <p>
+ The following JUnit4 annotations are recognised:
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1172489)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -390,6 +390,7 @@
+ junit_success_msg=Message de succ\u00E8s
+ junit_test_config=Param\u00E8tres Test JUnit
+ junit_test_method=M\u00E9thode de test
++junit_create_instance_per_sample=Cr\u00E9er une nouvelle instance pour chaque sample
+ ldap_argument_list=Liste d'arguments LDAP
+ ldap_connto=D\u00E9lai d'attente de connexion (millisecondes)
+ ldap_parse_results=Examiner les r\u00E9sultats de recherche ?
+Index: src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java	(revision 1172489)
++++ src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java	(working copy)
+@@ -69,6 +69,7 @@
+     private static final String APPEND_ERROR = "junitsampler.append.error";
+     private static final String APPEND_EXCEPTION = "junitsampler.append.exception";
+     private static final String JUNIT4 = "junitsampler.junit4";
++    private static final String CREATEONEINSTANCEPERSAMPLE="junitsampler.createoneinstancepersample";
+     //-- JMX file attributes - do not change
+ 
+     private static final String SETUP = "setUp";
+@@ -94,6 +95,7 @@
+     private transient Protectable protectable;
+ 
+     public JUnitSampler(){
++        super();
+     }
+ 
+     /**
+@@ -356,6 +358,9 @@
+ 
+     /** {@inheritDoc} */
+     public SampleResult sample(Entry entry) {
++        if(getCreateOneInstancePerSample()) {
++            initializeTestObject();
++        }
+         SampleResult sresult = new SampleResult();
+         sresult.setSampleLabel(getName());// Bug 41522 - don't use rlabel here
+         sresult.setSamplerData(className + "." + methodName);
+@@ -623,14 +628,25 @@
+         className = getClassname();
+         final Method m;
+         protectable = null;
++        if(!getCreateOneInstancePerSample()) {
++            // NO NEED TO INITIALIZE WHEN getCreateOneInstancePerSample 
++            // is true cause it will be done in sample
++            initializeTestObject();            
++        }
++    }
++
++    /**
++     * Initialize test object
++     */
++    private void initializeTestObject() {
+         String rlabel = getConstructorString();
+         if (rlabel.length()== 0) {
+             rlabel = JUnitSampler.class.getName();
+         }
+-        this.testObject = getClassInstance(className,rlabel);
++        this.testObject = getClassInstance(className, rlabel);
+         if (this.testObject != null){
+             initMethodObjects(this.testObject);
+-            m = getMethod(this.testObject,methodName);
++            final Method m = getMethod(this.testObject,methodName);
+             if (getJunit4()){
+                 Class<? extends Throwable> expectedException = None.class;
+                 long timeout = 0;
+@@ -673,4 +689,20 @@
+             }
+         }
+     }
+-}
++
++    /**
++     * 
++     * @param createNewInstanceForEachCall
++     */
++    public void setCreateOneInstancePerSample(boolean createOneInstancePerSample) {
++        this.setProperty(CREATEONEINSTANCEPERSAMPLE, createOneInstancePerSample, false);
++    }
++
++    /**
++     * 
++     * @return boolean create New Instance For Each Call
++     */
++    public boolean getCreateOneInstancePerSample() {
++        return getPropertyAsBoolean(CREATEONEINSTANCEPERSAMPLE, false);
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1172489)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -425,6 +425,7 @@
+ junit_success_msg=Success Message
+ junit_test_config=JUnit Test Parameters
+ junit_test_method=Test Method
++junit_create_instance_per_sample=Create a new Instance per sample
+ ldap_argument_list=LDAPArgument List
+ ldap_connto=Connection timeout (in milliseconds)
+ ldap_parse_results=Parse the search results ?
+Index: src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(revision 1172489)
++++ src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(working copy)
+@@ -131,6 +131,7 @@
+     private JCheckBox appendError = new JCheckBox(JMeterUtils.getResString("junit_append_error")); //$NON-NLS-1$
+     private JCheckBox appendExc = new JCheckBox(JMeterUtils.getResString("junit_append_exception")); //$NON-NLS-1$
+     private JCheckBox junit4 = new JCheckBox(JMeterUtils.getResString("junit_junit4")); //$NON-NLS-1$
++    private JCheckBox createOneInstancePerSample = new JCheckBox(JMeterUtils.getResString("junit_create_instance_per_sample")); //$NON-NLS-1$
+ 
+     /** A combo box allowing the user to choose a test class. */
+     private JComboBox classnameCombo;
+@@ -234,12 +235,14 @@
+         panel.add(doSetup);
+         panel.add(appendError);
+         panel.add(appendExc);
++        panel.add(createOneInstancePerSample);
+         return panel;
+     }
+ 
+     private void initGui(){
+         appendError.setSelected(false);
+         appendExc.setSelected(false);
++        createOneInstancePerSample.setSelected(false);
+         doSetup.setSelected(false);
+         junit4.setSelected(false);
+         filterpkg.setText(""); //$NON-NLS-1$
+@@ -295,6 +298,7 @@
+         sampler.setDoNotSetUpTearDown(doSetup.isSelected());
+         sampler.setAppendError(appendError.isSelected());
+         sampler.setAppendException(appendExc.isSelected());
++        sampler.setCreateOneInstancePerSample(createOneInstancePerSample.isSelected());
+         sampler.setJunit4(junit4.isSelected());
+     }
+ 
+@@ -343,6 +347,7 @@
+         doSetup.setSelected(sampler.getDoNotSetUpTearDown());
+         appendError.setSelected(sampler.getAppendError());
+         appendExc.setSelected(sampler.getAppendException());
++        createOneInstancePerSample.setSelected(sampler.getCreateOneInstancePerSample());
+     }
+ 
+     private void setupMethods(){

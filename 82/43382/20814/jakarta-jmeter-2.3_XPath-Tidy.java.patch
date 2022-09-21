@@ -1,0 +1,157 @@
+Index: jakarta-jmeter-2.3/src/components/org/apache/jmeter/assertions/XPathAssertion.java
+===================================================================
+--- jakarta-jmeter-2.3/src/components/org/apache/jmeter/assertions/XPathAssertion.java	(revision 1)
++++ jakarta-jmeter-2.3/src/components/org/apache/jmeter/assertions/XPathAssertion.java	(working copy)
+@@ -30,6 +30,7 @@
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.util.XPathUtil;
++import org.apache.jmeter.util.TidyException;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ import org.apache.xpath.XPathAPI;
+@@ -105,6 +106,10 @@
+ 			result.setFailureMessage(new StringBuffer("ParserConfigurationException: ").append(e.getMessage())
+ 					.toString());
+ 			return result;
++		} catch (TidyException e) {						
++			result.setError(true);
++			result.setFailureMessage(e.getMessage());
++			return result;
+ 		}
+ 
+ 		if (doc == null || doc.getDocumentElement() == null) {
+
+Index: jakarta-jmeter-2.3/src/components/org/apache/jmeter/extractor/XPathExtractor.java
+===================================================================
+--- jakarta-jmeter-2.3/src/components/org/apache/jmeter/extractor/XPathExtractor.java	(revision 1)
++++ jakarta-jmeter-2.3/src/components/org/apache/jmeter/extractor/XPathExtractor.java	(working copy)
+@@ -32,6 +32,8 @@
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterVariables;
+ import org.apache.jmeter.util.XPathUtil;
++import org.apache.jmeter.util.TidyException;
++import org.apache.jmeter.assertions.AssertionResult;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JMeterError;
+ import org.apache.log.Logger;
+@@ -106,6 +108,14 @@
+ 			log.warn("error on "+XPATH_QUERY+"("+getXPathQuery()+")"+e.getLocalizedMessage());
+ 		} catch (TransformerException e) {// Can happen for incorrect XPath expression
+ 			log.warn("error on "+XPATH_QUERY+"("+getXPathQuery()+")"+e.getLocalizedMessage());
++		} catch (TidyException e) {			
++			SampleResult prev = getThreadContext().getPreviousResult();
++			AssertionResult ass = new AssertionResult();
++			ass.setFailure(true);
++			ass.setFailureMessage(e.getMessage());
++			ass.setName("TidyException");
++			prev.addAssertionResult(ass);
++			prev.setSuccessful(false);
+ 		}
+     }    
+             
+@@ -159,7 +169,7 @@
+      * 
+      */
+     private Document parseResponse(SampleResult result)
+-      throws UnsupportedEncodingException, IOException, ParserConfigurationException,SAXException
++      throws UnsupportedEncodingException, IOException, ParserConfigurationException,SAXException,TidyException
+     {
+       //TODO: validate contentType for reasonable types?
+ 
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/TidyException.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/TidyException.java	(revision 0)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/TidyException.java	(revision 0)
+@@ -0,0 +1,29 @@
++// $Header$
++/*
++ * Copyright 2001-2004 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.util;
++
++public class TidyException extends Exception {
++	
++	public TidyException() {
++	}
++
++	public TidyException(String name) {
++		super(name);
++	}
++}
+\ No newline at end of file
+
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/XPathUtil.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/XPathUtil.java	(revision 1)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/XPathUtil.java	(working copy)
+@@ -27,6 +27,8 @@
+ 
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
++import org.apache.jmeter.util.TidyException;
++
+ import org.w3c.dom.Document;
+ import org.w3c.tidy.Tidy;
+ import org.xml.sax.ErrorHandler;
+@@ -104,7 +106,7 @@
+ 	 * @throws SAXException
+ 	 */
+ 	public static Document makeDocument(InputStream stream, boolean validate, boolean whitespace, boolean namespace,
+-			boolean tolerant) throws ParserConfigurationException, SAXException, IOException {
++			boolean tolerant) throws ParserConfigurationException, SAXException, IOException, TidyException {
+ 		Document doc;
+ 		if (tolerant) {
+ 			doc = tidyDoc(stream);
+@@ -124,9 +126,12 @@
+ 	// return builder;
+ 	// }
+ 
+-	private static Document tidyDoc(InputStream stream) {
++	private static Document tidyDoc(InputStream stream) throws TidyException {
+ 		Document doc = null;
+-		doc = makeTidyParser().parseDOM(stream, null);
++		Tidy tidy = makeTidyParser();		
++		java.io.StringWriter sw = new java.io.StringWriter();
++		tidy.setErrout(new java.io.PrintWriter(sw));
++		doc = tidy.parseDOM(stream, null);		
+ 		doc.normalize();
+ 		// remove the document declaration cause I think it causes
+ 		// issues this is only needed for JDOM, since I am not
+@@ -134,14 +139,19 @@
+ 		// Node name = doc.getDoctype();
+ 		// doc.removeChild(name);
+ 
++		boolean tolerate_errors = JMeterUtils.getPropDefault("tidy.tolerate_errors", true);
++		if (!tolerate_errors && tidy.getParseErrors() > 0) {
++			log.error("Caught TidyException: " + sw.toString());			
++			throw new TidyException("tidy: " + tidy.getParseErrors() + " errors, " + tidy.getParseWarnings() + " warnings\n");
++		}
+ 		return doc;
+ 	}
+ 
+ 	private static Tidy makeTidyParser() {
+-		Tidy tidy = new Tidy();
++		Tidy tidy = new Tidy();		
+ 		tidy.setCharEncoding(org.w3c.tidy.Configuration.UTF8);
+-		tidy.setQuiet(true);
+-		tidy.setShowWarnings(false);
++		tidy.setQuiet(JMeterUtils.getPropDefault("tidy.quiet", true));		
++		tidy.setShowWarnings(JMeterUtils.getPropDefault("tidy.showwarnings", false));
+ 		tidy.setMakeClean(true);
+ 		tidy.setXmlTags(false); // Input is not valid XML
+ 		// tidy.setShowErrors(1);

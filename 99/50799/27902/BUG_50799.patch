@@ -1,0 +1,47 @@
+Index: src/core/org/apache/jmeter/testelement/AbstractTestElement.java
+===================================================================
+--- src/core/org/apache/jmeter/testelement/AbstractTestElement.java	(revision 1197646)
++++ src/core/org/apache/jmeter/testelement/AbstractTestElement.java	(working copy)
+@@ -256,21 +256,29 @@
+         return jmp instanceof NullProperty ? defaultValue : jmp.getStringValue();
+     }
+ 
+-    protected void addProperty(JMeterProperty property) {
++    protected void addProperty(JMeterProperty property, boolean clone) {
++    	JMeterProperty propertyToPut = property;
++    	if(clone) {
++    		propertyToPut = property.clone();
++    	}
+         if (isRunningVersion()) {
+-            setTemporary(property);
++        	setTemporary(propertyToPut);
+         } else {
+             clearTemporary(property);
+         }
+         JMeterProperty prop = getProperty(property.getName());
+ 
+         if (prop instanceof NullProperty || (prop instanceof StringProperty && prop.getStringValue().equals(""))) {
+-            propMap.put(property.getName(), property);
++        	propMap.put(property.getName(), propertyToPut);
+         } else {
+-            prop.mergeIn(property);
++            prop.mergeIn(propertyToPut);
+         }
+     }
+ 
++    protected void addProperty(JMeterProperty property) {
++        addProperty(property, false);
++    }
++
+     protected void clearTemporary(JMeterProperty property) {
+         if (temporaryProperties != null) {
+             temporaryProperties.remove(property);
+@@ -382,7 +390,7 @@
+         PropertyIterator iter = element.propertyIterator();
+         while (iter.hasNext()) {
+             JMeterProperty prop = iter.next();
+-            addProperty(prop);
++            addProperty(prop, true);
+         }
+     }
+ 

@@ -1,0 +1,17 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java
+===================================================================
+
+C:\APACHE\jmeter>diff -E -b -B -w -u -L "src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(revision 409249)" -L "src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(working copy)" src\protocol\http\org\apache\jmeter\protocol\http\sampler\.svn\text-base\SoapSampler.java.svn-base src\protocol\http\org\apache\jmeter\protocol\http\sampler\.svn\tmp\SoapSampler.java.tmp 
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(revision 409249)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(working copy)
+@@ -129,6 +129,10 @@
+ 				Header hd = mngr.getHeader(idx);
+ 				connection.setRequestProperty(hd.getName(), hd.getValue());
+ 			}
++            // If the soap action is not specified in the header manager 
++            if(getSendSOAPAction() && connection.getRequestProperty("SOAPAction") == null) {
++                connection.setRequestProperty("SOAPAction", "\"" + getSOAPAction() + "\""); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
++            }
+ 		} else {
+ 			// otherwise we use "text/xml" as the default
+ 			connection.setRequestProperty(HEADER_CONTENT_TYPE, "text/xml"); //$NON-NLS-1$

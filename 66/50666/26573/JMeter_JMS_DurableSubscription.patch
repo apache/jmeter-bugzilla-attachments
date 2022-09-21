@@ -1,0 +1,227 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1063734)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -341,6 +341,7 @@
+ jms_dest_setup=Setup
+ jms_dest_setup_dynamic=Each sample
+ jms_dest_setup_static=At startup
++jms_durable_subscription_id=Durable Subscription ID
+ jms_error_msg=Object message should read from an external file. Text input is currently selected, please remember to change it.
+ jms_file=File
+ jms_initial_context_factory=Initial Context Factory
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveSubscriber.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveSubscriber.java	(revision 1063734)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/ReceiveSubscriber.java	(working copy)
+@@ -29,6 +29,7 @@
+ import javax.jms.MessageConsumer;
+ import javax.jms.MessageListener;
+ import javax.jms.Session;
++import javax.jms.Topic;
+ import javax.naming.Context;
+ import javax.naming.NamingException;
+ 
+@@ -81,14 +82,14 @@
+      */
+     public ReceiveSubscriber(boolean useProps, 
+             String initialContextFactory, String providerUrl, String connfactory, String destinationName,
+-            boolean useAuth, 
++            String durableSubscriptionId, boolean useAuth, 
+             String securityPrincipal, String securityCredentials) throws NamingException, JMSException {
+         Context ctx = InitialContextFactory.getContext(useProps, 
+                 initialContextFactory, providerUrl, useAuth, securityPrincipal, securityCredentials);
+         CONN = Utils.getConnection(ctx, connfactory);
+         SESSION = CONN.createSession(false, Session.AUTO_ACKNOWLEDGE);
+         Destination dest = Utils.lookupDestination(ctx, destinationName);
+-        SUBSCRIBER = SESSION.createConsumer(dest);
++       	SUBSCRIBER = createSubscriber(SESSION, dest, durableSubscriptionId);
+         queue = null;
+         log.debug("<init> complete");
+     }
+@@ -114,14 +115,14 @@
+      */
+     public ReceiveSubscriber(int queueSize, boolean useProps, 
+             String initialContextFactory, String providerUrl, String connfactory, String destinationName,
+-            boolean useAuth, 
++            String durableSubscriptionId, boolean useAuth, 
+             String securityPrincipal, String securityCredentials) throws NamingException, JMSException {
+         Context ctx = InitialContextFactory.getContext(useProps, 
+                 initialContextFactory, providerUrl, useAuth, securityPrincipal, securityCredentials);
+         CONN = Utils.getConnection(ctx, connfactory);
+         SESSION = CONN.createSession(false, Session.AUTO_ACKNOWLEDGE);
+         Destination dest = Utils.lookupDestination(ctx, destinationName);
+-        SUBSCRIBER = SESSION.createConsumer(dest);
++        SUBSCRIBER = createSubscriber(SESSION, dest, durableSubscriptionId);
+         if (queueSize <=0) {
+             queue = new LinkedBlockingQueue<Message>();
+         } else {
+@@ -130,6 +131,27 @@
+         SUBSCRIBER.setMessageListener(this);
+         log.debug("<init> complete");
+     }
++    
++    /**
++     * Return a simple MessageConsumer or a TopicSubscriber (as a durable subscription)
++     * @param session
++     * 				JMS session	
++     * @param destination
++     * 				JMS destination, can be either topic or queue
++     * @param durableSubscriptionId 
++     * 				If neither empty nor null, this means that a durable 
++     * 				subscription will be used
++     * @return
++     * @throws JMSException
++     */
++    private MessageConsumer createSubscriber(Session session, 
++    		Destination destination, String durableSubscriptionId) throws JMSException {
++    	if (isEmpty(durableSubscriptionId)) {
++        	return  session.createConsumer(destination);
++        } else {
++        	return session.createDurableSubscriber((Topic) destination, durableSubscriptionId); 
++        }	
++    }
+ 
+     /**
+      * Calls Connection.start() to begin receiving inbound messages.
+@@ -204,4 +226,16 @@
+             log.warn("Could not add message to queue");
+         }
+     }
++    
++    
++    /**
++     * Checks whether string is empty
++     * 
++     * @param s1
++     * @return True if input is null, an empty string, 
++     * 				or a white space-only string
++     */
++    private boolean isEmpty(String s1) {
++    	return (s1 == null || s1.trim().equals(""));
++    }
+ }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSubscriberGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSubscriberGui.java	(revision 1063734)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSubscriberGui.java	(working copy)
+@@ -58,6 +58,9 @@
+ 
+     private final JLabeledTextField jmsDestination =
+         new JLabeledTextField(JMeterUtils.getResString("jms_topic")); // $NON-NLS-1$
++    
++    private final JLabeledTextField jmsDurableSubscriptionId =
++        new JLabeledTextField(JMeterUtils.getResString("jms_durable_subscription_id")); // $NON-NLS-1$
+ 
+     private final JLabeledTextField jmsUser =
+         new JLabeledTextField(JMeterUtils.getResString("jms_user")); // $NON-NLS-1$
+@@ -132,6 +135,7 @@
+         sampler.setProviderUrl(urlField.getText());
+         sampler.setConnectionFactory(jndiConnFac.getText());
+         sampler.setDestination(jmsDestination.getText());
++        sampler.setDurableSubscriptionId(jmsDurableSubscriptionId.getText());
+         sampler.setUsername(jmsUser.getText());
+         sampler.setPassword(jmsPwd.getText());
+         sampler.setUseAuth(useAuth.isSelected());
+@@ -164,6 +168,7 @@
+         mainPanel.add(urlField);
+         mainPanel.add(jndiConnFac);
+         mainPanel.add(createDestinationPane());
++        mainPanel.add(jmsDurableSubscriptionId);
+         mainPanel.add(useAuth);
+         mainPanel.add(jmsUser);
+         mainPanel.add(jmsPwd);
+@@ -193,6 +198,7 @@
+         urlField.setText(sampler.getProviderUrl());
+         jndiConnFac.setText(sampler.getConnectionFactory());
+         jmsDestination.setText(sampler.getDestination());
++        jmsDurableSubscriptionId.setText(sampler.getDurableSubscriptionId());
+         jmsUser.setText(sampler.getUsername());
+         jmsPwd.setText(sampler.getPassword());
+         iterations.setText(sampler.getIterations());
+@@ -212,6 +218,7 @@
+         urlField.setText(""); // $NON-NLS-1$
+         jndiConnFac.setText(""); // $NON-NLS-1$
+         jmsDestination.setText(""); // $NON-NLS-1$
++        jmsDurableSubscriptionId.setText(""); // $NON-NLS-1$
+         jmsUser.setText(""); // $NON-NLS-1$
+         jmsPwd.setText(""); // $NON-NLS-1$
+         iterations.setText("1"); // $NON-NLS-1$
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java	(revision 1063734)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java	(working copy)
+@@ -36,7 +36,7 @@
+ import org.apache.log.Logger;
+ 
+ /**
+- * This class implements the JMS Subcriber sampler.
++ * This class implements the JMS Subscriber sampler.
+  * It supports both receive and onMessage strategies via the ReceiveSubscriber class.
+  * 
+  */
+@@ -55,7 +55,7 @@
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     // Default wait (ms) for a message if timeouts are not enabled
+-    // This is the maximimum time the sampler can be blocked.
++    // This is the maximum time the sampler can be blocked.
+     private static final long DEFAULT_WAIT = 500L;
+ 
+     // No need to synch/ - only used by sampler and ClientPool (which does its own synch)
+@@ -64,10 +64,13 @@
+     private transient volatile boolean interrupted = false;
+ 
+     private transient long timeout;
++    
++    // ID for durable subscription    
++    private transient String durableSubscriptionId = null;
+ 
+     private transient boolean useReceive;
+ 
+-    // This will be null iff initialisation succeeeds.
++    // This will be null if initialization succeeds.
+     private transient Exception exceptionDuringInit;
+ 
+     // If true, start/stop subscriber for each sample
+@@ -76,6 +79,7 @@
+     // Don't change the string, as it is used in JMX files
+     private static final String CLIENT_CHOICE = "jms.client_choice"; // $NON-NLS-1$
+     private static final String TIMEOUT = "jms.timeout"; // $NON-NLS-1$
++    private static final String DURABLE_SUBSCRIPTION_ID = "jms.durableSubscriptionId"; // $NON-NLS-1$
+     private static final String TIMEOUT_DEFAULT = "";
+     private static final String STOP_BETWEEN = "jms.stop_between_samples"; // $NON-NLS-1$
+     
+@@ -93,7 +97,7 @@
+      */
+     private void initListenerClient() throws JMSException, NamingException {
+         SUBSCRIBER = new ReceiveSubscriber(0, getUseJNDIPropertiesAsBoolean(), getJNDIInitialContextFactory(),
+-                    getProviderUrl(), getConnectionFactory(), getDestination(), 
++                    getProviderUrl(), getConnectionFactory(), getDestination(), getDurableSubscriptionId(),
+                     isUseAuth(), getUsername(), getPassword());
+         log.debug("SubscriberSampler.initListenerClient called");
+     }
+@@ -106,7 +110,7 @@
+     private void initReceiveClient() throws NamingException, JMSException {
+         SUBSCRIBER = new ReceiveSubscriber(getUseJNDIPropertiesAsBoolean(),
+                 getJNDIInitialContextFactory(), getProviderUrl(), getConnectionFactory(), getDestination(),
+-                isUseAuth(), getUsername(), getPassword());
++                getDurableSubscriptionId(), isUseAuth(), getUsername(), getPassword());
+         log.debug("SubscriberSampler.initReceiveClient called");
+     }
+ 
+@@ -353,6 +357,14 @@
+     public void setTimeout(String timeout){
+         setProperty(TIMEOUT, timeout, TIMEOUT_DEFAULT);        
+     }
++    
++    public String getDurableSubscriptionId(){
++        return getPropertyAsString(DURABLE_SUBSCRIPTION_ID);
++    }
++
++    public void setDurableSubscriptionId(String durableSubscriptionId){
++        setProperty(DURABLE_SUBSCRIPTION_ID, durableSubscriptionId);        
++    }
+ 
+     // This was the old value that was checked for
+     private final static String RECEIVE_STR = JMeterUtils.getResString(JMSSubscriberGui.RECEIVE_RSC); // $NON-NLS-1$

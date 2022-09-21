@@ -1,0 +1,510 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1375599)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -177,8 +177,10 @@
+ constant_timer_title=Compteur de temps fixe
+ content_encoding=Encodage contenu \:
+ controller=Contr\u00F4leur
+-cookie_manager_policy=Politique des cookies
++cookie_implementation_choose=Impl\u00E9mentation \:
++cookie_manager_policy=Politique des cookies \:
+ cookie_manager_title=Gestionnaire de cookies HTTP
++cookie_options=Options
+ cookies_stored=Cookies stock\u00E9s
+ copy=Copier
+ counter_config_title=Compteur
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1375599)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -183,8 +183,10 @@
+ constant_timer_title=Constant Timer
+ content_encoding=Content encoding\:
+ controller=Controller
+-cookie_manager_policy=Cookie Policy
++cookie_implementation_choose=Implementation:
++cookie_manager_policy=Cookie Policy:
+ cookie_manager_title=HTTP Cookie Manager
++cookie_options=Options
+ cookies_stored=User-Defined Cookies
+ copy=Copy
+ counter_config_title=Counter
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/HC4CookieHandler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/HC4CookieHandler.java	(revision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/HC4CookieHandler.java	(revision 0)
+@@ -0,0 +1,211 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.protocol.http.control;
++
++import java.net.URL;
++import java.util.ArrayList;
++import java.util.Date;
++import java.util.List;
++
++import org.apache.http.Header;
++import org.apache.http.client.params.CookiePolicy;
++import org.apache.http.cookie.CookieOrigin;
++import org.apache.http.cookie.CookieSpec;
++import org.apache.http.cookie.CookieSpecRegistry;
++import org.apache.http.cookie.MalformedCookieException;
++import org.apache.http.impl.cookie.BasicClientCookie;
++import org.apache.http.impl.cookie.BestMatchSpecFactory;
++import org.apache.http.impl.cookie.BrowserCompatSpecFactory;
++import org.apache.http.impl.cookie.IgnoreSpecFactory;
++import org.apache.http.impl.cookie.NetscapeDraftSpecFactory;
++import org.apache.http.impl.cookie.RFC2109SpecFactory;
++import org.apache.http.impl.cookie.RFC2965SpecFactory;
++import org.apache.http.message.BasicHeader;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++import org.apache.jmeter.protocol.http.util.HTTPConstants;
++import org.apache.jmeter.testelement.property.CollectionProperty;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class HC4CookieHandler implements CookieHandler {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    
++    private transient CookieSpec cookieSpec;
++    
++    private static CookieSpecRegistry registry  = new CookieSpecRegistry();
++
++    static {
++        registry.register(CookiePolicy.BEST_MATCH, new BestMatchSpecFactory());
++        registry.register(CookiePolicy.BROWSER_COMPATIBILITY, new BrowserCompatSpecFactory());
++        registry.register(CookiePolicy.RFC_2109, new RFC2109SpecFactory());
++        registry.register(CookiePolicy.RFC_2965, new RFC2965SpecFactory());
++        registry.register(CookiePolicy.IGNORE_COOKIES, new IgnoreSpecFactory());
++        registry.register(CookiePolicy.NETSCAPE, new NetscapeDraftSpecFactory());
++    }
++
++    public HC4CookieHandler(String policy) {
++        super();
++        if (policy.equals(org.apache.commons.httpclient.cookie.CookiePolicy.DEFAULT)) { // tweak diff HC3 vs HC4
++            policy = CookiePolicy.BEST_MATCH;
++        }
++        this.cookieSpec = registry.getCookieSpec(policy);
++    }
++
++    public void addCookieFromHeader(CookieManager cookieManager,
++            boolean checkCookies, String cookieHeader, URL url) {
++            boolean debugEnabled = log.isDebugEnabled();
++            if (debugEnabled) {
++                log.debug("Received Cookie: " + cookieHeader + " From: " + url.toExternalForm());
++            }
++            String protocol = url.getProtocol();
++            String host = url.getHost();
++            int port= HTTPSamplerBase.getDefaultPort(protocol,url.getPort());
++            String path = url.getPath();
++            boolean isSecure=HTTPSamplerBase.isSecure(protocol);
++
++            List<org.apache.http.cookie.Cookie> cookies = null;
++            
++            CookieOrigin cookieOrigin = new CookieOrigin(host, port, path, isSecure);
++            BasicHeader basicHeader = new BasicHeader(HTTPConstants.HEADER_SET_COOKIE, cookieHeader);
++
++            try {
++                cookies = cookieSpec.parse(basicHeader, cookieOrigin);
++            } catch (MalformedCookieException e) {
++                log.error("Unable to add the cookie", e);
++            }
++            if (cookies == null) {
++                return;
++            }
++            for (org.apache.http.cookie.Cookie cookie : cookies) {
++                try {
++                    if (checkCookies) {
++                        cookieSpec.validate(cookie, cookieOrigin);
++                    }
++                    Date expiryDate = cookie.getExpiryDate();
++                    long exp = 0;
++                    if (expiryDate!= null) {
++                        exp=expiryDate.getTime();
++                    }
++                    Cookie newCookie = new Cookie(
++                            cookie.getName(),
++                            cookie.getValue(),
++                            cookie.getDomain(),
++                            cookie.getPath(),
++                            cookie.isSecure(),
++                            exp / 1000
++                            );
++
++                    // Store session cookies as well as unexpired ones
++                    if (exp == 0 || exp >= System.currentTimeMillis()) {
++                        newCookie.setVersion(cookie.getVersion());
++                        cookieManager.add(newCookie); // Has its own debug log; removes matching cookies
++                    } else {
++                        cookieManager.removeMatchingCookies(newCookie);
++                        if (debugEnabled){
++                            log.info("Dropping expired Cookie: "+newCookie.toString());
++                        }
++                    }
++                } catch (MalformedCookieException e) { // This means the cookie was wrong for the URL
++                    log.warn("Not storing invalid cookie: <"+cookieHeader+"> for URL "+url+" ("+e.getLocalizedMessage()+")");
++                } catch (IllegalArgumentException e) {
++                    log.warn(cookieHeader+e.getLocalizedMessage());
++                }
++            }
++    }
++
++    public String getCookieHeaderForURL(CollectionProperty cookiesCP, URL url,
++            boolean allowVariableCookie) {
++        List<org.apache.http.cookie.Cookie> c = 
++                getCookiesForUrl(cookiesCP, url, allowVariableCookie);
++        
++        boolean debugEnabled = log.isDebugEnabled();
++        if (debugEnabled){
++            log.debug("Found "+c.size()+" cookies for "+url.toExternalForm());
++        }
++        if (c.size() <= 0) {
++            return null;
++        }
++        List<Header> lstHdr = cookieSpec.formatCookies(c);
++        
++        StringBuilder sbHdr = new StringBuilder();
++        for (Header header : lstHdr) {
++            sbHdr.append(header.getValue());
++        }
++
++        return sbHdr.toString();
++    }
++
++    /**
++     * Get array of valid HttpClient cookies for the URL
++     *
++     * @param url the target URL
++     * @return array of HttpClient cookies
++     *
++     */
++    List<org.apache.http.cookie.Cookie> getCookiesForUrl(
++            CollectionProperty cookiesCP, URL url, boolean allowVariableCookie) {
++        List<org.apache.http.cookie.Cookie> cookies = new ArrayList<org.apache.http.cookie.Cookie>();
++
++        for (PropertyIterator iter = cookiesCP.iterator(); iter.hasNext();) {
++            Cookie jmcookie = (Cookie) iter.next().getObjectValue();
++            // Set to running version, to allow function evaluation for the cookie values (bug 28715)
++            if (allowVariableCookie) {
++                jmcookie.setRunningVersion(true);
++            }
++            cookies.add(makeCookie(jmcookie));
++            if (allowVariableCookie) {
++                jmcookie.setRunningVersion(false);
++            }
++        }
++        String host = url.getHost();
++        String protocol = url.getProtocol();
++        int port = HTTPSamplerBase.getDefaultPort(protocol, url.getPort());
++        String path = url.getPath();
++        boolean secure = HTTPSamplerBase.isSecure(protocol);
++
++        CookieOrigin cookieOrigin = new CookieOrigin(host, port, path, secure);
++
++        List<org.apache.http.cookie.Cookie> cookiesValid = new ArrayList<org.apache.http.cookie.Cookie>();
++        for (org.apache.http.cookie.Cookie cookie : cookies) {
++            if (cookieSpec.match(cookie, cookieOrigin)) {
++                cookiesValid.add(cookie);
++            }
++        }
++
++        return cookiesValid;
++    }
++    
++    /**
++     * Create an HttpClient cookie from a JMeter cookie
++     */
++    private org.apache.http.cookie.Cookie makeCookie(Cookie jmc) {
++        long exp = jmc.getExpiresMillis();
++        BasicClientCookie ret = new BasicClientCookie(jmc.getName(),
++                jmc.getValue());
++
++        ret.setDomain(jmc.getDomain());
++        ret.setPath(jmc.getPath());
++        ret.setExpiryDate(exp > 0 ? new Date(exp) : null); // use null for no expiry
++        ret.setSecure(jmc.getSecure());
++        ret.setVersion(jmc.getVersion());
++        return ret;
++    }
++}
+Index: src/jorphan/org/apache/jorphan/reflect/ClassTools.java
+===================================================================
+--- src/jorphan/org/apache/jorphan/reflect/ClassTools.java	(revision 1375599)
++++ src/jorphan/org/apache/jorphan/reflect/ClassTools.java	(working copy)
+@@ -18,6 +18,7 @@
+ 
+ package org.apache.jorphan.reflect;
+ 
++import java.lang.reflect.Constructor;
+ import java.lang.reflect.InvocationTargetException;
+ import java.lang.reflect.Method;
+ 
+@@ -80,6 +81,36 @@
+     }
+ 
+     /**
++     * Call a class constructor with an String parameter
++     * @param className
++     * @param parameter (String)
++     * @return an instance of the class
++     * @throws JMeterException if class cannot be created
++     */
++    public static Object construct(String className, String parameter)
++            throws JMeterException {
++        Object instance = null;
++        try {
++            Class<?> clazz = Class.forName(className);
++            Constructor<?> constructor = clazz.getConstructor(String.class);
++            instance = constructor.newInstance(parameter);
++        } catch (ClassNotFoundException e) {
++            throw new JMeterException(e);
++        } catch (InstantiationException e) {
++            throw new JMeterException(e);
++        } catch (IllegalAccessException e) {
++            throw new JMeterException(e);
++        } catch (NoSuchMethodException e) {
++            throw new JMeterException(e);
++        } catch (IllegalArgumentException e) {
++            throw new JMeterException(e);
++        } catch (InvocationTargetException e) {
++            throw new JMeterException(e);
++        }
++        return instance;
++    }
++
++    /**
+      * Invoke a public method on a class instance
+      *
+      * @param instance
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/CookieManager.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/CookieManager.java	(revision 1375599)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/CookieManager.java	(working copy)
+@@ -30,7 +30,7 @@
+ import java.net.URL;
+ import java.util.ArrayList;
+ 
+-import org.apache.commons.httpclient.cookie.CookiePolicy;
++import org.apache.http.client.params.CookiePolicy;
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.testelement.TestListener;
+@@ -40,6 +40,8 @@
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.reflect.ClassTools;
++import org.apache.jorphan.util.JMeterException;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+@@ -61,6 +63,8 @@
+     private static final String COOKIES = "CookieManager.cookies";// $NON-NLS-1$
+ 
+     private static final String POLICY = "CookieManager.policy"; //$NON-NLS-1$
++    
++    private static final String IMPLEMENTATION = "CookieManager.implementation"; //$NON-NLS-1$
+     //-- JMX tag values
+ 
+     private static final String TAB = "\t"; //$NON-NLS-1$
+@@ -97,6 +101,8 @@
+     private transient CollectionProperty initialCookies;
+ 
+     public static final String DEFAULT_POLICY = CookiePolicy.BROWSER_COMPATIBILITY;
++    
++    public static final String DEFAULT_IMPLEMENTATION = HC3CookieHandler.class.getName();
+ 
+     public CookieManager() {
+         clearCookies(); // Ensure that there is always a collection available
+@@ -136,6 +142,14 @@
+         setProperty(new BooleanProperty(CLEAR, clear));
+     }
+ 
++    public String getImplementation() {
++        return getPropertyAsString(IMPLEMENTATION, DEFAULT_IMPLEMENTATION);
++    }
++
++    public void setImplementation(String implementation){
++        setProperty(IMPLEMENTATION, implementation, DEFAULT_IMPLEMENTATION);
++    }
++
+     /**
+      * Save the static cookie data to a file.
+      * Cookies are only taken from the GUI - runtime cookies are not included.
+@@ -355,7 +369,11 @@
+     /** {@inheritDoc} */
+     public void testStarted() {
+         initialCookies = getCookies();
+-        cookieHandler = new HC3CookieHandler(getPolicy());
++        try {
++            cookieHandler = (CookieHandler) ClassTools.construct(getImplementation(), getPolicy());
++        } catch (JMeterException e) {
++            log.error("Unable to load or invoke class: " + getImplementation(), e);
++        }
+         if (log.isDebugEnabled()){
+             log.debug("Policy: "+getPolicy()+" Clear: "+getClearEachIteration());
+         }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/gui/CookiePanel.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/gui/CookiePanel.java	(revision 1375599)
++++ src/protocol/http/org/apache/jmeter/protocol/http/gui/CookiePanel.java	(working copy)
+@@ -20,13 +20,20 @@
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Dimension;
++import java.awt.FlowLayout;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.io.IOException;
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.List;
+ 
+ import javax.swing.BorderFactory;
++import javax.swing.ComboBoxModel;
++import javax.swing.DefaultComboBoxModel;
+ import javax.swing.JButton;
+ import javax.swing.JCheckBox;
++import javax.swing.JComboBox;
+ import javax.swing.JFileChooser;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+@@ -39,10 +46,13 @@
+ import org.apache.jmeter.gui.util.HeaderAsPropertyRenderer;
+ import org.apache.jmeter.gui.util.PowerTableModel;
+ import org.apache.jmeter.protocol.http.control.Cookie;
++import org.apache.jmeter.protocol.http.control.CookieHandler;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
++import org.apache.jmeter.protocol.http.control.HC3CookieHandler;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.GuiUtils;
+ import org.apache.jorphan.gui.JLabeledChoice;
+ import org.apache.jorphan.gui.layout.VerticalLayout;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -69,6 +79,8 @@
+     private static final String LOAD_COMMAND = "Load"; //$NON-NLS-1$
+ 
+     private static final String SAVE_COMMAND = "Save"; //$NON-NLS-1$
++
++    private static final String HANDLER_COMMAND = "Handler"; // $NON-NLS-1$
+     //--
+ 
+     private JTable cookieTable;
+@@ -77,6 +89,10 @@
+ 
+     private JCheckBox clearEachIteration;
+ 
++    private JComboBox selectHandlerPanel;
++
++    private HashMap<String, String> handlerMap = new HashMap<String, String>();
++
+     private static final String[] COLUMN_RESOURCE_NAMES = {
+         ("name"),   //$NON-NLS-1$
+         ("value"),  //$NON-NLS-1$
+@@ -247,6 +263,7 @@
+             }
+             cookieManager.setClearEachIteration(clearEachIteration.isSelected());
+             cookieManager.setCookiePolicy(policy.getText());
++            cookieManager.setImplementation(handlerMap.get(selectHandlerPanel.getSelectedItem()));
+         }
+     }
+ 
+@@ -260,6 +277,8 @@
+         tableModel.clearData();
+         clearEachIteration.setSelected(false);
+         policy.setText(CookieManager.DEFAULT_POLICY);
++        selectHandlerPanel.setSelectedItem(CookieManager.DEFAULT_IMPLEMENTATION
++                .substring(CookieManager.DEFAULT_IMPLEMENTATION.lastIndexOf('.') + 1));
+         deleteButton.setEnabled(false);
+         saveButton.setEnabled(false);
+     }
+@@ -297,6 +316,8 @@
+         populateTable(cookieManager);
+         clearEachIteration.setSelected((cookieManager).getClearEachIteration());
+         policy.setText(cookieManager.getPolicy());
++        String fullImpl = cookieManager.getImplementation();
++        selectHandlerPanel.setSelectedItem(fullImpl.substring(fullImpl.lastIndexOf('.') + 1));
+     }
+ 
+     /**
+@@ -315,8 +336,19 @@
+         JPanel northPanel = new JPanel();
+         northPanel.setLayout(new VerticalLayout(5, VerticalLayout.BOTH));
+         northPanel.add(makeTitlePanel());
+-        northPanel.add(clearEachIteration);
+-        northPanel.add(policy);
++        JPanel optionsPane = new JPanel();
++        optionsPane.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("cookie_options"))); // $NON-NLS-1$
++        optionsPane.setLayout(new VerticalLayout(5, VerticalLayout.BOTH));
++        optionsPane.add(clearEachIteration);
++        JPanel policyTypePane = new JPanel();
++        policyTypePane.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++        policyTypePane.add(policy);
++        policyTypePane.add(GuiUtils.createLabelCombo(
++                JMeterUtils.getResString("cookie_implementation_choose"), createComboHandler())); // $NON-NLS-1$
++        optionsPane.add(policyTypePane);
++        northPanel.add(optionsPane);
+         add(northPanel, BorderLayout.NORTH);
+         add(createCookieTablePanel(), BorderLayout.CENTER);
+     }
+@@ -363,4 +395,36 @@
+         buttonPanel.add(saveButton);
+         return buttonPanel;
+     }
++    
++    /**
++     * Create the drop-down list to changer render
++     * @return List of all render (implement ResultsRender)
++     */
++    private JComboBox createComboHandler() {
++        ComboBoxModel nodesModel = new DefaultComboBoxModel();
++        // drop-down list for renderer
++        selectHandlerPanel = new JComboBox(nodesModel);
++        selectHandlerPanel.setActionCommand(HANDLER_COMMAND);
++        selectHandlerPanel.addActionListener(this);
++
++        // if no results render in jmeter.properties, load Standard (default)
++        List<String> classesToAdd = Collections.<String>emptyList();
++        try {
++            classesToAdd = JMeterUtils.findClassesThatExtend(CookieHandler.class);
++        } catch (IOException e1) {
++            // ignored
++        }
++        String tmpName = null;
++        for (String clazz : classesToAdd) {
++            String shortClazz = clazz.substring(clazz.lastIndexOf('.') + 1);
++            if (HC3CookieHandler.class.getName().equals(clazz)) {
++                tmpName = shortClazz;
++            }
++            selectHandlerPanel.addItem(shortClazz);
++            handlerMap.put(shortClazz, clazz);
++        }
++        nodesModel.setSelectedItem(tmpName); // preset to default impl
++        return selectHandlerPanel;
++    }
++
+ }
+

@@ -1,0 +1,197 @@
+Index: src/components/org/apache/jmeter/extractor/HtmlExtractor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/HtmlExtractor.java	(revision 1754657)
++++ src/components/org/apache/jmeter/extractor/HtmlExtractor.java	(working copy)
+@@ -76,6 +76,8 @@
+     
+     private static final String UNDERSCORE = "_";  // $NON-NLS-1$
+     
++    private static final String DEFAULT_EMPTY_VALUE = "HtmlExtractor.default_empty_value"; // $NON-NLS-1$
++
+     private Extractor extractor;
+ 
+     /**
+@@ -102,7 +104,7 @@
+         int matchNumber = getMatchNumber();
+         final String defaultValue = getDefaultValue();
+         
+-        if (defaultValue.length() > 0){// Only replace default if it is provided
++        if (defaultValue.length() > 0  || isEmptyDefaultValue()){// Only replace default if it is provided or empty default value is explicitly requested
+             vars.put(refName, defaultValue);
+         }
+         
+@@ -306,6 +308,10 @@
+         setProperty(DEFAULT, defaultValue);
+     }
+ 
++    public void setDefaultEmptyValue(boolean defaultEmptyValue) {
++        setProperty(DEFAULT_EMPTY_VALUE, defaultEmptyValue);
++    }
++    
+     /**
+      * Get the default value for the variable if no matches are found
+      * @return The default value for the variable
+@@ -313,4 +319,8 @@
+     public String getDefaultValue() {
+         return getPropertyAsString(DEFAULT);
+     }
++    
++    public boolean isEmptyDefaultValue() {
++        return getPropertyAsBoolean(DEFAULT_EMPTY_VALUE);
++    }
+ }
+Index: src/components/org/apache/jmeter/extractor/gui/HtmlExtractorGui.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/gui/HtmlExtractorGui.java	(revision 1754657)
++++ src/components/org/apache/jmeter/extractor/gui/HtmlExtractorGui.java	(working copy)
+@@ -22,11 +22,14 @@
+ import java.awt.Component;
+ import java.awt.GridBagConstraints;
+ import java.awt.GridBagLayout;
++import java.awt.event.ItemEvent;
++import java.awt.event.ItemListener;
+ import java.util.List;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+ import javax.swing.DefaultComboBoxModel;
++import javax.swing.JCheckBox;
+ import javax.swing.JComboBox;
+ import javax.swing.JComponent;
+ import javax.swing.JLabel;
+@@ -64,7 +67,8 @@
+ 
+     private JComboBox<String> extractorImplName;
+ 
+-
++    private JCheckBox emptyDefaultValue;
++    
+     public HtmlExtractorGui() {
+         super();
+         init();
+@@ -84,6 +88,7 @@
+             expressionField.setText(htmlExtractor.getExpression());
+             attributeField.setText(htmlExtractor.getAttribute());
+             defaultField.setText(htmlExtractor.getDefaultValue());
++            emptyDefaultValue.setSelected(htmlExtractor.isEmptyDefaultValue());
+             matchNumberField.setText(htmlExtractor.getMatchNumberAsString());
+             refNameField.setText(htmlExtractor.getRefName());
+             extractorImplName.setSelectedItem(htmlExtractor.getExtractor());
+@@ -115,6 +120,7 @@
+             htmlExtractor.setExpression(expressionField.getText());
+             htmlExtractor.setAttribute(attributeField.getText());
+             htmlExtractor.setDefaultValue(defaultField.getText());
++            htmlExtractor.setDefaultEmptyValue(emptyDefaultValue.isSelected());
+             htmlExtractor.setMatchNumber(matchNumberField.getText());
+             if(extractorImplName.getSelectedIndex()< HtmlExtractor.getImplementations().length) {
+                 htmlExtractor.setExtractor(HtmlExtractor.getImplementations()[extractorImplName.getSelectedIndex()]);
+@@ -136,6 +142,7 @@
+         attributeField.setText(""); //$NON-NLS-1$
+         defaultField.setText(""); //$NON-NLS-1$
+         refNameField.setText(""); //$NON-NLS-1$
++        emptyDefaultValue.setSelected(false);
+         matchNumberField.setText(""); //$NON-NLS-1$
+     }
+ 
+@@ -174,7 +181,6 @@
+     private JPanel makeParameterPanel() {        
+         expressionField = new JLabeledTextField(JMeterUtils.getResString("expression_field")); //$NON-NLS-1$
+         attributeField = new JLabeledTextField(JMeterUtils.getResString("attribute_field")); //$NON-NLS-1$
+-        defaultField = new JLabeledTextField(JMeterUtils.getResString("default_value_field")); //$NON-NLS-1$
+         refNameField = new JLabeledTextField(JMeterUtils.getResString("ref_name_field")); //$NON-NLS-1$
+         matchNumberField = new JLabeledTextField(JMeterUtils.getResString("match_num_field")); //$NON-NLS-1$
+ 
+@@ -190,7 +196,28 @@
+         addField(panel, matchNumberField, gbc);
+         resetContraints(gbc);
+         gbc.weighty = 1;
+-        addField(panel, defaultField, gbc);
++        
++        defaultField = new JLabeledTextField(JMeterUtils.getResString("default_value_field")); //$NON-NLS-1$
++        List<JComponent> item = defaultField.getComponentList();
++        panel.add(item.get(0), gbc.clone());
++        JPanel p = new JPanel(new BorderLayout());
++        p.add(item.get(1), BorderLayout.WEST);
++        emptyDefaultValue = new JCheckBox(JMeterUtils.getResString("cssjquery_empty_default_value"));
++        emptyDefaultValue.addItemListener(new ItemListener() {
++            @Override
++            public void itemStateChanged(ItemEvent e) {
++                if(emptyDefaultValue.isSelected()) {
++                    defaultField.setText("");
++                }
++                defaultField.setEnabled(!emptyDefaultValue.isSelected());
++            }
++        });
++        p.add(emptyDefaultValue, BorderLayout.CENTER);
++        gbc.gridx++;
++        gbc.weightx = 1;
++        gbc.fill = GridBagConstraints.HORIZONTAL;
++        panel.add(p, gbc.clone());
++        
+         return panel;
+     }
+ 
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1755638)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -214,6 +214,7 @@
+ critical_section_controller_label=Lock name
+ critical_section_controller_title=Critical Section Controller
+ cssjquery_attribute=Attribute\:
++cssjquery_empty_default_value=Use empty default value
+ cssjquery_tester_error=An error occured evaluating expression:{0}, error:{1}
+ cssjquery_impl=CSS/JQuery implementation\:
+ cssjquery_render_no_text=Data response result isn't text.
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1755638)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -207,6 +207,7 @@
+ critical_section_controller_label=Nom du verrou
+ critical_section_controller_title=Contr\u00F4leur Section critique
+ cssjquery_attribute=Attribut
++cssjquery_empty_default_value=Utiliser la cha\u00EEne vide comme valeur par d\u00E9faut
+ cssjquery_impl=Impl\u00E9mentation CSS/JQuery\:
+ cssjquery_render_no_text=Les donn\u00E9es de r\u00E9ponse ne sont pas du texte.
+ cssjquery_tester_button_test=Tester
+@@ -219,9 +220,9 @@
+ database_conn_pool_max_usage=Utilisation max pour chaque connexion\:
+ database_conn_pool_props=Pool de connexions \u221A\u2020 la base de donn\u221A\u00A9es
+ database_conn_pool_size=Nombre de Connexions dans le Pool\:
+-database_conn_pool_title=Valeurs par d\u221A\u00A9faut du Pool de connexions JDBC
++database_conn_pool_title=Valeurs par d\u00E9faut du Pool de connexions JDBC
+ database_driver_class=Classe du Driver\:
+-database_login_title=Valeurs par d\u221A\u00A9faut de la base de donn\u221A\u00A9es JDBC
++database_login_title=Valeurs par d\u00E9faut de la base de donn\u221A\u00A9es JDBC
+ database_sql_query_string=Requ\u00EAte SQL \:
+ database_sql_query_title=Requ\u00EAte SQL JDBC par d\u00E9faut
+ database_testing_title=Requ\u221A\u2122te JDBC
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1755674)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -5656,6 +5656,11 @@
+         In this case, remove the default value once debugging is complete.
+         </p> 
+         </property>
++        <property name="Use empty default value" required="No">
++        If the checkbox is checked and <code>Default Value</code> is empty, then JMeter will set the variable to empty string instead of not setting it.
++        Thus when you will for example use <code>${var}</code> (if <code>Reference Name</code> is var) in your Test Plan, if the extracted value is not found then 
++        <code>${var}</code> will be equal to empty string instead of containing <code>${var}</code> which may be useful if extracted value is optional.
++        </property>
+ </properties>
+ <p>
+     If the match number is set to a non-negative number, and a match occurs, the variables are set as follows:
+@@ -5765,6 +5770,11 @@
+         In this case, remove the default value once debugging is complete.
+         </p> 
+         </property>
++        <property name="Use empty default value" required="No">
++        If the checkbox is checked and <code>Default Value</code> is empty, then JMeter will set the variable to empty string instead of not setting it.
++        Thus when you will for example use <code>${var}</code> (if <code>Reference Name</code> is var) in your Test Plan, if the extracted value is not found then 
++        <code>${var}</code> will be equal to empty string instead of containing <code>${var}</code> which may be useful if extracted value is optional.
++        </property>
+ </properties>
+ <p>
+     If the match number is set to a non-negative number, and a match occurs, the variables are set as follows:

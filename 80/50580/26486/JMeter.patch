@@ -1,0 +1,345 @@
+Index: src/components/org/apache/jmeter/config/TabularDataSetResources.properties
+===================================================================
+--- src/components/org/apache/jmeter/config/TabularDataSetResources.properties	(revision 0)
++++ src/components/org/apache/jmeter/config/TabularDataSetResources.properties	(revision 0)
+@@ -0,0 +1,26 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++ 
++displayName=Tabular Data Set Config
++csv_data.displayName=Configure the Tabular Data
++variableNames.displayName=Variable Names (comma-delimited)
++variableNames.shortDescription=List your variable names in order to match the order of columns in your data.  Separate by commas.
++delimiter.displayName=Delimiter (use '\\t' for tab)
++delimiter.shortDescription=Enter the delimiter ('\\t' for tab)
++data.displayName=Data
++data.shortDescription=The Data
+Index: src/components/org/apache/jmeter/config/TabularDataSet.java
+===================================================================
+--- src/components/org/apache/jmeter/config/TabularDataSet.java	(revision 0)
++++ src/components/org/apache/jmeter/config/TabularDataSet.java	(revision 0)
+@@ -0,0 +1,150 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.config;
++
++import java.io.BufferedReader;
++import java.io.IOException;
++import java.io.StringReader;
++import java.util.ArrayList;
++import java.util.List;
++
++import org.apache.jmeter.config.ConfigTestElement;
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++import org.apache.jmeter.engine.event.LoopIterationListener;
++import org.apache.jmeter.testbeans.TestBean;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.log.Logger;
++
++/**
++ * Use this config element when you want to vary the values of some user defined
++ * variables between iterations, i.e. loops. <br>
++ * <br>
++ * This element reads the Data text (CSV or the like) and splits it into rows
++ * and columns. For each iteration, a new row is read, and its columns are
++ * assigned to the user defined variable with the name of the Variable names. <br>
++ * <br>
++ * The rows are just the rows in the text, and the column are separated by the
++ * defined Delimiter. <br>
++ * <br>
++ * Each column gets the name from the comma separated Variable Names, and the
++ * number of Variable Names must be the same as the number of columns in every
++ * row, or else an exception will be thrown. <br>
++ * <br>
++ * When the last row is reached, it will simply start from the top again. 
++ * <br><br>
++ * The data is not trimmed, hence any whitespace that is not a delimiter will
++ * remain in the variable when used in the test.
++ * 
++ */
++public class TabularDataSet extends ConfigTestElement implements TestBean,
++		LoopIterationListener {
++	private static final long serialVersionUID = 232L;
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++	private transient String variableNames;
++	private transient String delimiter;
++	private transient String data;
++	private transient boolean membersModifiedAndNeedsToBeReparsed = false;
++
++	private transient String[] variableNamesArray;
++	private transient List<String[]> dataGrid;
++	
++	public void iterationStart(LoopIterationEvent iterEvent) {
++		setUpData();
++		int lineNumber = (iterEvent.getIteration()-1) % dataGrid.size();
++		String[] row = dataGrid.get(lineNumber);
++		for (int i = 0; i < row.length; i++) {
++			String rowItem = row[i];
++			getThreadContext().getVariables().put(variableNamesArray[i], rowItem);
++		}
++	}
++
++	public String getVariableNames() {
++		return variableNames;
++	}
++
++	public void setVariableNames(String variableNames) {
++		this.variableNames = variableNames;
++		membersModifiedAndNeedsToBeReparsed = true;
++	}
++
++	public String getDelimiter() {
++		return delimiter;
++	}
++
++	public void setDelimiter(String delimiter) {
++		this.delimiter = delimiter;
++		membersModifiedAndNeedsToBeReparsed = true;
++	}
++
++	public String getData() {
++		return data;
++	}
++
++	public void setData(String value) {
++		this.data = value;
++		membersModifiedAndNeedsToBeReparsed = true;
++	}
++
++	private void setUpData() {
++		if (!membersModifiedAndNeedsToBeReparsed) {
++			return;
++		}
++
++		try {
++			variableNamesArray = JOrphanUtils.split(variableNames, ",");
++			dataGrid = new ArrayList<String[]>();
++			BufferedReader bufferedReader = new BufferedReader(
++					new StringReader(data));
++			String row = null;
++			int lineNumber = 1;
++			while ((row = bufferedReader.readLine()) != null) {
++				String[] rowElements = JOrphanUtils.split(row, getActualDelimiter());
++				assertThatDimensionsOfVariableNamesAndRowAreSame(lineNumber, rowElements);
++				dataGrid.add(rowElements);
++				lineNumber++;
++			}
++			membersModifiedAndNeedsToBeReparsed = false;
++		} catch (IOException e) {
++			log.error("Could not parse data", e);
++		}
++	}
++
++	private void assertThatDimensionsOfVariableNamesAndRowAreSame(int line,
++			String[] rowElements) {
++		if (rowElements.length != variableNamesArray.length) {
++			String explicitErrorMessage = 
++					"Data on line " + line + " has "
++					+ rowElements.length + " columns " + "but require "
++					+ variableNamesArray.length + " columns ("
++					+ variableNames + ")\n" + "Note that delimiter is "
++					+ getDelimiter();
++			throw new RuntimeException(explicitErrorMessage);
++		}
++	}
++
++	private String getActualDelimiter() {
++		if (delimiter.equals("\\t")) {
++			return "\t";
++		}
++		return delimiter;
++	}
++
++}
+Index: src/components/org/apache/jmeter/config/TabularDataSetBeanInfo.java
+===================================================================
+--- src/components/org/apache/jmeter/config/TabularDataSetBeanInfo.java	(revision 0)
++++ src/components/org/apache/jmeter/config/TabularDataSetBeanInfo.java	(revision 0)
+@@ -0,0 +1,55 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.config;
++
++import java.beans.PropertyDescriptor;
++
++import org.apache.jmeter.testbeans.BeanInfoSupport;
++import org.apache.jmeter.testbeans.gui.TextAreaEditor;
++
++public class TabularDataSetBeanInfo extends BeanInfoSupport {
++
++    // These names must agree case-wise with the variable and property names
++    private static final String VARIABLE_NAMES = "variableNames";    //$NON-NLS-1$
++    private static final String DELIMITER = "delimiter";             //$NON-NLS-1$
++    private static final String DATA = "data";			             //$NON-NLS-1$
++
++    public TabularDataSetBeanInfo() {
++        super(TabularDataSet.class);
++        createPropertyGroup("csv_data",             //$NON-NLS-1$
++                new String[] { VARIABLE_NAMES, DELIMITER, DATA });
++
++        PropertyDescriptor p = property(VARIABLE_NAMES);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "");        //$NON-NLS-1$
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++
++        p = property(DELIMITER);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, ",");        //$NON-NLS-1$
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++
++        p = property(DATA);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "");        //$NON-NLS-1$
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setPropertyEditorClass(TextAreaEditor.class);
++    }
++
++}
+Index: test/src/org/apache/jmeter/config/TestTabularDataSet.java
+===================================================================
+--- test/src/org/apache/jmeter/config/TestTabularDataSet.java	(revision 0)
++++ test/src/org/apache/jmeter/config/TestTabularDataSet.java	(revision 0)
+@@ -0,0 +1,94 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++/**
++ * Package to test FileServer methods 
++ */
++     
++package org.apache.jmeter.config;
++
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.junit.Assert;
++import org.junit.Before;
++import org.junit.Test;
++
++public class TestTabularDataSet {
++
++    private JMeterVariables threadVars;
++	private TabularDataSet tabularDataSet;
++    
++    @Before
++    public void setUp(){
++        JMeterContext jmcx = JMeterContextService.getContext();
++        jmcx.setVariables(new JMeterVariables());
++        threadVars = jmcx.getVariables();        
++        
++		tabularDataSet = new TabularDataSet();
++		tabularDataSet.setThreadContext(jmcx);
++		tabularDataSet.setData("1:1,1:2,1:3\n2:1,2:2,2:3");
++		tabularDataSet.setDelimiter(",");
++		tabularDataSet.setVariableNames("col1,col2,col3");
++    }
++
++    @Test
++    public void testGetFirstRow() throws Exception {
++		tabularDataSet.iterationStart(new LoopIterationEvent(tabularDataSet, 1));
++		assertCol("col1", "1:1");
++		assertCol("col2", "1:2");
++		assertCol("col3", "1:3");
++    }
++    
++	@Test
++    public void testGetSecondRow() throws Exception {
++		tabularDataSet.iterationStart(new LoopIterationEvent(tabularDataSet, 2));
++		assertCol("col1", "2:1");
++		assertCol("col2", "2:2");
++		assertCol("col3", "2:3");
++	}
++
++    @Test
++    public void testStartFromBeginning() throws Exception {
++		tabularDataSet.iterationStart(new LoopIterationEvent(tabularDataSet, 3));
++		assertCol("col1", "1:1");
++		assertCol("col2", "1:2");
++		assertCol("col3", "1:3");
++	}
++
++    @Test
++    public void testChangedDataResultsInReparsing() throws Exception {
++    	tabularDataSet.setData("1:1 new,1:2 new,1:3 new\n2:1 new,2:2 new,2:3 new");
++		tabularDataSet.iterationStart(new LoopIterationEvent(tabularDataSet, 1));
++		assertCol("col1", "1:1 new");
++		assertCol("col2", "1:2 new");
++		assertCol("col3", "1:3 new");
++	}
++
++    @Test(expected=RuntimeException.class)
++    public void testThrowsExceptionWhenVariableNamesAndColumnWidthMismatches() throws Exception {
++    	tabularDataSet.setVariableNames("just one");
++		tabularDataSet.iterationStart(new LoopIterationEvent(tabularDataSet, 1));
++	}
++
++    
++	private void assertCol(String columnName, String expected) {
++		Assert.assertEquals(expected, threadVars.get(columnName));
++	}
++}

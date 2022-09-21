@@ -1,0 +1,2426 @@
+Index: bin/report-template/content/js/customGraph.js.fmkr
+===================================================================
+--- bin/report-template/content/js/customGraph.js.fmkr	(revision 0)
++++ bin/report-template/content/js/customGraph.js.fmkr	(revision 0)
+@@ -0,0 +1,160 @@
++/*
++   Licensed to the Apache Software Foundation (ASF) under one or more
++   contributor license agreements.  See the NOTICE file distributed with
++   this work for additional information regarding copyright ownership.
++   The ASF licenses this file to You under the Apache License, Version 2.0
++   (the "License"); you may not use this file except in compliance with
++   the License.  You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++*/
++
++
++    
++$(document).ready(function() {
++    $(".click-title").mouseenter( function(    e){
++        e.preventDefault();
++        this.style.cursor="pointer";
++    });
++    $(".click-title").mousedown( function(event){
++        event.preventDefault();
++    });
++    
++    <#list customsGraphsData?keys as key> 
++    try{
++        refresh${key}(true);
++    } catch(e){
++        console.log(e);
++    }<#break> <#-- Stop after the first iteration in purpose to show the first graph only -->
++    </#list>
++    
++    $(".portlet-header").css("cursor", "auto");
++});
++
++<#list customsGraphsData?keys as key>
++var response${key}Infos = {
++    data: ${customsGraphsData[key]},
++    getOptions: function(){
++        return {
++            series: {
++                lines: {
++                    show: true
++                },
++                points: {
++                    show: true
++                }
++            },
++            xaxis: {
++                mode: "time",
++                timeformat: getTimeFormat(this.data.result.granularity),
++                axisLabel: '${graphConfigurations[key].getProperties()["set_X_Axis"]!"Default X Axis Title"}',
++                axisLabelUseCanvas: true,
++                axisLabelFontSizePixels: 12,
++                axisLabelFontFamily: 'Verdana, Arial',
++                axisLabelPadding: 20,
++            },
++            yaxis: {
++                axisLabel: '${graphConfigurations[key].getProperties()["set_Y_Axis"]!"Default Y Axis Title"}',
++                axisLabelUseCanvas: true,
++                axisLabelFontSizePixels: 12,
++                axisLabelFontFamily: 'Verdana, Arial',
++                axisLabelPadding: 20,
++            },
++            legend: {
++                noColumns: 2,
++                show: true,
++                container: '#legendResponse${key}'
++            },
++            selection: {
++                mode: 'xy'
++            },
++            grid: {
++                hoverable: true // IMPORTANT! this is needed for tooltip to
++                                // work
++            },
++            tooltip: true,
++            tooltipOpts: {
++                content: "%s : at %x ${graphConfigurations[key].getProperties()["setContentMessage"]!"Default content message"} %y"
++            }
++        };
++    },
++    createGraph: function() {
++        var data = this.data;
++        var dataset = prepareData(data.result.series, $("#choicesResponse${key}"));
++        var options = this.getOptions();
++        prepareOptions(options, data);
++        $.plot($("#flotResponse${key}"), dataset, options);
++        // setup overview
++        $.plot($("#overviewResponse${key}"), dataset, prepareOverviewOptions(options));
++    }
++};
++
++// Response Custom Graph
++function refresh${key}(fixTimestamps) {
++    var infos = response${key}Infos;
++    prepareSeries(infos.data);
++    if(fixTimestamps) {
++        fixTimeStamps(infos.data.result.series, ${(timeZoneOffset?c)!0});
++    }
++    if(isGraph($("#flotResponse${key}"))){
++        infos.createGraph();
++    }else{
++        var choiceContainer = $("#choicesResponse${key}");
++        createLegend(choiceContainer, infos);
++        infos.createGraph();
++        setGraphZoomable("#flotResponse${key}", "#overviewResponse${key}");
++        $('#footerResponse${key} .legendColorBox > div').each(function(i){
++            $(this).clone().prependTo(choiceContainer.find("li").eq(i));
++        });
++    }
++};
++    </#list>
++
++function collapse(elem, collapsed){
++    if(collapsed){
++        $(elem).parent().find(".fa-chevron-up").removeClass("fa-chevron-up").addClass("fa-chevron-down");
++    }else{
++        $(elem).parent().find(".fa-chevron-down").removeClass("fa-chevron-down").addClass("fa-chevron-up");
++    
++    <#assign loopCount = 0>
++    <#list customsGraphsData?keys as key>
++    <#if loopCount == 0>
++    if(elem.id == "bodyResponse${key}"){
++    <#else>
++    else if(elem.id == "bodyResponse${key}"){
++    </#if>
++        if (isGraph($(elem).find('.flot-chart-content')) == false) {
++            refresh${key}(true);
++        }
++            document.location.href="#${key}";
++        }
++    </#list>
++    }
++}
++
++function toggleAll(id, checked){
++    var placeholder = document.getElementById(id);
++    var cases = $(placeholder).find(':checkbox');
++    cases.prop('checked', checked);
++    $(cases).parent().children().children().toggleClass("legend-disabled", !checked);
++    var choiceContainer;
++    
++    <#assign loopCount = 0>
++    <#list customsGraphsData?keys as key>
++    <#if loopCount == 0>
++    if(id == "choicesResponse${key}"){
++    <#else>
++    else if(id == "choicesResponse${key}"){
++    </#if>
++        choiceContainer = $("#choicesResponse${key}");
++        refresh${key}(false);
++    }
++    <#assign loopCount++>    
++    </#list>
++}
+\ No newline at end of file
+Index: bin/report-template/content/js/dashboard-commons.js
+===================================================================
+--- bin/report-template/content/js/dashboard-commons.js	(revision 1833731)
++++ bin/report-template/content/js/dashboard-commons.js	(nonexistent)
+@@ -1,181 +0,0 @@
+-/*
+-   Licensed to the Apache Software Foundation (ASF) under one or more
+-   contributor license agreements.  See the NOTICE file distributed with
+-   this work for additional information regarding copyright ownership.
+-   The ASF licenses this file to You under the Apache License, Version 2.0
+-   (the "License"); you may not use this file except in compliance with
+-   the License.  You may obtain a copy of the License at
+-
+-       http://www.apache.org/licenses/LICENSE-2.0
+-
+-   Unless required by applicable law or agreed to in writing, software
+-   distributed under the License is distributed on an "AS IS" BASIS,
+-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-   See the License for the specific language governing permissions and
+-   limitations under the License.
+-*/
+-var DAY_MS   = 86400000;
+-var HOUR_MS  =  3600000;
+-var MINUTE_MS  =    60000;
+-
+-/**
+- * From https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Math/round
+- * Licensed under https://creativecommons.org/licenses/by-sa/2.5/
+- */
+-// Closure
+-(function() {
+-  /**
+-   * Decimal adjustment of a number.
+-   *
+-   * @param {String}  type  The type of adjustment.
+-   * @param {Number}  value The number.
+-   * @param {Integer} exp   The exponent (the 10 logarithm of the adjustment base).
+-   * @returns {Number} The adjusted value.
+-   */
+-  function decimalAdjust(type, value, exp) {
+-    // If the exp is undefined or zero...
+-    if (typeof exp === 'undefined' || +exp === 0) {
+-      return Math[type](value);
+-    }
+-    value = +value;
+-    exp = +exp;
+-    // If the value is not a number or the exp is not an integer...
+-    if (isNaN(value) || !(typeof exp === 'number' && exp % 1 === 0)) {
+-      return NaN;
+-    }
+-    // Shift
+-    value = value.toString().split('e');
+-    value = Math[type](+(value[0] + 'e' + (value[1] ? (+value[1] - exp) : -exp)));
+-    // Shift back
+-    value = value.toString().split('e');
+-    return +(value[0] + 'e' + (value[1] ? (+value[1] + exp) : exp));
+-  }
+-
+-  // Decimal round
+-  if (!Math.round10) {
+-    Math.round10 = function(value, exp) {
+-      return decimalAdjust('round', value, exp);
+-    };
+-  }
+-  // Decimal floor
+-  if (!Math.floor10) {
+-    Math.floor10 = function(value, exp) {
+-      return decimalAdjust('floor', value, exp);
+-    };
+-  }
+-  // Decimal ceil
+-  if (!Math.ceil10) {
+-    Math.ceil10 = function(value, exp) {
+-      return decimalAdjust('ceil', value, exp);
+-    };
+-  }
+-})();
+-
+-/*
+- * Suffixes the specified value with a unit
+- * The spaced argument defines whether a space character is introduced.
+- */
+-function formatUnit(value, unit, spaced){
+-    return spaced ? value + " " + unit : value + unit;
+-}
+-
+-/*
+- * Gets a string representing the specified duration in milliseconds.
+- * 
+- * E.g : duration = 20000100, returns "45 min 20 sec 100 ms"
+- */
+-function formatDuration(duration, spaced) {
+-    var type = $.type(duration);
+-    if (type === "string")
+-        return duration;
+-
+-    // Calculate each part of the string
+-    var days = Math.floor(duration / 86400000); // 1000 * 60 * 60 * 24 = 1 day
+-    duration %= 8640000;
+-
+-    var hours = Math.floor(duration / 3600000); // 1000 * 60 *60 = 1 hour
+-    duration %= 3600000;
+-
+-    var minutes = Math.floor(duration / 60000); // 1000 * 60 = 1 minute
+-    duration %= 60000;
+-
+-    var seconds = Math.floor(duration / 1000); // 1 second
+-    duration %= 1000;
+-
+-    // Add non zero part.
+-    var formatArray = [];
+-    if (days > 0)
+-        formatArray.push(formatUnit(days, " day(s)", spaced));
+-
+-    if (hours > 0)
+-        formatArray.push(formatUnit(hours, " hour(s)", spaced));
+-
+-    if (minutes > 0)
+-        formatArray.push(formatUnit(minutes," min", spaced));
+-
+-    if (seconds > 0)
+-        formatArray.push(formatUnit(seconds, " sec", spaced));
+-
+-    if (duration > 0)
+-        formatArray.push(formatUnit(duration, " ms", spaced));
+-
+-    // Build the string
+-    return formatArray.join(" ");
+-}
+-
+-/*
+- * Gets axis label for the specified granularity
+- */
+-function getElapsedTimeLabel(granularity) {
+-    return "Elapsed Time (granularity: " + formatDuration(granularity) + ")";
+-}
+-
+-/*
+- * Gets time format based on granularity
+- */
+-function getTimeFormat(granularity) {
+-    if (granularity >= DAY_MS) {
+-        return "%y/%m/%d"; 
+-    } else if (granularity >= HOUR_MS) {
+-        return "%m/%d %H"; 
+-    } else if (granularity >= MINUTE_MS) {
+-        return "%d %H:%M";
+-    } else {
+-        return "%H:%M:%S";
+-    }
+-}
+-
+-
+-/*
+- * Gets axis label for the specified granularity
+- */
+-function getConnectTimeLabel(granularity) {
+-    return "Connect Time (granularity: " + formatDuration(granularity) + ")";
+-}
+-
+-//Get the property value of an object using the specified key
+-//Returns the property value if all properties in the key exist; undefined
+-//otherwise.
+-function getProperty(key, obj) {
+-    return key.split('.').reduce(function(prop, subprop){
+-        return prop && prop[subprop];
+-    }, obj);
+-}
+-
+-/*
+- * Removes quotes from the specified string 
+- */
+-function unquote(str, quoteChar) {
+-    quoteChar = quoteChar || '"';
+-    if (str.length > 0 && str[0] === quoteChar && str[str.length - 1] === quoteChar)
+-        return str.slice(1, str.length - 1);
+-    else
+-        return str;
+-};
+-
+-/*
+- * This comparison function evaluates abscissas to sort array of coordinates.
+- */
+-function compareByXCoordinate(coord1, coord2) {
+-    return coord2[0] - coord1[0];
+-}
+Index: bin/report-template/content/js/dashboard-commons.js.fmkr
+===================================================================
+--- bin/report-template/content/js/dashboard-commons.js.fmkr	(revision 0)
++++ bin/report-template/content/js/dashboard-commons.js.fmkr	(revision 0)
+@@ -0,0 +1,461 @@
++/*
++   Licensed to the Apache Software Foundation (ASF) under one or more
++   contributor license agreements.  See the NOTICE file distributed with
++   this work for additional information regarding copyright ownership.
++   The ASF licenses this file to You under the Apache License, Version 2.0
++   (the "License"); you may not use this file except in compliance with
++   the License.  You may obtain a copy of the License at
++       http://www.apache.org/licenses/LICENSE-2.0
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++*/
++var DAY_MS   = 86400000;
++var HOUR_MS  =  3600000;
++var MINUTE_MS  =    60000;
++
++/**
++ * From https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Global_Objects/Math/round
++ * Licensed under https://creativecommons.org/licenses/by-sa/2.5/
++ */
++// Closure
++(function() {
++  /**
++   * Decimal adjustment of a number.
++   *
++   * @param {String}  type  The type of adjustment.
++   * @param {Number}  value The number.
++   * @param {Integer} exp   The exponent (the 10 logarithm of the adjustment base).
++   * @returns {Number} The adjusted value.
++   */
++  function decimalAdjust(type, value, exp) {
++    // If the exp is undefined or zero...
++    if (typeof exp === 'undefined' || +exp === 0) {
++      return Math[type](value);
++    }
++    value = +value;
++    exp = +exp;
++    // If the value is not a number or the exp is not an integer...
++    if (isNaN(value) || !(typeof exp === 'number' && exp % 1 === 0)) {
++      return NaN;
++    }
++    // Shift
++    value = value.toString().split('e');
++    value = Math[type](+(value[0] + 'e' + (value[1] ? (+value[1] - exp) : -exp)));
++    // Shift back
++    value = value.toString().split('e');
++    return +(value[0] + 'e' + (value[1] ? (+value[1] + exp) : exp));
++  }
++
++  // Decimal round
++  if (!Math.round10) {
++    Math.round10 = function(value, exp) {
++      return decimalAdjust('round', value, exp);
++    };
++  }
++  // Decimal floor
++  if (!Math.floor10) {
++    Math.floor10 = function(value, exp) {
++      return decimalAdjust('floor', value, exp);
++    };
++  }
++  // Decimal ceil
++  if (!Math.ceil10) {
++    Math.ceil10 = function(value, exp) {
++      return decimalAdjust('ceil', value, exp);
++    };
++  }
++})();
++
++/*
++ * Suffixes the specified value with a unit
++ * The spaced argument defines whether a space character is introduced.
++ */
++function formatUnit(value, unit, spaced){
++    return spaced ? value + " " + unit : value + unit;
++}
++
++/*
++ * Gets a string representing the specified duration in milliseconds.
++ * 
++ * E.g : duration = 20000100, returns "45 min 20 sec 100 ms"
++ */
++function formatDuration(duration, spaced) {
++    var type = $.type(duration);
++    if (type === "string")
++        return duration;
++
++    // Calculate each part of the string
++    var days = Math.floor(duration / 86400000); // 1000 * 60 * 60 * 24 = 1 day
++    duration %= 8640000;
++
++    var hours = Math.floor(duration / 3600000); // 1000 * 60 *60 = 1 hour
++    duration %= 3600000;
++
++    var minutes = Math.floor(duration / 60000); // 1000 * 60 = 1 minute
++    duration %= 60000;
++
++    var seconds = Math.floor(duration / 1000); // 1 second
++    duration %= 1000;
++
++    // Add non zero part.
++    var formatArray = [];
++    if (days > 0)
++        formatArray.push(formatUnit(days, " day(s)", spaced));
++
++    if (hours > 0)
++        formatArray.push(formatUnit(hours, " hour(s)", spaced));
++
++    if (minutes > 0)
++        formatArray.push(formatUnit(minutes," min", spaced));
++
++    if (seconds > 0)
++        formatArray.push(formatUnit(seconds, " sec", spaced));
++
++    if (duration > 0)
++        formatArray.push(formatUnit(duration, " ms", spaced));
++
++    // Build the string
++    return formatArray.join(" ");
++}
++
++/*
++ * Gets axis label for the specified granularity
++ */
++function getElapsedTimeLabel(granularity) {
++    return "Elapsed Time (granularity: " + formatDuration(granularity) + ")";
++}
++
++/*
++ * Gets time format based on granularity
++ */
++function getTimeFormat(granularity) {
++    if (granularity >= DAY_MS) {
++        return "%y/%m/%d"; 
++    } else if (granularity >= HOUR_MS) {
++        return "%m/%d %H"; 
++    } else if (granularity >= MINUTE_MS) {
++        return "%d %H:%M";
++    } else {
++        return "%H:%M:%S";
++    }
++}
++
++/*
++ * Gets axis label for the specified granularity
++ */
++function getConnectTimeLabel(granularity) {
++    return "Connect Time (granularity: " + formatDuration(granularity) + ")";
++}
++
++//Get the property value of an object using the specified key
++//Returns the property value if all properties in the key exist; undefined
++//otherwise.
++function getProperty(key, obj) {
++    return key.split('.').reduce(function(prop, subprop){
++        return prop && prop[subprop];
++    }, obj);
++}
++
++/*
++ * Removes quotes from the specified string 
++ */
++function unquote(str, quoteChar) {
++    quoteChar = quoteChar || '"';
++    if (str.length > 0 && str[0] === quoteChar && str[str.length - 1] === quoteChar)
++        return str.slice(1, str.length - 1);
++    else
++        return str;
++};
++
++/*
++ * This comparison function evaluates abscissas to sort array of coordinates.
++ */
++function compareByXCoordinate(coord1, coord2) {
++    return coord2[0] - coord1[0];
++}
++
++
++/*
++ * Followings functions and variables are used to generate statics graphs
++ * AND dynamics graphs (if you have the plugin)
++ */
++
++var showControllersOnly = ${showControllersOnly?c!"false"};
++var seriesFilter = ${seriesFilter!"undefined"};
++var filtersOnlySampleSeries = ${filtersOnlySampleSeries?c!"false"};
++
++// Fixes time stamps
++function fixTimeStamps(series, offset){
++    $.each(series, function(index, item) {
++        $.each(item.data, function(index, coord) {
++            coord[0] += offset;
++        });
++    });
++}
++
++// Check if the specified jquery object is a graph
++function isGraph(object){
++    return object.data('plot') !== undefined;
++}
++
++// Collapse
++$(function() {
++        $('.collapse').on('shown.bs.collapse', function(){
++            collapse(this, false);
++        }).on('hidden.bs.collapse', function(){
++            collapse(this, true);
++        });
++});
++
++$(function() {
++    $(".glyphicon").mousedown( function(event){
++        var tmp = $('.in:not(ul)');
++        tmp.parent().parent().parent().find(".fa-chevron-up").removeClass("fa-chevron-down").addClass("fa-chevron-down");
++        tmp.removeClass("in");
++        tmp.addClass("out");
++    });
++});
++
++/**
++ * Export graph to a PNG
++ */
++function exportToPNG(graphName, target) {
++    var plot = $("#"+graphName).data('plot');
++    var flotCanvas = plot.getCanvas();
++    var image = flotCanvas.toDataURL();
++    image = image.replace("image/png", "image/octet-stream");
++    
++    var downloadAttrSupported = ("download" in document.createElement("a"));
++    if(downloadAttrSupported === true) {
++        target.download = graphName + ".png";
++        target.href = image;
++    }
++    else {
++        document.location.href = image;
++    }
++}
++
++// Override the specified graph options to fit the requirements of an overview
++function prepareOverviewOptions(graphOptions){
++    var overviewOptions = {
++        series: {
++            shadowSize: 0,
++            lines: {
++                lineWidth: 1
++            },
++            points: {
++                // Show points on overview only when linked graph does not show
++                // lines
++                show: getProperty('series.lines.show', graphOptions) == false,
++                radius : 1
++            }
++        },
++        xaxis: {
++            ticks: 2,
++            axisLabel: null
++        },
++        yaxis: {
++            ticks: 2,
++            axisLabel: null
++        },
++        legend: {
++            show: false,
++            container: null
++        },
++        grid: {
++            hoverable: false
++        },
++        tooltip: false
++    };
++    return $.extend(true, {}, graphOptions, overviewOptions);
++}
++
++function prepareOptions(options, data) {
++    options.canvas = true;
++    var extraOptions = data.extraOptions;
++    if(extraOptions !== undefined){
++        var xOffset = options.xaxis.mode === "time" ? ${(timeZoneOffset?c)!0} : 0;
++        var yOffset = options.yaxis.mode === "time" ? ${(timeZoneOffset?c)!0} : 0;
++
++        if(!isNaN(extraOptions.minX))
++        	options.xaxis.min = parseFloat(extraOptions.minX) + xOffset;
++        
++        if(!isNaN(extraOptions.maxX))
++        	options.xaxis.max = parseFloat(extraOptions.maxX) + xOffset;
++        
++        if(!isNaN(extraOptions.minY))
++        	options.yaxis.min = parseFloat(extraOptions.minY) + yOffset;
++        
++        if(!isNaN(extraOptions.maxY))
++        	options.yaxis.max = parseFloat(extraOptions.maxY) + yOffset;
++    }
++}
++
++// Filter, mark series and sort data
++/**
++ * @param data
++ * @param noMatchColor if defined and true, series.color are not matched with index
++ */
++function prepareSeries(data, noMatchColor){
++    var result = data.result;
++
++    // Keep only series when needed
++    if(seriesFilter && (!filtersOnlySampleSeries || result.supportsControllersDiscrimination)){
++        // Insensitive case matching
++        var regexp = new RegExp(seriesFilter, 'i');
++        result.series = $.grep(result.series, function(series, index){
++            return regexp.test(series.label);
++        });
++    }
++
++    // Keep only controllers series when supported and needed
++    if(result.supportsControllersDiscrimination && showControllersOnly){
++        result.series = $.grep(result.series, function(series, index){
++            return series.isController;
++        });
++    }
++
++    // Sort data and mark series
++    $.each(result.series, function(index, series) {
++        series.data.sort(compareByXCoordinate);
++        if(!(noMatchColor && noMatchColor===true)) {
++	        series.color = index;
++	    }
++    });
++}
++
++// Set the zoom on the specified plot object
++function zoomPlot(plot, xmin, xmax, ymin, ymax){
++    var axes = plot.getAxes();
++    // Override axes min and max options
++    $.extend(true, axes, {
++        xaxis: {
++            options : { min: xmin, max: xmax }
++        },
++        yaxis: {
++            options : { min: ymin, max: ymax }
++        }
++    });
++
++    // Redraw the plot
++    plot.setupGrid();
++    plot.draw();
++}
++
++// Prepares DOM items to add zoom function on the specified graph
++function setGraphZoomable(graphSelector, overviewSelector){
++    var graph = $(graphSelector);
++    var overview = $(overviewSelector);
++
++    // Ignore mouse down event
++    graph.bind("mousedown", function() { return false; });
++    overview.bind("mousedown", function() { return false; });
++
++    // Zoom on selection
++    graph.bind("plotselected", function (event, ranges) {
++        // clamp the zooming to prevent infinite zoom
++        if (ranges.xaxis.to - ranges.xaxis.from < 0.00001) {
++            ranges.xaxis.to = ranges.xaxis.from + 0.00001;
++        }
++        if (ranges.yaxis.to - ranges.yaxis.from < 0.00001) {
++            ranges.yaxis.to = ranges.yaxis.from + 0.00001;
++        }
++
++        // Do the zooming
++        var plot = graph.data('plot');
++        zoomPlot(plot, ranges.xaxis.from, ranges.xaxis.to, ranges.yaxis.from, ranges.yaxis.to);
++        plot.clearSelection();
++
++        // Synchronize overview selection
++        overview.data('plot').setSelection(ranges, true);
++    });
++
++    // Zoom linked graph on overview selection
++    overview.bind("plotselected", function (event, ranges) {
++        graph.data('plot').setSelection(ranges);
++    });
++
++    // Reset linked graph zoom when reseting overview selection
++    overview.bind("plotunselected", function () {
++        var overviewAxes = overview.data('plot').getAxes();
++        zoomPlot(graph.data('plot'), overviewAxes.xaxis.min, overviewAxes.xaxis.max, overviewAxes.yaxis.min, overviewAxes.yaxis.max);
++    });
++}
++
++// Prepares data to be consumed by plot plugins
++function prepareData(series, choiceContainer, customizeSeries){
++    var datasets = [];
++
++    // Add only selected series to the data set
++    choiceContainer.find("input:checked").each(function (index, item) {
++        var key = $(item).attr("name");
++        var i = 0;
++        var size = series.length;
++        while(i < size && series[i].label != key)
++            i++;
++        if(i < size){
++            var currentSeries = series[i];
++            datasets.push(currentSeries);
++            if(customizeSeries)
++                customizeSeries(currentSeries);
++        }
++    });
++    return datasets;
++}
++
++/*
++ * Ignore case comparator
++ */
++function sortAlphaCaseless(a,b){
++    return a.toLowerCase() > b.toLowerCase() ? 1 : -1;
++};
++
++function createLegend(choiceContainer, infos) {
++    // Sort series by name
++    var keys = [];
++    $.each(infos.data.result.series, function(index, series){
++        keys.push(series.label);
++    });
++    keys.sort(sortAlphaCaseless);
++
++    // Create list of series with support of activation/deactivation
++    $.each(keys, function(index, key) {
++        var id = choiceContainer.attr('id') + index;
++        $('<li />')
++            .append($('<input id="' + id + '" name="' + key + '" type="checkbox" checked="checked" hidden />'))
++            .append($('<label />', { 'text': key , 'for': id }))
++            .appendTo(choiceContainer);
++    });
++    choiceContainer.find("label").click( function(){
++        if (this.style.color !== "rgb(129, 129, 129)" ){
++            this.style.color="#818181";
++        }else {
++            this.style.color="black";
++        }
++        $(this).parent().children().children().toggleClass("legend-disabled");
++    });
++    choiceContainer.find("label").mousedown( function(event){
++        event.preventDefault();
++    });
++    choiceContainer.find("label").mouseenter(function(){
++        this.style.cursor="pointer";
++    });
++
++    // Recreate graphe on series activation toggle
++    choiceContainer.find("input").click(function(){
++        infos.createGraph();
++    });
++}
++
++// Unchecks all boxes for "Hide all samples" functionality
++function uncheckAll(id){
++    toggleAll(id, false);
++}
++
++// Checks all boxes for "Show all samples" functionality
++function checkAll(id){
++    toggleAll(id, true);
++}
+\ No newline at end of file
+Index: bin/report-template/content/js/graph.js.fmkr
+===================================================================
+--- bin/report-template/content/js/graph.js.fmkr	(revision 1833731)
++++ bin/report-template/content/js/graph.js.fmkr	(working copy)
+@@ -34,194 +34,8 @@
+     try{
+         refreshResponseTimePercentiles();
+     } catch(e){}
+-    $(".portlet-header").css("cursor", "auto");
+ });
+ 
+-var showControllersOnly = ${showControllersOnly?c!"false"};
+-var seriesFilter = ${seriesFilter!"undefined"};
+-var filtersOnlySampleSeries = ${filtersOnlySampleSeries?c!"false"};
+-
+-// Fixes time stamps
+-function fixTimeStamps(series, offset){
+-    $.each(series, function(index, item) {
+-        $.each(item.data, function(index, coord) {
+-            coord[0] += offset;
+-        });
+-    });
+-}
+-
+-// Check if the specified jquery object is a graph
+-function isGraph(object){
+-    return object.data('plot') !== undefined;
+-}
+-
+-/**
+- * Export graph to a PNG
+- */
+-function exportToPNG(graphName, target) {
+-    var plot = $("#"+graphName).data('plot');
+-    var flotCanvas = plot.getCanvas();
+-    var image = flotCanvas.toDataURL();
+-    image = image.replace("image/png", "image/octet-stream");
+-    
+-    var downloadAttrSupported = ("download" in document.createElement("a"));
+-    if(downloadAttrSupported === true) {
+-        target.download = graphName + ".png";
+-        target.href = image;
+-    }
+-    else {
+-        document.location.href = image;
+-    }
+-    
+-}
+-
+-// Override the specified graph options to fit the requirements of an overview
+-function prepareOverviewOptions(graphOptions){
+-    var overviewOptions = {
+-        series: {
+-            shadowSize: 0,
+-            lines: {
+-                lineWidth: 1
+-            },
+-            points: {
+-                // Show points on overview only when linked graph does not show
+-                // lines
+-                show: getProperty('series.lines.show', graphOptions) == false,
+-                radius : 1
+-            }
+-        },
+-        xaxis: {
+-            ticks: 2,
+-            axisLabel: null
+-        },
+-        yaxis: {
+-            ticks: 2,
+-            axisLabel: null
+-        },
+-        legend: {
+-            show: false,
+-            container: null
+-        },
+-        grid: {
+-            hoverable: false
+-        },
+-        tooltip: false
+-    };
+-    return $.extend(true, {}, graphOptions, overviewOptions);
+-}
+-
+-// Force axes boundaries using graph extra options
+-function prepareOptions(options, data) {
+-    options.canvas = true;
+-    var extraOptions = data.extraOptions;
+-    if(extraOptions !== undefined){
+-        var xOffset = options.xaxis.mode === "time" ? ${(timeZoneOffset?c)!0} : 0;
+-        var yOffset = options.yaxis.mode === "time" ? ${(timeZoneOffset?c)!0} : 0;
+-
+-        if(!isNaN(extraOptions.minX))
+-        	options.xaxis.min = parseFloat(extraOptions.minX) + xOffset;
+-        
+-        if(!isNaN(extraOptions.maxX))
+-        	options.xaxis.max = parseFloat(extraOptions.maxX) + xOffset;
+-        
+-        if(!isNaN(extraOptions.minY))
+-        	options.yaxis.min = parseFloat(extraOptions.minY) + yOffset;
+-        
+-        if(!isNaN(extraOptions.maxY))
+-        	options.yaxis.max = parseFloat(extraOptions.maxY) + yOffset;
+-    }
+-}
+-
+-// Filter, mark series and sort data
+-/**
+- * @param data
+- * @param noMatchColor if defined and true, series.color are not matched with index
+- */
+-function prepareSeries(data, noMatchColor){
+-    var result = data.result;
+-
+-    // Keep only series when needed
+-    if(seriesFilter && (!filtersOnlySampleSeries || result.supportsControllersDiscrimination)){
+-        // Insensitive case matching
+-        var regexp = new RegExp(seriesFilter, 'i');
+-        result.series = $.grep(result.series, function(series, index){
+-            return regexp.test(series.label);
+-        });
+-    }
+-
+-    // Keep only controllers series when supported and needed
+-    if(result.supportsControllersDiscrimination && showControllersOnly){
+-        result.series = $.grep(result.series, function(series, index){
+-            return series.isController;
+-        });
+-    }
+-
+-    // Sort data and mark series
+-    $.each(result.series, function(index, series) {
+-        series.data.sort(compareByXCoordinate);
+-        if(!(noMatchColor && noMatchColor===true)) {
+-	        series.color = index;
+-	    }
+-    });
+-}
+-
+-// Set the zoom on the specified plot object
+-function zoomPlot(plot, xmin, xmax, ymin, ymax){
+-    var axes = plot.getAxes();
+-    // Override axes min and max options
+-    $.extend(true, axes, {
+-        xaxis: {
+-            options : { min: xmin, max: xmax }
+-        },
+-        yaxis: {
+-            options : { min: ymin, max: ymax }
+-        }
+-    });
+-
+-    // Redraw the plot
+-    plot.setupGrid();
+-    plot.draw();
+-}
+-
+-// Prepares DOM items to add zoom function on the specified graph
+-function setGraphZoomable(graphSelector, overviewSelector){
+-    var graph = $(graphSelector);
+-    var overview = $(overviewSelector);
+-
+-    // Ignore mouse down event
+-    graph.bind("mousedown", function() { return false; });
+-    overview.bind("mousedown", function() { return false; });
+-
+-    // Zoom on selection
+-    graph.bind("plotselected", function (event, ranges) {
+-        // clamp the zooming to prevent infinite zoom
+-        if (ranges.xaxis.to - ranges.xaxis.from < 0.00001) {
+-            ranges.xaxis.to = ranges.xaxis.from + 0.00001;
+-        }
+-        if (ranges.yaxis.to - ranges.yaxis.from < 0.00001) {
+-            ranges.yaxis.to = ranges.yaxis.from + 0.00001;
+-        }
+-
+-        // Do the zooming
+-        var plot = graph.data('plot');
+-        zoomPlot(plot, ranges.xaxis.from, ranges.xaxis.to, ranges.yaxis.from, ranges.yaxis.to);
+-        plot.clearSelection();
+-
+-        // Synchronize overview selection
+-        overview.data('plot').setSelection(ranges, true);
+-    });
+-
+-    // Zoom linked graph on overview selection
+-    overview.bind("plotselected", function (event, ranges) {
+-        graph.data('plot').setSelection(ranges);
+-    });
+-
+-    // Reset linked graph zoom when reseting overview selection
+-    overview.bind("plotunselected", function () {
+-        var overviewAxes = overview.data('plot').getAxes();
+-        zoomPlot(graph.data('plot'), overviewAxes.xaxis.min, overviewAxes.xaxis.max, overviewAxes.yaxis.min, overviewAxes.yaxis.max);
+-    });
+-}
+ 
+ var responseTimePercentilesInfos = {
+         data: ${responseTimePercentiles!"{}"},
+@@ -1426,6 +1240,11 @@
+                 refreshLatenciesOverTime(true);
+             }
+             document.location.href="#latenciesOverTime";
++        } else if (elem.id == "bodyCustomGraph") {
++            if (isGraph($(elem).find('.flot-chart-content')) == false) {
++                refreshCustomGraph(true);
++            }
++            document.location.href="#responseCustomGraph";
+         } else if (elem.id == "bodyConnectTimeOverTime") {
+             if (isGraph($(elem).find('.flot-chart-content')) == false) {
+                 refreshConnectTimeOverTime(true);
+@@ -1485,24 +1304,6 @@
+     }
+ }
+ 
+-// Collapse
+-$(function() {
+-        $('.collapse').on('shown.bs.collapse', function(){
+-            collapse(this, false);
+-        }).on('hidden.bs.collapse', function(){
+-            collapse(this, true);
+-        });
+-});
+-
+-$(function() {
+-    $(".glyphicon").mousedown( function(event){
+-        var tmp = $('.in:not(ul)');
+-        tmp.parent().parent().parent().find(".fa-chevron-up").removeClass("fa-chevron-down").addClass("fa-chevron-down");
+-        tmp.removeClass("in");
+-        tmp.addClass("out");
+-    });
+-});
+-
+ /*
+  * Activates or deactivates all series of the specified graph (represented by id parameter)
+  * depending on checked argument.
+@@ -1521,6 +1322,9 @@
+     } else if(id == "choicesResponseTimesOverTime"){
+         choiceContainer = $("#choicesResponseTimesOverTime");
+         refreshResponseTimeOverTime(false);
++    }else if(id == "choicesResponseCustomGraph"){
++        choiceContainer = $("#choicesResponseCustomGraph");
++        refreshCustomGraph(false);
+     } else if ( id == "choicesLatenciesOverTime"){
+         choiceContainer = $("#choicesLatenciesOverTime");
+         refreshLatenciesOverTime(false);
+@@ -1570,80 +1374,3 @@
+     });
+ }
+ 
+-// Unchecks all boxes for "Hide all samples" functionality
+-function uncheckAll(id){
+-    toggleAll(id, false);
+-}
+-
+-// Checks all boxes for "Show all samples" functionality
+-function checkAll(id){
+-    toggleAll(id, true);
+-}
+-
+-// Prepares data to be consumed by plot plugins
+-function prepareData(series, choiceContainer, customizeSeries){
+-    var datasets = [];
+-
+-    // Add only selected series to the data set
+-    choiceContainer.find("input:checked").each(function (index, item) {
+-        var key = $(item).attr("name");
+-        var i = 0;
+-        var size = series.length;
+-        while(i < size && series[i].label != key)
+-            i++;
+-        if(i < size){
+-            var currentSeries = series[i];
+-            datasets.push(currentSeries);
+-            if(customizeSeries)
+-                customizeSeries(currentSeries);
+-        }
+-    });
+-    return datasets;
+-}
+-
+-/*
+- * Ignore case comparator
+- */
+-function sortAlphaCaseless(a,b){
+-    return a.toLowerCase() > b.toLowerCase() ? 1 : -1;
+-};
+-
+-/*
+- * Creates a legend in the specified element with graph information
+- */
+-function createLegend(choiceContainer, infos) {
+-    // Sort series by name
+-    var keys = [];
+-    $.each(infos.data.result.series, function(index, series){
+-        keys.push(series.label);
+-    });
+-    keys.sort(sortAlphaCaseless);
+-
+-    // Create list of series with support of activation/deactivation
+-    $.each(keys, function(index, key) {
+-        var id = choiceContainer.attr('id') + index;
+-        $('<li />')
+-            .append($('<input id="' + id + '" name="' + key + '" type="checkbox" checked="checked" hidden />'))
+-            .append($('<label />', { 'text': key , 'for': id }))
+-            .appendTo(choiceContainer);
+-    });
+-    choiceContainer.find("label").click( function(){
+-        if (this.style.color !== "rgb(129, 129, 129)" ){
+-            this.style.color="#818181";
+-        }else {
+-            this.style.color="black";
+-        }
+-        $(this).parent().children().children().toggleClass("legend-disabled");
+-    });
+-    choiceContainer.find("label").mousedown( function(event){
+-        event.preventDefault();
+-    });
+-    choiceContainer.find("label").mouseenter(function(){
+-        this.style.cursor="pointer";
+-    });
+-
+-    // Recreate graphe on series activation toggle
+-    choiceContainer.find("input").click(function(){
+-        infos.createGraph();
+-    });
+-}
+Index: bin/report-template/content/pages/CustomsGraphs.html.fmkr
+===================================================================
+--- bin/report-template/content/pages/CustomsGraphs.html.fmkr	(revision 0)
++++ bin/report-template/content/pages/CustomsGraphs.html.fmkr	(revision 0)
+@@ -0,0 +1,248 @@
++<!DOCTYPE html>
++<html lang="en">
++
++<head>
++
++    <meta charset="utf-8">
++    <meta http-equiv="X-UA-Compatible" content="IE=edge">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <meta name="description" content="">
++    <meta name="author" content="">
++
++    <title>${reportTitle!"Apache JMeter Dashboard"}</title>
++
++    <!-- Bootstrap Core CSS -->
++    <link href="../../sbadmin2-1.0.7/bower_components/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
++
++    <!-- icone onglet -->
++    <link rel="icon" type="image/png" href="icon-apache.png" />
++
++    <!-- MetisMenu CSS -->
++    <link href="../../sbadmin2-1.0.7/bower_components/metisMenu/dist/metisMenu.min.css" rel="stylesheet">
++
++    <!-- Legends CSS -->
++    <link href="../css/legends.css" rel="stylesheet">
++
++
++    <!-- Custom CSS -->
++    <link href="../../sbadmin2-1.0.7/dist/css/sb-admin-2.css" rel="stylesheet">
++
++    <!-- Custom Fonts -->
++    <link href="../../sbadmin2-1.0.7/bower_components/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css">
++
++   <!-- JQuery UI style -->
++    <link href="../css/jquery-ui.css" rel="stylesheet">
++    <link href="../css/jquery-ui.structure.css" rel="stylesheet">
++    <link href="../css/jquery-ui.theme.css" rel="stylesheet">
++</head>
++
++<body>
++
++    <div id="wrapper">
++
++        <!-- Navigation -->
++        <nav class="navbar navbar-default navbar-static-top" role="navigation" style="margin-bottom: 0">
++            <div class="navbar-header">
++                <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
++                    <span class="sr-only">Toggle navigation</span>
++                    <span class="icon-bar"></span>
++                    <span class="icon-bar"></span>
++                    <span class="icon-bar"></span>
++                </button>
++                <a class="navbar-brand" href="../../index.html">${reportTitle!"Apache JMeter Dashboard"}</a>
++            </div>
++            <!-- /.navbar-header -->
++
++
++            <div class="navbar-default sidebar" role="navigation">
++                <div class="sidebar-nav navbar-collapse">
++                    <ul class="nav" id="side-menu">
++
++                        <li>
++                            <a href="../../index.html"><i class="fa fa-dashboard fa-fw"></i> Dashboard</a>
++                        </li>
++                        <li>
++                            <a href="#"><i class="fa fa-bar-chart-o fa-fw"></i> Charts<span class="fa arrow"></span></a>
++                            <ul class="nav nav-second-level">
++                                <li>
++                                    <a href="OverTime.html">Over Time</a>
++
++                                </li>
++                                <li>
++                                    <a href="Throughput.html">Throughput</a>
++                                </li>
++                                <li>
++                                    <a href="ResponseTimes.html">Response Times</a>
++                                </li>
++                
++                            </ul>
++                            <!-- /.nav-second-level -->
++                        </li>
++                        
++                        <li>
++                            <a href="#"><i class="fa fa-bar-chart-o fa-fw"></i> Customs Graphs<span class="fa arrow"></span></a>
++                            <ul class="nav nav-second-level">
++                                <li>
++                                    <a href="CustomsGraphs.html">Over Time<span class="fa arrow"></span></a>
++                                    <ul class="nav nav-third-level in" id="submenu">
++                                        <#list customsGraphsData?keys as key>
++                                            <li>
++                                                <a href="CustomsGraphs.html#${key}" onclick="$('#bodyResponse${key}').collapse('show');">
++                                                <#assign title = ""+graphConfigurations[key].getTitle()>
++                                                <#if title == "">Default Graph Title
++                                                <#else>${title}
++                                                </#if>
++                                                </a>
++                                            </li>
++                                        </#list>
++                                    </ul>
++                                <li>
++                            </ul>
++                        </li>
++
++                    </ul>
++                </div>
++                <!-- /.sidebar-collapse -->
++            </div>
++            <!-- /.navbar-static-side -->
++        </nav>
++
++        <div id="page-wrapper">
++            <div class="row">
++                <div class="col-lg-12">
++                     <div class="panel panel-default" >
++                        <div class="panel-heading" style="text-align:center;">
++                           <p class="dashboard-title">Test and Report informations</p>
++                        </div>
++                        <div class="panel-body">
++                            <table id="generalInfos" class="table table-bordered table-condensed " >
++                                <tr>
++                                    <td>File:</td>
++                                    <td>${testFile!""}</td>
++                                </tr>
++                                <tr>
++                                    <td>Start Time:</td>
++                                    <td>${beginDate!""}</td>
++                                </tr>
++                                <tr>
++                                    <td>End Time:</td>
++                                    <td>${endDate!""}</td>
++                                </tr>
++                                <#if overallFilter?has_content>
++                                    <tr>
++                                        <td>Filter for computing:</td>
++                                        <td>${overallFilter}</td>
++                                    </tr>
++                                </#if>
++                                <#if seriesFilter?has_content>
++                                    <tr>
++                                        <td>Filter for display:</td>
++                                        <td>${seriesFilter}</td>
++                                    </tr>
++                                </#if>
++                            </table>
++                        </div>
++                    </div>
++                </div>
++            </div>    
++            <!-- /.row -->
++                <div class="row" id="graphContainer">
++                
++                <#assign loopCount = 0>
++                <#list customsGraphsData?keys as key> 
++                    <div class="col-lg-12 portlet" id="${key!"Clé pas trouvé"}">
++                        <div class="panel panel-default">
++                            <div class="panel-heading portlet-header">
++                                 <i  class="fa fa-bar-chart-o fa-fw" ></i> 
++                                <span type="button" class="dropdown-toggle click-title span-title" data-toggle="collapse" href="#bodyResponse${key}" aria-expanded="true" aria-controls="body${key}"><#assign title = ""+graphConfigurations[key].getTitle()><#if title == "">Default Graph Title<#else>${title}</#if></span>
++                                 <div class="pull-right">
++                                    <div class="btn-group">
++                                        <a class="btn btn-link btn-xs">
++                                            <i class="glyphicon glyphicon-resize-vertical"></i>
++                                        </a>
++                                        <button type="button" class="btn btn-link btn-xs dropdown-toggle" data-toggle="dropdown">
++                                            <i class="fa fa-wrench"></i>
++                                        </button>
++                                        <ul class="dropdown-menu dropdown-user">
++                                            <li><a href="#bodyResponse${key}" onClick="checkAll('choicesResponse${key}');">Display all samples</a>
++                                            </li>
++                                            <li><a href="#bodyResponse${key}" onClick="uncheckAll('choicesResponse${key}');">Hide all samples</a>
++                                            </li>
++                                            <li><a href="#bodyResponse${key}" onclick="exportToPNG('flotResponse${key}', this);">Save as PNG</a></li>
++                                        </ul>
++                                        <button type="button" class="btn btn-link btn-xs dropdown-toggle" data-toggle="collapse" href="#bodyResponse${key}" aria-expanded="true" aria-controls="bodyResponse${key}">
++                                            <i class="fa fa-chevron-up"></i>
++                                        </button>
++                                    </div>
++                                </div>
++                            </div>
++                            <!-- /.panel-heading -->
++                            <#if loopCount == 0>
++                            <div class="collapse in portlet-content" id="bodyResponse${key}">
++                            <#else>
++                            <div class="collapse out portlet-content" id="bodyResponse${key}">
++                            </#if>
++                                <div class="panel-body" id="collapseResponse${key}">
++                                    <div class="flot-chart">
++                                        <div class="flot-chart-content" id="flotResponse${key}" style="float: left; width:80%;"></div>
++                                        <div style="float:left;margin-left:5px">
++                                            <p>Zoom :</p>
++                                            <div id="overviewResponse${key}" style="width:190px;height:100px;"></div>
++                                        </div>
++                                    </div>
++                                </div>
++                                <div class="panel-footer" id="footerResponse${key}">
++                                    <p id="legendResponse${key}" hidden></p>
++                                    <ul id="choicesResponse${key}" class="legend"></ul>
++                                </div>
++                            </div>    
++                        </div>
++                        <!-- /.panel-body -->
++                    </div>
++                    <!-- /.panel -->
++                    <#assign loopCount++>
++                </#list>
++                </div>
++            <!-- /.row -->
++        </div>
++        <!-- /#page-wrapper -->
++
++    </div>
++    <!-- /#wrapper -->
++
++     <!-- jQuery -->
++    <script src="../../sbadmin2-1.0.7/bower_components/jquery/dist/jquery.min.js"></script>
++
++    <!-- Bootstrap Core JavaScript -->
++    <script src="../../sbadmin2-1.0.7/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
++
++    <!-- Metis Menu Plugin JavaScript -->
++    <script src="../../sbadmin2-1.0.7/bower_components/metisMenu/dist/metisMenu.min.js"></script>
++
++    <!-- Flot Charts JavaScript -->
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/excanvas.min.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.pie.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.resize.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.canvas.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.navigate.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.time.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.selection.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot.tooltip/js/jquery.flot.tooltip.min.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot-axislabels/jquery.flot.axislabels.js"></script>
++    <script src="../js/hashtable.js"></script>
++    <script src="../js/jquery.numberformatter-1.2.3.min.js"></script>
++    <script src="../js/curvedLines.js"></script>
++    <script src="../js/dashboard-commons.js"></script>
++    <script src="../js/customGraph.js"></script>
++    <script src="../js/jquery-ui.js"></script>
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.threshold.js"></script>
++    <!-- Custom Theme JavaScript -->
++    <script src="../../sbadmin2-1.0.7/dist/js/sb-admin-2.js"></script>
++    <script src="../js/jquery.cookie.js"></script>
++
++    <script src="../../sbadmin2-1.0.7/bower_components/flot/jquery.flot.symbol.js"></script>
++
++</body>
++
++</html>
+Index: bin/report-template/content/pages/OverTime.html.fmkr
+===================================================================
+--- bin/report-template/content/pages/OverTime.html.fmkr	(revision 1833731)
++++ bin/report-template/content/pages/OverTime.html.fmkr	(working copy)
+@@ -109,6 +109,15 @@
+                             <!-- /.nav-second-level -->
+                         </li>
+ 
++                        <li>
++                            <a href="#"><i class="fa fa-bar-chart-o fa-fw"></i>Customs Graphs<span class="fa arrow"></span></a>
++                            <ul class="nav nav-second-level">
++                                <li>
++                                    <a href="CustomsGraphs.html">Over Time</a>
++                                </li>
++                            </ul>
++                        </li>
++
+                     </ul>
+                 </div>
+                 <!-- /.sidebar-collapse -->
+Index: bin/report-template/content/pages/ResponseTimes.html.fmkr
+===================================================================
+--- bin/report-template/content/pages/ResponseTimes.html.fmkr	(revision 1833731)
++++ bin/report-template/content/pages/ResponseTimes.html.fmkr	(working copy)
+@@ -99,7 +99,14 @@
+                             </ul>
+                             <!-- /.nav-second-level -->
+                         </li>
+-
++                        <li>
++                            <a href="#"><i class="fa fa-bar-chart-o fa-fw"></i> Customs Graphs<span class="fa arrow"></span></a>
++                            <ul class="nav nav-second-level">
++                                <li>
++                                    <a href="CustomsGraphs.html">Over Time</a>
++                                </li>
++                            </ul>
++                        </li>
+                     </ul>
+                 </div>
+                 <!-- /.sidebar-collapse -->
+Index: bin/report-template/content/pages/Throughput.html.fmkr
+===================================================================
+--- bin/report-template/content/pages/Throughput.html.fmkr	(revision 1833731)
++++ bin/report-template/content/pages/Throughput.html.fmkr	(working copy)
+@@ -98,6 +98,15 @@
+                             <!-- /.nav-second-level -->
+                         </li>
+ 
++                        <li>
++                            <a href="#"><i class="fa fa-bar-chart-o fa-fw"></i> Customs Graphs<span class="fa arrow"></span></a>
++                            <ul class="nav nav-second-level">
++                                <li>
++                                    <a href="CustomsGraphs.html">Over Time</a>
++                                </li>
++                            </ul>
++                        </li>
++
+                     </ul>
+                 </div>
+                 <!-- /.sidebar-collapse -->
+Index: bin/report-template/index.html.fmkr
+===================================================================
+--- bin/report-template/index.html.fmkr	(revision 1833731)
++++ bin/report-template/index.html.fmkr	(working copy)
+@@ -66,6 +66,15 @@
+                             </ul>
+                             <!-- /.nav-second-level -->
+                         </li>
++                        
++                        <li>
++                            <a href="#"><i class="fa fa-bar-chart-o fa-fw"></i> Customs Graphs<span class="fa arrow"></span></a>
++                            <ul class="nav nav-second-level">
++                                <li>
++                                    <a href="content/pages/CustomsGraphs.html">Over Time</a>
++                                </li>
++                            </ul>
++                        </li>
+                     </ul>
+                 </div>
+             </div>
+Index: bin/user.properties
+===================================================================
+--- bin/user.properties	(revision 1833731)
++++ bin/user.properties	(working copy)
+@@ -102,6 +102,15 @@
+ #jmeter.reportgenerator.exported_transactions_pattern=[a-zA-Z0-9_\\-{}\\$\\.]*[-_][0-9]*
+ 
+ 
++## Custom graph definition
++#jmeter.reportgenerator.graph.custom_mm_hit.classname=org.apache.jmeter.report.processor.graph.impl.CustomGraphConsumer
++#jmeter.reportgenerator.graph.custom_mm_hit.title=Graph Title
++#jmeter.reportgenerator.graph.custom_mm_hit.property.set_Y_Axis=Response Time (ms)
++#jmeter.reportgenerator.graph.custom_mm_hit.property.set_X_Axis=Over Time
++#jmeter.reportgenerator.graph.custom_mm_hit.property.set_granularity=${jmeter.reportgenerator.overall_granularity}
++#jmeter.reportgenerator.graph.custom_mm_hit.property.setSampleVariableName=VarName
++#jmeter.reportgenerator.graph.custom_mm_hit.property.setContentMessage=Message for graph point label
++
+ ########################################################################
+ ################## DISTRIBUTED TESTING CONFIGURATION  ##################
+ ########################################################################
+Index: src/core/org/apache/jmeter/report/dashboard/HtmlTemplateExporter.java
+===================================================================
+--- src/core/org/apache/jmeter/report/dashboard/HtmlTemplateExporter.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/dashboard/HtmlTemplateExporter.java	(working copy)
+@@ -20,6 +20,7 @@
+ import java.io.File;
+ import java.io.IOException;
+ import java.nio.file.Files;
++import java.util.HashMap;
+ import java.util.Map;
+ import java.util.TimeZone;
+ import java.util.regex.Pattern;
+@@ -444,23 +445,31 @@
+         EmptyGraphChecker checker = new EmptyGraphChecker(
+                 filtersOnlySampleSeries, showControllerSeriesOnly,
+                 filterPattern);
++        DataContext customGraphs = new DataContext();
++        Map<String, GraphConfiguration> mapConfiguration = new HashMap<>();
+         for (Map.Entry<String, GraphConfiguration> graphEntry : configuration
+                 .getGraphConfigurations().entrySet()) {
+             final String graphId = graphEntry.getKey();
+             final GraphConfiguration graphConfiguration = graphEntry.getValue();
+-            final SubConfiguration extraOptions = exportCfg
+-                    .getGraphExtraConfigurations().get(graphId);
++            final SubConfiguration extraOptions = exportCfg.getGraphExtraConfigurations().get(graphId);
+ 
+             // Initialize customizer and checker
+             customizer.setExtraOptions(extraOptions);
+             checker.setExcludesControllers(
+                     graphConfiguration.excludesControllers());
+             checker.setGraphId(graphId);
+-
+-            // Export graph data
+-            addResultToContext(graphId, storedData, dataContext, jsonizer,
++            mapConfiguration.put(graphId, graphConfiguration);
++            if(graphId.substring(0,7).equals("custom_")) {
++                addResultToContext(graphId, storedData, customGraphs, jsonizer,
++                        customizer, checker);
++            } else {
++                // Export graph data
++                addResultToContext(graphId, storedData, dataContext, jsonizer,
+                     customizer, checker);
++            }
+         }
++        dataContext.put("graphConfigurations", mapConfiguration);
++        dataContext.put("customsGraphsData", customGraphs);
+ 
+         // Replace the begin date with its formatted string and store the old
+         // timestamp
+Index: src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java
+===================================================================
+--- src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/dashboard/ReportGenerator.java	(working copy)
+@@ -235,10 +235,8 @@
+                 .getGraphConfigurations();
+ 
+         // Process configuration to build graph consumers
+-        for (Map.Entry<String, GraphConfiguration> entryGraphCfg : graphConfigurations
+-                .entrySet()) {
+-            addGraphConsumer(nameFilter, excludeControllerFilter,
+-                    entryGraphCfg);
++        for (Map.Entry<String, GraphConfiguration> entryGraphCfg : graphConfigurations.entrySet()) {
++            addGraphConsumer(nameFilter, excludeControllerFilter, entryGraphCfg);
+         }
+ 
+         // Generate data
+@@ -353,6 +351,7 @@
+                 setProperty(className, obj, methods, propertyName,
+                         propertyValue, setterName);
+             }
++            graph.initialize(); 
+ 
+             // Choose which entry point to use to plug the graph
+             AbstractSampleConsumer entryPoint = graphConfiguration
+@@ -383,11 +382,9 @@
+         } catch (ClassNotFoundException | IllegalAccessException
+                 | InstantiationException | ClassCastException ex) {
+             String error = String.format(INVALID_CLASS_FMT, className);
+-            log.error(error, ex);
+             throw new GenerationException(error, ex);
+         } catch (ExportException ex) {
+             String error = String.format(INVALID_EXPORT_FMT, exporterName);
+-            log.error(error, ex);
+             throw new GenerationException(error, ex);
+         }
+     }
+@@ -554,8 +551,7 @@
+                                                 parameterType
+                                                         .getName()));
+                             }
+-                            method.invoke(obj, converter
+-                                    .convert(propertyValue));
++                            method.invoke(obj, converter.convert(propertyValue));
+                         }
+                         return;
+                     }
+Index: src/core/org/apache/jmeter/report/processor/graph/AbstractGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/AbstractGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/AbstractGraphConsumer.java	(working copy)
+@@ -90,10 +90,10 @@
+     public static final String DEFAULT_AGGREGATED_KEYS_SERIES_FORMAT = "%s-Aggregated";
+ 
+     /** The map used to store group information. */
+-    private final HashMap<String, GroupInfo> groupInfos;
++    private HashMap<String, GroupInfo> groupInfos;
+ 
+     /** The keys selector. */
+-    private final GraphKeysSelector keysSelector;
++    private GraphKeysSelector keysSelector;
+ 
+     /** The overall seriesData name. */
+     private String overallSeriesFormat = DEFAULT_OVERALL_SERIES_FORMAT;
+@@ -228,8 +228,6 @@
+      * Instantiates a new abstract graph consumer.
+      */
+     protected AbstractGraphConsumer() {
+-        keysSelector = createKeysSelector();
+-        groupInfos = new HashMap<>(createGroupInfos());
+     }
+ 
+     protected abstract GraphKeysSelector createKeysSelector();
+@@ -591,4 +589,8 @@
+         }
+     }
+ 
++    public void initialize() {
++        keysSelector = createKeysSelector();
++        groupInfos = new HashMap<>(createGroupInfos());
++    }
+ }
+Index: src/core/org/apache/jmeter/report/processor/graph/AbstractOverTimeGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/AbstractOverTimeGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/AbstractOverTimeGraphConsumer.java	(working copy)
+@@ -51,20 +51,13 @@
+      *            the granularity to set
+      */
+     public void setGranularity(long granularity) {
+-        _setGranularity(granularity);
+-    }
+-
+-    // Called from ctor
+-    private final void _setGranularity(long granularity) {
+         this.granularity = granularity;
+-        ((TimeStampKeysSelector) getKeysSelector()).setGranularity(granularity);
+     }
+ 
+     /**
+      * Instantiates a new abstract over time graph consumer.
+      */
+     protected AbstractOverTimeGraphConsumer() {
+-        _setGranularity(1L);
+     }
+ 
+     /**
+@@ -107,4 +100,10 @@
+         parentResult.setResult(RESULT_CTX_GRANULARITY, new ValueResultData(
+                 Long.valueOf(granularity)));
+     }
++    
++    @Override
++    public void initialize() {
++        super.initialize();
++        ((TimeStampKeysSelector) getKeysSelector()).setGranularity(granularity);
++    }
+ }
+Index: src/core/org/apache/jmeter/report/processor/graph/AbstractVersusRequestsGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/AbstractVersusRequestsGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/AbstractVersusRequestsGraphConsumer.java	(working copy)
+@@ -53,7 +53,7 @@
+      * The embedded time count consumer is used to buffer (disk storage) and tag
+      * samples with the number of samples in the same interval.
+      */
+-    private final TimeCountConsumer embeddedConsumer;
++    private TimeCountConsumer embeddedConsumer;
+ 
+     /**
+      * Gets the granularity.
+@@ -79,8 +79,6 @@
+      * Instantiates a new abstract over time graph consumer.
+      */
+     protected AbstractVersusRequestsGraphConsumer() {
+-        embeddedConsumer = new TimeCountConsumer(this);
+-        setGranularity(1L);
+     }
+ 
+     /*
+@@ -95,6 +93,13 @@
+         embeddedConsumer.startConsuming();
+     }
+ 
++    @Override
++    public void initialize() {
++        super.initialize();
++        embeddedConsumer = new TimeCountConsumer(this);
++        setGranularity(1L);
++    }
++
+     private void startConsumingBase() {
+         super.startConsuming();
+     }
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/BytesThroughputGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/BytesThroughputGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/BytesThroughputGraphConsumer.java	(working copy)
+@@ -101,9 +101,14 @@
+     @Override
+     public void setGranularity(long granularity) {
+         super.setGranularity(granularity);
++    }
++
++    @Override
++    public void initialize() {
++        super.initialize();
+         // Override the granularity of the aggregators factory
+         ((TimeRateAggregatorFactory) getGroupInfos().get(
+                 AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
+-                .setGranularity(granularity);
++                .setGranularity(getGranularity());
+     }
+ }
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/CodesPerSecondGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/CodesPerSecondGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/CodesPerSecondGraphConsumer.java	(working copy)
+@@ -66,6 +66,15 @@
+         return groupInfos;
+     }
+ 
++    @Override
++    public void initialize() {
++        super.initialize();
++        // Override the granularity of the aggregators factory
++        ((TimeRateAggregatorFactory) getGroupInfos().get(
++                AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
++                .setGranularity(getGranularity());
++    }
++
+     /*
+      * (non-Javadoc)
+      * 
+@@ -76,9 +85,5 @@
+     @Override
+     public void setGranularity(long granularity) {
+         super.setGranularity(granularity);
+-        // Override the granularity of the aggregators factory
+-        ((TimeRateAggregatorFactory) getGroupInfos().get(
+-                AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
+-                .setGranularity(granularity);
+     }
+ }
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/CustomGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/CustomGraphConsumer.java	(revision 0)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/CustomGraphConsumer.java	(revision 0)
+@@ -0,0 +1,238 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.processor.graph.impl;
++
++import java.util.Arrays;
++import java.util.HashMap;
++import java.util.Map;
++
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.report.core.ConvertException;
++import org.apache.jmeter.report.core.Converters;
++import org.apache.jmeter.report.core.Sample;
++import org.apache.jmeter.report.processor.MapResultData;
++import org.apache.jmeter.report.processor.SampleConsumer;
++import org.apache.jmeter.report.processor.TimeRateAggregatorFactory;
++import org.apache.jmeter.report.processor.ValueResultData;
++import org.apache.jmeter.report.processor.graph.AbstractGraphConsumer;
++import org.apache.jmeter.report.processor.graph.AbstractOverTimeGraphConsumer;
++import org.apache.jmeter.report.processor.graph.AbstractSeriesSelector;
++import org.apache.jmeter.report.processor.graph.GraphValueSelector;
++import org.apache.jmeter.report.processor.graph.GroupInfo;
++import org.apache.jmeter.report.processor.graph.TimeStampKeysSelector;
++
++/**
++ * The class CustomGraphConsumer is added by the custom Graphs plugin.
++ * It provides all the graphs the user defined in user.properties.
++ *
++ * @since 4.1
++ */
++
++public class CustomGraphConsumer extends AbstractOverTimeGraphConsumer implements SampleConsumer{
++    
++    public static final String RESULT_Y_AXIS = "Y_Axis"; //$NON-NLS-1$
++    public static final String RESULT_X_AXIS = "X_Axis"; //$NON-NLS-1$
++    public static final String RESULT_SAMPLE_VARIABLE_NAME = "sample_Metric_Name"; //$NON-NLS-1$
++    public static final String RESULT_CONTENT_MESSAGE = "content_Message"; //$NON-NLS-1$
++    public static final String REPORT_GENERATOR_PROPERTIES = "jmeter.reportgenerator.graph.customGraph.property"; //$NON-NLS-1$
++
++    private String yAxis;
++    private String xAxis;
++    private String contentMessage;
++    private String sampleVariableName;
++    private boolean isNativeSampleVariableName = false;
++    
++    /**
++     * Only used for junit tests.
++     * Indicates if the sampleVariableName 
++     * is native
++     * 
++     * @return the nativeSampleVariableName
++     */
++    public boolean getIsNativeSampleVariableName() {
++        return isNativeSampleVariableName;
++    }
++
++    /**
++     * Gets the Y Axis.
++     *
++     * @return the yAxis
++     */
++    public String getYAxis() {
++        return yAxis;
++    }
++    
++    /**
++     * Gets the X Axis.
++     *
++     * @return the xAxis
++     */
++    public String getXAxis() {
++        return xAxis;
++    }
++
++    /**
++     * Sets the yAxis.
++     *
++     * @param axis
++     * the yAxis to set
++     */
++    public void setYAxis(String axis) {
++        yAxis=axis;
++    }
++    
++    /**
++     * Sets the xAxis.
++     *
++     * @param axis
++     * the xAxis to set
++     */
++    public void setXAxis(String axis) {
++        xAxis=axis;
++    }
++    
++    /**
++     * Sets the contentMessage.
++     *
++     * @param message
++     * the message to set
++     */
++    public void setContentMessage(String message) {
++        contentMessage=message;
++    }
++    
++    /**
++     * Gets the content message.
++     *
++     * @return the contentMessage
++     */
++    public String getContentMessage() {
++        return contentMessage;
++    }
++    
++    /**
++     * Gets the sampleVariableName.
++     *
++     * @return the sampleVariableName
++     */
++    public String getSampleVariableName() {
++        return sampleVariableName;
++    }
++    
++    /**
++     * Sets the sampleVariableName.
++     * Sets the boolean isNativesSampleVariableName
++     *
++     * @param sampleVarName
++     * the sampleVariableName to set
++     */
++    public void setSampleVariableName(String sampleVarName) {
++        sampleVariableName = sampleVarName;
++        // this if contains every native sample variables names
++        if(sampleVarName.equals("timeStamp") || sampleVarName.equals("elapsed") 
++                || sampleVarName.equals("label") || sampleVarName.equals("responseCode") 
++                || sampleVarName.equals("threadName") || sampleVarName.equals("success") 
++                || sampleVarName.equals("failureMessage") || sampleVarName.equals("bytes") 
++                || sampleVarName.equals("sentBytes") || sampleVarName.equals("grpThreads") 
++                || sampleVarName.equals("allThreads") || sampleVarName.equals("URL") 
++                || sampleVarName.equals("Latency") || sampleVarName.equals("IdleTime") 
++                || sampleVarName.equals("Connect")) {
++            isNativeSampleVariableName = true;
++        }else {
++            isNativeSampleVariableName = false;
++        }
++    }
++    
++        
++    @Override
++    protected void initializeExtraResults(MapResultData parentResult) {
++        parentResult.setResult(RESULT_CTX_GRANULARITY, new ValueResultData(Long.valueOf(getGranularity())));
++        parentResult.setResult(RESULT_Y_AXIS, new ValueResultData(getYAxis()));
++        parentResult.setResult(RESULT_X_AXIS, new ValueResultData(getXAxis()));
++        parentResult.setResult(RESULT_SAMPLE_VARIABLE_NAME, new ValueResultData(getSampleVariableName()));
++        parentResult.setResult(RESULT_CONTENT_MESSAGE, new ValueResultData(getContentMessage()));
++    }
++    
++    /*
++     * (non-Javadoc)
++     * 
++     * @see
++     * org.apache.jmeter.report.csv.processor.impl.AbstractOverTimeGraphConsumer
++     * #createTimeStampKeysSelector()
++     */
++    @Override
++    protected TimeStampKeysSelector createTimeStampKeysSelector() {
++        TimeStampKeysSelector keysSelector = new TimeStampKeysSelector();
++        keysSelector.setSelectBeginTime(false);
++        return keysSelector;
++    }
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see org.apache.jmeter.report.csv.processor.impl.AbstractGraphConsumer#
++     * createGroupInfos()
++     */
++    @Override
++    protected Map<String, GroupInfo> createGroupInfos() {
++        
++        HashMap<String, GroupInfo> groupInfos = new HashMap<>(); 
++        groupInfos.put(AbstractGraphConsumer.DEFAULT_GROUP,
++                new GroupInfo(
++                new TimeRateAggregatorFactory(), 
++                new AbstractSeriesSelector() {
++                    private final Iterable<String> values = Arrays.asList(sampleVariableName);
++
++                  @Override
++                  public Iterable<String> select(Sample sample) {
++                      return values;
++                  }
++                },
++                // We ignore Transaction Controller results
++                new GraphValueSelector() {
++                  @Override
++                  public Double select(String series, Sample sample) {
++                      String value="";
++                      if(isNativeSampleVariableName) {
++                          value = sample.getData(sampleVariableName);
++                      }else {
++                          value = sample.getData("\""+sampleVariableName+"\"");
++                      }
++                      if(StringUtils.isEmpty(value) || value.equals("null")) {
++                          return null;
++                      }
++                      else {
++                          try {
++                            return Converters.convert(Double.class, value);
++                        } catch (ConvertException e) {
++                            throw new IllegalArgumentException("Double converter failed : {}",e);
++                        }
++                      }
++              }}, false, false));
++        return groupInfos;
++    }
++    
++    @Override
++    public void initialize() {
++        super.initialize();
++        // Override the granularity of the aggregators factory
++        ((TimeRateAggregatorFactory) getGroupInfos().get(
++                AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
++                .setGranularity(getGranularity());
++    }
++}
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/HitsPerSecondGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/HitsPerSecondGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/HitsPerSecondGraphConsumer.java	(working copy)
+@@ -76,10 +76,20 @@
+     @Override
+     public void setGranularity(long granularity) {
+         super.setGranularity(granularity);
++        
++    }
++
++    @Override
++    public void initialize() {
++        super.initialize();
+         // Override the granularity of the aggregators factory
+         ((TimeRateAggregatorFactory) getGroupInfos().get(
+                 AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
+-                .setGranularity(granularity);
++                .setGranularity(getGranularity());
++        // Override the series name with the name of the graph
++        ((StaticSeriesSelector) getGroupInfos().get(
++                AbstractGraphConsumer.DEFAULT_GROUP).getSeriesSelector())
++                .setSeriesName(getName());
+     }
+ 
+     /*
+@@ -92,9 +102,5 @@
+     @Override
+     public void setName(String name) {
+         super.setName(name);
+-        // Override the series name with the name of the graph
+-        ((StaticSeriesSelector) getGroupInfos().get(
+-                AbstractGraphConsumer.DEFAULT_GROUP).getSeriesSelector())
+-                .setSeriesName(name);
+     }
+ }
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/ResponseCustomGraphGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/ResponseCustomGraphGraphConsumer.java	(revision 0)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/ResponseCustomGraphGraphConsumer.java	(revision 0)
+@@ -0,0 +1,69 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.processor.graph.impl;
++
++import java.util.HashMap;
++import java.util.Map;
++
++import org.apache.jmeter.report.processor.MeanAggregatorFactory;
++import org.apache.jmeter.report.processor.graph.AbstractGraphConsumer;
++import org.apache.jmeter.report.processor.graph.AbstractOverTimeGraphConsumer;
++import org.apache.jmeter.report.processor.graph.ElapsedTimeValueSelector;
++import org.apache.jmeter.report.processor.graph.GroupInfo;
++import org.apache.jmeter.report.processor.graph.NameSeriesSelector;
++import org.apache.jmeter.report.processor.graph.TimeStampKeysSelector;
++
++/**
++ * The class ResponseCustomGraphGraphConsumer provides a graph to visualize mean 
++ * custom value per time period (defined by granularity)
++ *
++ * @since 4.1
++ */
++public class ResponseCustomGraphGraphConsumer extends
++        AbstractOverTimeGraphConsumer {
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see
++     * org.apache.jmeter.report.csv.processor.impl.AbstractOverTimeGraphConsumer
++     * #createTimeStampKeysSelector()
++     */
++    @Override
++    protected TimeStampKeysSelector createTimeStampKeysSelector() {
++        TimeStampKeysSelector keysSelector = new TimeStampKeysSelector();
++        keysSelector.setSelectBeginTime(false);
++        return keysSelector;
++    }
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see org.apache.jmeter.report.csv.processor.impl.AbstractGraphConsumer#
++     * createGroupInfos()
++     */
++    @Override
++    protected Map<String, GroupInfo> createGroupInfos() {
++        HashMap<String, GroupInfo> groupInfos = new HashMap<>(1);
++        groupInfos.put(AbstractGraphConsumer.DEFAULT_GROUP, new GroupInfo(
++                new MeanAggregatorFactory(), new NameSeriesSelector(),
++                // We include Transaction Controller results
++                new ElapsedTimeValueSelector(false), false, false));
++        return groupInfos;
++    }
++}
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimePerSampleGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimePerSampleGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimePerSampleGraphConsumer.java	(working copy)
+@@ -47,6 +47,11 @@
+      * Instantiates a new response time per sample graph consumer.
+      */
+     public ResponseTimePerSampleGraphConsumer() {
++    }
++
++    @Override
++    public void initialize() {
++        super.initialize();
+         setRevertKeysAndValues(true);
+     }
+ 
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimePercentilesGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimePercentilesGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/ResponseTimePercentilesGraphConsumer.java	(working copy)
+@@ -41,6 +41,11 @@
+      * Instantiates a new response time percentiles graph consumer.
+      */
+     public ResponseTimePercentilesGraphConsumer() {
++    }
++
++    @Override
++    public void initialize() {
++        super.initialize();
+         setRenderPercentiles(true);
+     }
+ 
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/TotalTPSGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/TotalTPSGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/TotalTPSGraphConsumer.java	(working copy)
+@@ -91,9 +91,6 @@
+     @Override
+     public void setGranularity(long granularity) {
+         super.setGranularity(granularity);
+-        // Override the granularity of the aggregators factory
+-        ((TimeRateAggregatorFactory) getGroupInfos().get(AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
+-                .setGranularity(granularity);
+     }
+     
+     @Override
+@@ -105,6 +102,14 @@
+         initializeSeries(parentResult, seriesLabels);
+     }
+     
++    @Override
++    public void initialize() {
++        super.initialize();
++        // Override the granularity of the aggregators factory
++        ((TimeRateAggregatorFactory) getGroupInfos().get(AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
++        .setGranularity(getGranularity());
++    }
++    
+ 
+     private void initializeSeries(MapResultData parentResult, String[] series) {
+         ListResultData listResultData = (ListResultData) parentResult.getResult("series");
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/TransactionsPerSecondGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/TransactionsPerSecondGraphConsumer.java	(revision 1833731)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/TransactionsPerSecondGraphConsumer.java	(working copy)
+@@ -84,6 +84,15 @@
+         return groupInfos;
+     }
+ 
++    @Override
++    public void initialize() {
++        super.initialize();
++        // Override the granularity of the aggregators factory
++        ((TimeRateAggregatorFactory) getGroupInfos().get(
++                AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
++                .setGranularity(getGranularity());
++    }
++
+     /*
+      * (non-Javadoc)
+      * 
+@@ -94,10 +103,6 @@
+     @Override
+     public void setGranularity(long granularity) {
+         super.setGranularity(granularity);
+-        // Override the granularity of the aggregators factory
+-        ((TimeRateAggregatorFactory) getGroupInfos().get(
+-                AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
+-                .setGranularity(granularity);
+     }
+ 
+ }
+Index: test/src/org/apache/jmeter/report/processor/graph/impl/CustomGraphConsumerTest.java
+===================================================================
+--- test/src/org/apache/jmeter/report/processor/graph/impl/CustomGraphConsumerTest.java	(revision 0)
++++ test/src/org/apache/jmeter/report/processor/graph/impl/CustomGraphConsumerTest.java	(revision 0)
+@@ -0,0 +1,182 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.processor.graph.impl;
++
++import static org.hamcrest.core.IsEqual.equalTo;
++import static org.junit.Assert.assertThat;
++
++import java.util.HashMap;
++import java.util.Map;
++import java.util.Map.Entry;
++
++import org.apache.jmeter.report.core.Sample;
++import org.apache.jmeter.report.core.SampleMetadata;
++import org.apache.jmeter.report.dashboard.JsonizerVisitor;
++import org.apache.jmeter.report.processor.MapResultData;
++import org.apache.jmeter.report.processor.ResultData;
++import org.apache.jmeter.report.processor.graph.GroupData;
++import org.apache.jmeter.report.processor.graph.GroupInfo;
++import org.apache.jmeter.report.processor.graph.SeriesData;
++import org.apache.jmeter.report.processor.graph.TimeStampKeysSelector;
++import org.apache.jmeter.save.CSVSaveService;
++import org.junit.Before;
++import org.junit.Test;
++
++public class CustomGraphConsumerTest {
++    
++    private CustomGraphConsumer customGraphConsumer;
++    private MapResultData resultData;
++    private TimeStampKeysSelector keysSelector;
++    private Map<String, GroupInfo> map;
++    // data array can't be initialized in the init()
++    private String[] data = {"1527089951383", "0", "Read-compute", "200", "OK", "setupRegion 1-1", "true", "", "492", "0", "1", "1",
++            "null", "0", "0", "0", "/stream1a/master.m3u8?e=0&h=56345c61b7b415e0260c19963a153092", "null", "5500000", "null",
++            "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", "null"}; 
++    private SampleMetadata sampleMetaData = createTestMetaData();
++    
++    @Before
++    public void init() {
++        customGraphConsumer = new CustomGraphConsumer();
++        customGraphConsumer.setGranularity(60000);
++        customGraphConsumer.setTitle("graph title");
++        customGraphConsumer.setXAxis("X axis name");
++        customGraphConsumer.setYAxis("Y axis name");
++        customGraphConsumer.setContentMessage("content message");
++        customGraphConsumer.setSampleVariableName("responseMessage");
++        
++        map = customGraphConsumer.createGroupInfos();
++        
++        resultData = new MapResultData();
++    }
++
++    @Test
++    public void testGetters() {
++        assertThat(customGraphConsumer.getTitle(), equalTo("graph title"));
++        assertThat(customGraphConsumer.getXAxis(), equalTo("X axis name"));
++        assertThat(customGraphConsumer.getYAxis(), equalTo("Y axis name"));
++        assertThat(customGraphConsumer.getContentMessage(), equalTo("content message"));
++        assertThat(customGraphConsumer.getSampleVariableName(), equalTo(CSVSaveService.RESPONSE_MESSAGE));
++        assertThat(customGraphConsumer.getIsNativeSampleVariableName(), equalTo(false));
++        
++        // bytes is one of the native sample variables names
++        customGraphConsumer.setSampleVariableName("bytes");
++        assertThat(customGraphConsumer.getIsNativeSampleVariableName(), equalTo(true));
++    }
++    
++    
++    @Test
++    public void testInitializeExtraResults() {
++        customGraphConsumer.initializeExtraResults(resultData);
++        
++        JsonizerVisitor jsonizer = new JsonizerVisitor();
++        for(Entry<String, ResultData> entrySet : resultData.entrySet()) {
++            Object testedValue = entrySet.getValue().accept(jsonizer);
++            String key = entrySet.getKey();
++            
++            if(key.equals("granularity")) {
++                assertThat(testedValue, equalTo("60000"));
++            }else if(key.equals("X_Axis")) {
++                assertThat(testedValue, equalTo("\"X axis name\""));
++            }else if(key.equals("Y_Axis")) {
++                assertThat(testedValue, equalTo("\"Y axis name\""));
++            }else if(key.equals("sample_Metric_Name")) {
++                assertThat(testedValue, equalTo("\"responseMessage\""));
++            }else if(key.equals("content_Message")) {
++                assertThat(testedValue, equalTo("\"content message\""));
++            }
++        }
++    }
++    
++    @Test
++    public void testCreateTimeStampKeysSelector() {
++        keysSelector = new TimeStampKeysSelector();
++        keysSelector.setSelectBeginTime(false);
++        assertThat(customGraphConsumer.createTimeStampKeysSelector().getGranularity(), equalTo(keysSelector.getGranularity()));
++    }
++    
++    @Test
++    public void testCreateGroupInfos() {
++        // Testing defaults values
++        assertThat(map.containsKey("Generic group"), equalTo(true));
++        assertThat(map.containsKey("foo"), equalTo(false));
++        assertThat(map.get("Generic group").getAggregatorFactory().getClass().toString(), 
++                equalTo("class org.apache.jmeter.report.processor.TimeRateAggregatorFactory"));
++        GroupData groupData = map.get("Generic group").getGroupData();
++        assertThat(groupData.getOverallSeries(), equalTo(null));
++        assertThat(groupData.getSeriesInfo(), equalTo(new HashMap<String, SeriesData>()));
++        
++        // Testing native sample variable
++        customGraphConsumer.setSampleVariableName("bytes");
++        Sample sample = new Sample(0, sampleMetaData, data);
++        Double testedValue = map.get("Generic group").getValueSelector().select("bytes", sample);
++        assertThat(testedValue, equalTo((Double) 492.0));
++        
++        // Testing non-native sample variable
++        customGraphConsumer.setSampleVariableName("mm-miss");
++        testedValue = map.get("Generic group").getValueSelector().select("mm-miss", sample);
++        assertThat(testedValue, equalTo(null));
++        
++        // Testing empty data value, the change between data and data2
++        // is on the last value that switchs from "null" to ""
++        String[] data2 = {"1527089951383", "0", "Read-compute", "200", "OK", "setupRegion 1-1", "true", "", "492", "0", "1", "1",
++                "null", "0", "0", "0", "/stream1a/master.m3u8?e=0&h=56345c61b7b415e0260c19963a153092", "null", "5500000", "null",
++                "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", "null", ""};
++        sample = new Sample(0, sampleMetaData, data2);
++        testedValue = map.get("Generic group").getValueSelector().select("mm-miss", sample);
++        assertThat(testedValue, equalTo(null));
++    }
++
++    // Test the exception when the column data is not a Double
++    @Test(expected=IllegalArgumentException.class)
++    public void testCreateGroupInfosExceptions() {
++        Sample sample = new Sample(0, sampleMetaData, data);
++        customGraphConsumer.setSampleVariableName("label");
++        
++        // The following line is giving the exception
++        map.get("Generic group").getValueSelector().select("label", sample);
++    }
++    
++    @Test
++    public void testSelectMetric() {
++        Sample sample = new Sample(0, sampleMetaData, data);
++        String testString = map.get("Generic group").getSeriesSelector().select(sample).toString();
++        assertThat(testString, equalTo("[responseMessage]"));
++    }
++    
++    // Create a static SampleMetadatObject
++    private SampleMetadata createTestMetaData() {
++        String columnsString = "timeStamp,elapsed,label,responseCode,responseMessage,threadName,success,failureMessage,bytes,sentBytes,"
++                + "grpThreads,allThreads,URL,Latency,IdleTime,Connect,\"stream\",\"aws_region\",\"bitrate\",\"ulp_buffer_fill\",\"ulp_lag_time\","
++                + "\"ulp_play_time\",\"ulp_lag_ratio\",\"lag_ratio_wo_bf\",\"ulp_dwn_time\",\"ulp_hits\",\"ulp_avg_chunk_time\","
++                + "\"ulp_avg_manifest_time\",\"mm-hit\",\"mm-miss\",\"cm-hit\",\"cm-miss\",\"ts-hit\",\"ts-miss\"";
++        String[] columns = new String[34];
++        int lastComa = 0;
++        int columnIndex = 0;
++        for(int i = 0; i < columnsString.length(); i++) {
++            if (columnsString.charAt(i)==',') {
++                columns[columnIndex] = columnsString.substring(lastComa, i);
++                lastComa=i+1;
++                columnIndex++;
++            }else if(i+1 == columnsString.length()) {
++                columns[columnIndex] = columnsString.substring(lastComa, i+1);
++            }
++        }
++        return new SampleMetadata(',',columns);
++    }
++    
++}
+Index: xdocs/usermanual/generating-dashboard.xml
+===================================================================
+--- xdocs/usermanual/generating-dashboard.xml	(revision 1833731)
++++ xdocs/usermanual/generating-dashboard.xml	(working copy)
+@@ -705,7 +705,36 @@
+                     </tbody>
+                 </table>
+             </subsection>
+-            <subsection name="&sect-num;.5  Want to improve Report Dashboard ?" anchor="development">
++            <subsection name="&sect-num;.5 Generating customs graphs over time" anchor="customs_graphs">
++                <p>
++                            If you have the plugin that allow it, you can customize your graphs
++                            by settings their properties in the user.properties file.
++                            <br />
++                            They must use the prefix:
++                            <source>jmeter.reportgenerator.graph.custom_&lt;your_graph_name_id&gt;.property.&lt;your_option_name&gt;</source>
++                            To specify that this graph is a customized one :
++                            <source>jmeter.reportgenerator.graph.custom_&lt;your_graph_name_id&gt;.classname=org.apache.jmeter.report.processor.graph.impl.CustomGraphConsumer</source>
++                        </p>
++                        <properties>
++                            <property name="set_X_Axis" required="No">Sets the X axis name of the graph.</property>
++                            <property name="set_Y_Axis" required="No">Sets the Y axis name of the graph.</property>
++                            <property name="set_Content_Message" required="No">Sets the displayed message when the cursor is on a point of the graph.</property>
++                            <property name="set_Sample_Variable_Name" required="Yes">Name of the columnyou want to graph on the csv.</property>
++                        </properties>
++                        
++                        <p>Here is an exemple of a custom graph configuration : </p>
++                        <source>
++jmeter.reportgenerator.graph.custom_testGraph.classname=org.apache.jmeter.report.processor.graph.impl.CustomGraphConsumer
++jmeter.reportgenerator.graph.custom_testGraph.title=Chunk Hit
++jmeter.reportgenerator.graph.custom_testGraph.property.set_Y_Axis=Number of Hits
++jmeter.reportgenerator.graph.custom_testGraph.set_X_Axis=Over Time
++jmeter.reportgenerator.graph.custom_testGraph.property.set_granularity=60000
++jmeter.reportgenerator.graph.custom_testGraph.property.set_Sample_Variable_Name=ts-hit
++jmeter.reportgenerator.graph.custom_testGraph.property.set_Content_Message=Number of Hits :
++                        </source>
++            </subsection>
++            
++            <subsection name="&sect-num;.6  Want to improve Report Dashboard ?" anchor="development">
+             If you want to contribute new graphs or improve current ones, you
+             can read this <a href="../devguide-dashboard.html" >developer documentation</a>.<br/>
+             Read this <a href="../building.html" >documentation</a> on contributing.

@@ -1,0 +1,171 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java
+===================================================================
+
+C:\APACHE\jmeter>diff -E -b -B -w -u -L "src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(revision 408154)" -L "src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(working copy)" src\protocol\http\org\apache\jmeter\protocol\http\control\gui\.svn\text-base\SoapSamplerGui.java.svn-base src\protocol\http\org\apache\jmeter\protocol\http\control\gui\.svn\tmp\SoapSamplerGui.java.tmp 
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(revision 408154)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(working copy)
+@@ -27,6 +27,7 @@
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jorphan.gui.JLabeledTextArea;
+ import org.apache.jorphan.gui.JLabeledTextField;
+ 
+@@ -38,6 +39,8 @@
+ 
+ 	private JLabeledTextArea soapXml;
+ 
++    FilePanel soapXmlFile = new FilePanel();
++
+ 	public SoapSamplerGui() {
+ 		init();
+ 	}
+@@ -68,6 +71,7 @@
+ 			SoapSampler sampler = (SoapSampler) s;
+ 			sampler.setURLData(urlField.getText());
+ 			sampler.setXmlData(soapXml.getText());
++            sampler.setXmlFile(soapXmlFile.getFilename());
+ 		}
+ 	}
+ 
+@@ -83,6 +87,7 @@
+ 		JPanel mainPanel = new JPanel(new BorderLayout());
+ 		mainPanel.add(urlField, BorderLayout.NORTH);
+ 		mainPanel.add(soapXml, BorderLayout.CENTER);
++        mainPanel.add(soapXmlFile, BorderLayout.SOUTH);
+ 
+ 		add(mainPanel, BorderLayout.CENTER);
+ 	}
+@@ -92,6 +97,7 @@
+ 		SoapSampler sampler = (SoapSampler) el;
+ 		urlField.setText(sampler.getURLData());
+ 		soapXml.setText(sampler.getXmlData());
++        soapXmlFile.setFilename(sampler.getXmlFile());
+ 	}
+ 
+ 	public Dimension getPreferredSize() {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java
+===================================================================
+
+C:\APACHE\jmeter>diff -E -b -B -w -u -L "src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(revision 408154)" -L "src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(working copy)" src\protocol\http\org\apache\jmeter\protocol\http\sampler\.svn\text-base\SoapSampler.java.svn-base src\protocol\http\org\apache\jmeter\protocol\http\sampler\.svn\tmp\SoapSampler.java.tmp 
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(revision 408154)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(working copy)
+@@ -20,6 +20,9 @@
+ 
+ import java.io.IOException;
+ import java.io.PrintWriter;
++import java.io.OutputStream;
++import java.io.InputStream;
++import java.io.FileInputStream;
+ import java.net.HttpURLConnection;
+ import java.net.MalformedURLException;
+ import java.net.URL;
+@@ -45,6 +48,8 @@
+ 
+ 	public static final String URL_DATA = "SoapSampler.URL_DATA";
+ 
++    public static final String XML_DATA_FILE = "SoapSampler.xml_data_file";
++
+ 	public void setXmlData(String data) {
+ 		setProperty(XML_DATA, data);
+ 	}
+@@ -53,6 +58,25 @@
+ 		return getPropertyAsString(XML_DATA);
+ 	}
+ 
++    /**
++     * it's kinda obvious, but we state it anyways. Set the xml file with a
++     * string path.
++     *
++     * @param filename
++     */
++    public void setXmlFile(String filename) {
++        setProperty(XML_DATA_FILE, filename);
++    }
++
++    /**
++     * Get the file location of the xml file.
++     *
++     * @return String file path.
++     */
++    public String getXmlFile() {
++        return getPropertyAsString(XML_DATA_FILE);
++    }
++
+ 	public String getURLData() {
+ 		return getPropertyAsString(URL_DATA);
+ 	}
+@@ -103,10 +127,28 @@
+ 	 *                if an I/O exception occurs
+ 	 */
+ 	public void sendPostData(URLConnection connection) throws IOException {
++        String xmlFile = getXmlFile();
++        if (xmlFile != null && getXmlFile().length() > 0) {
++            OutputStream out = connection.getOutputStream();
++            byte[] buf = new byte[1024];
++            // 1k - the previous 100k made no sense (there's tons of buffers
++            // elsewhere in the chain) and it caused OOM when many concurrent
++            // uploads were being done. Could be fixed by increasing the evacuation
++            // ratio in bin/jmeter[.bat], but this is better.
++            int read;
++            InputStream in = new FileInputStream(xmlFile);
++            while ((read = in.read(buf)) > 0) {
++                out.write(buf, 0, read);
++            }
++            in.close();
++            out.flush();
++            out.close();
++        } else {
+ 		PrintWriter out = new PrintWriter(connection.getOutputStream());
+ 		out.print(getXmlData());
+ 		out.close();
+ 	}
++	}
+ 
+ 	/*
+ 	 * (non-Javadoc)
+Index: src/core/org/apache/jmeter/gui/util/FilePanel.java
+===================================================================
+
+C:\APACHE\jmeter>diff -E -b -B -w -u -L "src/core/org/apache/jmeter/gui/util/FilePanel.java	(revision 408154)" -L "src/core/org/apache/jmeter/gui/util/FilePanel.java	(working copy)" src\core\org\apache\jmeter\gui\util\.svn\text-base\FilePanel.java.svn-base src\core\org\apache\jmeter\gui\util\.svn\tmp\FilePanel.java.tmp 
+--- src/core/org/apache/jmeter/gui/util/FilePanel.java	(revision 408154)
++++ src/core/org/apache/jmeter/gui/util/FilePanel.java	(working copy)
+@@ -23,6 +23,7 @@
+ import java.util.Iterator;
+ import java.util.LinkedList;
+ import java.util.List;
++import java.io.FileFilter;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+@@ -134,7 +135,12 @@
+ 
+ 	public void actionPerformed(ActionEvent e) {
+ 		if (e.getActionCommand().equals("browse")) {
+-			JFileChooser chooser = FileDialoger.promptToOpenFile(new String[] { filetype });
++			JFileChooser chooser;
++            if(filetype == null){
++                chooser = FileDialoger.promptToOpenFile();
++            } else {
++                chooser = FileDialoger.promptToOpenFile(new String[] { filetype });
++            }
+ 			if (chooser != null && chooser.getSelectedFile() != null) {
+ 				filename.setText(chooser.getSelectedFile().getPath());
+ 				fireFileChanged();
+Index: src/core/org/apache/jmeter/gui/util/FileDialoger.java
+===================================================================
+
+C:\APACHE\jmeter>diff -E -b -B -w -u -L "src/core/org/apache/jmeter/gui/util/FileDialoger.java	(revision 408154)" -L "src/core/org/apache/jmeter/gui/util/FileDialoger.java	(working copy)" src\core\org\apache\jmeter\gui\util\.svn\text-base\FileDialoger.java.svn-base src\core\org\apache\jmeter\gui\util\.svn\tmp\FileDialoger.java.tmp 
+--- src/core/org/apache/jmeter/gui/util/FileDialoger.java	(revision 408154)
++++ src/core/org/apache/jmeter/gui/util/FileDialoger.java	(working copy)
+@@ -67,7 +67,9 @@
+ 			}
+ 		}
+ 		clearFileFilters();
++        if(exts != null && exts.length > 0) {
+ 		jfc.addChoosableFileFilter(new JMeterFileFilter(exts));
++        }
+ 		int retVal = jfc.showOpenDialog(GuiPackage.getInstance().getMainFrame());
+ 		lastJFCDirectory = jfc.getCurrentDirectory().getAbsolutePath();
+ 

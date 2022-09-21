@@ -1,0 +1,49 @@
+Index: ClientJMeterEngine.java
+===================================================================
+--- ClientJMeterEngine.java	(revision 919756)
++++ ClientJMeterEngine.java	(working copy)
+@@ -24,6 +24,8 @@
+ import java.rmi.Remote;
+ import java.rmi.RemoteException;
+ import java.rmi.server.RemoteObject;
++import java.util.Collections;
++import java.util.Iterator;
+ import java.util.Properties;
+ 
+ import org.apache.jmeter.testelement.TestListener;
+@@ -44,6 +46,8 @@
+     private HashTree test;
+ 
+     private final String host;
++    
++    private static final Byte LOCK = new Byte((byte) 0);
+ 
+     private static RemoteJMeterEngine getEngine(String h) throws MalformedURLException, RemoteException,
+             NotBoundException {
+@@ -119,12 +123,16 @@
+ 
+         try {
+             JMeterContextService.startTest();
+-            remote.configure(test, host);
++            remote.configure(testTree, host);				
+             log.info("sent test to " + host);
+             if (savep != null){
+                 log.info("Sending properties "+savep);
+                 try {
+-                    remote.setProperties(savep);
++                	Properties clonedProperties = null;
++                	synchronized (LOCK) {
++                		 clonedProperties = (Properties)savep.clone();	
++					}
++                    remote.setProperties(clonedProperties);
+                 } catch (RemoteException e) {
+                     log.warn("Could not set properties: " + e.toString());
+                 }
+@@ -135,6 +143,7 @@
+             log.error("", ex); // $NON-NLS-1$
+         }
+     }
++    
+ 
+     /** {@inheritDoc} */
+     public void exit() {

@@ -1,0 +1,56 @@
+Index: src/core/org/apache/jmeter/report/core/Sample.java
+===================================================================
+--- src/core/org/apache/jmeter/report/core/Sample.java	(revision 1759441)
++++ src/core/org/apache/jmeter/report/core/Sample.java	(working copy)
+@@ -254,12 +254,22 @@
+     }
+ 
+     /**
++     * Gets the number of received bytes stored in the sample.
++     *
++     * @return the number of received bytes stored in the sample
++     */
++    public int getReceivedBytes() {
++        return getData(int.class, CSVSaveService.CSV_BYTES).intValue();
++    }
++    
++    /**
+      * Gets the number of sent bytes stored in the sample.
+      *
+      * @return the number of sent bytes stored in the sample
+      */
+     public int getSentBytes() {
+-        return getData(int.class, CSVSaveService.CSV_BYTES).intValue();
++        // TODO To implement when metric is available
++        return 0;
+     }
+ 
+     /**
+Index: src/core/org/apache/jmeter/report/processor/StatisticsSummaryConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/StatisticsSummaryConsumer.java	(revision 1759441)
++++ src/core/org/apache/jmeter/report/processor/StatisticsSummaryConsumer.java	(working copy)
+@@ -48,6 +48,7 @@
+ 
+     void aggregateSample(Sample sample, StatisticsSummaryData data) {
+         data.incTotal();
++        data.incBytes(sample.getReceivedBytes());
+         data.incBytes(sample.getSentBytes());
+ 
+         if (!sample.getSuccess()) {
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/BytesThroughputGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/BytesThroughputGraphConsumer.java	(revision 1759441)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/BytesThroughputGraphConsumer.java	(working copy)
+@@ -78,9 +78,8 @@
+ 
+                     @Override
+                     public double select(String series, Sample sample) {
+-                        // TODO Add Received bytes support
+-                        return (SENT_BYTES_SERIES_LABEL.equals(series)) ? sample
+-                                .getSentBytes() : 0;
++                        return (RECEIVED_BYTES_SERIES_LABEL.equals(series)) ? sample
++                                .getReceivedBytes() : sample.getSentBytes();
+                     }
+                 }, false, false));
+         return groupInfos;

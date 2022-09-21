@@ -1,0 +1,64 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/TableVisualizer.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(revision 520379)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(working copy)
+@@ -63,10 +63,12 @@
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 	
+ 	private static final ImageIcon imageSuccess = JMeterUtils.getImage(
+-	        JMeterUtils.getPropDefault("viewResultsTree.success", "icon_success_sml.gif"));
++            JMeterUtils.getPropDefault("viewResultsTree.success", "icon_success_sml.gif"),
++            JMeterUtils.getResString("table_visualizer_success"));
+ 
+ 	private static final ImageIcon imageFailure = JMeterUtils.getImage(
+-			JMeterUtils.getPropDefault("viewResultsTree.failure", "icon_warning_sml.gif"));
++            JMeterUtils.getPropDefault("viewResultsTree.failure", "icon_warning_sml.gif"),
++            JMeterUtils.getResString("table_visualizer_warning"));
+ 
+ 	private final String[] COLUMNS = new String[] {
+             JMeterUtils.getResString("table_visualizer_sample_num"), // $NON-NLS-1$
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/util/JMeterUtils.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/util/JMeterUtils.java	(revision 520379)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/util/JMeterUtils.java	(working copy)
+@@ -438,6 +438,26 @@
+ 			return null;
+ 		}
+ 	}
++    
++    /**
++     * This looks for the requested image in the classpath under
++     * org.apache.jmeter.images. <name>, and also sets the description
++     * of the image, which is useful if the icon is going to be placed 
++     * on the clipboard.
++     * 
++     * @param name
++     *            the name of the image
++     * @param description
++     *            the description of the image
++     * @return The Image value
++     */
++    public static ImageIcon getImage(String name, String description) {
++        ImageIcon icon = getImage(name);
++        if(icon != null) {
++            icon.setDescription(description);
++        }
++        return icon;
++    }
+ 
+ 	public static String getResourceFileAsText(String name) {
+ 		BufferedReader fileReader = null;
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties	(revision 520379)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -694,7 +694,9 @@
+ table_visualizer_sample_time=Sample Time(ms)
+ table_visualizer_start_time=Start Time
+ table_visualizer_status=Status
++table_visualizer_success=Success
+ table_visualizer_thread_name=Thread Name
++table_visualizer_warning=Warning
+ tcp_config_title=TCP Sampler Config
+ tcp_nodelay=Set NoDelay
+ tcp_port=Port Number\:

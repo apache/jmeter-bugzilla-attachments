@@ -1,0 +1,129 @@
+Index: src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	(revision 883115)
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	(working copy)
+@@ -1089,4 +1089,11 @@
+     public void removeSubResults() {
+         this.subResults = null;
+     }
++
++	/**
++	 * @param pause
++	 */
++	public void incIdleTime(long pause) {
++		idleTime += pause;
++	}
+ }
+Index: src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/TransactionController.java	(revision 883115)
++++ src/core/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -56,7 +56,18 @@
+ 
+     private transient int noFailingSamples;
+ 
++    /**
++     * Cumulated pause time to exclude timer and post/pre processor times
++     */
++    private transient long pauseTime;
++    
++    /**
++     * Previous end time
++     */
++    private transient long prevEndTime;
++     
+     private static final String PARENT = "TransactionController.parent";// $NON-NLS-1$
++    private final static String INCLUDE_TIMERS = "TransactionController.includeTimers";// $NON-NLS-1$
+ 
+     /**
+      * Creates a Transaction Controller
+@@ -152,6 +163,8 @@
+             // Assume success
+             res.setSuccessful(true);
+             res.sampleStart();
++            prevEndTime = res.getStartTime();
++            pauseTime = 0;
+         }
+ 
+         Sampler returnValue = super.next();
+@@ -159,7 +172,8 @@
+         if (returnValue == null) // Must be the end of the controller
+         {
+             if (res != null) {
+-                res.sampleEnd();
++            	res.incIdleTime(pauseTime);
++            	res.sampleEnd();
+                 res.setResponseMessage("Number of samples in transaction : " + calls + ", number of failing samples : " + noFailingSamples);
+                 if(res.isSuccessful()) {
+                     res.setResponseCodeOK();
+@@ -196,6 +210,10 @@
+                 SampleResult sampleResult = se.getResult();
+                 res.setThreadName(sampleResult.getThreadName());
+                 res.setBytes(res.getBytes() + sampleResult.getBytes());
++                if (!isIncludeTimers()) {
++                	pauseTime += sampleResult.getEndTime() - sampleResult.getTime() - prevEndTime;
++                	prevEndTime = sampleResult.getEndTime();
++                }
+                 if(!sampleResult.isSuccessful()) {
+                     res.setSuccessful(false);
+                     noFailingSamples++;
+@@ -212,4 +230,20 @@
+ 
+     public void sampleStopped(SampleEvent e) {
+     }
++    
++    /**
++     * Include timer and pre/post processor time
++     * @param b
++     */
++    public void setIncludeTimers(boolean b) {
++    	setProperty(new BooleanProperty(INCLUDE_TIMERS, b));
++    }
++
++    /**
++     * Include timer and pre/post processor time
++     * @return boolean (defaults to true for Ascending compatibility)
++     */
++    public boolean isIncludeTimers() {
++    	return getPropertyAsBoolean(INCLUDE_TIMERS, true);
++    }
+ }
+Index: src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java
+===================================================================
+--- src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java	(revision 883115)
++++ src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java	(working copy)
+@@ -32,6 +32,8 @@
+ public class TransactionControllerGui extends AbstractControllerGui {
+ 
+     private JCheckBox parent; // If selected, then generate parent sample, otherwise as per original controller
++	
++    private JCheckBox includeTimers; // if selected, add duration of timers to total runtime
+ 
+     /**
+      * Create a new TransactionControllerGui instance.
+@@ -51,12 +53,16 @@
+     public void configure(TestElement el) {
+         super.configure(el);
+         parent.setSelected(((TransactionController) el).isParent());
++		includeTimers.setSelected(((TransactionController) el).isIncludeTimers());
+     }
+ 
+     /* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+     public void modifyTestElement(TestElement el) {
+         configureTestElement(el);
+-        ((TransactionController) el).setParent(parent.isSelected());
++        TransactionController tc = ((TransactionController) el);
++        tc.setParent(parent.isSelected());
++        tc.setIncludeTimers(includeTimers.isSelected());
++
+     }
+ 
+     public String getLabelResource() {
+@@ -72,5 +78,7 @@
+         add(makeTitlePanel());
+         parent = new JCheckBox(JMeterUtils.getResString("transaction_controller_parent")); // $NON-NLS-1$
+         add(parent);
++        includeTimers = new JCheckBox(JMeterUtils.getResString("transaction_controller_include_timers"), true); // $NON-NLS-1$
++        add(includeTimers);
+     }
+ }

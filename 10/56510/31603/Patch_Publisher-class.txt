@@ -1,0 +1,52 @@
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java	(revision 1593374)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java	(working copy)
+@@ -20,6 +20,7 @@
+ 
+ import java.io.Closeable;
+ import java.io.Serializable;
++import java.util.HashMap;
+ import java.util.Map;
+ import java.util.Map.Entry;
+ 
+@@ -216,12 +217,29 @@
+     private Message setPropertiesAndSend(String destinationName,
+             Map<String, Object> properties, Message msg)
+             throws JMSException, NamingException {
+-        Utils.addJMSProperties(msg, properties);
++      
++        int priority = producer.getPriority(); // default priority
++        long expiry  = 0; // default: forever
++        
++        Map<String, Object> messageOnlyProperties = new HashMap<String, Object>(properties);
++        
++        if(messageOnlyProperties.containsKey("JMSPriority")) {
++            priority =  (Integer) messageOnlyProperties.get("JMSPriority");
++            messageOnlyProperties.remove("JMSPriority");
++        }
++        if(messageOnlyProperties.containsKey("JMSExpiration")) {
++            expiry =  (Long) messageOnlyProperties.get("JMSExpiration");
++            messageOnlyProperties.remove("JMSExpiration");
++        }
++        // we don't need those properties above to be set at the message since
++        // it has no effect at all (see JMS spec)
++        Utils.addJMSProperties(msg, messageOnlyProperties);
++
+         if (staticDest || destinationName == null) {
+-            producer.send(msg);
++            producer.send(msg, producer.getDeliveryMode(), priority, expiry);
+         } else {
+             Destination dest = Utils.lookupDestination(ctx, destinationName);
+-            producer.send(dest, msg);
++            producer.send(dest, msg, producer.getDeliveryMode(), priority, expiry);
+         }
+         return msg;
+     }
+@@ -235,4 +253,4 @@
+         Utils.close(session, log);
+         Utils.close(connection, log);
+     }
+-}
++}
+\ No newline at end of file

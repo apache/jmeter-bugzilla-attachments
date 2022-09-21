@@ -1,0 +1,202 @@
+Index: /src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- /src/core/org/apache/jmeter/resources/messages.properties	(revision 884003)
++++ /src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -923,6 +924,7 @@
+ web_server_client=Client implementation:
+ web_server_domain=Server Name or IP\:
+ web_server_port=Port Number\:
++web_testing2_source_ip=Source IP address:
+ web_testing2_title=HTTP Request HTTPClient
+ web_testing_embedded_url_pattern=Embedded URLs must match\:
+ web_testing_retrieve_images=Retrieve All Embedded Resources from HTML Files
+Index: /src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- /src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 884003)
++++ /src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -789,6 +789,7 @@
+ web_server_timeout_connect=Connexion \:
+ web_server_timeout_response=R\u00E9ponse \:
+ web_server_timeout_title=D\u00E9lai expiration (ms)
++web_testing2_source_ip=Adresse IP source \:
+ web_testing2_title=Requ\u00EAte HTTP HTTPClient
+ web_testing_embedded_url_pattern=Les URL \u00E0 inclure doivent correspondre \u00E0 \:
+ web_testing_retrieve_images=R\u00E9cup\u00E9rer les ressources incluses
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java	(revision 884003)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui.java	(working copy)
+@@ -113,7 +113,7 @@
+         add(createOptionalTasksPanel(), BorderLayout.SOUTH);
+     }
+ 
+-    private JPanel createOptionalTasksPanel() {
++    protected JPanel createOptionalTasksPanel() {
+         // OPTIONAL TASKS
+         JPanel optionalTasksPanel = new VerticalPanel();
+         optionalTasksPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), JMeterUtils
+@@ -134,7 +134,7 @@
+ 
+         // Embedded URL match regex
+         embeddedRE = new JLabeledTextField(JMeterUtils.getResString("web_testing_embedded_url_pattern"),30); // $NON-NLS-1$
+-        optionalTasksPanel.add(embeddedRE);
++        optionalTasksPanel.add(embeddedRE, BorderLayout.CENTER);
+         return optionalTasksPanel;
+     }
+ 
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui2.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui2.java	(revision 884003)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/control/gui/HttpTestSampleGui2.java	(working copy)
+@@ -18,10 +18,18 @@
+ 
+ package org.apache.jmeter.protocol.http.control.gui;
+ 
+-import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
++import java.awt.BorderLayout;
++import java.awt.Dimension;
++
++import javax.swing.Box;
++import javax.swing.JPanel;
++
++import org.apache.jmeter.protocol.http.sampler.HTTPSampler2;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
+ 
+ /**
+  * HTTP Sampler GUI for Apache HTTPClient HTTP implementation
+@@ -27,6 +35,10 @@
+  * HTTP Sampler GUI for Apache HTTPClient HTTP implementation
+  */
+ public class HttpTestSampleGui2 extends HttpTestSampleGui {
++    
++    private static final long serialVersionUID = 240L;
++    
++    private JLabeledTextField sourceIpAddr;
+ 
+     public HttpTestSampleGui2() {
+         super();
+@@ -51,4 +63,44 @@
+         return super.getStaticLabel().replace(' ', '_'); // $NON-NLS-1$  // $NON-NLS-2$
+     }
+ 
++    @Override
++    protected JPanel createOptionalTasksPanel() {
++        JPanel optionalTasksPanel = super.createOptionalTasksPanel();
++        // Add a new field source ip address
++        sourceIpAddr = new JLabeledTextField(JMeterUtils
++                .getResString("web_testing2_source_ip"), 15); // $NON-NLS-1$
++        optionalTasksPanel.add(sourceIpAddr, BorderLayout.EAST);
++        
++        return optionalTasksPanel;
++    }
++    
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui#clearGui()
++     */
++    @Override
++    public void clearGui() {
++        super.clearGui();
++        sourceIpAddr.setText(""); // $NON-NLS-1$
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui#configure(org.apache.jmeter.testelement.TestElement)
++     */
++    @Override
++    public void configure(TestElement element) {
++        super.configure(element);
++        final HTTPSampler2 samplerBase = (HTTPSampler2) element;
++        sourceIpAddr.setText(samplerBase.getIpSource());
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui#modifyTestElement(org.apache.jmeter.testelement.TestElement)
++     */
++    @Override
++    public void modifyTestElement(TestElement sampler) {
++        // TODO Auto-generated method stub
++        super.modifyTestElement(sampler);
++        final HTTPSampler2 samplerBase = (HTTPSampler2) sampler;
++        samplerBase.setIpSource(sourceIpAddr.getText());
++    }
+ }
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(revision 884003)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(working copy)
+@@ -119,6 +119,8 @@
+ 
+     private static final String PROXY_DOMAIN =
+         JMeterUtils.getPropDefault("http.proxyDomain",""); // $NON-NLS-1$ $NON-NLS-2$
++    
++    public static final String IP_SOURCE = "HTTPSampler.ipSource"; // $NON-NLS-1$
+ 
+     static final InetAddress localAddress;
+ 
+@@ -536,6 +538,10 @@
+         // Set up the local address if one exists
+         if (localAddress != null){
+             hc.setLocalAddress(localAddress);
++        } // Use special field ip source address (for pseudo 'ip spoofing') 
++        else if (getIpSource() != null && getIpSource().length() > 0) {
++            InetAddress inetAddr = InetAddress.getByName(getIpSource());
++            hc.setLocalAddress(inetAddr);
+         }
+ 
+         boolean useStaticProxy = PROXY_DEFINED && !isNonProxy(host);
+@@ -1162,4 +1168,13 @@
+         }
+         return client != null;
+     }
++
++    
++    public void setIpSource(String value) {
++        setProperty(IP_SOURCE, value);
++    }
++
++    public String getIpSource() {
++        return getPropertyAsString(IP_SOURCE);
++    }
+ }
+Index: /xdocs/usermanual/component_reference.xml
+===================================================================
+--- /xdocs/usermanual/component_reference.xml	(revision 884003)
++++ /xdocs/usermanual/component_reference.xml	(working copy)
+@@ -81,7 +81,7 @@
+ 
+ </component>
+ 
+-<component name="HTTP Request" index="&sect-num;.1.2"  width="730" height="618" screenshot="webtest/http-request.png">
++<component name="HTTP Request" index="&sect-num;.1.2"  width="735" height="646" screenshot="webtest/http-request.png">
+ 
+ <description>
+         <p>This sampler lets you send an HTTP/HTTPS request to a web server.  It
+@@ -176,6 +176,10 @@
+         <property name="Port" required="No">Port the web server is listening to. Default: 80</property>
+         <property name="Connect Timeout" required="No">Connection Timeout. Number of milliseconds to wait for a connection to open.</property>
+         <property name="Response Timeout" required="No">Response Timeout. Number of milliseconds to wait for a response.</property>
++        <property name="Server (proxy)" required="No">Hostname or IP address of a proxy server to perform request. [Do not include the http:// prefix.]</property>
++        <property name="Port" required="No">Port the proxy server is listening to.</property>
++        <property name="Username" required="No">(Optional) username to login proxy server.</property>
++        <property name="Password" required="No">(Optional) password to login proxy server.</property>
+         <property name="Protocol" required="No">HTTP, HTTPS or FILE. Default: HTTP</property>
+         <property name="Method" required="Yes">GET, POST, HEAD, TRACE, OPTIONS, PUT, DELETE</property>
+         <property name="Content Encoding" required="No">Content encoding to be used (for POST and FILE)</property>
+@@ -252,6 +256,12 @@
+         So if you only want to download embedded resources from http://example.com/, use the expression:
+         http://example\.com/.*
+         </property>
++        <property name="Source IP address:" required="No">
++        [Only on HTTP Request HTTPClient] Permit to define a specific source IP address  on the HTTP request. 
++        Combine with a CSV Data Set Config element which have several valid sources IP addresses, this allow
++         to create some test plan with several source IP address. To do this, the JMeter machine must have 
++         several IP aliasing or network interfaces with allowed ip addresses on network.
++        </property>
+ </properties>
+ <p>
+ <b>N.B.</b> when using Automatic Redirection, cookies are only sent for the initial URL.
+

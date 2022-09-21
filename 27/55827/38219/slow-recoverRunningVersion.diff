@@ -1,0 +1,81 @@
+diff --git a/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java b/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java
+index 93f8369515..5d7c0ecbac 100644
+--- a/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java
++++ b/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java
+@@ -25,7 +25,9 @@ import java.util.LinkedHashMap;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Objects;
+ import java.util.Set;
++import java.util.concurrent.ConcurrentSkipListSet;
+ 
+ import org.apache.jmeter.gui.Searchable;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+@@ -42,6 +44,7 @@ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
++import org.jetbrains.annotations.NotNull;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -67,6 +70,8 @@ public abstract class AbstractTestElement implements TestElement, Serializable,
+ 
+     private transient String threadName = null;
+ 
++    private transient ConcurrentSkipListSet<ComparableThread> currentThreads = new ConcurrentSkipListSet<>();
++
+     @Override
+     public Object clone() {
+         try {
+@@ -502,6 +507,13 @@ public abstract class AbstractTestElement implements TestElement, Serializable,
+      */
+     @Override
+     public void recoverRunningVersion() {
++        ComparableThread currentThread = new ComparableThread(Thread.currentThread());
++        currentThreads.add(currentThread);
++        if (currentThreads.size() > 1) {
++            log.warn("Recover in different threads: {}; Element: {}",
++                    currentThreads, this,
++                    new RuntimeException("Thread mismatch"));
++        }
+         Iterator<Map.Entry<String, JMeterProperty>>  iter = propMap.entrySet().iterator();
+         while (iter.hasNext()) {
+             Map.Entry<String, JMeterProperty> entry = iter.next();
+@@ -514,8 +526,35 @@ public abstract class AbstractTestElement implements TestElement, Serializable,
+             }
+         }
+         emptyTemporary();
++        try {
++            Thread.sleep(500);
++        } catch (InterruptedException e) {
++            // nothing to do
++        }
++        currentThreads.remove(currentThread);
+     }
+ 
++    private static class ComparableThread extends Thread implements Comparable {
++        final Thread t;
++        ComparableThread(Thread t) {
++            this.t = t;
++        }
++
++        @Override
++        public int hashCode() {
++            return t.hashCode();
++        }
++
++        @Override
++        public int compareTo(@NotNull Object o) {
++            return this.t.getName().compareTo(((ComparableThread) o).t.getName()) ;
++        }
++
++        @Override
++        public boolean equals(Object o) {
++            return o instanceof ComparableThread && compareTo((ComparableThread) o) == 0;
++        }
++    }
+     /**
+      * Clears temporaryProperties
+      */

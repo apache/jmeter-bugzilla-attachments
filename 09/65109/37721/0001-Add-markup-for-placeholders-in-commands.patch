@@ -1,0 +1,375 @@
+From 07aa4c0dc587ac8e35d27476b9c64fd5b8d4404e Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Wed, 27 Jan 2021 19:37:42 +0100
+Subject: [PATCH] Add markup for placeholders in commands
+
+---
+ xdocs/css/new-style.css                   |  7 +++
+ xdocs/css/style.css                       |  6 +++
+ xdocs/stylesheets/site_printable.vsl      |  6 +++
+ xdocs/stylesheets/website-style.xsl       |  4 ++
+ xdocs/usermanual/curl.xml                 | 56 +++++++++++------------
+ xdocs/usermanual/generating-dashboard.xml | 16 +++----
+ xdocs/usermanual/get-started.xml          | 40 ++++++++--------
+ 7 files changed, 79 insertions(+), 56 deletions(-)
+
+diff --git a/xdocs/css/new-style.css b/xdocs/css/new-style.css
+index 3df19e2002..08a04b1fb7 100644
+--- a/xdocs/css/new-style.css
++++ b/xdocs/css/new-style.css
+@@ -428,6 +428,13 @@ table {
+   background-color: white;
+ }
+ 
++.placeholder {
++  font-style: italic;
++  font-weight: normal;
++  text-decoration-line: underline;
++  text-decoration-style: dashed;
++}
++
+ @media screen and (max-width: 1000px) {
+   .nav {
+   width: 100%;
+diff --git a/xdocs/css/style.css b/xdocs/css/style.css
+index 9bc97e1310..174b8361df 100644
+--- a/xdocs/css/style.css
++++ b/xdocs/css/style.css
+@@ -48,3 +48,9 @@ a[name]:hover:after{
+ .guimenuitem {
+   font-style: italic;
+ }
++
++.placeholder {
++  font-style: italic;
++  font-weight: bold;
++  color: darkgreen;
++}
+diff --git a/xdocs/stylesheets/site_printable.vsl b/xdocs/stylesheets/site_printable.vsl
+index 5ce2f54f96..372c5642c9 100644
+--- a/xdocs/stylesheets/site_printable.vsl
++++ b/xdocs/stylesheets/site_printable.vsl
+@@ -339,6 +339,8 @@ Contributed by $id.getAttributeValue("name") &lt;$id.getAttributeValue("mail")&g
+ #guimenuitem ($node)
+ #elseif ($node.getName().equals("description"))
+ #description ($node)
++#elseif ($node.getName().equals("placeholder"))
++#placeholder ($node)
+ #else
+ #outputTag($node)
+ #runloop($node)
+@@ -370,6 +372,10 @@ Contributed by $id.getAttributeValue("name") &lt;$id.getAttributeValue("mail")&g
+ </$tag.getName()>##
+ #end
+ 
++#macro (placeholder $node)
++<span class="placeholder">#runloop($node)</span>##
++#end
++
+ #macro (menuchoice $items)
+  <span class="menuchoice">
+  #foreach ($item in $items.getChildren("guimenuitem"))#guimenuitem($item)#if ($foreach.hasNext)&nbsp;&rarr;&nbsp;#end#end
+diff --git a/xdocs/stylesheets/website-style.xsl b/xdocs/stylesheets/website-style.xsl
+index b44ee85781..992d6752ef 100644
+--- a/xdocs/stylesheets/website-style.xsl
++++ b/xdocs/stylesheets/website-style.xsl
+@@ -689,4 +689,8 @@
+     </span>
+   </xsl:template>
+ 
++  <xsl:template match="placeholder">
++    <span class="placeholder"><xsl:apply-templates /></span>
++  </xsl:template>
++
+ </xsl:stylesheet>
+diff --git a/xdocs/usermanual/curl.xml b/xdocs/usermanual/curl.xml
+index 8968028dda..768e508f80 100644
+--- a/xdocs/usermanual/curl.xml
++++ b/xdocs/usermanual/curl.xml
+@@ -55,15 +55,15 @@ Create a Test Plan From a cURL Command
+ <subsection name="&sect-num;.2 Curl options supported" anchor="curl_options">
+ 
+ <dl>
+-  <dt><code>-H</code>, <code>--header &lt;header&gt;</code></dt>
++  <dt><code>-H</code>, <code>--header <placeholder>header</placeholder></code></dt>
+   <dd>Extra header to use when getting a web page.</dd>
+-  <dt><code>-X</code>, <code>--request &lt;command&gt;</code></dt>
++  <dt><code>-X</code>, <code>--request <placeholder>command</placeholder></code></dt>
+   <dd>Specifies a custom request method to use when communicating with the HTTP server.</dd>
+   <dt><code>--compressed</code></dt>
+   <dd>Request a compressed response using one of the algorithms curl supports, and return the uncompressed document.</dd>
+-  <dt><code>-A</code>, <code>--user-agent &lt;agent string&gt;</code></dt>
++  <dt><code>-A</code>, <code>--user-agent <placeholder>agent string</placeholder></code></dt>
+   <dd>Specify the User-Agent string to send to the HTTP server.</dd>
+-  <dt><code>-b</code>, <code>--cookie &lt;name=data&gt;</code></dt>
++  <dt><code>-b</code>, <code>--cookie <placeholder>name=data</placeholder></code></dt>
+   <dd>Pass the data to the HTTP server as a cookie.</dd>
+   <dt><code>-d</code> and friends</dt>
+   <dd><p>Sending data via POST request</p>
+@@ -72,17 +72,17 @@ Create a Test Plan From a cURL Command
+     separating '<code>&amp;</code>' character. Thus, using '<code>-d name=daniel -d skill=lousy</code>' would generate a POST
+     chunk that looks like '<code>name=daniel&amp;skill=lousy</code>'.</p>
+     <dl>
+-      <dt><code>-d</code>, <code>--data &lt;data&gt;</code>, <code>--data-ascii &lt;data&gt;</code></dt>
++      <dt><code>-d</code>, <code>--data <placeholder>data</placeholder></code>, <code>--data-ascii <placeholder>data</placeholder></code></dt>
+       <dd>use <code>@</code> to upload a file</dd>
+-      <dt><code>--data-raw &lt;data&gt;</code>gt;</dt>
++      <dt><code>--data-raw <placeholder>data</placeholder></code></dt>
+       <dd></dd>
+-      <dt><code>--data-raw &lt;data&gt;</code></dt>
++      <dt><code>--data-raw <placeholder>data</placeholder></code></dt>
+       <dd>This posts data exactly as specified with no extra processing whatsoever.
+         If you start the data with the character <code>@,</code> the rest should be a filename.</dd>
+-      <dt><code>--data-raw &lt;data&gt;</code>ta&gt;</dt>
++      <dt><code>--data-raw <placeholder>data</placeholder></code></dt>
+       <dd>This posts data, similar to the other <code>--data</code> options with the exception that this performs
+         URL-encoding.</dd>
+-      <dt><code>--data-raw &lt;data&gt;</code></dt>
++      <dt><code>--data-raw <placeholder>data</placeholder></code></dt>
+       <dd>This posts data similarly to <code>--data</code> but without the special interpretation
+         of the <code>@</code> character.</dd>
+     </dl>
+@@ -91,13 +91,13 @@ Create a Test Plan From a cURL Command
+   <dd>
+     <p>This lets curl emulate a filled-in form in which a user has pressed the submit button.</p>
+     <dl>
+-      <dt><code>-F</code>, <code>--form &lt;name=content&gt;</code></dt>
++      <dt><code>-F</code>, <code>--form <placeholder>name=content</placeholder></code></dt>
+       <dd>use <code>@</code> to upload a file</dd>
+-      <dt><code>--form-string &lt;name=content&gt;</code></dt>
++      <dt><code>--form-string <placeholder>name=content</placeholder></code></dt>
+       <dd></dd>
+     </dl>
+   </dd>
+-  <dt><code>-u</code>, --user &lt;user:password &gt;</dt>
++  <dt><code>-u</code>, --user <placeholder>user:password </placeholder></dt>
+   <dd>Specify user and password to use for server authentication.</dd>
+   <dt><code>--basic</code>, <code>--digest</code></dt>
+   <dd>Tells curl to use HTTP authentication.</dd>
+@@ -105,35 +105,35 @@ Create a Test Plan From a cURL Command
+   <dd>
+     <p>Tells curl to use the specified client certificate file when getting a file with HTTPS</p>
+     <dl>
+-      <dt><code>--cacert &lt;CA certificate&gt;</code></dt>
+-      <dt><code>--capath  &lt;CA certificate directory&gt;</code></dt>
+-      <dt><code>--ciphers &lt;list of ciphers&gt;</code></dt>
++      <dt><code>--cacert <placeholder>CA certificate</placeholder></code></dt>
++      <dt><code>--capath  <placeholder>CA certificate directory</placeholder></code></dt>
++      <dt><code>--ciphers <placeholder>list of ciphers</placeholder></code></dt>
+       <dt><code>--cert-status</code></dt>
+-      <dt><code>--cert-type &lt;type&gt;</code></dt>
++      <dt><code>--cert-type <placeholder>type</placeholder></code></dt>
+     </dl>
+   </dd>
+   <dt><code>-G</code>, <code>--get</code></dt>
+   <dd>put the post data in the URL and use get to replace post.</dd>
+   <dt><code>--no-keepalive</code></dt>
+   <dd>Disables the use of keepalive messages on the TCP connection.</dd>
+-  <dt><code>-e</code>, <code>--referer &lt;URL&gt;</code></dt>
++  <dt><code>-e</code>, <code>--referer <placeholder>URL</placeholder></code></dt>
+   <dd>Sends the <em>Referer Page</em> information to the HTTP server.</dd>
+   <dt><code>-L</code>, <code>--location</code></dt>
+   <dd>If the server reports that the requested page has moved to a different location
+     this option will make curl redo the request on the new place.</dd>
+   <dt><code>-i</code>, <code>--include</code></dt>
+   <dd>Include the HTTP-header in the output.</dd>
+-  <dt><code>--connect-timeout &lt;seconds&gt;</code></dt>
++  <dt><code>--connect-timeout <placeholder>seconds</placeholder></code></dt>
+   <dd>Maximum time in seconds that the connection to the server may take.</dd>
+-  <dt><code>--keepalive-time &lt;seconds&gt;</code></dt>
++  <dt><code>--keepalive-time <placeholder>seconds</placeholder></code></dt>
+   <dd>This option sets the time a connection needs to remain idle before sending keepalive probes
+     and the time between individual keepalive probes.</dd>
+-  <dt><code>-m</code>, <code>--max-time  &lt;seconds&gt;</code></dt>
++  <dt><code>-m</code>, <code>--max-time  <placeholder>seconds</placeholder></code></dt>
+   <dd>Maximum time in seconds that you allow the whole operation to take.</dd>
+-  <dt><code>-x</code>, <code>--proxy &lt;[protocol://][user:password@]proxyhost[:port]&gt;</code></dt>
++  <dt><code>-x</code>, <code>--proxy <placeholder>[protocol://][user:password@]proxyhost[:port]</placeholder></code></dt>
+   <dd>Use the specified HTTP proxy. If the port number is not specified,
+     it is assumed at port <code>1080</code>.</dd>
+-  <dt><code>-U</code>, <code>--proxy-user  &lt;user:password&gt;</code></dt>
++  <dt><code>-U</code>, <code>--proxy-user  <placeholder>user:password</placeholder></code></dt>
+   <dd>Specify user and password to use for proxy authentication.</dd>
+   <dt><code>-k</code>, <code>--insecure</code></dt>
+   <dd>This option explicitly allows curl to perform <em>insecure</em> SSL connections and transfers.</dd>
+@@ -141,19 +141,19 @@ Create a Test Plan From a cURL Command
+   <dd>When used, it disables all internal HTTP decoding of content or transfer encodings and instead makes them passed on unaltered,raw.</dd>
+   <dt><code>-I</code>, <code>--head</code></dt>
+   <dd>Fetch the HTTP-header only. HTTP-servers feature the method <code>HEAD</code> which this uses to get nothing but the header of a document.</dd>
+-  <dt><code>--interface &lt;name&gt;</code></dt>
++  <dt><code>--interface <placeholder>name</placeholder></code></dt>
+   <dd>Perform an operation using a specified interface. You can enter interface name, IP address or host name.</dd>
+   <dt><code>--proxy-ntlm</code>/<code>--proxy-negotiate</code></dt>
+   <dd>Tells curl to use HTTP BASIC/NTLM/Digest authentication when communicating with the given proxy.</dd>
+-  <dt><code>--dns-servers &lt;addresses&gt;</code></dt>
++  <dt><code>--dns-servers <placeholder>addresses</placeholder></code></dt>
+   <dd>Resolve host name over DOH.</dd>
+-  <dt><code>--resolve &lt;host:port:address&gt;</code></dt>
++  <dt><code>--resolve <placeholder>host:port:address</placeholder></code></dt>
+   <dd>Provide a custom address for a specific host and port pair.</dd>
+-  <dt><code>--limit-rate &lt;speed&gt;</code></dt>
++  <dt><code>--limit-rate <placeholder>speed</placeholder></code></dt>
+   <dd>Specify the maximum transfer rate you want curl to use.</dd>
+-  <dt><code>--max-redirs &lt;num&gt;</code></dt>
++  <dt><code>--max-redirs <placeholder>num</placeholder></code></dt>
+   <dd>Set maximum number of redirections which may be followed.</dd>
+-  <dt><code>--noproxy &lt;no-proxy-list&gt;</code></dt>
++  <dt><code>--noproxy <placeholder>no-proxy-list</placeholder></code></dt>
+   <dd>Comma-separated list of hosts which do not use a proxy, if one is specified.</dd>
+ </dl>
+ 
+diff --git a/xdocs/usermanual/generating-dashboard.xml b/xdocs/usermanual/generating-dashboard.xml
+index 9a50b6b4c2..ada547a517 100644
+--- a/xdocs/usermanual/generating-dashboard.xml
++++ b/xdocs/usermanual/generating-dashboard.xml
+@@ -279,14 +279,14 @@ jmeter.save.saveservice.timestamp_format = ms
+                     <subsection name="&sect-num;.2.3.2 Specific properties" anchor="specific_graph_properties">
+                         <p>
+                             Specific graph properties must use the prefix:
+-                            <source>jmeter.reportgenerator.graph.&lt;graph_id&gt;.property</source>
++                            <source>jmeter.reportgenerator.graph.<placeholder>graph_id</placeholder>.property</source>
+                             The name of the property will be mapped using camel case
+                             transformation and the matching method of the class will be
+                             called with the property value as argument.
+                         </p>
+                         <p>
+                             E.g.:
+-                            <source>jmeter.reportgenerator.graph.&lt;graph_id&gt;.property.set_granularity=150</source>
++                            <source>jmeter.reportgenerator.graph.<placeholder>graph_id</placeholder>.property.set_granularity=150</source>
+                             induces the call of the method <code>setGranularity(150)</code> on the
+                             instance of the graph.
+                         </p>
+@@ -332,7 +332,7 @@ jmeter.save.saveservice.timestamp_format = ms
+                     <subsection name="&sect-num;.2.4.2 Specific properties" anchor="specific_export_properties">
+                         <p>
+                             Specific exporter properties must use the prefix
+-                            <source>jmeter.reportgenerator.exporter.&lt;exporter_id&gt;.property</source>
++                            <source>jmeter.reportgenerator.exporter.<placeholder>exporter_id</placeholder>.property</source>
+                         </p>
+                         <properties>
+                             <property name="output_dir" required="No">
+@@ -352,7 +352,7 @@ jmeter.save.saveservice.timestamp_format = ms
+                             Graph properties allow exporters to overwrite some graph data.
+                             <br />
+                             They must use the prefix:
+-                            <source>jmeter.reportgenerator.exporter.&lt;exporter_id&gt;.graph_options.&lt;graph_id&gt;</source>
++                            <source>jmeter.reportgenerator.exporter.<placeholder>exporter_id</placeholder>.graph_options.<placeholder>graph_id</placeholder></source>
+                         </p>
+                         <properties>
+                             <property name="minX" required="No">Sets the minimum
+@@ -587,14 +587,14 @@ jmeter.reportgenerator.exporter.html.filters_only_sample_series=true
+                 <subsection name="&sect-num;.3.1 Generation from an existing sample CSV log file" anchor="report_only">
+                     <p>
+                         Use the following command:
+-                        <source>jmeter -g &lt;log file&gt; -o &lt;Path to output folder&gt;</source>
++                        <source>jmeter -g <placeholder>log file</placeholder> -o <placeholder>Path to output folder</placeholder></source>
+                     </p>
+                 </subsection>
+ 
+                 <subsection name="&sect-num;.3.2 Generation after load test" anchor="report_after_load_test">
+                     <p>
+                         Use the following command:
+-                        <source>jmeter -n -t &lt;test JMX file&gt; -l &lt;test log file&gt; -e -o &lt;Path to output folder&gt;</source>
++                        <source>jmeter -n -t <placeholder>test JMX file</placeholder> -l <placeholder>test log file</placeholder> -e -o <placeholder>Path to output folder</placeholder></source>
+                     </p>
+                 </subsection>
+             </subsection>
+@@ -742,9 +742,9 @@ jmeter.reportgenerator.exporter.html.filters_only_sample_series=true
+                             by settings their properties in the user.properties file.
+                             <br />
+                             They must use the id prefix <code>custom_</code>:
+-                            <source>jmeter.reportgenerator.graph.custom_&lt;your_graph_name_id&gt;.property.&lt;your_option_name&gt;</source>
++                            <source>jmeter.reportgenerator.graph.custom_<placeholder>your_graph_name_id</placeholder>.property.<placeholder>your_option_name</placeholder></source>
+                             To specify that this graph is a customized one :
+-                            <source>jmeter.reportgenerator.graph.custom_&lt;your_graph_name_id&gt;.classname=org.apache.jmeter.report.processor.graph.impl.CustomGraphConsumer</source>
++                            <source>jmeter.reportgenerator.graph.custom_<placeholder>your_graph_name_id</placeholder>.classname=org.apache.jmeter.report.processor.graph.impl.CustomGraphConsumer</source>
+                         </p>
+                         <properties>
+                             <property name="set_X_Axis" required="Yes">Sets the X axis name of the graph.</property>
+diff --git a/xdocs/usermanual/get-started.xml b/xdocs/usermanual/get-started.xml
+index 1265d8392e..7752deda25 100644
+--- a/xdocs/usermanual/get-started.xml
++++ b/xdocs/usermanual/get-started.xml
+@@ -748,59 +748,59 @@ These are shown below.</p>
+         print usage information and exit
+     -v, --version
+         print the version information and exit
+-    -p, --propfile &lt;argument&gt;
++    -p, --propfile <placeholder>argument</placeholder>
+         the jmeter property file to use
+-    -q, --addprop &lt;argument&gt;
++    -q, --addprop <placeholder>argument</placeholder>
+         additional JMeter property file(s)
+-    -t, --testfile &lt;argument&gt;
++    -t, --testfile <placeholder>argument</placeholder>
+         the jmeter test(.jmx) file to run
+-    -l, --logfile &lt;argument&gt;
++    -l, --logfile <placeholder>argument</placeholder>
+         the file to log samples to
+-    -i, --jmeterlogconf &lt;argument&gt;
++    -i, --jmeterlogconf <placeholder>argument</placeholder>
+         jmeter logging configuration file (log4j2.xml)
+-    -j, --jmeterlogfile &lt;argument&gt;
++    -j, --jmeterlogfile <placeholder>argument</placeholder>
+         jmeter run log file (jmeter.log)
+     -n, --nongui
+         run JMeter in nongui mode
+     -s, --server
+         run the JMeter server
+-    -H, --proxyHost &lt;argument&gt;
++    -H, --proxyHost <placeholder>argument</placeholder>
+         Set a proxy server for JMeter to use
+-    -P, --proxyPort &lt;argument&gt;
++    -P, --proxyPort <placeholder>argument</placeholder>
+         Set proxy server port for JMeter to use
+-    -N, --nonProxyHosts &lt;argument&gt;
++    -N, --nonProxyHosts <placeholder>argument</placeholder>
+         Set nonproxy host list (e.g. *.apache.org|localhost)
+-    -u, --username &lt;argument&gt;
++    -u, --username <placeholder>argument</placeholder>
+         Set username for proxy server that JMeter is to use
+-    -a, --password &lt;argument&gt;
++    -a, --password <placeholder>argument</placeholder>
+         Set password for proxy server that JMeter is to use
+-    -J, --jmeterproperty &lt;argument&gt;=&lt;value&gt;
++    -J, --jmeterproperty <placeholder>argument</placeholder>=<placeholder>value</placeholder>
+         Define additional JMeter properties
+-    -G, --globalproperty &lt;argument&gt;=&lt;value&gt;
++    -G, --globalproperty <placeholder>argument</placeholder>=<placeholder>value</placeholder>
+         Define Global properties (sent to servers)
+         e.g. -Gport=123
+          or -Gglobal.properties
+-    -D, --systemproperty &lt;argument&gt;=&lt;value&gt;
++    -D, --systemproperty <placeholder>argument</placeholder>=<placeholder>value</placeholder>
+         Define additional system properties
+-    -S, --systemPropertyFile &lt;argument&gt;
++    -S, --systemPropertyFile <placeholder>argument</placeholder>
+         additional system property file(s)
+     -f, --forceDeleteResultFile
+         force delete existing results files and web report folder if present before starting the test
+-    -L, --loglevel &lt;argument&gt;=&lt;value&gt;
++    -L, --loglevel <placeholder>argument</placeholder>=<placeholder>value</placeholder>
+         [category=]level e.g. jorphan=INFO, jmeter.util=DEBUG or com.example.foo=WARN
+     -r, --runremote
+         Start remote servers (as defined in remote_hosts)
+-    -R, --remotestart &lt;argument&gt;
++    -R, --remotestart <placeholder>argument</placeholder>
+         Start these remote servers (overrides remote_hosts)
+-    -d, --homedir &lt;argument&gt;
++    -d, --homedir <placeholder>argument</placeholder>
+         the jmeter home directory to use
+     -X, --remoteexit
+         Exit the remote servers at end of test (CLI mode)
+-    -g, --reportonly &lt;argument&gt;
++    -g, --reportonly <placeholder>argument</placeholder>
+         generate report dashboard only, from a test results file
+     -e, --reportatendofloadtests
+         generate report dashboard after load test
+-    -o, --reportoutputfolder &lt;argument&gt;
++    -o, --reportoutputfolder <placeholder>argument</placeholder>
+         output folder for report dashboard
+ </source>
+ <p>
+-- 
+2.25.1
+

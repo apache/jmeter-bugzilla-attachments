@@ -1,0 +1,67 @@
+Index: build.properties
+===================================================================
+--- build.properties	(revision 1462828)
++++ build.properties	(working copy)
+@@ -57,16 +57,21 @@
+ beanshell.md5               = 02F72336919D06A8491E82346E10B4D5
+ 
+ # Bouncy Castle jars (compile and test only - not distributed)
+-bcmail.version              = 1.45
+-bcmail.jar                  = bcmail-jdk15-${bcmail.version}.jar
+-bcmail.loc                  = ${maven2.repo}/org/bouncycastle/bcmail-jdk15/${bcmail.version}
+-bcmail.md5                  = 13321fc7eff7bcada7b4fedfb592025c
++bcmail.version              = 1.48
++bcmail.jar                  = bcmail-jdk15on-${bcmail.version}.jar
++bcmail.loc                  = ${maven2.repo}/org/bouncycastle/bcmail-jdk15on/${bcmail.version}
++bcmail.md5                  = d21564a05cec19caea793f6c63c79b59
+ 
+-bcprov.version              = 1.45
+-bcprov.jar                  = bcprov-jdk15-${bcprov.version}.jar
+-bcprov.loc                  = ${maven2.repo}/org/bouncycastle/bcprov-jdk15/${bcprov.version}
+-bcprov.md5                  = 2062f8e3d15748443ea60a94b266371c
++bcprov.version              = 1.48
++bcprov.jar                  = bcprov-jdk15on-${bcprov.version}.jar
++bcprov.loc                  = ${maven2.repo}/org/bouncycastle/bcprov-jdk15on/${bcprov.version}
++bcprov.md5                  = c08b58e03da7d469b0e7df6f4dd99712
+ 
++bcpkix.version              = 1.48
++bcpkix.jar                  = bcpkix-jdk15on-${bcpkix.version}.jar
++bcpkix.loc                  = ${maven2.repo}/org/bouncycastle/bcpkix-jdk15on/${bcpkix.version}
++bcpkix.md5                  = f8fc0496846f567ec951ac0a0e25ed00
++
+ commons-codec.version       = 1.6
+ commons-codec.jar           = commons-codec-${commons-codec.version}.jar
+ commons-codec.loc           = ${maven2.repo}/commons-codec/commons-codec/${commons-codec.version}
+Index: build.xml
+===================================================================
+--- build.xml	(revision 1462828)
++++ build.xml	(working copy)
+@@ -2756,6 +2756,7 @@
+         <process_jarfile jarname="avalon-framework"/>
+         <process_jarfile jarname="bcmail" dest.dir="${lib.api}"/>
+         <process_jarfile jarname="bcprov" dest.dir="${lib.api}"/>
++        <process_jarfile jarname="bcpkix" dest.dir="${lib.api}"/>
+         <process_jarfile jarname="beanshell"/>
+         <process_jarfile jarname="commons-codec"/>
+         <process_jarfile jarname="commons-collections"/>
+Index: src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/SMIMEAssertion.java	(revision 1462828)
++++ src/components/org/apache/jmeter/assertions/SMIMEAssertion.java	(working copy)
+@@ -52,6 +52,7 @@
+ import org.bouncycastle.cms.CMSException;
+ import org.bouncycastle.cms.SignerInformation;
+ import org.bouncycastle.cms.SignerInformationStore;
++import org.bouncycastle.cms.jcajce.JcaX509CertSelectorConverter;
+ import org.bouncycastle.jce.PrincipalUtil;
+ import org.bouncycastle.jce.X509Principal;
+ import org.bouncycastle.jce.provider.BouncyCastleProvider;
+@@ -152,7 +153,7 @@
+             if (signerIt.hasNext()) {
+ 
+                 SignerInformation signer = (SignerInformation) signerIt.next();
+-                Iterator<?> certIt = certs.getCertificates(signer.getSID()).iterator();
++                Iterator<?> certIt = certs.getCertificates(new JcaX509CertSelectorConverter().getCertSelector(signer.getSID())).iterator();
+ 
+                 if (certIt.hasNext()) {
+                     // the signer certificate

@@ -1,0 +1,31 @@
+Index: SSLManager.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/util/SSLManager.java,v
+retrieving revision 1.12
+diff -r1.12 SSLManager.java
+275a276,279
+> 
+>         SSLManager.isSSLSupported = false;
+>         SSLManager.sslProvider = null;
+> 
+277c281,286
+<             SSLManager.sslProvider = (Provider)Class.forName(JMeterUtils.getPropDefault("ssl.provider",null)).newInstance();
+---
+>             // Class.forName() was choking if the property wasn't set on the line below..
+>             String strSSLProvider = JMeterUtils.getPropDefault("ssl.provider",null);
+>             if(strSSLProvider != null) {
+>                 SSLManager.sslProvider = (Provider)Class.forName(strSSLProvider).newInstance();
+>                 SSLManager.isSSLSupported = true;
+>             }
+280,281d288
+<             SSLManager.isSSLSupported = false;
+<             SSLManager.sslProvider = null;
+285,286c292,294
+<             System.out.println("SSL Provider is: " + SSLManager.sslProvider);
+<             Security.addProvider(SSLManager.sslProvider);
+---
+>             if(SSLManager.sslProvider != null) {
+>                 System.out.println("SSL Provider is: " + SSLManager.sslProvider);
+>                 Security.addProvider(SSLManager.sslProvider);
+287a296
+>             }

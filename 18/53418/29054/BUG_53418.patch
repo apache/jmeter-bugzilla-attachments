@@ -1,0 +1,801 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1359888)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -619,6 +619,7 @@
+ number_of_threads=Nombre d'unit\u00E9s (utilisateurs) \:
+ obsolete_test_element=Cet \u00E9l\u00E9ment de test est obsol\u00E8te
+ once_only_controller_title=Contr\u00F4leur Ex\u00E9cution unique
++ondemand_threadgroup=Groupe d'unit\u00E9s progressives
+ opcode=Code d'op\u00E9ration
+ open=Ouvrir...
+ option=Options
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1359888)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -625,6 +625,7 @@
+ number_of_threads=Number of Threads (users)\:
+ obsolete_test_element=This test element is obsolete
+ once_only_controller_title=Once Only Controller
++ondemand_threadgroup=Progressive Thread Group
+ opcode=opCode
+ open=Open...
+ option=Options
+Index: src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 1359888)
++++ src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -21,14 +21,12 @@
+ import java.io.PrintWriter;
+ import java.io.StringWriter;
+ import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.Date;
+ import java.util.Iterator;
+ import java.util.LinkedList;
+ import java.util.List;
+-import java.util.Map;
+-import java.util.Map.Entry;
+ import java.util.Properties;
+-import java.util.concurrent.ConcurrentHashMap;
+ 
+ import org.apache.jmeter.JMeter;
+ import org.apache.jmeter.testbeans.TestBean;
+@@ -36,14 +34,14 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.TestPlan;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterThread;
+ import org.apache.jmeter.threads.JMeterThreadMonitor;
+ import org.apache.jmeter.threads.ListenerNotifier;
+-import org.apache.jmeter.threads.TestCompiler;
+-import org.apache.jmeter.threads.AbstractThreadGroup;
+-import org.apache.jmeter.threads.SetupThreadGroup;
+ import org.apache.jmeter.threads.PostThreadGroup;
++import org.apache.jmeter.threads.SetupThreadGroup;
++import org.apache.jmeter.threads.TestCompiler;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.collections.ListedHashTree;
+@@ -58,8 +56,6 @@
+ public class StandardJMeterEngine implements JMeterEngine, JMeterThreadMonitor, Runnable {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    private static final long WAIT_TO_DIE = JMeterUtils.getPropDefault("jmeterengine.threadstop.wait", 5 * 1000); // 5 seconds
+-
+     // Should we exit at end of the test? (only applies to server, because host is non-null)
+     private static final boolean exitAfterTest =
+         JMeterUtils.getPropDefault("server.exitaftertest", false);  // $NON-NLS-1$
+@@ -92,10 +88,7 @@
+ 
+     /** Whether to call System.exit(1) if threads won't stop */
+     private static final boolean SYSTEM_EXIT_ON_STOP_FAIL = JMeterUtils.getPropDefault("jmeterengine.stopfail.system.exit", true);
+-
+-    /** JMeterThread => its JVM thread */
+-    private final Map<JMeterThread, Thread> allThreads;
+-
++    
+     /** Flag to show whether test is running. Set to false to stop creating more threads. */
+     private volatile boolean running = false;
+ 
+@@ -111,6 +104,8 @@
+ 
+     private final String host;
+ 
++    private List<AbstractThreadGroup> groups = Collections.synchronizedList(new ArrayList<AbstractThreadGroup>());
++
+     public static void stopEngineNow() {
+         if (engine != null) {// May be null if called from Unit test
+             engine.stopTest(true);
+@@ -139,22 +134,12 @@
+         if (engine == null) {
+             return false;// e.g. not yet started
+         }
++        boolean wasStopped = false;
+         // ConcurrentHashMap does not need synch. here
+-        for(Entry<JMeterThread, Thread> entry : engine.allThreads.entrySet()){
+-            JMeterThread thrd = entry.getKey();
+-            if (thrd.getThreadName().equals(threadName)){
+-                thrd.stop();
+-                thrd.interrupt();
+-                if (now) {
+-                    Thread t = entry.getValue();
+-                    if (t != null) {
+-                        t.interrupt();
+-                    }
+-                }
+-                return true;
+-            }
++        for (AbstractThreadGroup threadGroup : engine.groups) {
++            wasStopped = wasStopped || threadGroup.stopThread(threadName, now);
+         }
+-        return false;
++        return wasStopped;
+     }
+ 
+     // End of code to allow engine to be controlled remotely
+@@ -165,7 +150,6 @@
+ 
+     public StandardJMeterEngine(String host) {
+         this.host = host;
+-        this.allThreads = new ConcurrentHashMap<JMeterThread, Thread>();
+         // Hack to allow external control
+         engine = this;
+     }
+@@ -268,7 +252,9 @@
+     // Called by JMeter thread when it finishes
+     public synchronized void threadFinished(JMeterThread thread) {
+         log.info("Ending thread " + thread.getThreadName());
+-        allThreads.remove(thread);
++        for (AbstractThreadGroup threadGroup : groups) {
++            threadGroup.threadFinished(thread);
++        }
+     }
+ 
+     public synchronized void stopTest() {
+@@ -292,7 +278,7 @@
+             engine = null;
+             if (now) {
+                 tellThreadsToStop();
+-                pause(10 * allThreads.size());
++                pause(10 * countStillActiveThreads());
+                 boolean stopped = verifyThreadsStopped();
+                 if (!stopped) {  // we totally failed to stop the test
+                     if (JMeter.isNonGUI()) {
+@@ -381,9 +367,7 @@
+                 String groupName = startThreadGroup(group, groupCount, setupSearcher, testLevelElements, notifier);
+                 if (serialized && setupIter.hasNext()) {
+                     log.info("Waiting for setup thread group: "+groupName+" to finish before starting next setup group");
+-                    while (running && allThreads.size() > 0) {
+-                        pause(1000);
+-                    }
++                    pauseWhileRemainingThreads();
+                 }
+             }    
+             log.info("Waiting for all setup thread groups To Exit");
+@@ -414,9 +398,7 @@
+             String groupName=startThreadGroup(group, groupCount, searcher, testLevelElements, notifier);
+             if (serialized && iter.hasNext()) {
+                 log.info("Waiting for thread group: "+groupName+" to finish before starting next group");
+-                while (running && allThreads.size() > 0) {
+-                    pause(1000);
+-                }
++                pauseWhileRemainingThreads();
+             }
+         } // end of thread groups
+         if (groupCount == 0){ // No TGs found
+@@ -443,9 +425,7 @@
+                 String groupName = startThreadGroup(group, groupCount, postSearcher, testLevelElements, notifier);
+                 if (serialized && postIter.hasNext()) {
+                     log.info("Waiting for post thread group: "+groupName+" to finish before starting next post group");
+-                    while (running && allThreads.size() > 0) {
+-                        pause(1000);
+-                    }
++                    pauseWhileRemainingThreads();
+                 }
+             }
+             waitThreadsStopped(); // wait for Post threads to stop
+@@ -454,6 +434,33 @@
+         notifyTestListenersOfEnd(testListenersSave);
+     }
+ 
++    /**
++     * Loop with 1s pause while thread groups have threads running 
++     */
++    private void pauseWhileRemainingThreads() {
++        while (running && groupsHaveThreads()) {
++            pause(1000);
++        }
++    }
++
++    /**
++     * @return true if remaining threads
++     */
++    private boolean groupsHaveThreads() {
++        return countStillActiveThreads()>0;
++    }
++
++    /**
++     * @return total of active threads in all Thread Groups
++     */
++    private int countStillActiveThreads() {
++        int reminingThreads= 0;
++        for (AbstractThreadGroup threadGroup : groups) {
++            reminingThreads += threadGroup.numberOfActiveThreads();
++        }
++        return reminingThreads; 
++    }
++    
+     private String startThreadGroup(AbstractThreadGroup group, int groupCount, SearchByClass<?> searcher, List<?> testLevelElements, ListenerNotifier notifier)
+     {
+             int numThreads = group.getNumThreads();
+@@ -478,6 +485,9 @@
+             }
+             ListedHashTree threadGroupTree = (ListedHashTree) searcher.getSubTree(group);
+             threadGroupTree.add(group, testLevelElements);
++            
++            JMeterThread[] jmThreads = 
++                    new JMeterThread[numThreads];
+             for (int i = 0; running && i < numThreads; i++) {
+                 final JMeterThread jmeterThread = new JMeterThread(cloneTree(threadGroupTree), this, notifier);
+                 jmeterThread.setThreadNum(i);
+@@ -493,45 +503,33 @@
+ 
+                 group.scheduleThread(jmeterThread);
+ 
+-                Thread newThread = new Thread(jmeterThread);
+-                newThread.setName(threadName);
+-                allThreads.put(jmeterThread, newThread);
+-                newThread.start();
++                jmThreads[i] = jmeterThread;
+             } // end of thread startup for this thread group
++            group.setJMeterThreads(jmThreads);
++            group.start();
++            groups.add(group);
+             return groupName;
+     }
+ 
++    /**
++     * @return boolean true if all threads of all Threead Groups stopped
++     */
+     private boolean verifyThreadsStopped() {
+         boolean stoppedAll = true;
+         // ConcurrentHashMap does not need synch. here
+-        for (Thread t : allThreads.values()) {
+-            if (t != null) {
+-                if (t.isAlive()) {
+-                    try {
+-                        t.join(WAIT_TO_DIE);
+-                    } catch (InterruptedException e) {
+-                    }
+-                    if (t.isAlive()) {
+-                        stoppedAll = false;
+-                        log.warn("Thread won't exit: " + t.getName());
+-                    }
+-                }
+-            }
++        for (AbstractThreadGroup threadGroup : groups) {
++            stoppedAll = stoppedAll && threadGroup.verifyThreadsStopped();
+         }
+         return stoppedAll;
+     }
+ 
++    /**
++     * Wait for Group Threads to stop
++     */
+     private void waitThreadsStopped() {
+         // ConcurrentHashMap does not need synch. here
+-        for (Thread t : allThreads.values()) {
+-            if (t != null) {
+-                while (t.isAlive()) {
+-                    try {
+-                        t.join(WAIT_TO_DIE);
+-                    } catch (InterruptedException e) {
+-                    }
+-                }
+-            }
++        for (AbstractThreadGroup threadGroup : groups) {
++            threadGroup.waitThreadsStopped();
+         }
+     }
+ 
+@@ -545,14 +543,8 @@
+      */
+     private void tellThreadsToStop() {
+         // ConcurrentHashMap does not need protecting
+-        for (Entry<JMeterThread, Thread> entry : allThreads.entrySet()) {
+-            JMeterThread item = entry.getKey();
+-            item.stop(); // set stop flag
+-            item.interrupt(); // interrupt sampler if possible
+-            Thread t = entry.getValue();
+-            if (t != null ) { // Bug 49734
+-                t.interrupt(); // also interrupt JVM thread
+-            }
++        for (AbstractThreadGroup threadGroup : groups) {
++            threadGroup.tellThreadsToStop();
+         }
+     }
+ 
+@@ -570,8 +562,8 @@
+      */
+     private void stopAllThreads() {
+         // ConcurrentHashMap does not need synch. here
+-        for (JMeterThread item : allThreads.keySet()) {
+-            item.stop();
++        for (AbstractThreadGroup threadGroup : groups) {
++            threadGroup.stop();
+         }
+     }
+ 
+Index: src/core/org/apache/jmeter/threads/ThreadGroup.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/ThreadGroup.java	(revision 1360225)
++++ src/core/org/apache/jmeter/threads/ThreadGroup.java	(working copy)
+@@ -184,7 +184,7 @@
+      * @param thread
+      * @param group
+      */
+-    private void scheduleThread(JMeterThread thread, ThreadGroup group) {
++    protected void scheduleThread(JMeterThread thread, ThreadGroup group) {
+         // if true the Scheduler is enabled
+         if (group.getScheduler()) {
+             long now = System.currentTimeMillis();
+Index: src/core/org/apache/jmeter/threads/AbstractThreadGroup.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/AbstractThreadGroup.java	(revision 1360225)
++++ src/core/org/apache/jmeter/threads/AbstractThreadGroup.java	(working copy)
+@@ -19,6 +19,9 @@
+ package org.apache.jmeter.threads;
+ 
+ import java.io.Serializable;
++import java.util.Map;
++import java.util.Map.Entry;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ import org.apache.jmeter.control.Controller;
+ import org.apache.jmeter.control.LoopController;
+@@ -29,6 +32,9 @@
+ import org.apache.jmeter.testelement.property.IntegerProperty;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ /**
+  * ThreadGroup holds the settings for a JMeter thread group.
+@@ -39,6 +45,10 @@
+ 
+     private static final long serialVersionUID = 240L;
+ 
++    private static final long WAIT_TO_DIE = JMeterUtils.getPropDefault("jmeterengine.threadstop.wait", 5 * 1000); // 5 seconds
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
+     /** Action to be taken when a Sampler error occurs */
+     public final static String ON_SAMPLE_ERROR = "ThreadGroup.on_sample_error"; // int
+ 
+@@ -65,6 +75,10 @@
+     // @GuardedBy("this")
+     private int numberOfThreads = 0; // Number of active threads in this group
+ 
++    private JMeterThread[] jmThreads;
++
++    private Map<JMeterThread, Thread> allThreads = new ConcurrentHashMap<JMeterThread, Thread>();
++
+     /** {@inheritDoc} */
+     public boolean isDone() {
+         return getSamplerController().isDone();
+@@ -217,4 +231,153 @@
+     }
+ 
+     public abstract void scheduleThread(JMeterThread thread);
++
++    /**
++     * Default implementation starts threads immediately
++     */
++    public void start() {
++        for (int i = 0; i < jmThreads.length; i++) {
++            Thread newThread = new Thread(jmThreads[i]);
++            newThread.setName(jmThreads[i].getThreadName());
++            registerStartedThread(jmThreads[i], newThread);
++            newThread.start();            
++        }
++    }
++
++    /**
++     * Register Thread when it starts
++     * @param jMeterThread {@link JMeterThread}
++     * @param newThread Thread
++     */
++    protected final void registerStartedThread(JMeterThread jMeterThread, Thread newThread) {
++        allThreads.put(jMeterThread, newThread);
++    }
++
++    /**
++     * 
++     * @param jmThreads JMeterThread[]
++     */
++    public final void setJMeterThreads(JMeterThread[] jmThreads) {
++        this.jmThreads = jmThreads;
++    }
++
++    /**
++     * @return JMeterThread[]
++     */
++    protected final JMeterThread[] getJMeterThreads() {
++        return this.jmThreads;
++    }
++    
++    /**
++     * Stop thread called threadName:
++     * <ol>
++     *  <li>stop JMeter thread</li>
++     *  <li>interrupt JMeter thread</li>
++     *  <li>interrupt underlying thread</li>
++     * <ol>
++     * @param threadName String thread name
++     * @param now boolean for stop
++     * @return true if thread stopped
++     */
++    public boolean stopThread(String threadName, boolean now) {
++        for(Entry<JMeterThread, Thread> entry : allThreads.entrySet()){
++            JMeterThread thrd = entry.getKey();
++            if (thrd.getThreadName().equals(threadName)){
++                thrd.stop();
++                thrd.interrupt();
++                if (now) {
++                    Thread t = entry.getValue();
++                    if (t != null) {
++                        t.interrupt();
++                    }
++                }
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * Called by JMeter thread when it finishes
++     */
++    public void threadFinished(JMeterThread thread) {
++        allThreads.remove(thread);
++    }
++
++    /**
++     * For each thread, invoke:
++     * <ul> 
++     * <li>{@link JMeterThread#stop()} - set stop flag</li>
++     * <li>{@link JMeterThread#interrupt()} - interrupt sampler</li>
++     * <li>{@link Thread#interrupt()} - interrupt JVM thread</li>
++     * </ul> 
++     */
++    public void tellThreadsToStop() {
++        for (Entry<JMeterThread, Thread> entry : allThreads.entrySet()) {
++            JMeterThread item = entry.getKey();
++            item.stop(); // set stop flag
++            item.interrupt(); // interrupt sampler if possible
++            Thread t = entry.getValue();
++            if (t != null ) { // Bug 49734
++                t.interrupt(); // also interrupt JVM thread
++            }
++        }
++    }
++
++    /**
++     * For each thread, invoke:
++     * <ul> 
++     * <li>{@link JMeterThread#stop()} - set stop flag</li>
++     * </ul> 
++     */
++    public void stop() {
++        for (JMeterThread item : allThreads.keySet()) {
++            item.stop();
++        }
++    }
++
++    /**
++     * @return number of active threads
++     */
++    public int numberOfActiveThreads() {
++        return allThreads.size();
++    }
++
++    /**
++     * @return boolean true if all threads stopped
++     */
++    public boolean verifyThreadsStopped() {
++        boolean stoppedAll = true;
++        for (Thread t : allThreads.values()) {
++            if (t != null) {
++                if (t.isAlive()) {
++                    try {
++                        t.join(WAIT_TO_DIE);
++                    } catch (InterruptedException e) {
++                    }
++                    if (t.isAlive()) {
++                        stoppedAll = false;
++                        log.warn("Thread won't exit: " + t.getName());
++                    }
++                }
++            }
++        }
++        return stoppedAll;
++    }
++
++    /**
++     * Wait for all Group Threads to stop
++     */
++    public void waitThreadsStopped() {
++        for (Thread t : allThreads.values()) {
++            if (t != null) {
++                while (t.isAlive()) {
++                    try {
++                        t.join(WAIT_TO_DIE);
++                    } catch (InterruptedException e) {
++                    }
++                }
++            }
++        }
++    }
+ }
+Index: src/core/org/apache/jmeter/threads/OnDemandThreadGroup.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/OnDemandThreadGroup.java	(revision 0)
++++ src/core/org/apache/jmeter/threads/OnDemandThreadGroup.java	(revision 0)
+@@ -0,0 +1,184 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.threads;
++
++import java.util.concurrent.atomic.AtomicBoolean;
++
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Thread Group implementation that creates Threads progressively
++ */
++public class OnDemandThreadGroup extends ThreadGroup {
++    /** How often to check for shutdown during ramp-up, default 1000ms */
++    private static final int RAMPUP_GRANULARITY =
++            JMeterUtils.getPropDefault("jmeterthread.rampup.granularity", 1000); // $NON-NLS-1$
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = 1326448504092168570L;
++
++    private Thread threadStarter;
++
++    /**
++     * Was test stopped
++     */
++    private AtomicBoolean stopped = new AtomicBoolean(false);
++
++    /**
++     * 
++     */
++    public OnDemandThreadGroup() {
++        super();
++    }
++
++    /**
++     * @see org.apache.jmeter.threads.AbstractThreadGroup#start()
++     */
++    @Override
++    public void start() {
++        stopped.set(false);
++        this.threadStarter = new Thread(new ThreadStarter());
++        threadStarter.start();  
++        try {
++            threadStarter.join();
++        } catch (InterruptedException e) {
++            return;
++        }
++    }
++    
++    /**
++     * Starts Threads using ramp up
++     */
++    private class ThreadStarter implements Runnable {
++
++        public ThreadStarter() {
++            super();
++        }
++        
++        public void run() {
++            final JMeterThread[] jMeterThreads = getJMeterThreads();
++            
++            int rampUp = getRampUp();
++            float perThreadDelay = ((float) (rampUp * 1000) / (float) getNumThreads());
++            if (getScheduler()) {
++                long now = System.currentTimeMillis();
++                // set the start time for the Thread
++                if (getDelay() > 0) {// Duration is in seconds
++                    delayBy(getDelay() * 1000, "start");
++                } else {
++                    long start = getStartTime();
++                    if (start < now) {
++                        start = now; // Force a sensible start time
++                        // No delay
++                    } else {
++                        delayBy(start-now, "start");
++                    }
++                }
++            }
++            for (int i = 0; i < jMeterThreads.length; i++) {
++                try {
++                    if(!stopped.get()) {
++                        Thread.sleep(Math.round(perThreadDelay));
++                        Thread newThread = new Thread(jMeterThreads[i]);
++                        newThread.setName(jMeterThreads[i].getThreadName());
++                        registerStartedThread(jMeterThreads[i], newThread);
++                        newThread.start();
++                    }
++                } catch (InterruptedException e) {
++                    break;
++                }
++            }
++        }
++    }
++
++    /**
++     * Wait for delay with RAMPUP_GRANULARITY
++     * @param delay delay in ms
++     * @param type Delay type
++     */
++    protected final void delayBy(long delay, String type) {
++        if (delay > 0) {
++            long start = System.currentTimeMillis();
++            long end = start + delay;
++            long now=0;
++            long pause = RAMPUP_GRANULARITY;
++            while(!stopped.get() && (now = System.currentTimeMillis()) < end) {
++                long togo = end - now;
++                if (togo < pause) {
++                    pause = togo;
++                }
++                try {
++                    Thread.sleep(pause); // delay between checks
++                } catch (InterruptedException e) {
++                    break;
++                }
++            }
++        }
++    }
++    /**
++     * @see org.apache.jmeter.threads.AbstractThreadGroup#stop()
++     */
++    @Override
++    public void stop() {
++        stopped.set(true);
++        super.stop();
++    }
++    
++    @Override
++    public void scheduleThread(JMeterThread thread)
++    {
++        thread.setInitialDelay(0);
++        scheduleThread(thread, this);
++    }
++    
++    /**
++     * This will schedule the time for the JMeterThread.
++     *
++     * @param thread
++     * @param group
++     */
++    protected void scheduleThread(JMeterThread thread, ThreadGroup group) {
++        // if true the Scheduler is enabled
++        if (group.getScheduler()) {
++            long now = System.currentTimeMillis();
++            // set the start time for the Thread
++            if (group.getDelay() > 0) {// Duration is in seconds
++                thread.setStartTime(group.getDelay() * 1000 + now);
++            } else {
++                long start = group.getStartTime();
++                if (start < now) {
++                    start = now; // Force a sensible start time
++                }
++                thread.setStartTime(start);
++            }
++
++            // set the endtime for the Thread
++            if (group.getDuration() > 0) {// Duration is in seconds
++                thread.setEndTime(group.getDuration() * 1000 + (thread.getStartTime()));
++            } else {
++                thread.setEndTime(group.getEndTime());
++            }
++
++            // Enables the scheduler
++            thread.setScheduled(true);
++        }
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 1359911)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -196,7 +196,8 @@
+      *
+      */
+     private void stopScheduler() {
+-        long delay = System.currentTimeMillis() - endTime;
++        long now = System.currentTimeMillis();
++        long delay = now - endTime;
+         if ((delay >= 0)) {
+             running = false;
+         }
+@@ -788,6 +789,7 @@
+      */
+     protected final void delayBy(long delay, String type) {
+         if (delay > 0) {
++            System.out.println(type+"=>"+threadName+" delaying by:"+delay);
+             long start = System.currentTimeMillis();
+             long end = start + delay;
+             long now=0;
+Index: src/core/org/apache/jmeter/threads/gui/OnDemandThreadGroupGui.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/gui/OnDemandThreadGroupGui.java	(revision 0)
++++ src/core/org/apache/jmeter/threads/gui/OnDemandThreadGroupGui.java	(revision 0)
+@@ -0,0 +1,58 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.threads.gui;
++
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.threads.OnDemandThreadGroup;
++import org.apache.jmeter.threads.ThreadGroup;
++
++/**
++ * GUI for {@link OnDemandThreadGroup}
++ */
++public class OnDemandThreadGroupGui extends ThreadGroupGui {
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = 7903310220568526814L;
++
++    /**
++     * 
++     */
++    public OnDemandThreadGroupGui() {
++        super();
++    }
++
++    /**
++     * @see org.apache.jmeter.threads.gui.ThreadGroupGui#createTestElement()
++     */
++    @Override
++    public TestElement createTestElement() {
++        ThreadGroup tg = new OnDemandThreadGroup();
++        modifyTestElement(tg);
++        return tg;
++    }
++    
++    /**
++     * @return String label key
++     */
++    public String getLabelResource() {
++        return "ondemand_threadgroup"; // $NON-NLS-1$
++    }
++}
+\ No newline at end of file

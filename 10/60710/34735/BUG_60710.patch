@@ -1,0 +1,58 @@
+Index: src/components/org/apache/jmeter/extractor/XPathExtractor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/XPathExtractor.java	(revision 1782087)
++++ src/components/org/apache/jmeter/extractor/XPathExtractor.java	(working copy)
+@@ -188,7 +188,7 @@
+ 
+     private void addAssertionFailure(final SampleResult previousResult,
+             final Throwable thrown, final boolean setFailed) {
+-        AssertionResult ass = new AssertionResult(thrown.getClass().getSimpleName()); // $NON-NLS-1$
++        AssertionResult ass = new AssertionResult(getName()); // $NON-NLS-1$
+         ass.setFailure(true);
+         ass.setFailureMessage(thrown.getLocalizedMessage()+"\nSee log file for further details.");
+         previousResult.addAssertionResult(ass);
+Index: test/src/org/apache/jmeter/extractor/TestXPathExtractor.java
+===================================================================
+--- test/src/org/apache/jmeter/extractor/TestXPathExtractor.java	(revision 1781762)
++++ test/src/org/apache/jmeter/extractor/TestXPathExtractor.java	(working copy)
+@@ -256,15 +256,39 @@
+         public void testInvalidXpath() throws Exception {
+             extractor.setXPathQuery("<");
+             extractor.process();
++            assertEquals(1, result.getAssertionResults().length);
++            assertEquals(extractor.getName(), result.getAssertionResults()[0].getName());
++            org.junit.Assert.assertTrue(result.getAssertionResults()[0].
++                    getFailureMessage().contains("A location path was expected, but the following token was encountered"));
+             assertEquals("Default", vars.get(VAL_NAME));
+             assertEquals("0", vars.get(VAL_NAME_NR));
+         }
+ 
+         @Test
++        public void testNonXmlDocument() throws Exception {
++            result.setResponseData("Error:exception occured", null);
++            extractor.setXPathQuery("//test");
++            extractor.process();
++            assertEquals(1, result.getAssertionResults().length);
++            assertEquals(extractor.getName(), result.getAssertionResults()[0].getName());
++            org.junit.Assert.assertTrue(result.getAssertionResults()[0].
++                    getFailureMessage().contains("Content is not allowed in prolog"));
++            assertEquals("Default", vars.get(VAL_NAME));
++            assertEquals("0", vars.get(VAL_NAME_NR));
++        }
++        @Test
+         public void testInvalidDocument() throws Exception {
+             result.setResponseData("<z>", null);
+-            extractor.setXPathQuery("<");
++            extractor.setXPathQuery("//test");
+             extractor.process();
++            
++            assertEquals(1, result.getAssertionResults().length);
++            assertEquals(extractor.getName(), result.getAssertionResults()[0].getName());
++            System.out.println(result.getAssertionResults()[0].
++                    getFailureMessage());
++            org.junit.Assert.assertTrue(result.getAssertionResults()[0].
++                    getFailureMessage().contains("XML document structures must start and end within the same entity"));
++
+             assertEquals("Default", vars.get(VAL_NAME));
+             assertEquals("0", vars.get(VAL_NAME_NR));
+         }

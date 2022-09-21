@@ -1,0 +1,512 @@
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -54,6 +54,7 @@
+ import org.apache.jmeter.testelement.property.IntegerProperty;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.threads.ThreadGroup;
+ import org.apache.jmeter.timers.Timer;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -112,6 +113,10 @@
+ 
+ 	public static final String HTTPS_SPOOF = "ProxyControlGui.https_spoof";
+ 
++	public static final String CONTENT_TYPE_EXCLUDE = "ProxyControlGui.content_type_exclude"; // $NON-NLS-1$
++
++	public static final String CONTENT_TYPE_INCLUDE = "ProxyControlGui.content_type_include"; // $NON-NLS-1$
++	
+ 	public static final int GROUPING_NO_GROUPS = 0;
+ 
+ 	public static final int GROUPING_ADD_SEPARATORS = 1;
+@@ -144,7 +149,7 @@
+ 	private boolean samplerDownloadImages;
+ 
+ 	private boolean regexMatch = false;// Should we match using regexes?
+-	
++
+ 	/**
+ 	 * Tree node where the samples should be stored.
+ 	 * <p>
+@@ -231,6 +236,14 @@
+ 		setProperty(new BooleanProperty(HTTPS_SPOOF, b));
+ 	}
+ 	
++	public void setContentTypeExclude(String contentTypeExclude) {
++		setProperty(new StringProperty(CONTENT_TYPE_EXCLUDE, contentTypeExclude));
++	}
++
++	public void setContentTypeInclude(String contentTypeInclude) {
++		setProperty(new StringProperty(CONTENT_TYPE_INCLUDE, contentTypeInclude));
++	}
++
+ 	public String getClassLabel() {
+ 		return JMeterUtils.getResString("proxy_title"); // $NON-NLS-1$
+ 	}
+@@ -287,8 +300,15 @@
+ 		return getPropertyAsBoolean(HTTPS_SPOOF, false);
+ 	}
+ 	
+-	
++	public String getContentTypeExclude() {
++		return getPropertyAsString(CONTENT_TYPE_EXCLUDE);
++	}
+ 
++	public String getContentTypeInclude() {
++		return getPropertyAsString(CONTENT_TYPE_INCLUDE);
++	}
++
++
+ 	public Class getGuiClass() {
+ 		return org.apache.jmeter.protocol.http.proxy.gui.ProxyControlGui.class;
+ 	}
+@@ -347,7 +367,7 @@
+ 	 * server's response while recording. A future consideration.
+ 	 */
+ 	public void deliverSampler(HTTPSamplerBase sampler, TestElement[] subConfigs, SampleResult result) {
+-		if (filterUrl(sampler)) {
++		if (filterContentType(result) && filterUrl(sampler)) {
+ 			JMeterTreeNode myTarget = findTargetControllerNode();
+ 			Collection defaultConfigurations = findApplicableElements(myTarget, ConfigTestElement.class, false);
+ 			Collection userDefinedVariables = findApplicableElements(myTarget, Arguments.class, true);
+@@ -363,6 +383,11 @@
+ 
+ 			notifySampleListeners(new SampleEvent(result, sampler.getName()));
+ 		}
++		else {
++			if(log.isDebugEnabled()) {
++				log.debug("Sample excluded based on url or content-type: " + result.getUrlAsString() + " - " + result.getContentType());
++			}
++		}
+ 	}
+ 
+ 	public void stopProxy() {
+@@ -402,6 +427,74 @@
+ 		return true;
+ 	}
+ 
++    // Package protected to allow test case access
++    /**
++     * Filter the response based on the content type.
++     * If no include nor exclude filter is specified, the result will be included
++     * 
++     * @param result the sample result to check
++     */
++    boolean filterContentType(SampleResult result) {
++    	String includeExp = getContentTypeInclude(); 
++    	String excludeExp = getContentTypeExclude();
++    	// If no expressions are specified, we let the sample pass
++    	if((includeExp == null || includeExp.length() == 0) &&
++    			(excludeExp == null || excludeExp.length() == 0)
++    			)
++    	{
++    		return true;
++    	}
++    	
++    	// Check that we have a content type
++    	String sampleContentType = result.getContentType();    	
++    	if(sampleContentType == null || sampleContentType.length() == 0) {
++        	if(log.isDebugEnabled()) {
++        		log.debug("No Content-type found for : " + result.getUrlAsString());
++        	}
++    		
++    		return true;
++    	}
++
++    	if(log.isDebugEnabled()) {
++    		log.debug("Content-type to filter : " + sampleContentType);
++    	}
++    	// Check if the include pattern is mathed
++    	if(includeExp != null && includeExp.length() > 0) {
++        	if(log.isDebugEnabled()) {
++        		log.debug("Include expression : " + includeExp);
++        	}    		
++    		
++    		Pattern pattern = null;
++    		try {
++    			pattern = JMeterUtils.getPatternCache().getPattern(includeExp, Perl5Compiler.READ_ONLY_MASK | Perl5Compiler.SINGLELINE_MASK);
++    			if(!JMeterUtils.getMatcher().contains(sampleContentType, pattern)) {
++    				return false;
++    			}
++    		} catch (MalformedCachePatternException e) {
++    			log.warn("Skipped invalid content include pattern: " + includeExp, e);
++    		}
++    	}
++
++    	// Check if the exclude pattern is mathed
++    	if(excludeExp != null && excludeExp.length() > 0) {
++        	if(log.isDebugEnabled()) {
++        		log.debug("Exclude expression : " + excludeExp);
++        	}
++
++    		Pattern pattern = null;
++    		try {
++    			pattern = JMeterUtils.getPatternCache().getPattern(excludeExp, Perl5Compiler.READ_ONLY_MASK | Perl5Compiler.SINGLELINE_MASK);
++    			if(JMeterUtils.getMatcher().contains(sampleContentType, pattern)) {
++    				return false;
++    			}
++    		} catch (MalformedCachePatternException e) {
++    			log.warn("Skipped invalid content exclude pattern: " + includeExp, e);
++    		}
++    	}
++
++    	return true;
++	}
++
+ 	/*
+ 	 * Helper method to add a Response Assertion
+ 	 */
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -57,6 +57,7 @@
+ import org.apache.jmeter.gui.util.HorizontalPanel;
+ import org.apache.jmeter.gui.util.MenuFactory;
+ import org.apache.jmeter.gui.util.PowerTableModel;
++import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.protocol.http.proxy.ProxyControl;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
+@@ -112,12 +113,12 @@
+ 	 * Set/clear the Redirect automatically box on the samplers (default is false)
+ 	 */
+ 	private JCheckBox samplerRedirectAutomatically;
++
+ 	/**
+ 	 * Set/clear the Follow-redirects box on the samplers (default is true)
+ 	 */
+ 	private JCheckBox samplerFollowRedirects;
+ 
+-
+ 	/**
+ 	 * Set/clear the Download images box on the samplers (default is false)
+ 	 */
+@@ -128,6 +129,16 @@
+ 	 * even if it is really https.
+ 	 */
+ 	private JCheckBox httpsSpoof;
++
++	/**
++	 * Regular expression to include results based on content type
++	 */
++	private JTextField contentTypeInclude;
++
++	/**
++	 * Regular expression to exclude results based on content type
++	 */
++	private JTextField contentTypeExclude;
+ 	
+ 	/**
+ 	 * List of available target controllers
+@@ -207,7 +218,9 @@
+ 			model.setUseKeepAlive(useKeepAlive.isSelected());
+ 			model.setSamplerDownloadImages(samplerDownloadImages.isSelected());
+ 			model.setRegexMatch(regexMatch.isSelected());
+-			model.setHttpsSpoof(httpsSpoof.isSelected());			
++			model.setHttpsSpoof(httpsSpoof.isSelected());
++			model.setContentTypeInclude(contentTypeInclude.getText());
++			model.setContentTypeExclude(contentTypeExclude.getText());
+ 			TreeNodeWrapper nw = (TreeNodeWrapper) targetNodes.getSelectedItem();
+ 			if (nw == null) {
+ 				model.setTarget(null);
+@@ -259,6 +272,8 @@
+ 		samplerDownloadImages.setSelected(model.getSamplerDownloadImages());
+ 		regexMatch.setSelected(model.getRegexMatch());
+ 		httpsSpoof.setSelected(model.getHttpsSpoof());
++		contentTypeInclude.setText(model.getContentTypeInclude());
++		contentTypeExclude.setText(model.getContentTypeExclude());
+ 
+ 		reinitializeTargetCombo();// Set up list of potential targets and
+ 									// enable listener
+@@ -324,7 +339,9 @@
+ 				|| command.equals(ProxyControl.USE_KEEPALIVE)
+ 				|| command.equals(ProxyControl.SAMPLER_DOWNLOAD_IMAGES) 
+ 				|| command.equals(ProxyControl.REGEX_MATCH)
+-				|| command.equals(ProxyControl.HTTPS_SPOOF)) {
++				|| command.equals(ProxyControl.HTTPS_SPOOF)
++				|| command.equals(ProxyControl.CONTENT_TYPE_INCLUDE)
++				|| command.equals(ProxyControl.CONTENT_TYPE_EXCLUDE)) {
+ 			enableRestart();
+ 		} else if (command.equals(ADD_EXCLUDE)) {
+ 			excludeModel.addNewRow();
+@@ -437,10 +454,8 @@
+ 		myBox.add(Box.createVerticalStrut(5));
+ 		myBox.add(createHTTPSamplerPanel());
+ 		myBox.add(Box.createVerticalStrut(5));
+-		myBox.add(createTargetPanel());
+-		myBox.add(Box.createVerticalStrut(5));
+-		myBox.add(createGroupingPanel());
+-		myBox.add(Box.createVerticalStrut(5));
++		myBox.add(createContentTypePanel());
++		myBox.add(Box.createVerticalStrut(5));				
+ 		mainPanel.add(myBox, BorderLayout.NORTH);
+ 
+ 		Box includeExcludePanel = Box.createVerticalBox();
+@@ -501,8 +516,6 @@
+ 	}
+ 
+ 	private JPanel createTestPlanContentPanel() {
+-		JLabel label = new JLabel("Test plan content:");
+-
+ 		httpHeaders = new JCheckBox(JMeterUtils.getResString("proxy_headers"));
+ 		httpHeaders.setName(ProxyControl.CAPTURE_HTTP_HEADERS);
+ 		httpHeaders.setSelected(true); // maintain original default
+@@ -521,19 +534,23 @@
+ 		regexMatch.addActionListener(this);
+ 		regexMatch.setActionCommand(ProxyControl.REGEX_MATCH);
+ 
+-		HorizontalPanel panel = new HorizontalPanel();
+-		panel.add(label);
++		VerticalPanel mainPanel = new VerticalPanel();
++		mainPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++				JMeterUtils.getResString("proxy_test_plan_content")));
+ 
+-		panel.add(httpHeaders);
+-		panel.add(addAssertions);
+-		panel.add(regexMatch);
++		HorizontalPanel nodeCreationPanel = new HorizontalPanel();
++		nodeCreationPanel.add(httpHeaders);
++		nodeCreationPanel.add(addAssertions);
++		nodeCreationPanel.add(regexMatch);
++		
++		mainPanel.add(createTargetPanel());
++		mainPanel.add(createGroupingPanel());
++		mainPanel.add(nodeCreationPanel);
+ 
+-		return panel;
++		return mainPanel;
+ 	}
+ 
+ 	private JPanel createHTTPSamplerPanel() {
+-		JLabel label = new JLabel("HTTP Sampler settings:");
+-		
+ 		DefaultComboBoxModel m = new DefaultComboBoxModel();
+ 		// Note: position of these elements in the menu *must* match the
+ 		// corresponding ProxyControl.SAMPLER_TYPE_* values.
+@@ -543,35 +560,36 @@
+ 		samplerTypeName.setName(ProxyControl.SAMPLER_TYPE_NAME);
+ 		samplerTypeName.setSelectedIndex(0);
+ 		samplerTypeName.addItemListener(this);
+-		JLabel label2 = new JLabel("Type:");
++		JLabel label2 = new JLabel(JMeterUtils.getResString("proxy_sampler_type"));
+ 		label2.setLabelFor(samplerTypeName);
+ 
+-		samplerRedirectAutomatically = new JCheckBox("Redirect automatically");
++		samplerRedirectAutomatically = new JCheckBox(JMeterUtils.getResString("follow_redirects_auto"));
+ 		samplerRedirectAutomatically.setName(ProxyControl.SAMPLER_REDIRECT_AUTOMATICALLY);
+ 		samplerRedirectAutomatically.setSelected(false);
+ 		samplerRedirectAutomatically.addActionListener(this);
+ 		samplerRedirectAutomatically.setActionCommand(ProxyControl.SAMPLER_REDIRECT_AUTOMATICALLY);
+ 		
+-		samplerFollowRedirects = new JCheckBox("Follow redirects");
++		samplerFollowRedirects = new JCheckBox(JMeterUtils.getResString("follow_redirects"));
+ 		samplerFollowRedirects.setName(ProxyControl.SAMPLER_FOLLOW_REDIRECTS);
+ 		samplerFollowRedirects.setSelected(true);
+ 		samplerFollowRedirects.addActionListener(this);
+ 		samplerFollowRedirects.setActionCommand(ProxyControl.SAMPLER_FOLLOW_REDIRECTS);
+ 		
+-		useKeepAlive = new JCheckBox(JMeterUtils.getResString("proxy_usekeepalive"));
++		useKeepAlive = new JCheckBox(JMeterUtils.getResString("use_keepalive"));
+ 		useKeepAlive.setName(ProxyControl.USE_KEEPALIVE);
+ 		useKeepAlive.setSelected(true);
+ 		useKeepAlive.addActionListener(this);
+ 		useKeepAlive.setActionCommand(ProxyControl.USE_KEEPALIVE);
+ 
+-		samplerDownloadImages = new JCheckBox("Download images");
++		samplerDownloadImages = new JCheckBox(JMeterUtils.getResString("web_testing_retrieve_images"));
+ 		samplerDownloadImages.setName(ProxyControl.SAMPLER_DOWNLOAD_IMAGES);
+ 		samplerDownloadImages.setSelected(false);
+ 		samplerDownloadImages.addActionListener(this);
+ 		samplerDownloadImages.setActionCommand(ProxyControl.SAMPLER_DOWNLOAD_IMAGES);
+ 		
+ 		HorizontalPanel panel = new HorizontalPanel();
+-		panel.add(label);
++		panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++				JMeterUtils.getResString("proxy_sampler_settings")));
+ 		panel.add(label2);
+ 		panel.add(samplerTypeName);
+ 		panel.add(samplerRedirectAutomatically);
+@@ -646,7 +664,37 @@
+ 
+ 		return panel;
+ 	}
++	
++	private JPanel createContentTypePanel() {
++		contentTypeInclude = new JTextField(30);
++		contentTypeInclude.setName(ProxyControl.CONTENT_TYPE_INCLUDE);
++		contentTypeInclude.addActionListener(this);
++		contentTypeInclude.setActionCommand(ProxyControl.CONTENT_TYPE_INCLUDE);
++		JLabel labelInclude = new JLabel(JMeterUtils.getResString("proxy_content_type_include"));
++		labelInclude.setLabelFor(contentTypeInclude);
++		// Default value
++		contentTypeInclude.setText(JMeterUtils.getProperty("proxy.content_type_include"));
+ 
++		contentTypeExclude = new JTextField(30);
++		contentTypeExclude.setName(ProxyControl.CONTENT_TYPE_EXCLUDE);
++		contentTypeExclude.addActionListener(this);
++		contentTypeExclude.setActionCommand(ProxyControl.CONTENT_TYPE_EXCLUDE);
++		JLabel labelExclude = new JLabel(JMeterUtils.getResString("proxy_content_type_exclude"));
++		labelExclude.setLabelFor(contentTypeExclude);
++		// Default value
++		contentTypeExclude.setText(JMeterUtils.getProperty("proxy.content_type_exclude"));
++		
++		HorizontalPanel panel = new HorizontalPanel();
++		panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++				JMeterUtils.getResString("proxy_content_type_filter")));
++		panel.add(labelInclude);
++		panel.add(contentTypeInclude);
++		panel.add(labelExclude);
++		panel.add(contentTypeExclude);
++		
++		return panel;
++	}
++
+ 	private JPanel createIncludePanel() {
+ 		includeModel = new PowerTableModel(new String[] { INCLUDE_COL }, new Class[] { String.class });
+ 		includeTable = new JTable(includeModel);
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -481,8 +481,8 @@
+ path_extension_choice=Path Extension (use ";" as separator)
+ path_extension_dont_use_equals=Do not use equals in path extension (Intershop Enfinity compatibility)
+ path_extension_dont_use_questionmark=Do not use questionmark in path extension (Intershop Enfinity compatibility)
+-patterns_to_exclude=Patterns to Exclude
+-patterns_to_include=Patterns to Include
++patterns_to_exclude=URL Patterns to Exclude
++patterns_to_include=URL Patterns to Include
+ pkcs12_desc=PKCS 12 Key (*.p12)
+ port=Port\:
+ property_as_field_label={0}\:
+@@ -503,13 +503,18 @@
+ provider_url=Provider URL
+ proxy_assertions=Add Assertions
+ proxy_cl_error=If specifying a proxy server, host and port must be given
++proxy_content_type_exclude=Exclude\:
++proxy_content_type_filter=Content-type filter
++proxy_content_type_include=Include\:
+ proxy_headers=Capture HTTP Headers
+ proxy_httpsspoofing=Attempt https Spoofing
+ proxy_regex=Regex matching
++proxy_sampler_settings=HTTP Sampler settings
++proxy_sampler_type=Type\:
+ proxy_separators=Add Separators
+ proxy_target=Target Controller\:
++proxy_test_plan_content=Test plan content
+ proxy_title=HTTP Proxy Server
+-proxy_usekeepalive=Set Keep-Alive
+ ramp_up=Ramp-Up Period (in seconds)\:
+ random_control_title=Random Controller
+ random_order_control_title=Random Order Controller
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_es.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_es.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_es.properties	(working copy)
+@@ -394,8 +394,8 @@
+ path_extension_choice=Extensi\u00F3n de Path (utilice ";" como separador)
+ path_extension_dont_use_equals=No utilice el signo igual en la extensi\u00F3n del path (compatibilidad con Intershop Enfinity)
+ path_extension_dont_use_questionmark=No utilice el signo interrogaci\u00F3n en la extensi\u00F3n del path (compatibilidad con Intershop Enfinity)
+-patterns_to_exclude=Patrones a Excluir
+-patterns_to_include=Patrones a Incluir
++patterns_to_exclude=URL Patrones a Excluir
++patterns_to_include=URL Patrones a Incluir
+ pkcs12_desc=Clave PKCS (*.p12)
+ port=Puerto\:
+ property_default_param=Valor por defecto
+@@ -417,7 +417,6 @@
+ proxy_separators=A\u00F1adir Separadores
+ proxy_target=Controlador Objetivo\:
+ proxy_title=Servidor Proxy HTTP
+-proxy_usekeepalive=Establecer Keep-Alive
+ ramp_up=Periodo de Subida (en segundos)\:
+ random_control_title=Controlador Random
+ random_order_control_title=Controlador Random Order
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -299,8 +299,8 @@
+ path=Chemin\:
+ path_extension_choice=Extension Chamin (utiliser ";" comme separateur)
+ path_extension_dont_use_equals=Ne pas utiliser \u00E9gale dans l'extension de chemin (Intershop Enfinity compatibility)
+-patterns_to_exclude=Motifs \u00E0 Exclure
+-patterns_to_include=Motifs \u00E0 Inclure
++patterns_to_exclude=URL Motifs \u00E0 Exclure
++patterns_to_include=URL Motifs \u00E0 Inclure
+ property_default_param=Valeur par d\u00E9faut
+ property_edit=Editer
+ property_editor.value_is_invalid_message=Le texte que vous venez d'entrer n'a pas une valeur valide pour cette propri\u00E9t\u00E9.\nLa propri\u00E9t\u00E9 va revenir \u00E0 sa valeur pr\u00E9c\u00E9dente.
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_de.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_de.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_de.properties	(working copy)
+@@ -115,8 +115,8 @@
+ paste=Einf\u00FCgen
+ paste_insert=Als Eintrag einf\u00FCgen
+ path_extension_choice=Path Erweiterung (benutze ";" als Trennzeichen)
+-patterns_to_exclude=Muster zum ausschliessen
+-patterns_to_include=Muster zum einschliessen
++patterns_to_exclude=URL Muster zum ausschliessen
++patterns_to_include=URL Muster zum einschliessen
+ protocol=Protokol\:
+ proxy_cl_error=Wenn Sie einen Proxy Server spezifizieren, m\u00FCssen Sie den Host und Port angeben
+ random_control_title=Zufalls Kontroller
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_ja.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_ja.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_ja.properties	(working copy)
+@@ -302,7 +302,6 @@
+ proxy_separators=\u30BB\u30D1\u30EC\u30FC\u30BF\u306E\u8FFD\u52A0
+ proxy_target=\u5BFE\u8C61\u3068\u306A\u308B\u30B3\u30F3\u30C8\u30ED\u30FC\u30E9\:
+ proxy_title=HTTP \u30D7\u30ED\u30AD\u30B7\u30B5\u30FC\u30D0
+-proxy_usekeepalive=Keep-Alive\u3092\u8A2D\u5B9A
+ ramp_up=Ramp-Up \u671F\u9593 (\u79D2)\:
+ random_control_title=\u4E71\u6570\u30B3\u30F3\u30C8\u30ED\u30FC\u30E9
+ random_order_control_title=\u30E9\u30F3\u30C0\u30E0\u9806\u5E8F\u30B3\u30F3\u30C8\u30ED\u30FC\u30E9
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_zh_TW.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_zh_TW.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_zh_TW.properties	(working copy)
+@@ -417,7 +417,6 @@
+ proxy_separators=\u589E\u52A0\u5206\u9694
+ proxy_target=\u76EE\u6A19\u63A7\u5236\u5668
+ proxy_title=HTTP \u4EE3\u7406\u4F3A\u670D\u5668
+-proxy_usekeepalive=\u4FDD\u6301\u9023\u7DDA
+ ramp_up=\u555F\u52D5\u5EF6\u9072(\u79D2)
+ random_control_title=\u96A8\u6A5F\u63A7\u5236\u5668
+ random_order_control_title=\u96A8\u6A5F\u9806\u5E8F\u63A7\u5236\u5668
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_no.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_no.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages_no.properties	(working copy)
+@@ -87,8 +87,8 @@
+ paramtable=Send parametre med foresp\u00F8rselen\:
+ password=Passord
+ path=Sti\:
+-patterns_to_exclude=M\u00F8nster \u00E5 ekskludere
+-patterns_to_include=M\u00F8nster \u00E5 inkludere
++patterns_to_exclude=URL M\u00F8nster \u00E5 ekskludere
++patterns_to_include=URL M\u00F8nster \u00E5 inkludere
+ protocol=Protokoll\:
+ proxy_title=HTTP proxy server
+ ramp_up=Oppstartsperiode (i sekunder)\:
+Index: C:/Documents and Settings/alf/workspace/Jmeter/bin/jmeter.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/bin/jmeter.properties	(revision 519566)
++++ C:/Documents and Settings/alf/workspace/Jmeter/bin/jmeter.properties	(working copy)
+@@ -302,6 +302,11 @@
+ # Apache HTTPClient:
+ #jmeter.httpsampler=HTTPSampler2
+ 
++# Default content-type include filter to use
++#proxy.content_type_include=text/html|text/plain|text/xml
++# Default content-type exclude filter to use
++#proxy.content_type_exclude=image/.*|text/css|application/.*
++
+ #---------------------------------------------------------------------------
+ # JMeter Proxy configuration
+ #---------------------------------------------------------------------------

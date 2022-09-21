@@ -1,0 +1,42 @@
+diff  C:/perso_max/workspace/JMeter_2.12/src/core/org/apache/jmeter/samplers/AsynchSampleSender.java C:/perso_max/workspace/JMeter/src/core/org/apache/jmeter/samplers/AsynchSampleSender.java
+135,139d134
+< 
+< 		// Hack to send in real time sampler without over load on network
+<         private long min_wait;
+<         private long max_wait;
+<         
+143,144d137
+<             min_wait = 50;
+<             max_wait = 500;
+151,153d143
+< 			
+<                 int last_size = 0; 
+<                 long current_wait_time = min_wait;
+155,156d144
+< 					
+<                 	this.sleep(current_wait_time);
+159,160c147
+<                     
+<                     while (!(eof = (e == FINAL_EVENT)) && e != null) { 
+---
+>                     while (!(eof = (e == FINAL_EVENT)) && e != null) { // try to process as many as possible
+162c149
+<                         e = queue.poll(); 
+---
+>                         e = queue.poll(); // returns null if nothing on queue currently
+165,179d151
+< 				
+< 					
+<                     if ( size > last_size )
+<                     {
+<                     	current_wait_time +=10;
+<                     	if (current_wait_time > max_wait )
+<                     		{ current_wait_time = max_wait; }
+<                     }
+<                     else
+<                     {
+<                     	current_wait_time -=10;
+<                     	if (current_wait_time < min_wait )
+<                     		{ current_wait_time = min_wait; }
+<                     }                    
+<                     last_size = size;

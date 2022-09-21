@@ -1,0 +1,148 @@
+diff -ru --exclude=CVS head.ori/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties head/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties
+--- head.ori/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties	2005-04-13 13:46:07.000000000 -0700
++++ head/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties	2005-04-13 13:16:07.000000000 -0700
+@@ -496,6 +496,7 @@
+ send_file_filename_label=Filename\:
+ send_file_mime_label=MIME Type\:
+ send_file_param_name_label=Parameter Name\:
++send_post_data=Send as post body
+ server=Server Name or IP\:
+ servername=Servername \:
+ session_argument_name=Session Argument Name
+diff -ru --exclude=CVS head.ori/jakarta-jmeter/src/core/org/apache/jmeter/util/JMeterVersion.java head/jakarta-jmeter/src/core/org/apache/jmeter/util/JMeterVersion.java
+--- head.ori/jakarta-jmeter/src/core/org/apache/jmeter/util/JMeterVersion.java	2005-04-13 13:46:31.000000000 -0700
++++ head/jakarta-jmeter/src/core/org/apache/jmeter/util/JMeterVersion.java	2005-04-13 12:58:09.000000000 -0700
+@@ -42,7 +42,7 @@
+ 	 * This ensures that JMeterUtils always gets the correct version, even if it is
+ 	 * not re-compiled during the build.
+ 	 */
+-	private static final String VERSION = "2.1.20050318";
++	private static final String VERSION = "2.1.20050413";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2005 The Apache Software Foundation";
+ 	
+diff -ru --exclude=CVS head.ori/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java head/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java
+--- head.ori/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java	2005-04-13 13:49:23.000000000 -0700
++++ head/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java	2005-04-13 13:13:41.000000000 -0700
+@@ -24,18 +24,14 @@
+ import java.awt.event.ActionListener;
+ import java.io.File;
+ 
+-import javax.swing.BorderFactory;
+-import javax.swing.BoxLayout;
+-import javax.swing.JButton;
+-import javax.swing.JFileChooser;
+-import javax.swing.JLabel;
+-import javax.swing.JPanel;
+-import javax.swing.JTextField;
++import javax.swing.*;
+ 
+ import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ 
+@@ -51,11 +47,13 @@
+     private JTextField filenameField;
+     private JTextField paramNameField;
+     private JTextField mimetypeField;
++    private JCheckBox postData;
+ 
+     private static String FILENAME = "filename";
+     private static String BROWSE = "browse";
+     private static String PARAMNAME = "paramname";
+     private static String MIMETYPE = "mimetype";
++    private static String POSTDATA ="postdata";
+ 
+     public MultipartUrlConfigGui()
+     {
+@@ -70,6 +68,8 @@
+         ce.setProperty(HTTPSamplerBase.MIMETYPE, mimetypeField.getText());
+         ce.setProperty(HTTPSamplerBase.FILE_NAME, filenameField.getText());
+         ce.setProperty(HTTPSamplerBase.FILE_FIELD, paramNameField.getText());
++        ce.setProperty(new BooleanProperty(HTTPSamplerBase.POSTDATA,
++            postData.isSelected()));
+         return ce;
+     }
+ 
+@@ -88,6 +88,7 @@
+         mimetypeField.setText(el.getPropertyAsString(HTTPSamplerBase.MIMETYPE));
+         filenameField.setText(el.getPropertyAsString(HTTPSamplerBase.FILE_NAME));
+         paramNameField.setText(el.getPropertyAsString(HTTPSamplerBase.FILE_FIELD));
++        postData.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.POSTDATA));
+     }
+ 
+     public String getLabelResource()
+@@ -158,6 +159,10 @@
+                 BorderFactory.createEtchedBorder(),
+                 JMeterUtils.getResString("send_file")));
+ 
++        postData = new JCheckBox(JMeterUtils.getResString("send_post_data"));
++        postData.setName(POSTDATA);
++        postData.setSelected(false);// will be reset by configure(TestElement)
++        filePanel.add(postData);
+         filePanel.add(createFilenamePanel());
+         filePanel.add(createFileParamNamePanel());
+         filePanel.add(createFileMimeTypePanel());
+@@ -226,5 +231,6 @@
+         filenameField.setText("");
+         mimetypeField.setText("");
+         paramNameField.setText("");
++        postData.setSelected(false);
+     }
+ }
+diff -ru --exclude=CVS head.ori/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java head/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+--- head.ori/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	2005-04-13 13:49:00.000000000 -0700
++++ head/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	2005-04-13 13:05:29.000000000 -0700
+@@ -71,6 +71,7 @@
+     public final static String DOMAIN= "HTTPSampler.domain";
+     public final static String PORT= "HTTPSampler.port";
+     public final static String METHOD= "HTTPSampler.method";
++    public final static String POSTDATA = "HTTPSampler.postdata";
+ 
+     public final static String PATH= "HTTPSampler.path";
+     public final static String FOLLOW_REDIRECTS= "HTTPSampler.follow_redirects";
+@@ -193,6 +194,16 @@
+         return p;
+     }
+ 
++    public void setSendPostData(boolean value)
++    {
++        setProperty(new BooleanProperty(POSTDATA, value));
++    }
++
++    public boolean getSendPostData()
++    {
++        return getPropertyAsBoolean(POSTDATA);
++    }
++
+     public void setFollowRedirects(boolean value)
+     {
+         setProperty(new BooleanProperty(FOLLOW_REDIRECTS, value));
+diff -ru --exclude=CVS head.ori/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java head/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java
+--- head.ori/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	2005-04-13 13:49:01.000000000 -0700
++++ head/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	2005-04-13 13:05:29.000000000 -0700
+@@ -52,6 +52,19 @@
+         if ((filename != null) && (filename.trim().length() > 0))
+         {
+             OutputStream out = connection.getOutputStream();
++            if (sampler.getSendPostData())
++            {
++                InputStream in = getFileStream(filename);
++                byte[] buf = new byte[1024];
++                int read;
++                while ((read = in.read(buf)) > 0)
++                {
++                    out.write(buf, 0, read);
++                }
++                out.flush();
++                in.close();
++                return;
++            }
+             //new FileOutputStream("c:\\data\\experiment.txt");
+             //new ByteArrayOutputStream();
+             writeln(out, "--" + BOUNDARY);

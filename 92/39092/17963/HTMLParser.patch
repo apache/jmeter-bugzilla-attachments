@@ -1,0 +1,33 @@
+--- C:\oldHTMLParser.java	Fri Mar 24 10:47:08 2006
++++ C:\newHTMLParser.java	Fri Mar 24 10:46:48 2006
+@@ -91,7 +91,12 @@
+ 		} catch (ClassNotFoundException e) {
+ 			throw new HTMLParseError(e);
+ 		}
+-		log.info("Created " + htmlParserClassName);
++		if (!pars.isValid()) {
++			log.warn(htmlParserClassName + " can't be used. Instead, RegexpHTMLParser is used.");
++			pars = new RegexpHTMLParser(); // RegexpHTMLParser is always ready to use.
++		} else {
++			log.info("Created " + htmlParserClassName);
++		}
+ 		if (pars.isReusable()) {
+ 			parsers.put(htmlParserClassName, pars);// cache the parser
+ 		}
+@@ -218,6 +223,16 @@
+ 	 */
+ 	protected boolean isReusable() {
+ 		return false;
++	}
++	
++	
++	/**
++	 * Parsers should over-ride this method if the parser might be
++	 * "not ready" to use in some situation.
++	 * @return true if the HTMLParser is ready to use.
++	 */
++	protected boolean isValid() {
++		return true;
+ 	}
+ 
+ 	// ////////////////////////// TEST CODE FOLLOWS

@@ -1,0 +1,111 @@
+Index: src/core/org/apache/jmeter/reporters/ResultCollector.java
+===================================================================
+--- src/core/org/apache/jmeter/reporters/ResultCollector.java	(revision 1412872)
++++ src/core/org/apache/jmeter/reporters/ResultCollector.java	(working copy)
+@@ -58,6 +58,8 @@
+ import org.apache.log.Logger;
+ import org.xml.sax.SAXException;
+ 
++
++
+ import com.thoughtworks.xstream.converters.ConversionException;
+ 
+ /**
+@@ -286,8 +288,20 @@
+      * - Avalon format
+      * - CSV format
+      *
++     */ 
++    public void loadExistingFile(){
++        loadExistingFile(false);
++    }
++    
++    /**
++     * Loads an existing sample data (JTL) file.
++     * This can be one of:
++     * - XStream format
++     * - Avalon format
++     * - CSV format
++     *  @param clean : clean Visualizer before importing file
+      */
+-    public void loadExistingFile() {
++    public void loadExistingFile(boolean clean) {
+         final Visualizer visualizer = getVisualizer();
+         if (visualizer == null) {
+             return; // No point reading the file if there's no visualiser
+@@ -307,6 +321,9 @@
+                 if (line == null) {
+                     log.warn(filename+" is empty");
+                 } else {
++                    if (clean && (visualizer instanceof Clearable)){
++                        ((Clearable) visualizer).clearData();
++                    }
+                     if (!line.startsWith("<?xml ")){// No, must be CSV //$NON-NLS-1$
+                         CSVSaveService.processSamples(filename, visualizer, this);
+                         parsedOK = true;
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1412872)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -157,6 +157,7 @@
+ choose_language=Choose Language
+ clear=Clear
+ clear_all=Clear All
++clear_before_import=Clear Visualizer before import file
+ clear_cache_per_iter=Clear cache each iteration?
+ clear_cookies_per_iter=Clear cookies each iteration?
+ close=Close
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1412872)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -151,6 +151,7 @@
+ choose_language=Choisir une langue
+ clear=Nettoyer
+ clear_all=Nettoyer tout
++clear_before_import=Nettoyer l\'ecran avant rechargement du fichier
+ clear_cache_per_iter=Nettoyer le cache \u00E0 chaque it\u00E9ration ?
+ clear_cookies_per_iter=Nettoyer les cookies \u00E0 chaque it\u00E9ration ?
+ close=Fermer
+Index: src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java
+===================================================================
+--- src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	(revision 1412872)
++++ src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	(working copy)
+@@ -121,6 +121,10 @@
+     /* A checkbox choosing whether or not only successes should be logged. */
+     private final JCheckBox successOnlyLogging;
+ 
++    /* A checkbox choosing whether or not clear Visualizer before import */
++    private final JCheckBox clearBeforeImport;
++
++    
+     protected ResultCollector collector = new ResultCollector();
+ 
+     protected boolean isStats = false;
+@@ -145,6 +149,9 @@
+                 }
+             }
+         });
++        
++        clearBeforeImport = new JCheckBox(JMeterUtils.getResString("clear_before_import")); // $NON-NLS-1$
++        
+         JButton saveConfigButton = new JButton(JMeterUtils.getResString("config_save_settings")); // $NON-NLS-1$
+         saveConfigButton.addActionListener(new ActionListener() {
+             public void actionPerformed(ActionEvent e) {
+@@ -163,6 +170,7 @@
+         filePanel.add(new JLabel(JMeterUtils.getResString("log_only"))); // $NON-NLS-1$
+         filePanel.add(errorLogging);
+         filePanel.add(successOnlyLogging);
++        filePanel.add(clearBeforeImport);
+         filePanel.add(saveConfigButton);
+ 
+     }
+@@ -249,7 +257,7 @@
+     public void stateChanged(ChangeEvent e) {
+         log.debug("getting new collector");
+         collector = (ResultCollector) createTestElement();
+-        collector.loadExistingFile();
++        collector.loadExistingFile(clearBeforeImport.isSelected());
+     }
+ 
+     /* Implements JMeterGUIComponent.createTestElement() */

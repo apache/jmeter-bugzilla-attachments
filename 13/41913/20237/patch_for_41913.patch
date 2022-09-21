@@ -1,0 +1,771 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java	(revision 536456)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java	(working copy)
+@@ -1,63 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- * 
+- */
+-
+-package org.apache.jmeter.control.gui;
+-
+-import java.awt.BorderLayout;
+-
+-import org.apache.jmeter.control.TransactionController;
+-import org.apache.jmeter.control.gui.AbstractControllerGui;
+-import org.apache.jmeter.testelement.TestElement;
+-
+-/**
+- * A Transaction controller component.
+- * 
+- */
+-public class TransactionControllerGui extends AbstractControllerGui {
+-	/**
+-	 * Create a new TransactionControllerGui instance.
+-	 */
+-	public TransactionControllerGui() {
+-		init();
+-	}
+-
+-	/* Implements JMeterGUIComponent.createTestElement() */
+-	public TestElement createTestElement() {
+-		TransactionController lc = new TransactionController();
+-		configureTestElement(lc);
+-		return lc;
+-	}
+-
+-	/* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+-	public void modifyTestElement(TestElement el) {
+-		configureTestElement(el);
+-	}
+-
+-	public String getLabelResource() {
+-		return "transaction_controller_title"; // $NON-NLS-1$
+-	}
+-
+-	/**
+-	 * Initialize the GUI components and layout for this component.
+-	 */
+-	private void init() {
+-		setLayout(new BorderLayout());
+-		setBorder(makeBorder());
+-		add(makeTitlePanel(), BorderLayout.NORTH);
+-	}
+-}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/control/TransactionController.java	(revision 536456)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -1,143 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- * 
+- */
+-
+-package org.apache.jmeter.control;
+-
+-import java.io.Serializable;
+-
+-import org.apache.jmeter.samplers.SampleEvent;
+-import org.apache.jmeter.samplers.SampleListener;
+-import org.apache.jmeter.samplers.SampleResult;
+-import org.apache.jmeter.samplers.Sampler;
+-import org.apache.jmeter.threads.JMeterContext;
+-import org.apache.jmeter.threads.JMeterThread;
+-import org.apache.jmeter.threads.JMeterVariables;
+-import org.apache.jmeter.threads.ListenerNotifier;
+-import org.apache.jmeter.threads.SamplePackage;
+-import org.apache.jorphan.logging.LoggingManager;
+-import org.apache.log.Logger;
+-
+-/**
+- * Transaction Controller to measure transaction times
+- * 
+- */
+-public class TransactionController extends GenericController implements SampleListener, Controller, Serializable {
+-	protected static final Logger log = LoggingManager.getLoggerForClass();
+-
+-	transient private String threadName;
+-
+-	transient private ListenerNotifier lnf;
+-
+-	transient private SampleResult res;
+-    
+-    transient private int calls;
+-
+-    transient private int noFailingSamples;
+-
+-	/**
+-	 * Creates a Transaction Controller
+-	 */
+-	public TransactionController() {
+-		threadName = Thread.currentThread().getName();
+-		lnf = new ListenerNotifier();
+-	}
+-
+-    private Object readResolve(){
+-        threadName = Thread.currentThread().getName();
+-        lnf = new ListenerNotifier();
+-        return this;
+-    }
+-
+-    private void log_debug(String s) {
+-		String n = this.getName();
+-		log.debug(threadName + " " + n + " " + s);
+-	}
+-    
+-	/**
+-	 * @see org.apache.jmeter.control.Controller#next()
+-	 */
+-	public Sampler next() {
+-		if (isFirst()) // must be the start of the subtree
+-		{
+-			log_debug("+++++++++++++++++++++++++++++");
+-			calls = 0;
+-            noFailingSamples = 0;
+-			res = new SampleResult();
+-            res.setSampleLabel(getName());
+-            // Assume success
+-            res.setSuccessful(true);
+-			res.sampleStart();
+-		}
+-
+-        Sampler returnValue = super.next();
+-        
+-		if (returnValue == null) // Must be the end of the controller
+-		{
+-			log_debug("-----------------------------" + calls);
+-			if (res == null) {
+-				log_debug("already called");
+-			} else {
+-				res.sampleEnd();
+-                res.setResponseMessage("Number of samples in transaction : " + calls + ", number of failing samples : " + noFailingSamples);
+-                if(res.isSuccessful()) {
+-                    res.setResponseCodeOK();
+-                }
+-
+-				// TODO could these be done earlier (or just once?)
+-                JMeterContext threadContext = getThreadContext();
+-                JMeterVariables threadVars = threadContext.getVariables();
+-
+-				SamplePackage pack = (SamplePackage) threadVars.getObject(JMeterThread.PACKAGE_OBJECT);
+-				if (pack == null) {
+-					log.warn("Could not fetch SamplePackage");
+-				} else {
+-                    SampleEvent event = new SampleEvent(res, getName());
+-                    // We must set res to null now, before sending the event for the transaction,
+-                    // so that we can ignore that event in our sampleOccured method 
+-                    res = null;
+-					lnf.notifyListeners(event, pack.getSampleListeners());
+-				}
+-			}
+-		}
+-        else {
+-            // We have sampled one of our children
+-            calls++;            
+-        }
+-
+-		return returnValue;
+-	}
+-    
+-    public void sampleOccurred(SampleEvent se) {
+-        // Check if we have are still sampling our children
+-        if(res != null) {
+-            SampleResult sampleResult = se.getResult(); 
+-            res.setThreadName(sampleResult.getThreadName());
+-            res.setBytes(res.getBytes() + sampleResult.getBytes());
+-            if(!sampleResult.isSuccessful()) {
+-                res.setSuccessful(false);
+-                noFailingSamples++;
+-            }
+-       }
+-    }
+-
+-    public void sampleStarted(SampleEvent e) {
+-    }
+-
+-    public void sampleStopped(SampleEvent e) {
+-    }
+-}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java	(revision 0)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/gui/TransactionControllerGui.java	(revision 0)
+@@ -0,0 +1,62 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.control.gui;
++
++import java.awt.BorderLayout;
++
++import org.apache.jmeter.control.TransactionController;
++import org.apache.jmeter.testelement.TestElement;
++
++/**
++ * A Transaction controller component.
++ * 
++ */
++public class TransactionControllerGui extends AbstractControllerGui {
++	/**
++	 * Create a new TransactionControllerGui instance.
++	 */
++	public TransactionControllerGui() {
++		init();
++	}
++
++	/* Implements JMeterGUIComponent.createTestElement() */
++	public TestElement createTestElement() {
++		TransactionController lc = new TransactionController();
++		configureTestElement(lc);
++		return lc;
++	}
++
++	/* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
++	public void modifyTestElement(TestElement el) {
++		configureTestElement(el);
++	}
++
++	public String getLabelResource() {
++		return "transaction_controller_title"; // $NON-NLS-1$
++	}
++
++	/**
++	 * Initialize the GUI components and layout for this component.
++	 */
++	private void init() {
++		setLayout(new BorderLayout());
++		setBorder(makeBorder());
++		add(makeTitlePanel(), BorderLayout.NORTH);
++	}
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/TransactionSampler.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/TransactionSampler.java	(revision 0)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/TransactionSampler.java	(revision 0)
+@@ -0,0 +1,104 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.control;
++
++import org.apache.jmeter.samplers.AbstractSampler;
++import org.apache.jmeter.samplers.Entry;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.log.Logger;
++
++/**
++ * Transaction Controller to measure transaction times
++ * 
++ */
++public class TransactionSampler extends AbstractSampler {
++  private boolean transactionDone = false;
++
++    private TransactionController transactionController; 
++    
++	private Sampler subSampler;
++
++	private SampleResult transactionSampleResult;
++
++	private int calls = 0;
++
++	private int noFailingSamples = 0;
++
++	public TransactionSampler(TransactionController controller, String name) {
++        transactionController = controller;
++		transactionSampleResult = new SampleResult();
++		transactionSampleResult.setSampleLabel(name);
++		// Assume success
++		transactionSampleResult.setSuccessful(true);
++		transactionSampleResult.sampleStart();
++	}
++
++    /**
++     * One cannot sample the TransactionSample directly.
++     */
++	public SampleResult sample(Entry e) {
++        // It is the JMeterThread which knows how to sample a
++        // real sampler
++        return null;
++	}
++    
++    public Sampler getSubSampler() {
++        return subSampler;
++    }
++    
++    public SampleResult getTransactionResult() {
++        return transactionSampleResult;
++    }
++    
++    public TransactionController getTransactionController() {
++        return transactionController;
++    }
++
++    public boolean isTransactionDone() {
++        return transactionDone;
++    }
++    
++    public void addSubSamplerResult(SampleResult res) {
++        // Another subsample for the transaction
++        calls++;
++        // The transaction fails if any sub sample fails
++        if (!res.isSuccessful()) {
++            transactionSampleResult.setSuccessful(false);
++            noFailingSamples++;
++        }
++        // Add the sub result to the transaction result
++        transactionSampleResult.addSubResult(res);
++    }
++
++	protected void setTransactionDone() {
++		this.transactionDone = true;
++		// Set the overall status for the transaction sample
++		transactionSampleResult.setResponseMessage("Number of samples in transaction : " // $NON-NLS-1$
++						+ calls + ", number of failing samples : " // $NON-NLS-1$
++						+ noFailingSamples);
++		if (transactionSampleResult.isSuccessful()) {
++			transactionSampleResult.setResponseCodeOK();
++		}
++	}
++
++	protected void setSubSampler(Sampler subSampler) {
++		this.subSampler = subSampler;
++	}
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/TransactionController.java	(revision 0)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/control/TransactionController.java	(revision 0)
+@@ -0,0 +1,64 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.control;
++
++import java.io.Serializable;
++
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Transaction Controller to measure transaction times
++ * 
++ */
++public class TransactionController extends GenericController implements Controller, Serializable {
++	protected static final Logger log = LoggingManager.getLoggerForClass();
++
++    transient private TransactionSampler transactionSampler;
++
++	/**
++	 * @see org.apache.jmeter.control.Controller#next()
++	 */
++	public Sampler next() {
++        // Check if transaction is done
++        if(transactionSampler != null && transactionSampler.isTransactionDone()) {
++            log.debug("End of transaction"); // $NON-NLS-1$
++            // This transaction is done
++            transactionSampler = null;
++            return null;
++        }
++        
++        // Check if it is the start of a new transaction
++		if (isFirst()) // must be the start of the subtree
++		{
++		    log.debug("Start of transaction"); // $NON-NLS-1$
++		    transactionSampler = new TransactionSampler(this, getName());
++		}
++
++        // Sample the children of the transaction
++		Sampler subSampler = super.next();
++        transactionSampler.setSubSampler(subSampler);
++        // If we do not get any sub samplers, the transaction is done
++        if (subSampler == null) {
++            transactionSampler.setTransactionDone();
++        }
++        return transactionSampler;
++	}
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/threads/TestCompiler.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/threads/TestCompiler.java	(revision 536456)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/threads/TestCompiler.java	(working copy)
+@@ -31,10 +31,11 @@
+ import org.apache.jmeter.assertions.Assertion;
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.control.Controller;
++import org.apache.jmeter.control.TransactionController;
++import org.apache.jmeter.control.TransactionSampler;
+ import org.apache.jmeter.engine.event.LoopIterationListener;
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.processor.PreProcessor;
+-import org.apache.jmeter.samplers.SampleEvent;
+ import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testbeans.TestBeanHelper;
+@@ -50,13 +51,15 @@
+  * @author unascribed
+  * @version $Revision$
+  */
+-public class TestCompiler implements HashTreeTraverser, SampleListener {
++public class TestCompiler implements HashTreeTraverser {
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+ 	private LinkedList stack = new LinkedList();
+ 
+ 	private Map samplerConfigMap = new HashMap();
+ 
++    private Map transactionControllerConfigMap = new HashMap();
++
+ 	private HashTree testTree;
+ 
+ 	/*
+@@ -82,16 +85,6 @@
+ 		}
+ 	}
+ 
+-	public void sampleOccurred(SampleEvent e) {
+-		// NOTREAD previousResult = e.getResult();
+-	}
+-
+-	public void sampleStarted(SampleEvent e) {
+-	}
+-
+-	public void sampleStopped(SampleEvent e) {
+-	}
+-
+ 	public SamplePackage configureSampler(Sampler sampler) {
+ 		SamplePackage pack = (SamplePackage) samplerConfigMap.get(sampler);
+ 		pack.setSampler(sampler);
+@@ -99,6 +92,13 @@
+ 		runPreProcessors(pack.getPreProcessors());
+ 		return pack;
+ 	}
++    
++    public SamplePackage configureTransactionSampler(TransactionSampler transactionSampler) {
++        TransactionController controller = transactionSampler.getTransactionController();
++        SamplePackage pack = (SamplePackage) transactionControllerConfigMap.get(controller);
++        pack.setSampler(transactionSampler);
++        return pack;
++    }
+ 
+ 	private void runPreProcessors(List preProcessors) {
+ 		Iterator iter = preProcessors.iterator();
+@@ -127,6 +127,9 @@
+ 		if (child instanceof Sampler) {
+ 			saveSamplerConfigs((Sampler) child);
+ 		}
++        else if(child instanceof TransactionController) {
++            saveTransactionControllerConfigs((TransactionController) child);
++        }
+ 		stack.removeLast();
+ 		if (stack.size() > 0) {
+ 			ObjectPair pair = new ObjectPair(child, (TestElement) stack.getLast());
+@@ -206,7 +209,38 @@
+ 		pack.setRunningVersion(true);
+ 		samplerConfigMap.put(sam, pack);
+ 	}
++    
++    private void saveTransactionControllerConfigs(TransactionController tc) {
++        List configs = new LinkedList();
++        List modifiers = new LinkedList();
++        List controllers = new LinkedList();
++        List responseModifiers = new LinkedList();
++        List listeners = new LinkedList();
++        List timers = new LinkedList();
++        List assertions = new LinkedList();
++        LinkedList posts = new LinkedList();
++        LinkedList pres = new LinkedList();
++        for (int i = stack.size(); i > 0; i--) {
++            addDirectParentControllers(controllers, (TestElement) stack.get(i - 1));
++            Iterator iter = testTree.list(stack.subList(0, i)).iterator();
++            while (iter.hasNext()) {
++                TestElement item = (TestElement) iter.next();
++                if (item instanceof SampleListener) {
++                    listeners.add(item);
++                }
++                if (item instanceof Assertion) {
++                    assertions.add(item);
++                }
++            }
++        }
+ 
++        SamplePackage pack = new SamplePackage(configs, modifiers, responseModifiers, listeners, timers, assertions,
++                posts, pres, controllers);
++        pack.setSampler(new TransactionSampler(tc, tc.getName()));
++        pack.setRunningVersion(true);
++        transactionControllerConfigMap.put(tc, pack);
++    }
++
+ 	/**
+ 	 * @param controllers
+ 	 * @param i
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 537729)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.threads;
+ 
+ import java.io.Serializable;
++import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.Iterator;
+ import java.util.List;
+@@ -27,12 +28,14 @@
+ import org.apache.jmeter.assertions.Assertion;
+ import org.apache.jmeter.assertions.AssertionResult;
+ import org.apache.jmeter.control.Controller;
++import org.apache.jmeter.control.TransactionSampler;
+ import org.apache.jmeter.engine.StandardJMeterEngine;
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.engine.event.LoopIterationListener;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.samplers.SampleEvent;
++import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testbeans.TestBeanHelper;
+@@ -100,8 +103,6 @@
+ 
+ 	private boolean onErrorStopThread;
+ 
+-	public static final String PACKAGE_OBJECT = "JMeterThread.pack"; // $NON-NLS-1$
+-
+ 	public static final String LAST_SAMPLE_OK = "JMeterThread.last_sample_ok"; // $NON-NLS-1$
+ 
+ 	public JMeterThread() {
+@@ -244,41 +245,82 @@
+ 				while (running && (sam = controller.next()) != null) {
+ 					try {
+ 						threadContext.setCurrentSampler(sam);
+-						SamplePackage pack = compiler.configureSampler(sam);
++                        
++                        // Check if we are running a transaction
++                        TransactionSampler transactionSampler = null;
++                        if(sam instanceof TransactionSampler) {
++                            transactionSampler = (TransactionSampler) sam;
++                        }
++                        // Find the package for the transaction
++                        SamplePackage transactionPack = null;
++                        if(transactionSampler != null) {
++                            transactionPack = compiler.configureTransactionSampler(transactionSampler);
++                            
++                            // Check if the transaction is done
++                            if(transactionSampler.isTransactionDone()) {
++                                // Get the transaction sample result
++                                SampleResult transactionResult = transactionSampler.getTransactionResult();
+ 
+-						// Hack: save the package for any transaction
+-						// controllers
+-						threadContext.getVariables().putObject(PACKAGE_OBJECT, pack);
++                                // Check assertions for the transaction sample
++                                transactionResult.setThreadName(threadName);
++                                checkAssertions(transactionPack.getAssertions(), transactionResult);
++                                // Notify listeners with the transaction sample result
++                                notifyListeners(transactionPack.getSampleListeners(), transactionResult);
++                                compiler.done(transactionPack);
++                                // Transaction is done, we do not have a sampler to sample
++                                sam = null;
++                            }
++                            else {
++                                // It is the sub sampler of the transaction that will be sampled
++                                sam = transactionSampler.getSubSampler();
++                            }
++                        }
++                        
++                        // Check if we have a sampler to sample
++                        if(sam != null) {
++                            // Get the sampler ready to sample
++                            SamplePackage pack = compiler.configureSampler(sam);
+ 
+-						delay(pack.getTimers());
+-						Sampler sampler = pack.getSampler();
+-						sampler.setThreadContext(threadContext);
+-						sampler.setThreadName(threadName);
+-						TestBeanHelper.prepare(sampler);
+-						SampleResult result = sampler.sample(null); 
+-                        // TODO: remove this useless Entry parameter
++                            delay(pack.getTimers());
++                            Sampler sampler = pack.getSampler();
++                            sampler.setThreadContext(threadContext);
++                            sampler.setThreadName(threadName);
++                            TestBeanHelper.prepare(sampler);
+                         
+-						if (result != null) {
+-							result.setThreadName(threadName);
+-							threadContext.setPreviousResult(result);
+-							runPostProcessors(pack.getPostProcessors());
+-							checkAssertions(pack.getAssertions(), result);
+-							notifyListeners(pack.getSampleListeners(), result);
+-							compiler.done(pack);
+-							if (result.isStopThread() || (!result.isSuccessful() && onErrorStopThread)) {
+-								stopThread();
+-							}
+-							if (result.isStopTest() || (!result.isSuccessful() && onErrorStopTest)) {
+-								stopTest();
+-							}
+-						} else {
+-                            compiler.done(pack); // Finish up
++                            // Perform the actual sample
++                            SampleResult result = sampler.sample(null); 
++                            // TODO: remove this useless Entry parameter
++                        
++                            // If we got any results, then perform processing on the result
++                            if (result != null) {
++                                result.setThreadName(threadName);
++                                threadContext.setPreviousResult(result);
++                                runPostProcessors(pack.getPostProcessors());
++                                checkAssertions(pack.getAssertions(), result);
++                                // Do not send subsamples to listeners which receive the transaction sample
++                                List sampleListeners = getSampleListeners(pack, transactionPack, transactionSampler);
++                                notifyListeners(sampleListeners, result);
++                                compiler.done(pack);
++                                // Add the result as subsample of transaction if we are in a transaction
++                                if(transactionSampler != null) {
++                                    transactionSampler.addSubSamplerResult(result);
++                                }
++
++                                // Check if thread or test should be stopped
++                                if (result.isStopThread() || (!result.isSuccessful() && onErrorStopThread)) {
++                                    stopThread();
++                                }
++                                if (result.isStopTest() || (!result.isSuccessful() && onErrorStopTest)) {
++                                    stopTest();
++                                }
++                            } else {
++                                compiler.done(pack); // Finish up
++                            }
+                         }
+ 						if (scheduler) {
+ 							// checks the scheduler to stop the iteration
+ 							stopScheduler();
+ 						}
+-
+ 					} catch (JMeterStopTestException e) {
+ 						log.info("Stopping Test: " + e.toString());
+ 						stopTest();
+@@ -313,6 +355,41 @@
+ 			threadFinished();
+ 		}
+ 	}
++    
++    /**
++     * Get the SampleListeners for the sampler. Listeners who receive transaction sample
++     * will not be in this list.
++     * 
++     * @param samplePack
++     * @param transactionPack
++     * @param transactionSampler
++     * @return the listeners who should receive the sample result
++     */
++    private List getSampleListeners(SamplePackage samplePack, SamplePackage transactionPack, TransactionSampler transactionSampler) {
++        List sampleListeners = samplePack.getSampleListeners();
++        // Do not send subsamples to listeners which receive the transaction sample
++        if(transactionSampler != null) {
++            ArrayList onlySubSamplerListeners = new ArrayList();
++            List transListeners = transactionPack.getSampleListeners();
++            for(Iterator i = sampleListeners.iterator(); i.hasNext();) {
++                SampleListener listener = (SampleListener)i.next();
++                // Check if this instance is present in transaction listener list
++                boolean found = false;
++                for(Iterator j = transListeners.iterator(); j.hasNext();) {
++                    // Check for the same instance
++                    if(j.next() == listener) {
++                        found = true;
++                        break;
++                    }
++                }
++                if(!found) {
++                    onlySubSamplerListeners.add(listener);
++                }
++            }
++            sampleListeners = onlySubSamplerListeners;
++        }
++        return sampleListeners;
++    }
+ 
+ 	/**
+ 	 * 
+@@ -485,7 +562,6 @@
+ 
+ 	private void notifyListeners(List listeners, SampleResult result) {
+ 		SampleEvent event = new SampleEvent(result, controller.getPropertyAsString(TestElement.NAME));
+-		compiler.sampleOccurred(event);
+ 		notifier.notifyListeners(event, listeners);
+ 
+ 	}

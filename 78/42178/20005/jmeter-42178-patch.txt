@@ -1,0 +1,167 @@
+Index: C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/threads/gui/ThreadGroupGui.java
+===================================================================
+--- C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/threads/gui/ThreadGroupGui.java	(revision 530878)
++++ C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/threads/gui/ThreadGroupGui.java	(working copy)
+@@ -76,6 +76,8 @@
+ 
+ 	private JCheckBox scheduler;
+ 
++	private JCheckBox readBeginning;
++	
+ 	private JTextField duration;
+ 
+ 	private JTextField delay; // Relative start-up time
+@@ -117,6 +119,7 @@
+ 		tg.setProperty(ThreadGroup.RAMP_TIME, rampInput.getText());
+ 		tg.setProperty(new LongProperty(ThreadGroup.START_TIME, start.getDate().getTime()));
+ 		tg.setProperty(new LongProperty(ThreadGroup.END_TIME, end.getDate().getTime()));
++		tg.setProperty(new BooleanProperty(ThreadGroup.READ_BEGINNING, readBeginning.isSelected()));
+ 		tg.setProperty(new BooleanProperty(ThreadGroup.SCHEDULER, scheduler.isSelected()));
+ 		tg.setProperty(new StringProperty(ThreadGroup.ON_SAMPLE_ERROR, onSampleError()));
+ 		tg.setProperty(ThreadGroup.DURATION, duration.getText());
+@@ -144,6 +147,7 @@
+ 		threadInput.setText(tg.getPropertyAsString(ThreadGroup.NUM_THREADS));
+ 		rampInput.setText(tg.getPropertyAsString(ThreadGroup.RAMP_TIME));
+ 		loopPanel.configure((TestElement) tg.getProperty(ThreadGroup.MAIN_CONTROLLER).getObjectValue());
++		readBeginning.setSelected(tg.getPropertyAsBoolean(ThreadGroup.READ_BEGINNING));
+ 		scheduler.setSelected(tg.getPropertyAsBoolean(ThreadGroup.SCHEDULER));
+ 
+ 		if (scheduler.isSelected()) {
+@@ -323,7 +327,12 @@
+ 
+ 		// LOOP COUNT
+ 		threadPropsPanel.add(createControllerPanel());
++		
++		//READ FROM BEGINNING OF FILES
++		readBeginning = new JCheckBox(JMeterUtils.getResString("read_beginning"));
++		threadPropsPanel.add(readBeginning);
+ 
++
+ 		// mainPanel.add(threadPropsPanel, BorderLayout.NORTH);
+ 		// add(mainPanel, BorderLayout.CENTER);
+ 
+Index: C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/threads/ThreadGroup.java
+===================================================================
+--- C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/threads/ThreadGroup.java	(revision 530878)
++++ C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/threads/ThreadGroup.java	(working copy)
+@@ -33,9 +33,9 @@
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.IntegerProperty;
+ import org.apache.jmeter.testelement.property.LongProperty;
+-import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -54,6 +54,8 @@
+ 	public final static String RAMP_TIME = "ThreadGroup.ramp_time";
+ 
+ 	public final static String MAIN_CONTROLLER = "ThreadGroup.main_controller";
++	
++	public final static String READ_BEGINNING = "ThreadGroup.read_beginning";
+ 
+ 	public final static String SCHEDULER = "ThreadGroup.scheduler";
+ 
+@@ -122,8 +124,27 @@
+ 	public Sampler next() {
+ 		return getSamplerController().next();
+ 	}
++	
++	/**
++	 * Set the Read Files from Beginning value.
++	 * 
++	 * @param Scheduler
++	 *            the Scheduler value.
++	 */
++	public void setReadBeginning(boolean readBeginning) {
++		setProperty(new BooleanProperty(READ_BEGINNING, readBeginning));
++	}
+ 
+ 	/**
++	 * Get the Scheduler value.
++	 * 
++	 * @return the Scheduler value.
++	 */
++	public boolean getReadBeginning() {
++		return getPropertyAsBoolean(READ_BEGINNING);
++	}
++
++	/**
+ 	 * Set the Scheduler value.
+ 	 * 
+ 	 * @param Scheduler
+Index: C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 530878)
++++ C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -17,6 +17,7 @@
+ 
+ package org.apache.jmeter.engine;
+ 
++import java.io.IOException;
+ import java.io.PrintWriter;
+ import java.io.Serializable;
+ import java.io.StringWriter;
+@@ -29,6 +30,7 @@
+ import java.util.List;
+ import java.util.Map;
+ 
++import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.testbeans.TestBean;
+ import org.apache.jmeter.testbeans.TestBeanHelper;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -375,6 +377,21 @@
+ 
+             ListedHashTree threadGroupTree = (ListedHashTree) searcher.getSubTree(group);
+             threadGroupTree.add(group, testLevelElements);
++
++            /*
++             * If the TestPlan is serialized, the thread groups have the option to close 
++             * all existing files. This will cause all CSVDataSet readers to start at the 
++             * beginning of the file when they start reading again in the new thread group.
++             */
++            if(serialized && group.getReadBeginning())
++            {
++            	try {
++					FileServer.getFileServer().closeFiles();
++				} catch (IOException e) {
++					log.error("There was an error trying to close all open files for ThreadGroup " + group.getName());
++				}
++            }
++            
+ 			for (int i = 0; running && i < numThreads; i++) {
+                 final JMeterThread jmeterThread = new JMeterThread(cloneTree(threadGroupTree), this, notifier);
+                 jmeterThread.setThreadNum(i);
+Index: C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/resources/messages.properties	(revision 530878)
++++ C:/projects/opensource/JMeter-v2.2/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -501,6 +501,7 @@
+ ramp_up=Ramp-Up Period (in seconds)\:
+ random_control_title=Random Controller
+ random_order_control_title=Random Order Controller
++read_beginning=Read from the beginning of all files
+ read_response_message=Read response is not checked. To see the response, please check the box in the sampler.
+ read_response_note=If read response is unchecked, the sampler will not read the response
+ read_response_note2=or set the SampleResult. This improves performance, but it means 
+Index: C:/projects/opensource/JMeter-v2.2/src/htmlparser16/org/apache/jmeter/protocol/http/parser/HtmlParserHTMLParser16.java
+===================================================================
+--- C:/projects/opensource/JMeter-v2.2/src/htmlparser16/org/apache/jmeter/protocol/http/parser/HtmlParserHTMLParser16.java	(revision 530878)
++++ C:/projects/opensource/JMeter-v2.2/src/htmlparser16/org/apache/jmeter/protocol/http/parser/HtmlParserHTMLParser16.java	(working copy)
+@@ -25,7 +25,6 @@
+ import org.apache.log.Logger;
+ import org.htmlparser.Node;
+ import org.htmlparser.Parser;
+-import org.htmlparser.Tag;
+ import org.htmlparser.tags.AppletTag;
+ import org.htmlparser.tags.BaseHrefTag;
+ import org.htmlparser.tags.BodyTag;
+@@ -35,6 +34,7 @@
+ import org.htmlparser.tags.InputTag;
+ import org.htmlparser.tags.LinkTag;
+ import org.htmlparser.tags.ScriptTag;
++import org.htmlparser.tags.Tag;
+ import org.htmlparser.util.NodeIterator;
+ import org.htmlparser.util.ParserException;

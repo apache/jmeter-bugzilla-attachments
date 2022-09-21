@@ -1,0 +1,27 @@
+94,101c94,110
+<         try
+<         {
+<             remote.reset();
+<         }
+<         catch (Exception ex)
+<         {
+<             log.error("", ex);
+<         }
+---
+> 		try
+> 		{
+> 			try
+> 			{
+> 				remote.reset();
+> 			}
+> 			catch (java.rmi.ConnectException ex)
+> 			{
+> 				//Reconnect
+> 				remote = (RemoteJMeterEngine) Naming.lookup("//" + host + "/JMeterEngine");
+> 				remote.reset();
+> 			}
+> 		}
+> 		catch (Exception ex)
+> 		{
+> 			log.error("", ex);
+> 		}

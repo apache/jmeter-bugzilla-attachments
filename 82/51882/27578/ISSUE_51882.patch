@@ -1,0 +1,44 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(revision 1174132)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(working copy)
+@@ -30,6 +30,7 @@
+ import java.util.Map;
+ import java.util.zip.GZIPInputStream;
+ 
++import org.apache.commons.httpclient.DefaultHttpMethodRetryHandler;
+ import org.apache.commons.httpclient.Header;
+ import org.apache.commons.httpclient.HostConfiguration;
+ import org.apache.commons.httpclient.HttpClient;
+@@ -87,6 +88,8 @@
+ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
++    /** retry count to be used; defaults to 0 = disable retries */
++    private static final int RETRY_COUNT = JMeterUtils.getPropDefault("httpclient3.retrycount", 0);
+ 
+     private static final String HTTP_AUTHENTICATION_PREEMPTIVE = "http.authentication.preemptive"; // $NON-NLS-1$
+ 
+@@ -439,6 +442,8 @@
+         if ( httpClient == null )
+         {
+             httpClient = new HttpClient(new SimpleHttpConnectionManager());
++            httpClient.getParams().setParameter(HttpMethodParams.RETRY_HANDLER, 
++                    new DefaultHttpMethodRetryHandler(RETRY_COUNT, false));
+             if (log.isDebugEnabled()) {
+                 log.debug("Created new HttpClient: @"+System.identityHashCode(httpClient));
+             }
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1174675)
++++ bin/jmeter.properties	(working copy)
+@@ -330,6 +330,9 @@
+ # Number of retries to attempt (default 0)
+ #httpclient4.retrycount=0
+ 
++# Number of retries to attempt (default 0)
++#httpclient3.retrycount=0
++
+ #---------------------------------------------------------------------------
+ # Results file configuration
+ #---------------------------------------------------------------------------

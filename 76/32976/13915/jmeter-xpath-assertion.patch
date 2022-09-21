@@ -1,0 +1,592 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.133
+diff -u -r1.133 messages.properties
+--- src/core/org/apache/jmeter/resources/messages.properties	10 Dec 2004 21:32:53 -0000	1.133
++++ src/core/org/apache/jmeter/resources/messages.properties	6 Jan 2005 21:37:26 -0000
+@@ -656,3 +656,15 @@
+ deref=Dereference aliases
+ ldapext_testing_title= LDAP Extended Request
+ ldap_argument_list=LDAPArgument List
++xpath_assertion_label=XPath
++xpath_assertion_option=XML Parsing Options
++xpath_assertion_validation=Validate the XML against the DTD
++xpath_assertion_whitespace=Ignore whitespace
++xpath_assertion_title=XPath Assertion
++xpath_assertion_error=Error with XPath
++xpath_assertion_test=XPath Assertion 
++xpath_assertion_tidy=Try and tidy up the input
++xpath_assertion_check=Check XPath Expression
++xpath_assertion_valid=Valid XPath Expression
++xpath_assertion_button=Validate XPath
++xpath_assertion_failed=Invalid XPath Expression
+Index: src/components/org/apache/jmeter/assertions/XPathAssertion.java
+===================================================================
+RCS file: src/components/org/apache/jmeter/assertions/XPathAssertion.java
+diff -N src/components/org/apache/jmeter/assertions/XPathAssertion.java
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ src/components/org/apache/jmeter/assertions/XPathAssertion.java	1 Jan 1970 00:00:00 -0000
+@@ -0,0 +1,280 @@
++/*
++ * Copyright 2003-2004 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.assertions;
++
++import java.io.ByteArrayInputStream;
++import java.io.Serializable;
++
++import javax.xml.parsers.DocumentBuilder;
++import javax.xml.parsers.DocumentBuilderFactory;
++
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.StringProperty;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++import org.apache.xpath.CachedXPathAPI;
++import org.w3c.dom.Document;
++import org.w3c.dom.Node;
++import org.w3c.dom.NodeList;
++import org.w3c.tidy.Tidy;
++import org.xml.sax.ErrorHandler;
++import org.xml.sax.SAXException;
++import org.xml.sax.SAXParseException;
++
++/**
++ * Checks if the result is a well-formed XML content.
++ * 
++ * @author <a href="mailto:gottfried@szing.at">Gottfried Szing </a>
++ * @version $Revision: 1.4.2.1 $, $Date: 2004/10/13 00:30:31 $
++ */
++public class XPathAssertion extends AbstractTestElement implements
++		Serializable, Assertion {
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++	public final static int VALIDATE = 1;
++
++	public final static int NOVALIDATE = 2;
++
++	public final static int WHITESPACE = 3;
++
++	public final static int NOWHITESPACE = 4;
++
++	private static CachedXPathAPI xpath = null;
++
++	private static DocumentBuilder builder = null;
++
++	private static DocumentBuilderFactory factory = null;
++
++	// one builder for all requests
++	//   private static SAXBuilder builder = null;
++	//* Static int to signify the type of logical comparitor to assert
++	private static final String XPATH_KEY = "XPath.xpath";
++
++	private boolean whitespace;
++
++	private boolean validate;
++
++	private static final String WHITESPACE_KEY = "XPath.whitespace";
++
++	private static final String VALIDATE_KEY = "XPath.validate";
++
++	private static final String JTIDY_KEY = "XPath.jtidy";
++
++	/**
++	 * Returns the result of the Assertion. Here it checks wether the Sample
++	 * took to long to be considered successful. If so an AssertionResult
++	 * containing a FailureMessage will be returned. Otherwise the returned
++	 * AssertionResult will reflect the success of the Sample.
++	 */
++	public AssertionResult getResult(SampleResult response) {
++		// no error as default
++		AssertionResult result = new AssertionResult();
++		if (response.getResponseData() == null) {
++			return setResultForNull(result);
++		}
++		result.setFailure(false);
++		/* If the xpath is null, all else is naught. */
++
++		if (factory == null) {
++			try {
++				factory = DocumentBuilderFactory.newInstance();
++			} catch (Exception e) {
++				result.setFailure(true);
++				result.setFailureMessage("Could not create factory "
++						+ getXPathString());
++				return result;
++
++			}
++		}
++
++		/*
++		 * create a new builder if something changes and/or the builder has not
++		 * been set
++		 */
++
++		// create parser like (!) a singleton
++		if (builder == null
++				|| factory.isValidating() != isValidating()
++				|| factory.isIgnoringElementContentWhitespace() != isWhitespace()) {
++			factory.setIgnoringElementContentWhitespace(isWhitespace());
++			factory.setValidating(isValidating());
++
++			try {
++				builder = factory.newDocumentBuilder();
++
++				if (isValidating()) {
++					builder.setErrorHandler(new ErrorHandler() {
++
++						public void warning(SAXParseException exception)
++								throws SAXException {
++							throw new SAXException(exception);
++
++						}
++
++						public void error(SAXParseException exception)
++								throws SAXException {
++							throw new SAXException(exception);
++
++						}
++
++						public void fatalError(SAXParseException exception)
++								throws SAXException {
++										throw new SAXException(exception);
++						}
++					});
++				}
++				// This builds a document of whatever's in the given resource
++
++			} catch (Exception e) {
++				log.error("Unable to instantiate DOM Builder", e);
++
++				result.setFailure(true);
++				result.setFailureMessage("Unable to instantiate DOM Builder");
++
++				// return with an error
++				return result;
++			}
++		}
++		log.debug("Validation is set to " + isValidating());
++		log.debug("Whitespace is set to " + isWhitespace());
++
++		Document doc = null;
++
++		try {
++			if (isJTidy()) {
++				Tidy t = getTidyParser();
++				doc = getTidyParser().parseDOM(
++						new ByteArrayInputStream(response.getResponseData()),
++						null);
++				if (log.isDebugEnabled()) {
++					log.debug("node : " + doc);
++				}
++				doc.normalize();
++				//remove the document declaration cause I think it causes
++				// issues
++				Node name = doc.getDoctype();
++				doc.removeChild(name);
++
++			} else {
++				doc = builder.parse(new ByteArrayInputStream(response
++						.getResponseData()));
++
++			}
++		} catch (Exception e) {
++			log.debug("Cannot parse result content", e);
++			e.printStackTrace();
++			result.setFailure(true);
++			result.setFailureMessage(e.getMessage());
++			//         System.out.println("document parsing failed "+resultData);
++			return result;
++		}
++
++		NodeList nodeList = null;
++
++		try {
++			nodeList = getXPath().selectNodeList(doc, getXPathString());
++
++			//	xpath.selectNodes(doc);
++		} catch (Exception e) {
++			log.debug("XPath failed " + e.getMessage());
++			result.setFailure(true);
++			result.setFailureMessage(e.getLocalizedMessage());
++		}
++		if (nodeList == null || nodeList.getLength() == 0) {
++			System.out.println("nodeList null no match  " + getXPathString());
++			result.setFailure(true);
++			result.setFailureMessage("No Nodes Matched " + getXPathString());
++		}
++		System.out.println("nodeList " + nodeList);
++		return result;
++	}
++
++	protected AssertionResult setResultForNull(AssertionResult result) {
++		result.setError(false);
++		result.setFailure(true);
++		result.setFailureMessage("Response was null");
++		return result;
++	}
++
++	public String getXPathString() {
++		String str = getPropertyAsString(XPATH_KEY);
++		if (str == null || str.length() == 0)
++			str = "/";
++		return str;
++	}
++
++	/**
++	 * @param xpath2
++	 */
++	public void setXPath(String xpath) {
++
++		if (xpath != null)
++			setProperty(new StringProperty(XPATH_KEY, xpath));
++	}
++
++	public void setWhitespace(boolean whitespace) {
++		setProperty(new BooleanProperty(WHITESPACE_KEY, whitespace));
++	}
++
++	public void setValidating(boolean validate) {
++		setProperty(new BooleanProperty(VALIDATE_KEY, validate));
++	}
++
++	public boolean isWhitespace() {
++		return getPropertyAsBoolean(WHITESPACE_KEY, false);
++	}
++
++	public boolean isValidating() {
++		return getPropertyAsBoolean(VALIDATE_KEY, false);
++	}
++
++	public boolean isJTidy() {
++		return getPropertyAsBoolean(JTIDY_KEY, false);
++	}
++
++	public void setJTidy(boolean jtidy) {
++
++		setProperty(new BooleanProperty(JTIDY_KEY, jtidy));
++	}
++
++	public Tidy getTidyParser() {
++		log.debug("Start : getParser");
++		Tidy tidy = new Tidy();
++		tidy.setCharEncoding(org.w3c.tidy.Configuration.UTF8);
++		tidy.setQuiet(true);
++		tidy.setShowWarnings(false);
++		tidy.setXHTML(true);
++		tidy.setMakeClean(true);
++		tidy.setXmlTags(true);
++		if (log.isDebugEnabled()) {
++			log.debug("getParser : tidy parser created - " + tidy);
++		}
++		log.debug("End   : getParser");
++		return tidy;
++	}
++
++	public CachedXPathAPI getXPath() {
++		if (xpath == null)
++			xpath = new CachedXPathAPI();
++		return xpath;
++	}
++
++}
++
+Index: src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java
+===================================================================
+RCS file: src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java
+diff -N src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java	1 Jan 1970 00:00:00 -0000
+@@ -0,0 +1,275 @@
++// $Header: /home/cvs/jakarta-jmeter/src/components/org/apache/jmeter/assertions/gui/XMLAssertionGui.java,v 1.5 2004/03/05 01:32:13 sebb Exp $
++/*
++ * Copyright 2001-2004 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++*/
++
++package org.apache.jmeter.assertions.gui;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++import java.awt.event.FocusEvent;
++import java.awt.event.FocusListener;
++
++import javax.swing.BorderFactory;
++import javax.swing.JButton;
++import javax.swing.JCheckBox;
++import javax.swing.JLabel;
++import javax.swing.JOptionPane;
++import javax.swing.JPanel;
++import javax.swing.JTextField;
++import javax.xml.parsers.DocumentBuilderFactory;
++import javax.xml.parsers.ParserConfigurationException;
++import javax.xml.transform.TransformerException;
++
++import org.apache.jmeter.assertions.XPathAssertion;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++//import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++import org.apache.xpath.XPathAPI;
++import org.w3c.dom.Document;
++import org.w3c.dom.Element;
++
++//import org.jdom.JDOMException;
++//import org.jdom.xpath.XPath;
++/**
++ * @version $Revision: 1.5 $, $Date: 2004/03/05 01:32:13 $
++ */
++public class XPathAssertionGui extends AbstractAssertionGui  implements FocusListener, ActionListener
++{
++	private JTextField xpath;
++	private JCheckBox validation, whitespace, tidy;
++	private JButton checkXPath;
++	
++	private static Document testDoc = null;
++	
++	/**
++     * The constructor.
++     */
++    public XPathAssertionGui()
++    {
++        init();
++    }
++
++    /**
++     * Returns the label to be shown within the JTree-Component.
++     */
++    public String getLabelResource()
++    {
++     //  return "XPath Assertion";
++    	return "xpath_assertion_title";
++    }
++
++    public TestElement createTestElement()
++    {
++        XPathAssertion el = new XPathAssertion();
++        modifyTestElement(el);
++        return el;
++    }
++
++    
++
++   
++	public String getXPathAttributesTitle()
++	{
++//		return "XPath to Assert";
++	    return JMeterUtils.getResString("xpath_assertion_test");
++	}
++	 
++	
++	public void focusGained(FocusEvent e)
++	{
++		 log.debug("XPathAssertionGui.focusGained() called");
++	//	 tidySelected();
++	}
++
++	public void focusLost(FocusEvent e)
++	{
++	    
++	}
++
++	private static transient Logger log = LoggingManager.getLoggerForClass();
++	private static final String OPERATOR_KEY = null;
++	private int execState;
++	public void configure(TestElement el)
++	{
++	    super.configure(el);
++	    XPathAssertion assertion = (XPathAssertion) el;
++	    xpath.setText(assertion.getXPathString());
++	    whitespace.setSelected(assertion.isWhitespace());
++	    validation.setSelected(assertion.isValidating());
++	    tidy.setSelected(assertion.isJTidy());
++	    tidySelected();
++	//    size.setText(String.valueOf(assertion.getAllowedSize()));
++	 //   setState(assertion.getCompOper());
++	}
++
++	private void init()
++	{
++	    setLayout(
++	        new VerticalLayout(5, VerticalLayout.LEFT, VerticalLayout.TOP));
++	    setBorder(makeBorder());
++	
++	    add(makeTitlePanel());
++	
++	    // USER_INPUT
++	    JPanel sizePanel = new JPanel();
++	    sizePanel.setBorder(
++	        BorderFactory.createTitledBorder(
++	            BorderFactory.createEtchedBorder(),
++	            getXPathAttributesTitle()));
++	
++	    sizePanel.add(
++	        new JLabel(
++	        		JMeterUtils.getResString("xpath_assertion_label")
++					));
++	    xpath = new JTextField(50);
++	    xpath.addActionListener(new ActionListener(){
++
++			public void actionPerformed(ActionEvent e) {
++				System.out.println("action "+e.getID()+" "+e.getActionCommand());
++				
++				
++			}});
++	    checkXPath = new JButton(JMeterUtils.getResString("xpath_assertion_button"));
++	    checkXPath.addActionListener(new ActionListener() {
++
++			public void actionPerformed(ActionEvent e) {
++				validXPath(xpath.getText(), true);
++			}});
++	    
++	    
++	    xpath.addFocusListener(this);
++	    sizePanel.add(xpath);
++	    sizePanel.add(checkXPath);
++	    JPanel optionPanel = new JPanel();
++	    optionPanel.setBorder(
++		        BorderFactory.createTitledBorder(
++		            BorderFactory.createEtchedBorder(),
++		            JMeterUtils.getResString("xpath_assertion_option")));
++	    
++	    validation = new JCheckBox(JMeterUtils.getResString("xpath_assertion_validation"),false);
++	    whitespace = new JCheckBox(JMeterUtils.getResString("xpath_assertion_whitespace"), false);
++	    tidy	   = new JCheckBox(JMeterUtils.getResString("xpath_assertion_tidy"), false);
++	    
++	    validation.addFocusListener(this);
++	    whitespace.addFocusListener(this);
++	    tidy.addFocusListener(this);
++	    optionPanel.add(validation);
++	    optionPanel.add(whitespace);
++	    optionPanel.add(tidy);
++	    
++	    add(sizePanel);
++	    add(optionPanel);
++	    tidy.addActionListener(new ActionListener() {	public void actionPerformed(ActionEvent e) {	tidySelected();		}});
++	    tidySelected();
++	}
++
++	public void actionPerformed(ActionEvent e)
++	{
++	    int comparator = Integer.parseInt(e.getActionCommand());
++	    execState = comparator;
++	}
++
++	/**
++	 * Modifies a given TestElement to mirror the data in the gui components.
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++	 */
++	public void modifyTestElement(TestElement el)
++	{
++	    configureTestElement(el);
++	    String xpathString = xpath.getText();
++	    //long assertionSize = 0;
++	    
++	  
++	    XPathAssertion assertion = (XPathAssertion) el;
++	   	if (xpathString == null || xpathString.length() == 0){
++	    		 
++	    		 xpathString = assertion.getXPathString();
++	    	
++	  	    log.debug(new StringBuffer("xpathString = ").append(xpathString).toString());
++	    	
++	    	assertion.setXPath(xpathString);
++	    }
++	 
++		tidySelected();
++	    assertion.setValidating(validation.isSelected());
++	    assertion.setWhitespace(whitespace.isSelected());
++	    assertion.setJTidy(tidy.isSelected());
++	    if (validXPath(xpathString, false)) assertion.setXPath(xpathString);
++	}
++
++	private void tidySelected(){
++		if (tidy.isSelected()){
++	    	validation.setEnabled(false);
++	    	whitespace.setEnabled(false);
++	    }else{
++	    	validation.setEnabled(true);
++	    	whitespace.setEnabled(true);
++	    	
++	    }
++	}
++
++	private boolean validXPath(String xpathString, boolean showDialog)  {
++		String ret = new StringBuffer(JMeterUtils.getResString("xpath_assertion_valid")).append(" ").append(xpathString).toString();
++		boolean success= true;
++		try {
++			if (testDoc == null){
++				
++						testDoc = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
++						Element el = testDoc.createElement("root");
++						Element el2 = testDoc.createElement("test");
++						el.appendChild(el2);
++						testDoc.appendChild(el);
++					
++			}
++			if (testDoc == null || xpathString == null){
++				log.warn("testdoc is null? or xpathString "+testDoc+" "+xpathString);
++			}
++			Object retObj = XPathAPI.eval(testDoc, xpathString);
++			if(retObj == null){
++				System.out.println("return object was null "+retObj);
++				ret = new StringBuffer(JMeterUtils.getResString("xpath_assertion_failed")).toString();
++			}
++	
++		} catch (ParserConfigurationException e) {
++	//		e.printStackTrace();
++			success = false;
++			ret = new StringBuffer(JMeterUtils.getResString("xpath_assertion_failed")).append(" ").append(e.getLocalizedMessage()).append(" ").append(xpathString).toString();
++		} catch (TransformerException e) {
++	//		e.printStackTrace();
++			success = false;
++			ret = new StringBuffer(JMeterUtils.getResString("xpath_assertion_failed")).append(" ").append(e.getLocalizedMessage()).append(" ").append(xpathString).toString();
++		} catch (Exception e){
++			e.printStackTrace();
++			success = false;
++			ret = new StringBuffer(JMeterUtils.getResString("xpath_assertion_failed")).append(" ").append(e.getLocalizedMessage()).append(" ").append(xpathString).toString();
++			
++		}
++		if(showDialog)       JOptionPane.showMessageDialog(
++                null,
++				ret,
++                xpathString,
++                (!success) ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
++           
++		return success;
++		
++	}
++
++
++}

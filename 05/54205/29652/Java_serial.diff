@@ -1,0 +1,617 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(révision 1415043)
++++ bin/jmeter.properties	(copie de travail)
+@@ -912,4 +909,7 @@
+ 
+ # Should JMeter automatically load additional system properties?
+ # File name to look for (comment to disable)
+-system.properties=system.properties
+\ Pas de retour chariot à la fin du fichier
++system.properties=system.properties
++
++# Content type for Java Serialisation 
++java_serial_content_types=application/hraccess,application/octet-stream
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(révision 1415043)
++++ src/core/org/apache/jmeter/resources/messages.properties	(copie de travail)
+@@ -404,6 +404,7 @@
+ jar_file=Jar Files
+ java_request=Java Request
+ java_request_defaults=Java Request Defaults
++java_serialized_sampler_title=Java Serialized
+ javascript_expression=JavaScript expression to evaluate
+ jexl_expression=JEXL expression to evaluate
+ jms_auth_required=Required
+@@ -1227,6 +1228,7 @@
+ xpath_tidy_quiet=Quiet
+ xpath_tidy_report_errors=Report errors
+ xpath_tidy_show_warnings=Show warnings
++xstream_serialized_object=Xstream Serialized Data
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+ zh_tw=Chinese (Traditional)
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/JavaSerializedSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/JavaSerializedSamplerGui.java	(révision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/JavaSerializedSamplerGui.java	(copie de travail)
+@@ -0,0 +1,197 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.control.gui;
++
++import java.awt.BorderLayout;
++import java.awt.Dimension;
++import java.awt.GridBagLayout;
++import java.awt.GridBagConstraints;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++
++
++import javax.swing.JPanel;
++import javax.swing.event.ChangeListener;
++import javax.swing.event.ChangeEvent;
++
++import java.io.FileInputStream;
++import java.io.ObjectInputStream;
++import java.io.IOException;
++
++import com.thoughtworks.xstream.XStream;
++import com.thoughtworks.xstream.io.xml.DomDriver;
++
++import org.apache.jmeter.protocol.http.sampler.JavaSerializedSampler;
++import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.util.FilePanel;
++import org.apache.jorphan.gui.JLabeledTextArea;
++import org.apache.jorphan.gui.JLabeledTextField;
++import org.apache.jorphan.util.JOrphanUtils;
++
++public class JavaSerializedSamplerGui extends AbstractSamplerGui implements
++        ActionListener {
++    private static final long serialVersionUID = 240L;
++
++    private JLabeledTextField urlField;
++    private JLabeledTextArea javaSerial;
++
++    private static final String[] EXTS = { "" }; // $NON-NLS-1$
++    private FilePanel javaSerialFile = new FilePanel("", EXTS);
++
++    public JavaSerializedSamplerGui() {
++        init();
++    }
++
++    public String getLabelResource() {
++        return "java_serialized_sampler_title"; //$NON-NLS-1$
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public TestElement createTestElement() {
++        JavaSerializedSampler sampler = new JavaSerializedSampler();
++        modifyTestElement(sampler);
++        return sampler;
++    }
++
++    /**
++     * Modifies a given TestElement to mirror the data in the gui components.
++     * 
++     * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++     */
++    public void modifyTestElement(TestElement s) {
++        this.configureTestElement(s);
++        if (s instanceof JavaSerializedSampler) {
++            JavaSerializedSampler sampler = (JavaSerializedSampler) s;
++            sampler.setUrlData(urlField.getText());
++            sampler.setXstreamData(javaSerial.getText());
++        }
++    }
++
++    /**
++     * Implements JMeterGUIComponent.clearGui
++     */
++    @Override
++    public void clearGui() {
++        super.clearGui();
++
++        urlField.setText(""); //$NON-NLS-1$
++        javaSerial.setText(""); //$NON-NLS-1$
++        javaSerialFile.setFilename(""); //$NON-NLS-1$
++    }
++
++    private void init() {
++        setLayout(new BorderLayout());
++        setBorder(makeBorder());
++
++        add(makeTitlePanel(), BorderLayout.NORTH);
++
++        urlField = new JLabeledTextField(JMeterUtils.getResString("url"), 10); //$NON-NLS-1$
++        javaSerial = new JLabeledTextArea(
++                JMeterUtils.getResString("xstream_serialized_object")); //$NON-NLS-1$
++
++        javaSerialFile.addChangeListener(new ChangeListener() {
++            public void stateChanged(ChangeEvent ev) {
++                loadfile(javaSerialFile);
++            }
++        });
++        JPanel mainPanel = new JPanel(new BorderLayout());
++        JPanel soapActionPanel = new JPanel();
++        soapActionPanel.setLayout(new GridBagLayout());
++        GridBagConstraints c = new GridBagConstraints();
++        c.fill = GridBagConstraints.HORIZONTAL;
++        c.gridwidth = 2;
++        c.gridx = 0;
++        c.gridy = 0;
++        c.weightx = 1;
++        soapActionPanel.add(urlField, c);
++        c.fill = GridBagConstraints.NONE;
++        c.gridwidth = 1;
++        c.gridy = 1;
++        c.weightx = 0;
++
++        c.gridx = 1;
++        c.fill = GridBagConstraints.HORIZONTAL;
++        c.weightx = 1;
++
++        c.fill = GridBagConstraints.HORIZONTAL;
++        c.gridwidth = 2;
++        c.gridy = 2;
++        c.gridx = 0;
++
++        mainPanel.add(soapActionPanel, BorderLayout.NORTH);
++        mainPanel.add(javaSerial, BorderLayout.CENTER);
++        mainPanel.add(javaSerialFile, BorderLayout.SOUTH);
++
++        add(mainPanel, BorderLayout.CENTER);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void configure(TestElement el) {
++        super.configure(el);
++        JavaSerializedSampler sampler = (JavaSerializedSampler) el;
++        urlField.setText(sampler.getUrlData());
++        javaSerial.setText(sampler.getXstreamData());
++    }
++
++    public void actionPerformed(ActionEvent event) {
++        final Object eventSource = event.getSource();
++        if (eventSource == javaSerialFile) {
++
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public Dimension getPreferredSize() {
++        return getMinimumSize();
++    }
++
++    private void loadfile(FilePanel fp) {
++        String filename = fp.getFilename();
++        ObjectInputStream ois = null;
++        try {
++            XStream xstream = new XStream(new DomDriver());
++            FileInputStream fichier = new FileInputStream(filename);
++            ois = new ObjectInputStream(fichier);
++            Object o = ois.readObject();
++            javaSerial.setText(xstream.toXML(o));
++            ois.close();
++        } catch (IOException e) {
++            GuiPackage.showErrorMessage(
++                    "Error loading results file - could not open file",
++                    "Result file loader");
++        } catch (ClassNotFoundException e) {
++            GuiPackage.showErrorMessage(
++                    "Error loading results file - Class not found",
++                    "Result file loader");
++        } finally {
++            JOrphanUtils.closeQuietly(ois);
++        }
++    }
++}
+
+Modification de propriétés sur src/protocol/http/org/apache/jmeter/protocol/http/control/gui/JavaSerializedSamplerGui.java
+___________________________________________________________________
+Added: svn:executable
+## -0,0 +1 ##
++*
+\ No newline at end of property
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/JavaSerialSamplerCreator.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/JavaSerialSamplerCreator.java	(révision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/JavaSerialSamplerCreator.java	(copie de travail)
+@@ -0,0 +1,88 @@
++package org.apache.jmeter.protocol.http.proxy;
++
++import com.thoughtworks.xstream.XStream;
++import com.thoughtworks.xstream.io.xml.DomDriver;
++
++import java.io.IOException;
++import java.util.Map;
++
++import java.io.ObjectInputStream;
++import java.io.ByteArrayInputStream;
++
++import org.apache.jmeter.protocol.http.control.gui.JavaSerializedSamplerGui;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
++import org.apache.jmeter.protocol.http.sampler.JavaSerializedSampler;
++import org.apache.jmeter.protocol.http.util.HTTPConstants;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class JavaSerialSamplerCreator extends DefaultSamplerCreator {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    public String[] getManagedContentTypes() {
++        String content_type_list = 
++                JMeterUtils.getPropDefault("java_serial_content_types",""); // $NON-NLS-1$ 
++        String[] s = content_type_list.split(",");
++        log.error(s.toString());
++        return s;
++    }
++
++    public HTTPSamplerBase createSampler(HttpRequestHdr request,
++            Map<String, String> pageEncodings, Map<String, String> formEncodings) {
++        String xmlstream = extractXstreamStream(request);
++        HTTPSamplerBase sampler = null;
++        /*
++         * If the POST contains a valid JAVA Object, create a specific sampler
++         * If not, use the default Sampler creator
++         */
++        if (xmlstream != null) {
++            sampler = new JavaSerializedSampler();
++            sampler.setProperty(TestElement.GUI_CLASS,
++                    JavaSerializedSamplerGui.class.getName());
++            ((JavaSerializedSampler) sampler).setXstreamData(xmlstream);
++            ((JavaSerializedSampler) sampler).setUrlData(request.getUrl());
++        }
++        else {
++            sampler = super
++                    .createSampler(request, pageEncodings, formEncodings);
++        }
++        // Defaults
++        sampler.setFollowRedirects(false);
++        sampler.setUseKeepAlive(true);
++        if (log.isDebugEnabled()) {
++            log.debug("getSampler: sampler path = " + sampler.getPath()); // $NON-NLS-1$
++        }
++        return sampler;
++    }
++
++    protected void computeFromPostBody(HTTPSamplerBase sampler,
++            HttpRequestHdr request) throws Exception {
++        if (!(sampler instanceof JavaSerializedSampler)) {
++            super.computeFromPostBody(sampler, request);
++        }
++    }
++
++    protected String extractXstreamStream(HttpRequestHdr request) {
++        String xmlstream = null;
++        if (HTTPConstants.POST.equals(request.getMethod())) {
++            byte[] postData = null;
++
++            postData = request.getRawPostData();
++            ByteArrayInputStream bais = new ByteArrayInputStream(postData);
++            try {
++                XStream xstream = new XStream(new DomDriver());
++                ObjectInputStream ois = new ObjectInputStream(bais);
++                Object o = ois.readObject();
++                xmlstream = xstream.toXML(o);
++            } catch (IOException e) {
++                log.error("Error to extract JAVA Serialized Object", e); // $NON-NLS-1$
++            } catch (ClassNotFoundException e) {
++                log.error("Error to extract JAVA Serialized Object", e); // $NON-NLS-1$
++            }
++        }
++        return xmlstream;
++    }
++
++}
+\ Pas de retour chariot à la fin du fichier
+
+Modification de propriétés sur src/protocol/http/org/apache/jmeter/protocol/http/proxy/JavaSerialSamplerCreator.java
+___________________________________________________________________
+Added: svn:executable
+## -0,0 +1 ##
++*
+\ No newline at end of property
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/JavaSerializedSampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/JavaSerializedSampler.java	(révision 0)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/JavaSerializedSampler.java	(copie de travail)
+@@ -0,0 +1,261 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.sampler;
++
++
++import java.io.ByteArrayOutputStream;
++
++import java.io.IOException;
++import java.io.InputStream;
++
++import java.io.ObjectOutputStream;
++
++import java.net.MalformedURLException;
++import java.net.URL;
++import java.util.zip.GZIPInputStream;
++
++import com.thoughtworks.xstream.XStream;
++import com.thoughtworks.xstream.io.xml.DomDriver;
++
++import org.apache.commons.httpclient.HttpClient;
++import org.apache.commons.httpclient.methods.PostMethod;
++import org.apache.commons.httpclient.methods.ByteArrayRequestEntity;
++import org.apache.jmeter.protocol.http.control.CacheManager;
++import org.apache.jmeter.protocol.http.control.Header;
++import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.util.HTTPConstants;
++import org.apache.jmeter.samplers.Interruptible;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.log.Logger;
++
++import com.thoughtworks.xstream.XStream;
++
++/**
++ * Commons HTTPClient based Java Serialization sampler
++ */
++public class JavaSerializedSampler extends HTTPSampler2 implements
++        Interruptible { // Implemented by parent class
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final long serialVersionUID = 240L;
++
++    public static final String URL_DATA = "JavaSerializedSampler.url";//$NON-NLS-1$
++
++    public static final String XSTREAM_DATA = "JavaSerializedSampler.xstream_data"; //$NON-NLS-1$
++
++    private static final String ENCODING = "utf-8"; //$NON-NLS-1$ 
++
++    public void setUrlData(String data) {
++        setProperty(URL_DATA, data);
++    }
++
++    public String getUrlData() {
++        return getPropertyAsString(URL_DATA);
++    }
++
++    public void setXstreamData(String data) {
++        setProperty(XSTREAM_DATA, data);
++    }
++
++    public String getXstreamData() {
++        return getPropertyAsString(XSTREAM_DATA);
++    }
++
++    protected void setPostHeaders(PostMethod post) {
++        int length = 0;// Take length from file
++        if (getHeaderManager() != null) {
++            // headerManager was set, so let's set the connection
++            // to use it.
++            HeaderManager mngr = getHeaderManager();
++            int headerSize = mngr.size();
++            for (int idx = 0; idx < headerSize; idx++) {
++                Header hd = mngr.getHeader(idx);
++                if (HTTPConstants.HEADER_CONTENT_LENGTH.equalsIgnoreCase(hd
++                        .getName())) {// Use this to override file length
++                    length = Integer.parseInt(hd.getValue());
++                }
++
++            }
++        }
++    }
++
++    /**
++     * Send POST data from <code>Entry</code> to the open connection.
++     * 
++     * @param post
++     * @throws IOException
++     *             if an I/O exception occurs
++     */
++    private String sendPostData(PostMethod post) {
++        // Buffer to hold the post body, except file content
++        StringBuilder postedBody = new StringBuilder(1000);
++        XStream xstream = new XStream(new DomDriver());
++        Object o = xstream.fromXML(getXstreamData());
++        ByteArrayOutputStream bao = new ByteArrayOutputStream();
++        ObjectOutputStream oos = null;
++        byte[] serialized_data = null;
++        try {
++            oos = new ObjectOutputStream(bao);
++            oos.writeObject(o);
++            serialized_data = bao.toByteArray();
++            postedBody.append(serialized_data);
++            post.setRequestEntity(new ByteArrayRequestEntity(serialized_data));
++        } catch (IOException e) {
++
++        }
++        return postedBody.toString();
++    }
++
++    protected HTTPSampleResult sample(URL url, String method,
++            boolean areFollowingRedirect, int frameDepth) {
++        String urlStr = url.toString();
++
++        log.debug("Start : sample " + urlStr);
++
++        PostMethod httpMethod;
++        httpMethod = new PostMethod(urlStr);
++
++        HTTPSampleResult res = new HTTPSampleResult();
++        res.setMonitor(false);
++
++        res.setSampleLabel(urlStr); // May be replaced later
++        res.setHTTPMethod(HTTPConstants.POST);
++        res.setURL(url);
++        res.sampleStart(); // Count the retries as well in the time
++        HttpClient client = null;
++        InputStream instream = null;
++        try {
++            setPostHeaders(httpMethod);
++            client = setupConnection(url, httpMethod, res);
++            setSavedClient(client);
++            res.setQueryString(sendPostData(httpMethod));
++            int statusCode = client.executeMethod(httpMethod);
++            // Some headers are set by executeMethod()
++            res.setRequestHeaders(getConnectionHeaders(httpMethod));
++
++            // Request sent. Now get the response:
++            instream = httpMethod.getResponseBodyAsStream();
++
++            if (instream != null) {// will be null for HEAD
++
++                org.apache.commons.httpclient.Header responseHeader = httpMethod
++                        .getResponseHeader(HTTPConstants.HEADER_CONTENT_ENCODING);
++                if (responseHeader != null
++                        && HTTPConstants.ENCODING_GZIP.equals(responseHeader
++                                .getValue())) {
++                    instream = new GZIPInputStream(instream);
++                }
++
++                // int contentLength = httpMethod.getResponseContentLength();Not
++                // visible ...
++                // TODO size ouststream according to actual content length
++                ByteArrayOutputStream outstream = new ByteArrayOutputStream(
++                        4 * 1024);
++                // contentLength > 0 ? contentLength :
++                // DEFAULT_INITIAL_BUFFER_SIZE);
++                byte[] buffer = new byte[4096];
++                int len;
++                boolean first = true;// first response
++                while ((len = instream.read(buffer)) > 0) {
++                    if (first) { // save the latency
++                        res.latencyEnd();
++                        first = false;
++                    }
++                    outstream.write(buffer, 0, len);
++                }
++
++                res.setResponseData(outstream.toByteArray());
++                outstream.close();
++
++            }
++
++            res.sampleEnd();
++            // Done with the sampling proper.
++
++            // Now collect the results into the HTTPSampleResult:
++
++            res.setSampleLabel(httpMethod.getURI().toString());
++            // Pick up Actual path (after redirects)
++
++            res.setResponseCode(Integer.toString(statusCode));
++            res.setSuccessful(isSuccessCode(statusCode));
++
++            res.setResponseMessage(httpMethod.getStatusText());
++
++            // Set up the defaults (may be overridden below)
++            res.setDataEncoding(ENCODING);
++            String ct = null;
++            org.apache.commons.httpclient.Header h = httpMethod
++                    .getResponseHeader(HTTPConstants.HEADER_CONTENT_TYPE);
++            if (h != null)// Can be missing, e.g. on redirect
++            {
++                ct = h.getValue();
++                res.setContentType(ct);// e.g. text/html; charset=ISO-8859-1
++                res.setEncodingAndType(ct);
++            }
++
++            res.setResponseHeaders(getResponseHeaders(httpMethod));
++            if (res.isRedirect()) {
++                res.setRedirectLocation(httpMethod.getResponseHeader(
++                        HTTPConstants.HEADER_LOCATION).getValue());
++            }
++
++            // If we redirected automatically, the URL may have changed
++            if (getAutoRedirects()) {
++                res.setURL(new URL(httpMethod.getURI().toString()));
++            }
++
++            // Store any cookies received in the cookie manager:
++            saveConnectionCookies(httpMethod, res.getURL(), getCookieManager());
++
++            // Save cache information
++            final CacheManager cacheManager = getCacheManager();
++            if (cacheManager != null) {
++                cacheManager.saveDetails(httpMethod, res);
++            }
++
++            // Follow redirects and download page resources if appropriate:
++            res = resultProcessing(areFollowingRedirect, frameDepth, res);
++
++            log.debug("End : sample");
++            httpMethod.releaseConnection();
++            return res;
++        } catch (IllegalArgumentException e)// e.g. some kinds of invalid URL
++        {
++            res.sampleEnd();
++            errorResult(e, res);
++            return res;
++        } catch (IOException e) {
++            res.sampleEnd();
++            errorResult(e, res);
++            return res;
++        } finally {
++            JOrphanUtils.closeQuietly(instream);
++            setSavedClient(null);
++            httpMethod.releaseConnection();
++        }
++    }
++
++    @Override
++    public URL getUrl() throws MalformedURLException {
++        return new URL(getUrlData());
++    }
++}
+
+Modification de propriétés sur src/protocol/http/org/apache/jmeter/protocol/http/sampler/JavaSerializedSampler.java
+___________________________________________________________________
+Added: svn:executable
+## -0,0 +1 ##
++*
+\ No newline at end of property

@@ -1,0 +1,29 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(Revision 1848778)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(Arbeitskopie)
+@@ -123,6 +123,7 @@
+ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+ import org.apache.http.impl.conn.SystemDefaultDnsResolver;
+ import org.apache.http.impl.cookie.IgnoreSpecProvider;
++import org.apache.http.message.BasicHttpRequest;
+ import org.apache.http.message.BasicNameValuePair;
+ import org.apache.http.message.BufferedHeader;
+ import org.apache.http.protocol.BasicHttpContext;
+@@ -381,6 +382,16 @@
+ 
+     // see  https://stackoverflow.com/questions/26166469/measure-bandwidth-usage-with-apache-httpcomponents-httpclient
+     private static final HttpRequestExecutor REQUEST_EXECUTOR = new HttpRequestExecutor() {
++
++        @Override
++        public void preProcess(HttpRequest request, org.apache.http.protocol.HttpProcessor processor, HttpContext context) throws HttpException ,IOException {
++            Object savedRequest = context.getAttribute(HttpCoreContext.HTTP_REQUEST);
++            super.preProcess(request, processor, context);
++            if ("CONNECT".equals(request.getRequestLine().getMethod())) {
++                log.debug("Swap in orig http request: {} for {}", savedRequest, request);
++                context.setAttribute(HttpCoreContext.HTTP_REQUEST, savedRequest);
++            }
++        };
+ 
+         @Override
+         protected HttpResponse doSendRequest(

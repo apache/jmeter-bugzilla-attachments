@@ -1,0 +1,920 @@
+diff --git a/build.xml b/build.xml
+index 0944a46..0d69061 100644
+--- a/build.xml
++++ b/build.xml
+@@ -2293,6 +2293,32 @@ run JMeter unless all the JMeter jars are added.
+     </javadoc>
+ </target>
+ 
++  <target name="docs-newsite" depends="init-docs" description="Generate browsable HTML documentation in web-site format.">
++    <mkdir dir="docs-new" />
++    <xslt style="xdocs/stylesheets/website-style.xsl" basedir="${src.docs}" destdir="docs-new"
++      excludes="extending.xml" includes="*.xml">
++      <param name="relative-path" expression="." />
++      <param name="subdir" expression="" />
++      <param name="year" expression="${year}" />
++    </xslt>
++    <xslt style="xdocs/stylesheets/website-style.xsl" basedir="${src.docs}/usermanual" destdir="docs-new/usermanual"
++      excludes="extending.xml" includes="*.xml">
++      <param name="relative-path" expression=".." />
++      <param name="subdir" expression="usermanual" />
++      <param name="year" expression="${year}" />
++    </xslt>
++    <copy todir="docs-new/images">
++      <fileset dir="${src.images}" excludes="logo.xcf,logo.svg"/>
++    </copy>
++    <copy todir="docs-new/css">
++      <fileset dir="${src.css}"/>
++    </copy>
++    <echo level="info">Remove superfluos &amp;amp;</echo>
++    <replace encoding="iso-8859-1" dir="docs-new" includes="**/*.html" token="&amp;amp;" value="&amp;"/>
++    <echo level="info">Removing unnecessary &lt;/br> tags</echo>
++    <replace encoding="iso-8859-1" dir="${dest.docs}/" includes="**/*.html" token="&lt;/br>" value=""/>
++  </target>
++
+   <target name="docs-site" depends="init-docs" if="AnakiaTask.present" description="Generate browsable HTML documentation in web-site format.">
+     <taskdef name="anakia" classpathref="anakia.classpath" classname="org.apache.velocity.anakia.AnakiaTask"/>
+     <!-- The extending pages are rather out of date (and not linked from elsewhere) -->
+diff --git a/xdocs/css/new-style.css b/xdocs/css/new-style.css
+new file mode 100644
+index 0000000..a73dbeb
+--- /dev/null
++++ b/xdocs/css/new-style.css
+@@ -0,0 +1,339 @@
++/*
++   Licensed to the Apache Software Foundation (ASF) under one or more
++   contributor license agreements.  See the NOTICE file distributed with
++   this work for additional information regarding copyright ownership.
++   The ASF licenses this file to You under the Apache License, Version 2.0
++   (the "License"); you may not use this file except in compliance with
++   the License.  You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
++*/
++
++.main {
++  font-family: DejaVu Sans;
++  width: 60em;
++}
++
++img {
++  border: 0;
++}
++
++.menu, h1, h2, h3, h4, h5, .go-top, .title {
++  font-family: "Special Elite";
++}
++
++.footer {
++  background-color: #444;
++  border-top: 1px solid black;
++  color: white;
++  margin-top: 3em;
++  padding: 2em 0 1em;
++  text-align: center;
++  box-shadow: 0 -8px 21px 0 rgba(0, 0, 0, 0.2);
++}
++
++.menu {
++  border: 1px solid lightgray;
++  box-shadow: 5px 5px 10px rgba(20, 20, 20, 0.3);
++  list-style: outside none none;
++  margin: 0.5em;
++  padding: 0.5em;
++  background-color: #eee;
++}
++
++.menu+.menu {
++  margin-top: 1.5em;
++}
++
++.menu img {
++  margin-left: 0.3em;
++  vertical-align: middle;
++}
++
++.banner {
++  border: 1px solid lightgray;
++  box-shadow: 5px 5px 10px rgba(20, 20, 20, 0.3);
++  list-style: outside none none;
++  margin: 1.5em 0.5em 0.5em;
++  padding: 0.5em;
++  background-color: #fff;
++  text-align: center;
++}
++
++.banner > iframe {
++  width: 140px;
++}
++
++body {
++  margin: 0px;
++  padding: 0px;
++}
++
++.section
++          pre {
++  background: none repeat scroll 0 0 lightblue;
++  padding: 0.2em;
++  font-family: dejavu sans mono;
++  overflow: auto;
++}
++
++.code {
++  background: none repeat scroll 0 0 lightblue;
++  padding: 0.1em;
++  font-family: dejavu sans mono;
++}
++
++.required-Yes>span {
++  font-weight: bold;
++}
++
++.deprecated, .note {
++  background: none repeat scroll 0 0 #fee;
++  border: 1px solid #dbb;
++  margin: 1em;
++  padding: 1em;
++}
++
++.component {
++  background: none repeat scroll 0 0 #fff;
++  margin: 1em;
++  padding: 0.4em;
++}
++
++.subsection {
++  background: none repeat scroll 0 0 white;
++  margin: 1em;
++  padding: 1em;
++}
++
++.screenshot {
++  margin: 2em;
++  padding: 0;
++}
++
++.figure {
++  margin: 1em 2em;
++}
++
++.figure>img, .screenshot>img {
++  box-shadow: 10px 10px 10px 0 rgba(50, 50, 50, 0.25);
++  overflow: auto;
++}
++
++.clear {
++  clear: both;
++}
++
++.nostyle {
++  border: 1px solid black;
++}
++
++.title {
++  font-size: 120%;
++  font-weight: bold;
++}
++
++.example {
++  background: none repeat scroll 0 0 lightgray;
++  border: 1px solid gray;
++  clear: both;
++  padding: 1em;
++  margin: 1em;
++}
++
++.property .name, .property
++          .description, .property
++          .required {
++  display: inline-block;
++}
++
++.property .name {
++  font-style: italic;
++  vertical-align: top;
++  width: 20%;
++}
++
++.property .description {
++  vertical-align: top;
++  width: 60%;
++}
++
++.property .required {
++  vertical-align: top;
++  width: 20%;
++}
++
++.property+.property {
++  margin-top: 0.5em;
++}
++
++.required.req-false {
++  font-weight: lighter;
++}
++
++.go-top {
++  margin: 1em 0;
++  font-size: 120%;
++}
++
++.properties {
++  background: none repeat scroll 0 0 lightgoldenrodyellow;
++  border: 1px solid darksalmon;
++  margin: 1em;
++  padding: 1em;
++}
++
++.properties .title {
++  font-size: 100%;
++}
++
++th {
++    border-bottom: 1px solid black;
++    font-family: "Special Elite";
++    text-align: left;
++}
++
++td {
++    vertical-align: top;
++}
++
++tr + tr {
++  margin-top: 0.2em;
++}
++
++table {
++    border-bottom: 2px solid;
++    border-top: 2px solid;
++}
++
++.nav {
++  display: inline-block;
++  max-width: 20em;
++  vertical-align: top;
++  width: 33%;
++}
++
++.main {
++  display: inline-block;
++  margin-left: 2em;
++  max-width: 60em;
++  width: 60%;
++}
++
++.header {
++  clear: both;
++  display: table;
++  margin-bottom: 2em;
++  width: 100%;
++  box-shadow: 0px 5px 33px 0px rgba(0, 0, 0, 0.2);
++  padding: 1em 0em 2em;
++  border-bottom: 1px solid gray;
++}
++
++.header span {
++  display: table-cell;
++  vertical-align: middle;
++}
++
++.header span+span {
++  text-align: center;
++}
++
++.sectionlink {
++  display: none;
++}
++
++:hover>.sectionlink {
++  display: inline;
++  color: orange;
++}
++
++.pagelinks {
++  list-style: none;
++}
++
++.pagelinks li {
++  display: inline-block;
++  margin: 1em;
++}
++
++.pagelinks>li {
++  background-color: #ddd;
++  border: 1px solid #bbb;
++  box-shadow: 5px 5px 5px rgba(20, 20, 20, 0.2);
++  padding: 0.5em 1em;
++}
++
++.pagelinks li {
++  display: inline-block;
++  margin: 1em;
++  font-family: "Special Elite";
++}
++
++.section-index {
++  font-family: "Special Elite";
++  margin:;
++  list-style: none;
++}
++
++.section-index>li {
++  margin: 1em;
++  background-color: #eee;
++  padding: 1em;
++  border: 1px solid #bbb;
++  box-shadow: 5px 5px 5px rgba(20, 20, 20, 0.2);
++}
++
++@media screen and (max-width: 900px) {
++  .nav {
++    display: block;
++    width: 100%;
++    max-width: 100%;
++  }
++  .main {
++    display: block;
++    width: 100%;
++    max-width: 100%;
++    margin-left: 0.5em;
++  }
++  .section-index, pagelinks {
++    padding-left: 0px;
++    margin-left: 0px;
++  }
++  .figure {
++    margin: 1em 0px;
++  }
++  .properties {
++    margin: 0px;
++  }
++  .property .name, .property
++          .description, .property
++          .required {
++    display: block;
++    width: 100%;
++  }
++  .property .required {
++    border-bottom: 1px solid #ddd;
++  }
++  .property .required::before {
++    content: 'R: ';
++  }
++  .property .name::before {
++    content: 'N: ';
++  }
++  .property .description::before {
++    content: 'D: ';
++  }
++  .header {
++    display: block;
++  }
++  .header span {
++    display: inline;
++  }
++}
+\ No newline at end of file
+diff --git a/xdocs/stylesheets/website-style.xsl b/xdocs/stylesheets/website-style.xsl
+new file mode 100644
+index 0000000..9110603
+--- /dev/null
++++ b/xdocs/stylesheets/website-style.xsl
+@@ -0,0 +1,530 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Licensed to the Apache Software Foundation (ASF) under one or more contributor 
++  license agreements. See the NOTICE file distributed with this work for additional 
++  information regarding copyright ownership. The ASF licenses this file to 
++  You under the Apache License, Version 2.0 (the "License"); you may not use 
++  this file except in compliance with the License. You may obtain a copy of 
++  the License at http://www.apache.org/licenses/LICENSE-2.0 Unless required 
++  by applicable law or agreed to in writing, software distributed under the 
++  License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS 
++  OF ANY KIND, either express or implied. See the License for the specific 
++  language governing permissions and limitations under the License. -->
++<!-- Content Stylesheet for "jmeter-site" -->
++
++<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
++  version="3.0"
++>
++
++  <!-- Defined parameters (overrideable) -->
++  <xsl:param name="relative-path" select="'.'" />
++  <xsl:param name="subdir" select="''" />
++  <xsl:param name="imgdir" select="concat($relative-path, '/images')" />
++  <xsl:param name="sshotdir" select="concat($imgdir, '/screenshots')" />
++  <xsl:param name="cssdir" select="concat($relative-path, '/css')" />
++  <xsl:param name="jakarta-site" select="'http://jakarta.apache.org'" />
++  <xsl:param name="year" select="'2015'" />
++
++  <!-- Output method -->
++  <xsl:output method="html" html-version="5.0" encoding="iso-8859-15"
++    indent="no" doctype-system="about:legacy-compat" />
++
++  <xsl:template match="document">
++    <xsl:variable name="project" select="document('project.xml')/project" />
++    <html lang="en">
++      <head>
++        <title>
++          <xsl:value-of select="$project/title" />
++          -
++          <xsl:value-of select="properties/title" />
++        </title>
++        <xsl:for-each select="properties/author">
++          <xsl:variable name="name">
++            <xsl:value-of select="." />
++          </xsl:variable>
++          <xsl:variable name="email">
++            <xsl:value-of select="@email" />
++          </xsl:variable>
++          <meta name="author" value="{$name}" />
++          <meta name="email" value="{$email}" />
++        </xsl:for-each>
++        <!-- VIEWPORT -->
++        <meta name="viewport" content="width=device-width, initial-scale=1" />
++        <link
++          href='http://fonts.googleapis.com/css?family=Special+Elite:400normal'
++          rel='stylesheet' type='text/css'
++        ></link>
++        <link rel="stylesheet" type="text/css"
++          href="{concat($cssdir, '/new-style.css')}"
++        ></link>
++      </head>
++      <body role="document">
++        <div class="header">
++          <xsl:comment>
++            APACHE LOGO
++          </xsl:comment>
++          <span>
++            <a href="http://www.apache.org">
++              <img title="Apache Software Foundation" width="290"
++                height="75" src="{$imgdir}/asf-logo.png" alt="Logo ASF" />
++            </a>
++          </span>
++          <xsl:if test="$project/logo">
++            <xsl:variable name="alt">
++              <xsl:value-of select="$project/logo" />
++            </xsl:variable>
++            <xsl:variable name="home">
++              <xsl:value-of select="$project/@href" />
++            </xsl:variable>
++            <xsl:variable name="src">
++              <xsl:value-of
++                select="concat($relative-path, $project/logo/@href)" />
++            </xsl:variable>
++            <xsl:comment>
++              PROJECT LOGO
++            </xsl:comment>
++            <span>
++              <a href="{$home}">
++                <img src="{$src}" alt="{$alt}" />
++              </a>
++            </span>
++          </xsl:if>
++          <span>
++            <div>
++              <a href="https://twitter.com/share" class="twitter-share-button"
++                data-text="Powerful Load Testing with Apache #JMeter"
++                data-via="ApacheJMeter" data-lang="en-gb" data-size="large"
++              >Tweet</a>
++              <script><![CDATA[
++            (function(d,s,id){
++              var js,
++                  fjs=d.getElementsByTagName(s)[0],
++                  p=/^http:/.test(d.location)?'http':'https';
++              if (!d.getElementById(id)) {
++                  js=d.createElement(s);
++                  js.id=id;
++                  js.src=p+'://platform.twitter.com/widgets.js';
++                  fjs.parentNode.insertBefore(js,fjs);
++              }
++            })(document, 'script', 'twitter-wjs');]]>
++              </script>
++              <a href="https://twitter.com/ApacheJMeter" class="twitter-follow-button"
++                data-show-count="false" data-lang="en-gb" data-size="large"
++              >Follow</a>
++              <script><![CDATA[(function(d,s,id){
++                var js,
++                    fjs=d.getElementsByTagName(s)[0],
++                    p=/^http:/.test(d.location)?'http':'https';
++                if (!d.getElementById(id)) {
++                    js=d.createElement(s);
++                    js.id=id;
++                    js.src=p+'://platform.twitter.com/widgets.js';
++                    fjs.parentNode.insertBefore(js,fjs);
++                }
++            })(document, 'script', 'twitter-wjs');]]>
++              </script>
++            </div>
++          </span>
++        </div>
++        <div class="nav">
++          <xsl:apply-templates select="$project/body/menu" />
++          <div class="banner">
++            <iframe src="http://www.apache.org/ads/button.html"
++              style="border-width:0;" frameborder="0" scrolling="no"
++            ></iframe>
++            <div class="clear"></div>
++          </div>
++        </div>
++        <div class="main">
++          <xsl:call-template name="pagelinks" />
++          <xsl:if test="@index">
++            <xsl:call-template name="section-index" />
++          </xsl:if>
++          <xsl:apply-templates select="body/section"></xsl:apply-templates>
++          <xsl:call-template name="pagelinks" />
++        </div>
++        <div class="footer">
++          <div class="copyright">
++            Copyright &amp;copy;
++            1999 &amp;ndash;
++            <xsl:value-of select="$year" />
++            , Apache Software Foundation
++          </div>
++          <div class="trademarks">Apache, Apache JMeter, JMeter, the Apache
++            feather, and the Apache JMeter logo are
++            trademarks of the
++            Apache Software Foundation.
++          </div>
++        </div>
++      </body>
++    </html>
++  </xsl:template>
++
++  <xsl:template name="pagelinks">
++    <xsl:if test="@prev or @next">
++      <ul class="pagelinks">
++        <xsl:if test="@prev">
++          <li>
++            <a href="{@prev}">&lt; Prev</a>
++          </li>
++        </xsl:if>
++        <li>
++          <a href="{concat($relative-path, '/index.html')}">Index</a>
++        </li>
++        <xsl:if test="@next">
++          <li>
++            <a href="{@next}">Next &gt;</a>
++          </li>
++        </xsl:if>
++      </ul>
++    </xsl:if>
++  </xsl:template>
++
++  <xsl:template name="section-index">
++    <ul class="section-index">
++      <xsl:for-each select="body/section">
++        <li>
++          <a href="#{@anchor}">
++            <xsl:value-of select="@name" />
++          </a>
++          <ul>
++            <xsl:for-each select="component">
++              <li>
++                <a href="#{translate(normalize-space(@name), ' ', '_')}">
++                  <xsl:value-of select="@name" />
++                  <xsl:if test="@was">
++                    (was:
++                    <xsl:value-of select="@was" />
++                    )
++                  </xsl:if>
++                </a>
++              </li>
++            </xsl:for-each>
++          </ul>
++        </li>
++      </xsl:for-each>
++    </ul>
++  </xsl:template>
++
++  <!-- Process a menu for the navigation bar -->
++  <xsl:template match="menu">
++    <ul class="menu">
++      <li>
++        <div class="menu-title">
++          <xsl:value-of select="@name" />
++        </div>
++        <ul>
++          <xsl:apply-templates select="item" />
++        </ul>
++      </li>
++    </ul>
++  </xsl:template>
++
++  <!-- Process a menu item for the navigation bar -->
++  <xsl:template match="item">
++    <xsl:variable name="href">
++      <xsl:choose>
++        <xsl:when test="starts-with(@href, 'http')">
++          <xsl:value-of select="@href" />
++        </xsl:when>
++        <xsl:when test="starts-with(@href, '/site')">
++          <xsl:value-of select="concat($jakarta-site, @href)" />
++        </xsl:when>
++        <xsl:otherwise>
++          <xsl:value-of select="concat($relative-path, @href)" />
++        </xsl:otherwise>
++      </xsl:choose>
++    </xsl:variable>
++    <li>
++      <a href="{$href}">
++        <xsl:value-of select="@name" />
++        <xsl:if test="@icon">
++          <img src="{concat($imgdir, '/', @icon)}" />
++        </xsl:if>
++      </a>
++    </li>
++  </xsl:template>
++
++  <xsl:template match="section">
++    <div class="section">
++      <h1>
++        <xsl:value-of select="@name" />
++        <xsl:if test="@anchor">
++          <xsl:call-template name="sectionlink">
++            <xsl:with-param name="anchor" select="@anchor" />
++          </xsl:call-template>
++        </xsl:if>
++      </h1>
++      <xsl:apply-templates />
++    </div>
++  </xsl:template>
++
++  <xsl:template match="ch_section">
++    <h2 class="ch_section">
++      <xsl:apply-templates />
++    </h2>
++  </xsl:template>
++
++  <xsl:template match="ch_title">
++    <h2 class="ch_title">
++      <xsl:apply-templates />
++    </h2>
++  </xsl:template>
++
++  <xsl:template match="ch_category">
++    <h2 class="ch_category">
++      <xsl:apply-templates />
++    </h2>
++  </xsl:template>
++
++  <xsl:template match="subsection">
++    <div class="subsection">
++      <h2>
++        <xsl:value-of select="@name" />
++        <xsl:if test="@anchor">
++          <xsl:call-template name="sectionlink">
++            <xsl:with-param name="anchor" select="@anchor" />
++          </xsl:call-template>
++        </xsl:if>
++      </h2>
++      <xsl:apply-templates />
++    </div>
++  </xsl:template>
++
++  <xsl:template match="source">
++    <pre class="source">
++      <xsl:apply-templates />
++    </pre>
++  </xsl:template>
++
++  <xsl:template match="code">
++    <span class="code">
++      <xsl:apply-templates />
++    </span>
++  </xsl:template>
++
++  <xsl:template match="description">
++    <div class="description">
++      <xsl:apply-templates />
++    </div>
++  </xsl:template>
++
++  <xsl:template match="component">
++    <div class="component">
++      <h2>
++        <xsl:value-of select="@name" />
++        <xsl:if test="@was">
++          <a name="{@was}">
++            (was:
++            <xsl:value-of select="@was" />
++            )
++          </a>
++        </xsl:if>
++        <xsl:if test="@name">
++          <xsl:call-template name="sectionlink">
++            <xsl:with-param name="anchor" select="@name" />
++          </xsl:call-template>
++        </xsl:if>
++      </h2>
++      <xsl:if test="@useinstead">
++        <div class="deprecated">
++          *** This element is deprecated. Use
++          <a
++            href="{concat($relative-path, '/usermanual/component_reference.html#', translate(normalize-space(@useinstead), ' ', '_'))}"
++          >
++            <xsl:value-of select="@useinstead" />
++          </a>
++          instead ***
++        </div>
++      </xsl:if>
++      <xsl:if test="@screenshot">
++        <div class="screenshot">
++          <img src="{concat('../images/screenshots/', @screenshot)}"
++            width="{@width}" height="{@height}" />
++        </div>
++      </xsl:if>
++      <xsl:apply-templates />
++      <div class="go-top">
++        <a href="#">^</a>
++      </div>
++    </div>
++  </xsl:template>
++
++  <xsl:template name="sectionlink">
++    <xsl:param name="anchor" />
++    <a name="{translate(normalize-space($anchor), ' ', '_')}" />
++    <a class="sectionlink" href="#{translate(normalize-space($anchor), ' ', '_')}"
++      title="Link to here"
++    >&amp;para;</a>
++  </xsl:template>
++
++  <xsl:template match="properties">
++    <div class="properties">
++      <h3>
++        Parameters
++        <xsl:if test="name(..) = 'component'">
++          <xsl:call-template name="sectionlink">
++            <xsl:with-param name="anchor"
++              select="concat(translate(normalize-space(../@name), ' ', '_'), '_parms')" />
++          </xsl:call-template>
++        </xsl:if>
++      </h3>
++      <div class="property title">
++        <div class="name title">Attribute</div>
++        <div class="description title">Description</div>
++        <div class="required title">Required</div>
++      </div>
++      <xsl:apply-templates />
++    </div>
++  </xsl:template>
++
++  <xsl:template match="property">
++    <div class="property">
++      <div
++        class="name req-{contains('yYtT', substring(normalize-space(@required), 1, 1))}"
++      >
++        <xsl:value-of select="@name" />
++      </div>
++      <div
++        class="description req-{contains('yYtT', substring(normalize-space(@required), 1, 1))}"
++      >
++        <xsl:apply-templates />
++      </div>
++      <div
++        class="required req-{contains('yYtT', substring(normalize-space(@required), 1, 1))}"
++      >
++        <xsl:choose>
++          <xsl:when test="@required">
++            <xsl:value-of select="@required" />
++          </xsl:when>
++          <xsl:otherwise>
++            No
++          </xsl:otherwise>
++        </xsl:choose>
++      </div>
++    </div>
++  </xsl:template>
++
++  <xsl:template match="note">
++    <div class="clear"></div>
++    <div class="note">
++      <xsl:apply-templates />
++    </div>
++    <div class="clear"></div>
++  </xsl:template>
++
++  <xsl:template name="complink">
++    <xsl:param name="name" />
++    <a
++      href="{concat($relative-path, '/usermanual/component_reference.html#', translate(@name, ' ', '_'))}"
++    >
++      <xsl:value-of select="@name" />
++    </a>
++  </xsl:template>
++
++  <xsl:template match="complink">
++    <xsl:call-template name="complink">
++      <xsl:with-param name="name" select="@name" />
++    </xsl:call-template>
++  </xsl:template>
++
++  <xsl:template match="figure">
++    <div class="figure">
++      <img src="{concat($sshotdir, '/', @image)}" />
++      <figcaption>
++        <xsl:apply-templates />
++      </figcaption>
++    </div>
++  </xsl:template>
++
++  <xsl:template match="bugzilla">
++    <a href="http://bz.apache.org/bugzilla/show_bug.cgi?id={./text()}">
++      Bug
++      <xsl:value-of select="./text()" />
++    </a>
++  </xsl:template>
++
++  <xsl:template match="bug">
++    <a href="http://bz.apache.org/bugzilla/show_bug.cgi?id={./text()}">
++      Bug
++      <xsl:value-of select="./text()" />
++    </a>
++    -
++  </xsl:template>
++
++  <xsl:template match="links">
++    <div class="links">
++      See also:
++      <ul class="links">
++        <xsl:for-each select="link|complink">
++          <li>
++            <xsl:choose>
++              <xsl:when test="name(.) = 'link'">
++                <a href="{@href}">
++                  <xsl:apply-templates />
++                </a>
++              </xsl:when>
++              <xsl:when test="name(.) = 'complink'">
++                <xsl:call-template name="complink">
++                  <xsl:with-param name="name" select="@name" />
++                </xsl:call-template>
++              </xsl:when>
++            </xsl:choose>
++          </li>
++        </xsl:for-each>
++      </ul>
++    </div>
++  </xsl:template>
++
++  <xsl:template match="link">
++    <li>
++      <a href="{@href}">
++        <xsl:apply-templates />
++      </a>
++    </li>
++  </xsl:template>
++
++  <xsl:template match="example">
++    <div class="example">
++      <div class="title">
++        <xsl:value-of select="@title" />
++        <xsl:if test="@anchor">
++          <xsl:call-template name="sectionlink">
++            <xsl:with-param name="anchor" select="@anchor" />
++          </xsl:call-template>
++        </xsl:if>
++      </div>
++      <xsl:apply-templates />
++    </div>
++  </xsl:template>
++
++  <xsl:template match="table">
++    <table>
++      <xsl:apply-templates />
++    </table>
++  </xsl:template>
++
++  <xsl:template
++    match="h1|h2|h3|h4|h5|p|b|em|ul|ol|li|a|i|pre|br|tt|tr|th|td|dl|dt|dd|sup|u|strong|thead|tbody|form|select|option|input|font|center|img|body|style|div|hr"
++  >
++    <xsl:copy>
++      <xsl:apply-templates select="@*|*|text()" />
++    </xsl:copy>
++  </xsl:template>
++
++
++  <!-- Process everything else by just passing it through -->
++  <xsl:template match="*">
++    <div class="nostyle">
++      <xsl:copy>
++        <xsl:apply-templates select="@*|*|text()" />
++      </xsl:copy>
++    </div>
++  </xsl:template>
++
++  <xsl:template match="@*">
++    <xsl:copy>
++      <xsl:apply-templates select="@*|*|text()" />
++    </xsl:copy>
++  </xsl:template>
++
++</xsl:stylesheet>
+

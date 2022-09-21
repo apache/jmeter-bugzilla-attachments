@@ -1,0 +1,53 @@
+### Eclipse Workspace Patch 1.0
+#P jmeter
+Index: src/core/org/apache/jmeter/samplers/RemoteSampleListenerImpl.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/RemoteSampleListenerImpl.java	(revision 1231656)
++++ src/core/org/apache/jmeter/samplers/RemoteSampleListenerImpl.java	(working copy)
+@@ -23,6 +23,7 @@
+ 
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.testelement.TestListener;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  * Implementation of remote sampler listener, also supports TestListener
+@@ -35,9 +36,12 @@
+     private final TestListener testListener;
+ 
+     private final SampleListener sampleListener;
++    
++    private static final int DEFAULT_LOCAL_PORT = 
++        JMeterUtils.getPropDefault("client.rmi.localport", 0); // $NON-NLS-1$
+ 
+     public RemoteSampleListenerImpl(Object listener) throws RemoteException {
+-        super();
++        super(DEFAULT_LOCAL_PORT);
+         if (listener instanceof TestListener) {
+             testListener = (TestListener) listener;
+         } else {
+Index: src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java	(revision 1231656)
++++ src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java	(working copy)
+@@ -81,9 +81,9 @@
+     private void init() throws RemoteException {
+         log.info("Starting backing engine on " + this.rmiPort);
+         InetAddress localHost=null;
++        // Bug 47980 - allow override of local hostname
++        String host = System.getProperties().getProperty("java.rmi.server.hostname"); // $NON-NLS-1$
+         try {
+-            // Bug 47980 - allow override of local hostname
+-            String host = System.getProperties().getProperty("java.rmi.server.hostname"); // $NON-NLS-1$
+             if( host==null ) {
+                 localHost = InetAddress.getLocalHost();
+             } else {
+@@ -94,7 +94,7 @@
+         }
+         log.info("IP address="+localHost.getHostAddress());
+         String hostName = localHost.getHostName();
+-        if (localHost.isLoopbackAddress()){
++        if (localHost.isLoopbackAddress() && host == null){
+             throw new RemoteException("Cannot start. "+hostName+" is a loopback address.");
+         }
+         if (localHost.isSiteLocalAddress()){

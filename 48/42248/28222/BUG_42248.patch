@@ -1,0 +1,820 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1236882)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -662,6 +662,7 @@
+ read_soap_response=Lire la r\u00E9ponse SOAP
+ realm=Univers (realm)
+ record_controller_title=Contr\u00F4leur Enregistreur
++redo=R\u00E9tablir
+ ref_name_field=Nom de r\u00E9f\u00E9rence \:
+ regex_extractor_title=Extracteur Expression r\u00E9guli\u00E8re
+ regex_field=Expression r\u00E9guli\u00E8re \:
+@@ -991,6 +992,7 @@
+ transaction_controller_parent=G\u00E9n\u00E9rer en \u00E9chantillon parent
+ transaction_controller_title=Contr\u00F4leur Transaction
+ unbind=D\u00E9connexion de l'unit\u00E9
++undo=Annuler
+ unescape_html_string=Cha\u00EEne \u00E0 \u00E9chapper
+ unescape_string=Cha\u00EEne de caract\u00E8res contenant des\u00E9chappements Java
+ uniform_timer_delay=D\u00E9lai de d\u00E9calage constant (en millisecondes) \:
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1236882)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -668,6 +668,7 @@
+ read_soap_response=Read SOAP Response
+ realm=Realm
+ record_controller_title=Recording Controller
++redo=Redo
+ ref_name_field=Reference Name\:
+ regex_extractor_title=Regular Expression Extractor
+ regex_field=Regular Expression\:
+@@ -997,6 +998,7 @@
+ transaction_controller_parent=Generate parent sample
+ transaction_controller_title=Transaction Controller
+ unbind=Thread Unbind
++undo=Undo
+ unescape_html_string=String to unescape
+ unescape_string=String containing Java escapes
+ uniform_timer_delay=Constant Delay Offset (in milliseconds)\:
+@@ -1159,4 +1161,4 @@
+ xpath_tidy_show_warnings=Show warnings
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+-zh_tw=Chinese (Traditional)
++zh_tw=Chinese (Traditional)
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 1236882)
++++ src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -196,6 +196,10 @@
+     }
+ 
+     public static void addFileMenu(JPopupMenu menu) {
++        // the undo/redo as a standard goes first in Edit menus
++        // maybe there's better place for them in JMeter?
++        addUndoItems(menu); 
++        
+         addSeparator(menu);
+         menu.add(makeMenuItemRes("open", ActionNames.OPEN));// $NON-NLS-1$
+         menu.add(makeMenuItemRes("menu_merge", ActionNames.MERGE));// $NON-NLS-1$
+@@ -235,6 +239,26 @@
+         menu.add(makeMenuItemRes("help", ActionNames.HELP));// $NON-NLS-1$
+     }
+ 
++    /**
++     * Add undo / redo
++     * @param menu JPopupMenu
++     */
++    private static void addUndoItems(JPopupMenu menu) {
++        addSeparator(menu);
++        JMenuItem redo = makeMenuItemRes("redo", ActionNames.REDO); //$NON-NLS-1$    
++        redo.setAccelerator(KeyStrokes.REDO);
++        // we could even show some hints on action being undone here
++        // if this will be required (by passing those hints into history
++        // records)
++        redo.setEnabled(GuiPackage.getInstance().getTreeModel().canRedo());
++        menu.add(redo);
++        JMenuItem undo = makeMenuItemRes("undo", ActionNames.UNDO); //$NON-NLS-1$    
++        undo.setAccelerator(KeyStrokes.UNDO);
++        undo.setEnabled(GuiPackage.getInstance().getTreeModel().canUndo());
++        menu.add(undo);
++    }
++
++    
+     public static JMenu makeMenus(String[] categories, String label, String actionCommand) {
+         JMenu addMenu = new JMenu(label);
+         for (int i = 0; i < categories.length; i++) {
+Index: src/core/org/apache/jmeter/gui/tree/UndoHistory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/tree/UndoHistory.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/tree/UndoHistory.java	(revision 0)
+@@ -0,0 +1,310 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.tree;
++
++import java.awt.event.ActionEvent;
++import java.util.ArrayList;
++import java.util.List;
++
++import javax.swing.event.TreeModelEvent;
++import javax.swing.event.TreeModelListener;
++import javax.swing.tree.TreePath;
++
++import org.apache.jmeter.engine.TreeCloner;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.action.Load;
++import org.apache.jmeter.gui.action.UndoCommand;
++import org.apache.jorphan.collections.HashTree;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Users expected record situations: initial empty tree; before node deletion;
++ * before node insertion; after each walk off edited node (modifyTestElement)
++ * 
++ */
++public class UndoHistory implements TreeModelListener {
++    /**
++     * Avoid storing too many elements
++     * @param <T>
++     */
++    private static class LimitedArrayList<T> extends ArrayList<T>{
++        /**
++         * 
++         */
++        private static final long serialVersionUID = -6574380490156356507L;
++        private int limit;
++
++        public LimitedArrayList(int limit){
++            this.limit = limit;
++        }
++
++        @Override
++        public boolean add(T item){
++            if(this.size()+1 > limit) {
++                this.remove(0);
++            }
++            return super.add(item);
++        }
++    }
++
++    private static final int INITIAL_POS = -1;
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    /**
++     * History item
++     */
++    private static class HistoryItem {
++
++        private final HashTree tree;
++        private final TreePath path;
++        // maybe the comment should be removed since it is not used yet
++        private final String comment;
++
++        /**
++         * 
++         * @param copy
++         * @param apath
++         * @param acomment
++         */
++        public HistoryItem(HashTree copy, TreePath apath, String acomment) {
++            tree = copy;
++            path = apath;
++            comment = acomment;
++        }
++
++        /**
++         * @return {@link HashTree}
++         */
++        public HashTree getKey() {
++            return tree;
++        }
++
++        /**
++         * 
++         * @return {@link TreePath} 
++         */
++        public TreePath getValue() {
++            return path;
++        }
++
++        /**
++         * 
++         * @return String comment
++         */
++        public String getComment() {
++            return comment;
++        }
++    }
++
++    private List<HistoryItem> history = new LimitedArrayList<HistoryItem>(25); // TODO Make this configurable or too many properties ?
++    private int position = INITIAL_POS;
++    /**
++     * flag to prevent recursive actions
++     */
++    private boolean working = false;
++    private boolean recording=true;
++
++    public UndoHistory() {
++    }
++    
++    /**
++     * @return true if must not put in history
++     */
++    private boolean noop() {
++        return !recording || working;
++    }
++    
++    /**
++     * 
++     */
++    public void clear() {
++        if (noop()) {
++            return;
++        }
++        log.debug("Clearing history", new Throwable());
++        history.clear();
++        position = INITIAL_POS;
++    }
++
++    /**
++     * this method relies on the rule that the record in history made AFTER
++     * change has been made to test plan
++     * 
++     * @param treeModel
++     * @param path
++     * @param comment
++     */
++    void add(JMeterTreeModel treeModel, TreePath path, String comment) {
++        // don't add element if we are in the middle of undo/redo or a big loading
++        if (noop()) {
++            return;
++        }
++        if(log.isDebugEnabled()) {
++            log.debug("Adding history element", new Throwable());
++        }
++        JMeterTreeNode root = (JMeterTreeNode) ((JMeterTreeNode) treeModel
++                .getRoot());
++        if (root.getChildCount() < 1) {
++            return;
++        }
++
++        working = true;
++        // get test plan tree
++        HashTree tree = treeModel.getCurrentSubTree((JMeterTreeNode) treeModel
++                .getRoot());
++        // first clone to not convert original tree
++        tree = (HashTree) tree.getTree(tree.getArray()[0]).clone();
++
++        position++;
++        while (history.size() > position) {
++            log.debug("Removing further record, position: " + position
++                    + ", size: " + history.size());
++            history.remove(history.size() - 1);
++        }
++
++        // convert before clone!
++        UndoCommand.convertSubTree(tree);
++        TreeCloner cloner = new TreeCloner(false);
++        tree.traverse(cloner);
++        HashTree copy = cloner.getClonedTree();
++
++        history.add(new HistoryItem(copy, path, comment));
++
++        log.debug("Added history element, position: " + position + ", size: "
++                + history.size());
++        working = false;
++    }
++
++    public TreePath getRelativeState(int offset, JMeterTreeModel acceptorModel) {
++        log.debug("Moving history from position " + position + " with step "
++                + offset + ", size is " + history.size());
++        if (offset < 0 && !canUndo()) {
++            log.warn("Can't undo, we're already on the last record");
++            return null;
++        }
++
++        if (offset > 0 && !canRedo()) {
++            log.warn("Can't redo, we're already on the first record");
++            return null;
++        }
++
++        position += offset;
++
++        if (!history.isEmpty()) {
++            HashTree newModel = history.get(position).getKey();
++            acceptorModel.removeTreeModelListener(this);
++            working = true;
++            try {
++                boolean res = Load.insertLoadedTree(
++                        ActionEvent.ACTION_PERFORMED, newModel);
++                if (!res) {
++                    throw new RuntimeException("Loaded data is not TestPlan");
++                }
++
++            } catch (Exception ex) {
++                log.error("Failed to load from history", ex);
++            }
++            acceptorModel.addTreeModelListener(this);
++            working = false;
++        }
++        log.debug("Current position " + position + ", size is "
++                + history.size());
++        // select historical path
++        return history.get(position).getValue();
++    }
++
++    /**
++     * @return true if remaing items
++     */
++    public boolean canRedo() {
++        return position < history.size() - 1;
++    }
++
++    /**
++     * 
++     * @return true if not at first element
++     */
++    public boolean canUndo() {
++        return position > INITIAL_POS + 1;
++    }
++
++    public void treeNodesChanged(TreeModelEvent tme) {
++        log.debug("Nodes changed");
++    }
++
++    /**
++     * 
++     */
++    // is there better way to record test plan load events?
++    // currently it records each node added separately
++    public void treeNodesInserted(TreeModelEvent tme) {
++        log.debug("Nodes inserted");
++        final JMeterTreeModel sender = (JMeterTreeModel) tme.getSource();
++        add(sender, getTreePathToRecord(tme), "Add");
++    }
++
++    /**
++     * 
++     */
++    public void treeNodesRemoved(TreeModelEvent tme) {
++        log.debug("Nodes removed");
++        add((JMeterTreeModel) tme.getSource(), getTreePathToRecord(tme),
++                "Remove");
++    }
++
++    /**
++     * 
++     */
++    public void treeStructureChanged(TreeModelEvent tme) {
++        log.debug("Nodes struct changed");
++        add((JMeterTreeModel) tme.getSource(), getTreePathToRecord(tme),
++                "Complex Change");
++    }
++
++    /**
++     * 
++     * @param tme TreeModelEvent
++     * @return TreePath
++     */
++    private TreePath getTreePathToRecord(TreeModelEvent tme) {
++        TreePath path;
++        if (GuiPackage.getInstance() != null) {
++            path = GuiPackage.getInstance().getMainFrame().getTree()
++                    .getSelectionPath();
++        } else {
++            path = tme.getTreePath();
++        }
++        return path;
++    }
++
++    /**
++     * Resume inserting in UndoHistory
++     */
++    public void resumeRecording() {
++        this.recording=true;
++    }
++    
++    /**
++     * Stop inserting in UndoHistory
++     */
++    public void pauseRecording() {
++        this.recording=false;
++    }
++}
+Index: src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java	(revision 1236882)
++++ src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java	(working copy)
+@@ -24,6 +24,7 @@
+ import java.util.List;
+ 
+ import javax.swing.tree.DefaultTreeModel;
++import javax.swing.tree.TreePath;
+ 
+ import org.apache.jmeter.config.gui.AbstractConfigGui;
+ import org.apache.jmeter.control.gui.TestPlanGui;
+@@ -41,10 +42,12 @@
+ public class JMeterTreeModel extends DefaultTreeModel {
+ 
+     private static final long serialVersionUID = 240L;
++    private UndoHistory undoHistory = new UndoHistory();
+ 
+     public JMeterTreeModel(TestElement tp, TestElement wb) {
+         super(new JMeterTreeNode(wb, null));
+-        initTree(tp,wb);
++        addTreeModelListener(undoHistory);
++        initTree(tp, wb);
+     }
+ 
+     public JMeterTreeModel() {
+@@ -213,6 +216,7 @@
+      * @param testPlan the node to use as the testplan top node
+      */
+     public void clearTestPlan(TestElement testPlan) {
++        pauseUndoHistoryRecording();
+         // Remove the workbench and testplan nodes
+         int children = getChildCount(getRoot());
+         while (children > 0) {
+@@ -220,6 +224,7 @@
+             super.removeNodeFromParent(child);
+             children = getChildCount(getRoot());
+         }
++        resumeUndoHistoryRecording();
+         // Init the tree
+         initTree(testPlan,new WorkBenchGui().createTestElement()); // Assumes this is only called from GUI mode
+     }
+@@ -231,6 +236,7 @@
+      * @param wb the element to use as workbench
+      */
+     private void initTree(TestElement tp, TestElement wb) {
++        pauseUndoHistoryRecording();
+         // Insert the test plan node
+         insertNodeInto(new JMeterTreeNode(tp, this), (JMeterTreeNode) getRoot(), 0);
+         // Insert the workbench node
+@@ -239,5 +245,61 @@
+         // This should not be necessary, but without it, nodes are not shown when the user
+         // uses the Close menu item
+         nodeStructureChanged((JMeterTreeNode)getRoot());
++        resumeUndoHistoryRecording();
++        undoHistory.clear();
++        saveUndoPoint(new TreePath(((JMeterTreeNode)getRoot()).getPath()), "Initial Tree");
++    }
++
++    /**
++     * Navigate up and down in history
++     * @param offset 
++     * @return TreePath
++     */
++    public TreePath goInHistory(int offset) {
++        return undoHistory.getRelativeState(offset, this);
++    }
++
++    /**
++     * Save in undo history
++     * @param path TreePath
++     * @param comment
++     */
++    public void saveUndoPoint(TreePath path, String comment) {
++        undoHistory.add(this, path, comment);
++    }
++
++    /**
++     * Clear undo history
++     */
++    public void clearUndo() {
++        undoHistory.clear();
++    }
++
++    /**
++     * @return true if history contains redo item
++     */
++    public boolean canRedo() {
++        return undoHistory.canRedo();
+     }
+-}
++
++    /**
++     * @return true if history contains undo item
++     */
++    public boolean canUndo() {
++        return undoHistory.canUndo();
++    }
++    
++    /**
++     * 
++     */
++    public void pauseUndoHistoryRecording() {
++        undoHistory.pauseRecording();
++    }
++    
++    /**
++     * 
++     */
++    public void resumeUndoHistoryRecording() {
++        undoHistory.resumeRecording();
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1236882)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -33,6 +33,7 @@
+ import javax.swing.JPopupMenu;
+ import javax.swing.JToolBar;
+ import javax.swing.SwingUtilities;
++import javax.swing.tree.TreePath;
+ 
+ import org.apache.jmeter.engine.util.ValueReplacer;
+ import org.apache.jmeter.exceptions.IllegalUserActionException;
+@@ -44,6 +45,9 @@
+ import org.apache.jmeter.testbeans.gui.TestBeanGUI;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
++import org.apache.jmeter.testelement.property.JMeterProperty;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.util.LocaleChangeEvent;
+ import org.apache.jmeter.util.LocaleChangeListener;
+@@ -412,7 +416,12 @@
+                 log.debug("Updating current node " + currentNode.getName());
+                 JMeterGUIComponent comp = getGui(currentNode.getTestElement());
+                 TestElement el = currentNode.getTestElement();
++                int before=getTestElementCheckSum(el);
+                 comp.modifyTestElement(el);
++                int after=getTestElementCheckSum(el);
++                if (before!=after) {
++                    treeModel.saveUndoPoint(new TreePath(currentNode.getPath()), "Properties Changed");
++                }
+                 currentNode.nameChanged(); // Bug 50221 - ensure label is updated
+             }
+             // The current node is now updated
+@@ -422,6 +431,31 @@
+             log.error("Problem retrieving gui", e);
+         }
+     }
++    
++    
++    /**
++     * Compute checksum of TestElement to detect changes
++     *  the method calculates properties checksum to detect testelement
++     *  modifications
++     * TODO would be better to override hashCode for TestElement, but I decided to touch it
++     * @param el {@link TestElement}
++     * @return int checksum
++     */
++    private int getTestElementCheckSum(TestElement el) {
++        int ret = el.getClass().hashCode();
++        PropertyIterator it = el.propertyIterator();
++        while (it.hasNext()) {
++            JMeterProperty obj = it.next();
++            if (obj instanceof TestElementProperty) {
++                ret ^= getTestElementCheckSum(((TestElementProperty) obj)
++                        .getElement());
++            } else {
++                ret ^= obj.getName().hashCode();
++                ret ^= obj.getStringValue().hashCode();
++            }
++        }
++        return ret;
++    }
+ 
+     public JMeterTreeNode getCurrentNode() {
+         return treeListener.getCurrentNode();
+@@ -468,7 +502,12 @@
+      *             if a subtree cannot be added to the currently selected node
+      */
+     public HashTree addSubTree(HashTree subTree) throws IllegalUserActionException {
+-        return treeModel.addSubTree(subTree, treeListener.getCurrentNode());
++        treeModel.pauseUndoHistoryRecording();
++        try {
++            return treeModel.addSubTree(subTree, treeListener.getCurrentNode());
++        } finally {
++            treeModel.resumeUndoHistoryRecording();
++        }
+     }
+ 
+     /**
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1236882)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -91,6 +91,8 @@
+     public static final String WHAT_CLASS       = "what_class"; // $NON-NLS-1$
+     public static final String SEARCH_TREE      = "search_tree"; // $NON-NLS-1$
+     public static final String SEARCH_RESET      = "search_reset"; // $NON-NLS-1$
++    public static final String UNDO             = "undo"; // $NON-NLS-1$
++    public static final String REDO             = "redo"; // $NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames(){
+Index: src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/KeyStrokes.java	(revision 1236882)
++++ src/core/org/apache/jmeter/gui/action/KeyStrokes.java	(working copy)
+@@ -59,6 +59,9 @@
+     public static final KeyStroke PASTE             = KeyStroke.getKeyStroke(KeyEvent.VK_V, CONTROL_MASK);
+     public static final KeyStroke WHAT_CLASS        = KeyStroke.getKeyStroke(KeyEvent.VK_W, CONTROL_MASK);
+     public static final KeyStroke CUT               = KeyStroke.getKeyStroke(KeyEvent.VK_X, CONTROL_MASK);
++    public static final KeyStroke UNDO               = KeyStroke.getKeyStroke(KeyEvent.VK_Z, CONTROL_MASK);
++    // does Ctrl+Shift+Z right standard for redo?
++    public static final KeyStroke REDO               = KeyStroke.getKeyStroke(KeyEvent.VK_Z, CONTROL_MASK | KeyEvent.SHIFT_DOWN_MASK);
+     public static final KeyStroke REMOTE_STOP_ALL   = KeyStroke.getKeyStroke(KeyEvent.VK_X, KeyEvent.ALT_DOWN_MASK);
+     public static final KeyStroke REMOTE_SHUT_ALL   = KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.ALT_DOWN_MASK);
+ 
+Index: src/core/org/apache/jmeter/gui/action/UndoCommand.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/UndoCommand.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/UndoCommand.java	(revision 0)
+@@ -0,0 +1,77 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++
++import javax.swing.tree.TreePath;
++
++import org.apache.jmeter.exceptions.IllegalUserActionException;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jorphan.collections.HashTree;
++
++/**
++ *
++ */
++public class UndoCommand implements Command {
++
++    private static final Set<String> commands = new HashSet<String>();
++
++    static {
++        commands.add(ActionNames.UNDO);
++        commands.add(ActionNames.REDO);
++    }
++
++    public void doAction(ActionEvent e) throws IllegalUserActionException {
++        GuiPackage guiPackage = GuiPackage.getInstance();
++        final String command = e.getActionCommand();
++
++        TreePath path;
++        if (command.equals(ActionNames.UNDO)) {
++            path = guiPackage.getTreeModel().goInHistory(-1);
++        } else if (command.equals(ActionNames.REDO)) {
++            path = guiPackage.getTreeModel().goInHistory(1);
++        } else {
++            throw new IllegalArgumentException("Wrong action called: " + command);
++        }
++
++        // we need to go to recorded tree path
++        // fixme: we have a problem with unselected tree item then
++        // also the GUI reflects old GUI properties
++        //final JTree tree = GuiPackage.getInstance().getMainFrame().getTree();
++        //tree.setSelectionPath(path);
++        guiPackage.updateCurrentGui();
++        guiPackage.getMainFrame().repaint();
++    }
++
++    /**
++     * @return Set<String>
++     */
++    public Set<String> getActionNames() {
++        return commands;
++    }
++
++    // wrapper to use package-visible method
++    public static void convertSubTree(HashTree tree) {
++        Save executor = new Save();
++        executor.convertSubTree(tree);
++    }
++}
+Index: test/src/org/apache/jmeter/gui/tree/UndoHistoryTest.java
+===================================================================
+--- test/src/org/apache/jmeter/gui/tree/UndoHistoryTest.java	(revision 0)
++++ test/src/org/apache/jmeter/gui/tree/UndoHistoryTest.java	(revision 0)
+@@ -0,0 +1,107 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.tree;
++
++import java.io.File;
++import java.io.IOException;
++import java.util.Locale;
++import javax.swing.tree.TreePath;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ *
++ */
++public class UndoHistoryTest extends junit.framework.TestCase {
++
++    public UndoHistoryTest() {
++        File propsFile = null;
++        try {
++            propsFile = File.createTempFile("jmeter-plugins", "testProps");
++            propsFile.deleteOnExit();
++        } catch (IOException ex) {
++            ex.printStackTrace(System.err);
++        }
++
++        //propsFile=new File("/home/undera/NetBeansProjects/jmeter/trunk/bin/jmeter.properties");
++
++        JMeterUtils.loadJMeterProperties(propsFile.getAbsolutePath());
++        JMeterUtils.setLocale(new Locale("ignoreResources"));
++    }
++
++    /*
++     * public void testGetTestElementCheckSum() {
++     * System.out.println("getTestElementCheckSum"); TestElement el = new
++     * TestAction(); int result = UndoHistory.getTestElementCheckSum(el);
++     * assertTrue(result!=0); el.setProperty(new BooleanProperty());
++     * assertTrue(result != UndoHistory.getTestElementCheckSum(el)); }
++     *
++     * public void testGetTestElementCheckSum_stable() {
++     * System.out.println("getTestElementCheckSum stable"); TestElement el = new
++     * ThreadGroup(); AbstractJMeterGuiComponent gui = new ThreadGroupGui();
++     *
++     * gui.modifyTestElement(el); int result1 =
++     * UndoHistory.getTestElementCheckSum(el); gui.modifyTestElement(el); int
++     * result2 = UndoHistory.getTestElementCheckSum(el); assertEquals(result1,
++     * result2); el.setProperty(new BooleanProperty()); assertTrue(result1 !=
++     * UndoHistory.getTestElementCheckSum(el)); }
++     */
++    public void testClear() {
++        System.out.println("clear");
++        UndoHistory instance = new UndoHistory();
++        instance.clear();
++    }
++
++    public void testAdd() throws Exception {
++        System.out.println("add");
++        JMeterTreeModel treeModel = new JMeterTreeModel();
++        UndoHistory instance = new UndoHistory();
++        instance.add(treeModel, new TreePath(this), "");
++    }
++
++    public void testGetRelativeState() throws Exception {
++        System.out.println("getRelativeState");
++        JMeterTreeModel treeModelRecv = new JMeterTreeModel();
++        UndoHistory instance = new UndoHistory();
++
++        // safety check
++        instance.getRelativeState(-1, treeModelRecv);
++        instance.getRelativeState(1, treeModelRecv);
++
++
++        JMeterTreeModel treeModel1 = new JMeterTreeModel();
++        JMeterTreeModel treeModel2 = new JMeterTreeModel();
++        JMeterTreeModel treeModel3 = new JMeterTreeModel();
++        instance.add(treeModel1, new TreePath(this), "");
++        instance.add(treeModel2, new TreePath(this), "");
++        instance.add(treeModel3, new TreePath(this), "");
++
++        // regular work check
++        instance.getRelativeState(-1, treeModelRecv);
++        instance.getRelativeState(-1, treeModelRecv);
++        instance.getRelativeState(-1, treeModelRecv); // undo ignored
++        instance.getRelativeState(1, treeModelRecv);
++        instance.getRelativeState(1, treeModelRecv);
++        instance.getRelativeState(1, treeModelRecv); // redo ignored
++
++        // overwrite check
++        instance.getRelativeState(-1, treeModelRecv);
++        instance.getRelativeState(-1, treeModelRecv);
++        instance.add(treeModel3, new TreePath(this), "");
++    }
++}

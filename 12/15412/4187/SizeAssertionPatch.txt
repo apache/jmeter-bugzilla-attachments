@@ -1,0 +1,218 @@
+RCS file: c:\cvsroot/jmeter/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.1.1.1
+retrieving revision 1.2
+diff -r1.1.1.1 -r1.2
+245c245,251
+< size_assertion_failure=The result was the wrong size: It was {0} bytes, but should have been {1} bytes.
+---
+> size_assertion_comparator_error_equal=been equal to
+> size_assertion_comparator_error_notequal=not been equal to
+> size_assertion_comparator_error_greater=been greater than 
+> size_assertion_comparator_error_less=been less then
+> size_assertion_comparator_error_greaterequal=been greater or equal to
+> size_assertion_comparator_error_lessequal=been less than or equal to
+> size_assertion_failure=The result was the wrong size: It was {0} bytes, but should have {1} {2} bytes.
+249a256,263
+> size_assertion_equal=1
+> size_assertion_notequal=2
+> size_assertion_greaterthan=3
+> size_assertion_lessthan=4
+> size_assertion_greaterthanequal=5
+> size_assertion_lessthanequal=6
+> size_assertion_size=99999999
+> size_assertion_comparator_label=Type of Comparison
+
+RCS file: c:\cvsroot/jmeter/components/org/apache/jmeter/assertions/SizeAssertion.java,v
+retrieving revision 1.1.1.1
+retrieving revision 1.2
+diff -r1.1.1.1 -r1.2
+73c73
+<  * @version $Revision: 1.1.1.1 $, $Date: 2002/12/09 16:24:37 $
+---
+>  * @version $Revision: 1.2 $, $Date: 2002/11/16 19:33:56 $
+76a77,85
+> 	int comparator = 1;
+> 	String comparatorErrorMessage = "ERROR!";
+> 	//* Static int to signify the type of logical comparitor to assert
+> 	public final static int EQUAL = 1;
+> 	public final static int NOTEQUAL = 2;
+> 	public final static int GREATERTHAN = 3;
+> 	public final static int LESSTHAN = 4;
+> 	public final static int GREATERTHANEQUAL = 5;
+> 	public final static int LESSTHANEQUAL = 6;
+78c87
+< 	private static final String SIZE_KEY = "SizeAssertion.size";
+---
+> 	private static final String SIZE_KEY = "size_assertion_size";
+79a89
+> 	
+93c103
+< 		if (((resultSize != getAllowedSize()) && (getAllowedSize() > 0))) {
+---
+> 		if ((!(compareSize(resultSize)) && (getAllowedSize() > 0))) {
+95c105
+< 			Object[] arguments = { new Long(resultSize), new Long(getAllowedSize())};
+---
+> 			Object[] arguments = { new Long(resultSize), new String(comparatorErrorMessage), new Long(getAllowedSize())};
+161c171,228
+< 
+---
+> 	
+> 	/**
+> 	 * Set the type of logical comparator to assert.
+> 	 *
+> 	 * Possible values are:
+> 	 * equal, not equal, 
+> 	 * greater than, less than, 
+> 	 * greater than eqaul, less than equal, .
+> 	 * 
+> 	 *@param comparator is an int value indicating logical comparator type
+> 	 *
+> 	 */
+> 	public void setLogicalComparator(int comparator) {
+> 		this.comparator = comparator;
+> 	}
+> 	
+> 	/**
+> 	 * Compares the the size of a return result to the set allowed size
+> 	 *using a logical comparator set in setLogicalComparator().
+> 	 *
+> 	 * Possible values are:
+> 	 * equal, not equal, 
+> 	 * greater than, less than, 
+> 	 * greater than eqaul, less than equal, .
+> 	 * 
+> 	 */
+> 	
+> 	private boolean compareSize(long resultSize) {
+> 		boolean result = false;
+> 		switch (comparator) 
+> 		{
+> 			case EQUAL: 
+> 				result = (resultSize == getAllowedSize());
+> 				comparatorErrorMessage = JMeterUtils.getResString("size_assertion_comparator_error_equal");
+> 				break;
+> 			case NOTEQUAL: 
+> 				result = (resultSize != getAllowedSize());
+> 				comparatorErrorMessage = JMeterUtils.getResString("size_assertion_comparator_error_notequal");
+> 				break;
+> 			case GREATERTHAN: 
+> 				result = (resultSize > getAllowedSize());
+> 				comparatorErrorMessage = JMeterUtils.getResString("size_assertion_comparator_error_greater");
+> 				break;
+> 			case LESSTHAN: 
+> 				result = (resultSize < getAllowedSize());
+> 				comparatorErrorMessage = JMeterUtils.getResString("size_assertion_comparator_error_less");
+> 				break;				
+> 			case GREATERTHANEQUAL: 
+> 				result = (resultSize >= getAllowedSize());
+> 				comparatorErrorMessage = JMeterUtils.getResString("size_assertion_comparator_error_greaterequal");
+> 				break;
+> 			case LESSTHANEQUAL: 
+> 				result = (resultSize <= getAllowedSize());
+> 				comparatorErrorMessage = JMeterUtils.getResString("size_assertion_comparator_error_lessequal");
+> 				break;
+> 		}
+> 		return result;
+> 	}
+
+cvs diff -r 1.1.1.1 SizeAssertionGui.java (in directory C:\cvsroot.local\jmeter\components\org\apache\jmeter\assertions\gui)
+Index: SizeAssertionGui.java
+===================================================================
+RCS file: c:\cvsroot/jmeter/components/org/apache/jmeter/assertions/gui/SizeAssertionGui.java,v
+retrieving revision 1.1.1.1
+retrieving revision 1.2
+diff -r1.1.1.1 -r1.2
+57a58
+> import java.awt.GridLayout;
+60a62,63
+> import java.awt.event.ActionEvent;
+> import java.awt.event.ActionListener;
+68a72,73
+> import javax.swing.ButtonGroup;
+> import javax.swing.JRadioButton;
+83c88
+<  *@created   $Date: 2002/12/09 16:24:37 $
+---
+>  *@created   $Date: 2002/11/16 19:34:07 $
+87c92
+< public class SizeAssertionGui extends AbstractAssertionGui implements FocusListener
+---
+> public class SizeAssertionGui extends AbstractAssertionGui implements FocusListener, ActionListener
+92a98
+> 	SizeAssertion sa = new SizeAssertion();
+118,119c124
+< 		SizeAssertion el = new SizeAssertion();
+< 		configureTestElement(el);
+---
+> 		configureTestElement(sa);
+128,129c133,134
+< 		el.setAllowedSize(assertionSize);
+< 		return el;
+---
+> 		sa.setAllowedSize(assertionSize);
+> 		return sa;
+173c178,224
+< 
+---
+> 		
+> 		ButtonGroup comparatorButtonGroup = new ButtonGroup();
+> 		
+> 		JRadioButton equalButton = new JRadioButton("=");
+> 		equalButton.setSelected(true);
+> 		equalButton.setActionCommand(new Integer(SizeAssertion.EQUAL).toString());
+> 		equalButton.addActionListener(this);
+> 		comparatorButtonGroup.add(equalButton);
+> 				
+> 		JRadioButton notequalButton = new JRadioButton("!=");
+> 		notequalButton.setActionCommand(new Integer(SizeAssertion.NOTEQUAL).toString());
+> 		notequalButton.addActionListener(this);
+> 		comparatorButtonGroup.add(notequalButton);
+> 		
+> 		JRadioButton greaterthanButton = new JRadioButton(">");
+> 		greaterthanButton.setActionCommand(new Integer(SizeAssertion.GREATERTHAN).toString());
+> 		greaterthanButton.addActionListener(this);
+> 		comparatorButtonGroup.add(greaterthanButton);
+> 		
+> 		JRadioButton lessthanButton = new JRadioButton("<");
+> 		lessthanButton.setActionCommand(new Integer(SizeAssertion.LESSTHAN).toString());
+> 		lessthanButton.addActionListener(this);
+> 		comparatorButtonGroup.add(lessthanButton);
+> 		
+> 		JRadioButton greaterthanequalButton = new JRadioButton(">=");
+> 		greaterthanequalButton.setActionCommand(new Integer(SizeAssertion.GREATERTHANEQUAL).toString());
+> 		greaterthanequalButton.addActionListener(this);
+> 		comparatorButtonGroup.add(greaterthanequalButton);
+> 		
+> 		JRadioButton lessthanequalButton = new JRadioButton("<=");
+> 		lessthanequalButton.setActionCommand(new Integer(SizeAssertion.LESSTHANEQUAL).toString());
+> 		lessthanequalButton.addActionListener(this);
+> 		comparatorButtonGroup.add(lessthanequalButton);
+> 		
+> 		//Put the check boxes in a column in a panel
+>         JPanel checkPanel = new JPanel();
+>         checkPanel.setLayout(new GridLayout(0, 1));
+>         JLabel compareLabel = new JLabel(JMeterUtils.getResString("size_assertion_comparator_label"));
+>         checkPanel.add(compareLabel);
+>         checkPanel.add(equalButton);
+>         checkPanel.add(notequalButton);
+>         checkPanel.add(greaterthanButton);
+>         checkPanel.add(lessthanButton);
+>         checkPanel.add(greaterthanequalButton);
+>         checkPanel.add(lessthanequalButton);
+>         sizePanel.add(checkPanel);
+> 		
+212c263,273
+< 
+---
+> 	
+> 	/****************************************
+> 	 * Description of the Method
+> 	 *
+> 	 *@param e ActionEvent
+> 	 ***************************************/
+> 	public void actionPerformed(ActionEvent e) {
+> 		int comparator = new Integer(e.getActionCommand()).intValue(); 
+>     	sa.setLogicalComparator(comparator);
+>     }
+>     

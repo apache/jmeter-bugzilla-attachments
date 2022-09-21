@@ -1,0 +1,63 @@
+--- \jakarta-jmeter-cvs\jakarta-jmeter\src\org\apache\jmeter\protocol\http\parser\HtmlParser.java	Fri Aug 31 00:46:44 2001
++++ \jakarta-jmeter-nightly\2001.09.15\jakarta-jmeter\src\org\apache\jmeter\protocol\http\parser\HtmlParser.java	Mon Sep 17 12:07:12 2001
+@@ -259,6 +259,22 @@
+ 		url.setDomain(context.getHost());
+ 		url.setProtocol(context.getProtocol());
+ 		url.setPort(context.getPort());
++		
++		// In JDK1.3, we can get the path using getPath(). However, in JDK1.2, we have to parse
++		// the file to obtain the path. In the source for JDK1.3.1, they determine the path to
++		// be from the start of the file up to the LAST question mark (if any).
++		String contextPath = null; 
++		String contextFile = context.getFile();
++		int indexContextQuery = contextFile.lastIndexOf('?');
++		if (indexContextQuery != -1) 
++		{
++			contextPath = contextFile.substring(0, indexContextQuery);
++		} 
++		else
++		{
++			contextPath = contextFile;
++		}
++
+ 		int queryStarts = parsedUrlString.indexOf("?");
+ 		if (queryStarts == -1)
+ 		{
+@@ -270,19 +286,33 @@
+ 		}
+ 		else if (parsedUrlString.startsWith(".."))
+ 		{
+-			url.setPath(context.getPath().substring(0, context.getPath().substring(0,
+-					context.getPath().lastIndexOf("/")).lastIndexOf("/")) +
++			url.setPath(contextPath.substring(0, contextPath.substring(0,
++					contextPath.lastIndexOf("/")).lastIndexOf("/")) +
+ 					parsedUrlString.substring(2, queryStarts));
+ 		}
+ 		else if (!parsedUrlString.toLowerCase().startsWith("http"))
+ 		{
+-			url.setPath(context.getPath().substring(0, context.getPath().lastIndexOf("/")) +
++			url.setPath(contextPath.substring(0, contextPath.lastIndexOf("/")) +
+ 					"/" + parsedUrlString.substring(0, queryStarts));
+ 		}
+ 		else
+ 		{
+ 			URL u = new URL(parsedUrlString);
+-			url.setPath(u.getPath());
++
++			// Determine the path. (See JDK1.2/1.3 comment above.)
++			String uPath = null; 
++			String uFile = u.getFile();
++			int indexUQuery = uFile.lastIndexOf('?');
++			if (indexUQuery != -1) 
++			{
++				uPath = uFile.substring(0, indexUQuery);
++			} 
++			else
++			{
++				uPath = uFile;
++			}
++
++			url.setPath(uPath);
+ 			url.setDomain(u.getHost());
+ 			url.setProtocol(u.getProtocol());
+ 			url.setPort(u.getPort());

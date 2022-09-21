@@ -1,0 +1,20 @@
+Index: src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/TransactionController.java	(revision 1001614)
++++ src/core/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -213,6 +213,15 @@
+                 res.setBytes(res.getBytes() + sampleResult.getBytes());
+                 if (!isIncludeTimers()) {// Accumulate waiting time for later
+                     pauseTime += sampleResult.getEndTime() - sampleResult.getTime() - prevEndTime;
++                    
++                    // START FIX PMD
++                    // If pause time is negative, it means there was no pause time at 
++                    // this level N but  at level > N+1 so already taken into account
++                    if(pauseTime<=0)
++                    {
++                    	pauseTime = 0;
++                    }
++                    // END FIX PMD
+                     prevEndTime = sampleResult.getEndTime();
+                 }
+                 if(!sampleResult.isSuccessful()) {

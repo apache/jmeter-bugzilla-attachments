@@ -1,0 +1,266 @@
+Index: src/components/org/apache/jmeter/control/gui/VarFromFileControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/VarFromFileControllerGui.java	(revision 0)
++++ src/components/org/apache/jmeter/control/gui/VarFromFileControllerGui.java	(revision 0)
+@@ -0,0 +1,111 @@
++package org.apache.jmeter.control.gui;
++
++import org.apache.jmeter.gui.util.FilePanel;
++import org.apache.jmeter.gui.util.MenuFactory;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.control.VarFromFileController;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++import javax.swing.*;
++
++/**
++ * Created by IntelliJ IDEA.
++ * User: yaoxi01
++ * Date: Sep 26, 2006
++ * Time: 10:18:10 AM
++ * To change this template use File | Settings | File Templates.
++ */
++
++
++/**
++ *
++ *
++ * @version $Revision: 377795 $ on $Date: 2006-02-15 05:19:58 +1100 (Wed, 15 Feb 2006) $
++ */
++public class VarFromFileControllerGui extends AbstractControllerGui
++                                                                /*
++																 * implements
++																 * UnsharedComponent
++																 */
++{
++
++	//NOTUSED private JLabel warningLabel;
++
++    private FilePanel includePanel =
++        new FilePanel(JMeterUtils.getResString("var_from_file"), null);
++
++    private JTextField nameText = new JTextField("variable name", 25);
++    public static final String CONTROLLER = "Get variable value from file";
++
++
++	/**
++	 * Initializes the gui panel for the ModuleController instance.
++	 */
++	public VarFromFileControllerGui() {
++		init();
++	}
++
++	public String getLabelResource() {
++		return "var_from_file_controller";
++	}
++
++	/*
++	 * (non-Javadoc)
++	 *
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#configure(TestElement)
++	 */
++	public void configure(TestElement el) {
++		super.configure(el);
++		VarFromFileController controller = (VarFromFileController) el;
++        this.includePanel.setFilename(controller.getIncludePath());
++        this.nameText.setText(controller.getVarName());
++    }
++
++
++
++	/*
++	 * (non-Javadoc)
++	 *
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()
++	 */
++	public TestElement createTestElement() {
++		VarFromFileController mc = new VarFromFileController();
++		configureTestElement(mc);
++		return mc;
++	}
++
++	/*
++	 * (non-Javadoc)
++	 *
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++	 */
++	public void modifyTestElement(TestElement element) {
++		configureTestElement(element);
++        VarFromFileController controller = (VarFromFileController)element;
++        controller.setIncludePath(this.includePanel.getFilename());
++        controller.setVarName(this.nameText.getText());
++    }
++
++	public JPopupMenu createPopupMenu() {
++		JPopupMenu menu = new JPopupMenu();
++		JMenu addMenu = MenuFactory.makeMenus(new String[] { MenuFactory.CONFIG_ELEMENTS, MenuFactory.ASSERTIONS,
++				MenuFactory.TIMERS, MenuFactory.LISTENERS, }, JMeterUtils.getResString("Add"), "Add");
++		menu.add(addMenu);
++		MenuFactory.addEditMenu(menu, true);
++		MenuFactory.addFileMenu(menu);
++		return menu;
++	}
++
++	private void init() {
++		setLayout(new VerticalLayout(5, VerticalLayout.LEFT, VerticalLayout.TOP));
++		setBorder(makeBorder());
++		add(makeTitlePanel());
++
++        JPanel p = new JPanel();
++        p.add(new JLabel("Variable Name: "));
++        p.add(nameText);
++        add(p);
++        add(includePanel);
++	}
++
++}
+Index: src/components/org/apache/jmeter/control/VarFromFileController.java
+===================================================================
+--- src/components/org/apache/jmeter/control/VarFromFileController.java	(revision 0)
++++ src/components/org/apache/jmeter/control/VarFromFileController.java	(revision 0)
+@@ -0,0 +1,124 @@
++/*
++ * Copyright 2005-2006 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.control;
++
++import java.io.*;
++import java.util.Iterator;
++import java.util.LinkedList;
++
++import org.apache.jmeter.save.SaveService;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterVariables;
++import org.apache.jorphan.collections.HashTree;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.log.Logger;
++
++/**
++ * Created by IntelliJ IDEA.
++ * User: yaoxi01
++ * Date: Sep 26, 2006
++ * Time: 10:23:14 AM
++ * To change this template use File | Settings | File Templates.
++ */
++public class VarFromFileController extends GenericController {
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final String INCLUDE_PATH = "VarFromFileController.includepath"; //$NON-NLS-1$
++    private static final String VAR_NAME = "Variable.name";
++
++    /**
++     * No-arg constructor
++     *
++     * @see java.lang.Object#Object()
++     */
++    public VarFromFileController() {
++        super();
++    }
++
++    public Object clone()
++    {
++        this.loadContent();
++        VarFromFileController clone = (VarFromFileController) super.clone();
++        clone.setIncludePath(this.getIncludePath());
++        clone.setVarName(this.getVarName());
++
++        return clone;
++    }
++
++    private void loadContent()
++    {
++        final String includePath = getIncludePath();
++        try
++        {
++            String content = readFile(includePath);
++            String name = this.getVarName();
++            final JMeterVariables variables = JMeterContextService.getContext().getVariables();
++            if (variables != null)
++                variables.put(name, content);
++        }
++        catch (Exception e)
++        {
++            e.printStackTrace();
++        }
++    }
++
++    /**
++     * In the event an user wants to include an external JMX test plan
++     * the GUI would call this.
++     * @param jmxfile
++     */
++    public void setIncludePath(String jmxfile) {
++        this.setProperty(INCLUDE_PATH,jmxfile);
++    }
++
++
++    public String getIncludePath() {
++        return this.getPropertyAsString(INCLUDE_PATH);
++    }
++
++    private static String readFile(String filename) throws IOException
++    {
++       String lineSep = "\n";
++       BufferedReader br = new BufferedReader(new FileReader(filename));
++       String nextLine = "";
++       StringBuffer sb = new StringBuffer();
++       while ((nextLine = br.readLine()) != null) {
++         sb.append(nextLine);
++         //
++         // note:
++         //   BufferedReader strips the EOL character.
++         //
++           // TODO: do we need to include the line sep?
++         //sb.append(lineSep);
++       }
++       return sb.toString();
++    }
++
++    public void setVarName(String text)
++    {
++        this.setProperty(VAR_NAME,text);
++    }
++
++    public String getVarName()
++    {
++        return this.getPropertyAsString(VAR_NAME);
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 451872)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -741,6 +741,8 @@
+ userpw=Password
+ value=Value
+ var_name=Reference Name
++var_from_file=Include variable from file
++var_from_file_controller=Variable From File Controller
+ view_graph_tree_title=View Graph Tree
+ view_results_in_table=View Results in Table
+ view_results_tab_request=Request
+@@ -797,4 +799,4 @@
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+ zh_tw=Chinese (Traditional)
+-# Please add new entries in alphabetical order
+\ No newline at end of file
++# Please add new entries in alphabetical order

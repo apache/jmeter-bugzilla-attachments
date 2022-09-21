@@ -1,0 +1,46 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 1509948)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -21,7 +21,9 @@
+ import java.io.ByteArrayOutputStream;
+ import java.io.IOException;
+ import java.io.InputStream;
++import java.net.URI;
+ import java.net.URL;
++import java.net.URLDecoder;
+ import java.util.HashMap;
+ import java.util.Map;
+ import java.util.StringTokenizer;
+@@ -167,9 +169,31 @@
+         if (url.startsWith("/")) {
+             url = HTTPS + "://" + paramHttps + url; // $NON-NLS-1$
+         }
++        try {
++            URI testCleanUri = new URI(url);
++        } catch (Exception e) {
++            log.info("Url contains unsafe characters");
++            try {
++                url = escapeIllegalURLCharacters(url);
++            } catch (Exception e1) {
++                log.error("Error sanitzing URL:"+url);
++            }
++        }
+         log.debug("First Line: " + url);
+     }
+ 
++    /**
++     * @param url
++     * @return
++     * @throws Exception
++     */
++    public static String escapeIllegalURLCharacters(String url) throws Exception{
++        String decodeUrl = URLDecoder.decode(url,"UTF-8");
++        URL urlString = new URL(decodeUrl);
++        URI uri = new URI(urlString.getProtocol(), urlString.getUserInfo(), urlString.getHost(), urlString.getPort(), urlString.getPath(), urlString.getQuery(), urlString.getRef());
++        return uri.toString();
++    }
++    
+     /*
+      * Split line into name/value pairs and store in headers if relevant
+      * If name = "content-length", then return value as int, else return 0

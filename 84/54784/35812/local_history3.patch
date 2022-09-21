@@ -1,0 +1,134 @@
+Index: src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java	(date 1522079370640)
++++ src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java	(date 1522079370640)
+@@ -18,6 +18,8 @@
+ 
+ package org.apache.jmeter.gui.tree;
+ 
++import java.awt.Component;
++import java.awt.Rectangle;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.awt.event.InputEvent;
+@@ -30,6 +32,7 @@
+ import javax.swing.JTree;
+ import javax.swing.event.TreeSelectionEvent;
+ import javax.swing.event.TreeSelectionListener;
++import javax.swing.tree.TreeNode;
+ import javax.swing.tree.TreePath;
+ 
+ import org.apache.jmeter.gui.GuiPackage;
+@@ -210,7 +213,10 @@
+             actionName = ActionNames.COLLAPSE;
+         } else if (KeyStrokes.matches(e, KeyStrokes.SHIFT_RIGHT_ARROW)) {
+             actionName = ActionNames.EXPAND;
+-        } 
++        } else if (KeyStrokes.matches(e, KeyStrokes.CONTEXT_MENU) ||
++                KeyStrokes.matches(e, KeyStrokes.SHIFT_F10)) {
++            displayPopUp(e);
++        }
+         
+         if (actionName != null) {
+             final ActionRouter actionRouter = ActionRouter.getInstance();
+@@ -231,6 +237,17 @@
+         return e.isPopupTrigger() || (InputEvent.BUTTON2_MASK & e.getModifiers()) > 0 || (InputEvent.BUTTON3_MASK == e.getModifiers());
+     }
+ 
++    private void displayPopUp(KeyEvent e) {
++        JMeterTreeNode currentNode = getCurrentNode();
++        JPopupMenu pop = currentNode.createPopupMenu();
++
++        TreeNode[] path = currentNode.getPath();
++        Rectangle rectangle = tree.getPathBounds(new TreePath(path));
++        GuiPackage.getInstance().displayPopUp((Component) e.getSource(),
++                rectangle.x + rectangle.width / 2,
++                rectangle.y + rectangle.height / 2, pop);
++    }
++
+     private void displayPopUp(MouseEvent e) {
+         JPopupMenu pop = getCurrentNode().createPopupMenu();
+         GuiPackage.getInstance().displayPopUp(e, pop);
+Index: src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/KeyStrokes.java	(date 1522079370932)
++++ src/core/org/apache/jmeter/gui/action/KeyStrokes.java	(date 1522079370932)
+@@ -76,6 +76,8 @@
+     public static final KeyStroke CUT               = KeyStroke.getKeyStroke(KeyEvent.VK_X, CONTROL_MASK);
+     public static final KeyStroke REMOTE_STOP_ALL   = KeyStroke.getKeyStroke(KeyEvent.VK_X, InputEvent.ALT_DOWN_MASK);
+     public static final KeyStroke REMOTE_SHUT_ALL   = KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.ALT_DOWN_MASK);
++    public static final KeyStroke CONTEXT_MENU      = KeyStroke.getKeyStroke(KeyEvent.VK_CONTEXT_MENU, 0);
++    public static final KeyStroke SHIFT_F10         = KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK);
+ 
+     public static final KeyStroke REMOVE            = KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0);
+     public static final KeyStroke ACTION_STOP       = KeyStroke.getKeyStroke(KeyEvent.VK_PERIOD, CONTROL_MASK);
+@@ -110,7 +112,8 @@
+      * @return true if event matches the keystroke definition
+      */
+     public static boolean matches(KeyEvent e, KeyStroke k){
+-        final int modifiersEx = e.getModifiersEx()  | e.getModifiers();// Hack to get full modifier value
++        final int modifiersEx = (e.getModifiersEx() | e.getModifiers()) & // Hack to get full modifier value
++                ~(InputEvent.BUTTON1_MASK | InputEvent.BUTTON1_DOWN_MASK); // In case of using virtual keyboard on screen
+         return e.getKeyCode() == k.getKeyCode() && modifiersEx == k.getModifiers();
+     }
+ }
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(date 1522061884593)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(date 1522061884593)
+@@ -114,6 +114,8 @@
+     public static final String VALIDATE_TG      = "validate_tg"; //$NON-NLS-1$
+     public static final String ZOOM_IN          = "zoom_in"; //$NON-NLS-1$
+     public static final String ZOOM_OUT         = "zoom_out"; //$NON-NLS-1$
++    public static final String ENTER            = "enter"; // $NON-NLS-1$
++    public static final String CONTEXT_MENU     = "context_menu"; // $NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames() {}
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(date 1522113414306)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(date 1522113414306)
+@@ -631,11 +631,28 @@
+      *            the popup menu to display
+      */
+     public void displayPopUp(Component invoker, MouseEvent e, JPopupMenu popup) {
++        displayPopUp(invoker, e.getX(), e.getY(), popup);
++    }
++
++    /**
++     * Display the specified popup menu at the location specified
++     * with the specified source component.
++     *
++     * @param invoker
++     *            the source component
++     * @param x
++     *            the x coordinate this popup to be displayed
++     * @param y
++     *            the y coordinate this popup to be displayed
++     * @param popup
++     *            the popup menu to display
++     */
++    public void displayPopUp(Component invoker, int x, int y, JPopupMenu popup) {
+         if (popup != null) {
+-            log.debug("Showing pop up for {} at x,y = {},{}", invoker, e.getX(), e.getY());
++            log.debug("Showing pop up for {} at x,y = {},{}", invoker, x, y);
+ 
+             popup.pack();
+-            popup.show(invoker, e.getX(), e.getY());
++            popup.show(invoker, x, y);
+             popup.setVisible(true);
+             popup.requestFocusInWindow();
+         }

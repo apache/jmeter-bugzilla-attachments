@@ -1,0 +1,928 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1489181)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -194,6 +194,7 @@
+ counter_per_user=Suivre le compteur ind\u00E9pendamment pour chaque unit\u00E9 de test
+ counter_reset_per_tg_iteration=R\u00E9initialiser le compteur \u00E0 chaque it\u00E9ration du groupe d'unit\u00E9s
+ countlim=Limiter le nombre d'\u00E9l\u00E9ments retourn\u00E9s \u00E0
++create_from_template=Mod\u00E8les
+ cssjquery_attribute=Attribut
+ cssjquery_impl=Impl\u00E9mentation CSS/JQuery\:
+ cssjquery_render_no_text=Les donn\u00E9es de r\u00E9ponse ne sont pas du texte.
+@@ -1035,7 +1036,10 @@
+ tcp_sample_title=Requ\u00EAte TCP
+ tcp_timeout=Expiration (millisecondes) \:
+ teardown_on_shutdown=Ex\u00E9cuter le Groupe d'unit\u00E9s de fin m\u00EAme apr\u00E8s un arr\u00EAt manuel des Groupes d'unit\u00E9s principaux
++template_choose=Choisir le mod\u00E8le
++template_create_from=Cr\u00E9er
+ template_field=Canevas \:
++template_title=Cr\u00E9er \u00E0 partir du mod\u00E8le
+ test=Test
+ test_action_action=Action \:
+ test_action_duration=Dur\u00E9e (millisecondes) \:
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1489181)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -206,6 +206,7 @@
+ counter_per_user=Track counter independently for each user
+ counter_reset_per_tg_iteration=Reset counter on each Thread Group Iteration
+ countlim=Size limit
++create_from_template=New from templates
+ csvread_file_file_name=CSV file to get values from | *alias
+ cut=Cut
+ cut_paste_function=Copy and paste function string
+@@ -1042,7 +1043,10 @@
+ tcp_sample_title=TCP Sampler
+ tcp_timeout=Timeout (milliseconds)\:
+ teardown_on_shutdown=Run tearDown Thread Groups after shutdown of main threads
++template_choose=Select Template
++template_create_from=Create
+ template_field=Template\:
++template_title=Create from Template
+ test=Test
+ test_action_action=Action
+ test_action_duration=Duration (milliseconds)
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(revision 1489181)
++++ src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(working copy)
+@@ -66,6 +66,8 @@
+ 
+     private JMenuItem file_load;
+ 
++    private JMenuItem create_from_template;
++
+     private List<JComponent> file_load_recent_files;
+ 
+     private JMenuItem file_merge;
+@@ -460,6 +462,9 @@
+         // is selected is ROOT, which does not allow items to be inserted.
+         file_load.setEnabled(false);
+ 
++        create_from_template = makeMenuItemRes("create_from_template", 'T', ActionNames.CREATE_FROM_TEMPLATE); //$NON-NLS-1$
++        create_from_template.setEnabled(true);
++
+         file_close = makeMenuItemRes("menu_close", 'C', ActionNames.CLOSE, KeyStrokes.CLOSE); //$NON-NLS-1$
+ 
+         file_exit = makeMenuItemRes("exit", 'X', ActionNames.EXIT, KeyStrokes.EXIT); //$NON-NLS-1$
+@@ -473,6 +478,7 @@
+ 
+         fileMenu.add(file_close);
+         fileMenu.add(file_load);
++        fileMenu.add(create_from_template);
+         fileMenu.add(file_merge);
+         fileMenu.addSeparator();
+         fileMenu.add(file_save);
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1489181)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -62,6 +62,7 @@
+     public static final String MERGE            = "merge"; // $NON-NLS-1$
+     public static final String OPEN             = "open"; // $NON-NLS-1$
+     public static final String OPEN_RECENT      = "open_recent"; // $NON-NLS-1$
++    public static final String CREATE_FROM_TEMPLATE      = "create_from_template"; // $NON-NLS-1$
+     public static final String PASTE            = "Paste"; // $NON-NLS-1$
+     public static final String REMOTE_EXIT      = "remote_exit"; // $NON-NLS-1$
+     public static final String REMOTE_EXIT_ALL  = "remote_exit_all"; // $NON-NLS-1$
+Index: src/core/org/apache/jmeter/gui/action/SelectTemplateDialog.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/SelectTemplateDialog.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/SelectTemplateDialog.java	(revision 0)
+@@ -0,0 +1,222 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.BorderLayout;
++import java.awt.Dimension;
++import java.awt.FlowLayout;
++import java.awt.GridLayout;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++import java.io.BufferedInputStream;
++import java.io.BufferedOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.util.Arrays;
++import java.util.Comparator;
++import java.util.Set;
++
++import javax.swing.AbstractAction;
++import javax.swing.Action;
++import javax.swing.ActionMap;
++import javax.swing.InputMap;
++import javax.swing.JButton;
++import javax.swing.JComponent;
++import javax.swing.JDialog;
++import javax.swing.JFrame;
++import javax.swing.JPanel;
++import javax.swing.JRootPane;
++import javax.swing.JScrollPane;
++import javax.swing.event.ChangeEvent;
++import javax.swing.event.ChangeListener;
++
++import org.apache.commons.io.IOUtils;
++import org.apache.jmeter.gui.action.template.Template;
++import org.apache.jmeter.gui.action.template.TemplateManager;
++import org.apache.jmeter.swing.HtmlPane;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.ComponentUtil;
++import org.apache.jorphan.gui.JLabeledChoice;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.log.Logger;
++
++/**
++ * Dialog used for Templates selection
++ * @since 2.10
++ */
++public class SelectTemplateDialog extends JDialog implements ChangeListener, ActionListener {
++    /**
++     *
++     */
++    private static final long serialVersionUID = -4436834972710248247L;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private JLabeledChoice templateList;
++
++    private HtmlPane helpDoc = new HtmlPane();
++
++    private JButton createFromTemplateButton;
++
++    private JButton cancelButton;
++    
++    private JScrollPane scroller = new JScrollPane(helpDoc);
++
++    public SelectTemplateDialog() {
++        super((JFrame) null, JMeterUtils.getResString("template_title"), true); //$NON-NLS-1$
++        init();
++    }
++
++    @Override
++    protected JRootPane createRootPane() {
++        JRootPane rootPane = new JRootPane();
++        // Hide Window on ESC
++        Action escapeAction = new AbstractAction("ESCAPE") { //$NON-NLS-1$
++            /**
++             *
++             */
++            private static final long serialVersionUID = -6543764044868772971L;
++
++            @Override
++            public void actionPerformed(ActionEvent actionEvent) {
++                setVisible(false);
++            }
++        };
++        // Do search on Enter
++        Action enterAction = new AbstractAction("ENTER") { //$NON-NLS-1$
++            /**
++             *
++             */
++            private static final long serialVersionUID = -3661361497864527363L;
++
++            @Override
++            public void actionPerformed(ActionEvent actionEvent) {
++                doOpen(actionEvent);
++            }
++        };
++        ActionMap actionMap = rootPane.getActionMap();
++        actionMap.put(escapeAction.getValue(Action.NAME), escapeAction);
++        actionMap.put(enterAction.getValue(Action.NAME), enterAction);
++        InputMap inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
++        inputMap.put(KeyStrokes.ESC, escapeAction.getValue(Action.NAME));
++        inputMap.put(KeyStrokes.ENTER, enterAction.getValue(Action.NAME));
++
++        return rootPane;
++    }
++
++    private void init() {
++        initializeTemplateList();
++        this.getContentPane().setLayout(new BorderLayout(10, 10));
++        JPanel comboPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
++        comboPanel.add(templateList);
++        this.getContentPane().add(comboPanel, BorderLayout.NORTH);
++        helpDoc.setContentType("text/html"); //$NON-NLS-1$
++        helpDoc.setEditable(false);
++        fillDescription();
++        JPanel jPanel = new JPanel(new GridLayout(1,1));
++        scroller.setPreferredSize(new Dimension(300, 400));
++        jPanel.setPreferredSize(new Dimension(310, 410));
++        jPanel.add(scroller);
++        this.getContentPane().add(jPanel, BorderLayout.CENTER);
++
++        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
++
++        createFromTemplateButton = new JButton(JMeterUtils.getResString("template_create_from")); //$NON-NLS-1$
++        createFromTemplateButton.addActionListener(this);
++
++        cancelButton = new JButton(JMeterUtils.getResString("cancel")); //$NON-NLS-1$
++        cancelButton.addActionListener(this);
++        buttonsPanel.add(createFromTemplateButton);
++        buttonsPanel.add(cancelButton);
++        this.getContentPane().add(buttonsPanel, BorderLayout.SOUTH);
++
++        this.pack();
++        ComponentUtil.centerComponentInWindow(this);
++    }
++    
++    private void initializeTemplateList() {
++        Set<String> templatesAsSet = TemplateManager.getInstance().getTemplateNames();
++        String[] templateNames =  templatesAsSet.toArray(new String[templatesAsSet.size()]);
++        Arrays.sort(templateNames, new Comparator<String>() {
++            @Override
++            public int compare(String o1, String o2) {
++                return o1.compareToIgnoreCase(o2);
++            }
++        });
++        templateList = new JLabeledChoice(JMeterUtils.getResString("template_choose"), templateNames); //$NON-NLS-1$
++        templateList.addChangeListener(this);
++    }
++
++    /**
++     * Do search
++     * @param e {@link ActionEvent}
++     */
++    @Override
++    public void actionPerformed(ActionEvent e) {
++        if(e.getSource()==cancelButton) {
++            this.setVisible(false);
++            return;
++        }
++        doOpen(e);
++    }
++    
++    @Override
++    public void stateChanged(ChangeEvent event) {
++        fillDescription();
++    }
++
++    /**
++     * 
++     */
++    protected void fillDescription() {
++        String selectedTemplate = templateList.getText();
++        Template template = TemplateManager.getInstance().getTemplateByName(selectedTemplate);
++        helpDoc.setText(template.getDescription());
++    }
++
++    /**
++     * @param e {@link ActionEvent}
++     */
++    private void doOpen(ActionEvent e) {
++        InputStream inputStream = null;
++        OutputStream outputStream = null;
++        try {
++            String selectedTemplate = templateList.getText();
++            Template template = TemplateManager.getInstance().getTemplateByName(selectedTemplate);   
++            File fileToCopy = new File(JMeterUtils.getJMeterHome(), template.getFileName());
++            File targetFile = new File( System.getProperty("user.dir"), 
++                    template.getFileName().substring(template.getFileName().lastIndexOf("/")));
++            inputStream = new BufferedInputStream(new FileInputStream(fileToCopy));
++            outputStream = new BufferedOutputStream(new FileOutputStream(targetFile));
++            IOUtils.copy(inputStream, outputStream);
++            outputStream.close();
++            Load.loadProjectFile(e, targetFile, false); 
++            this.setVisible(false);
++        } catch (Exception e1) {
++            throw new Error(e1);
++        } finally {
++            JOrphanUtils.closeQuietly(inputStream);
++            JOrphanUtils.closeQuietly(outputStream);
++        }
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/action/template/Template.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/template/Template.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/template/Template.java	(revision 0)
+@@ -0,0 +1,65 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action.template;
++
++/**
++ * Template Bean
++ * @since 2.10
++ */
++public class Template {
++    private String name;
++    private String fileName;
++    private String description;
++    /**
++     * @return the name
++     */
++    public String getName() {
++        return name;
++    }
++    /**
++     * @param name the name to set
++     */
++    public void setName(String name) {
++        this.name = name;
++    }
++    /**
++     * @return the relativeFileName
++     */
++    public String getFileName() {
++        return fileName;
++    }
++    /**
++     * @param relativeFileName the relativeFileName to set
++     */
++    public void setFileName(String relativeFileName) {
++        fileName = relativeFileName;
++    }
++    /**
++     * @return the description
++     */
++    public String getDescription() {
++        return description;
++    }
++    /**
++     * @param description the description to set
++     */
++    public void setDescription(String description) {
++        this.description = description;
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/gui/action/template/TemplateManager.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/template/TemplateManager.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/template/TemplateManager.java	(revision 0)
+@@ -0,0 +1,140 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action.template;
++
++import java.io.BufferedInputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileNotFoundException;
++import java.io.IOException;
++import java.io.InputStream;
++import java.util.HashMap;
++import java.util.Map;
++import java.util.Set;
++
++import org.apache.commons.lang3.StringUtils;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.log.Logger;
++
++import com.thoughtworks.xstream.XStream;
++import com.thoughtworks.xstream.io.xml.DomDriver;
++
++/**
++ * Manages Test Plan templates
++ * @since 2.10
++ */
++public class TemplateManager {
++    private class Templates {
++        private Map<String, Template> templates = new HashMap<String, Template>();
++    }
++    private static final String TEMPLATE_FILES = JMeterUtils.getPropDefault("template.files", // $NON-NLS-1$
++            "/bin/templates/templates.xml");
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    
++    private static final TemplateManager SINGLETON = new TemplateManager();
++    
++    private Map<String, Template> templates = new HashMap<String, Template>();
++
++    private XStream xstream = initXStream();
++
++    /**
++     * 
++     * @return
++     */
++    public static final TemplateManager getInstance() {
++        return SINGLETON;
++    }
++    
++    private TemplateManager()  {
++        try {
++            templates = readTemplates();            
++        } catch(IOException e) {
++            log.error("Error loading templates from files referenced in templates.files property:"+
++                    TEMPLATE_FILES, e);
++        }
++    }
++    
++    private XStream initXStream() {
++        XStream xstream = new XStream(new DomDriver());
++        xstream.alias("template", Template.class);
++        xstream.alias("templates", Templates.class);
++        
++        // templates i
++        xstream.addImplicitMap(Templates.class, 
++                // field TemplateManager#templates 
++                "templates", // $NON-NLS-1$
++                Template.class,     
++                // field Template#name 
++                "name" // $NON-NLS-1$
++                );
++                
++        return xstream;
++    }
++
++    public void addTemplate(Template template) {
++        templates.put(template.getName(), template);
++    }
++
++    /**
++     * @return Set<String> the templates names
++     */
++    public Set<String> getTemplateNames() {
++        return templates.keySet();
++    }
++
++
++    private Map<String, Template> readTemplates() throws FileNotFoundException {
++        Map<String, Template> templates = new HashMap<String, Template>();
++       
++        String[] templateFiles = TEMPLATE_FILES.split(",");
++        for (int i = 0; i < templateFiles.length; i++) {
++            if(!StringUtils.isEmpty(templateFiles[i])) {
++                InputStream inputStream = null;
++                File f = new File(JMeterUtils.getJMeterHome(),
++                        templateFiles[i]); 
++                try {
++                    if(f.exists() && f.canRead()) {
++                        log.info("Reading templates from:"+f.getAbsolutePath());
++                        inputStream = new BufferedInputStream(new FileInputStream(f)); 
++                                
++                        templates.putAll(((Templates) xstream.fromXML(inputStream)).templates);
++                    } else {
++                        log.warn("Ignoring template file:'"+f.getAbsolutePath()+"' as it does not exist or is not readable");
++                    }
++                } catch(Exception ex) {                    
++                    log.warn("Ignoring template file:'"+f.getAbsolutePath()+"', an error occured parsing the file", ex);
++                } finally {
++                    JOrphanUtils.closeQuietly(inputStream);
++                } 
++            }
++        }
++        return templates;
++    }
++
++    /**
++     * @param selectedTemplate Template name
++     * @return {@link Template}
++     */
++    public Template getTemplateByName(String selectedTemplate) {
++        return templates.get(selectedTemplate);
++    }
++}
+Index: src/core/org/apache/jmeter/gui/action/TemplateCommand.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/TemplateCommand.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/TemplateCommand.java	(revision 0)
+@@ -0,0 +1,54 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++
++/**
++ * Open Templates 
++ * @since 2.10
++ */
++public class TemplateCommand extends AbstractAction {
++
++    private static final Set<String> commands = new HashSet<String>();
++
++    static {
++        commands.add(ActionNames.CREATE_FROM_TEMPLATE);
++    }
++
++    private SelectTemplateDialog dialog = new SelectTemplateDialog();
++    /**
++     * @see Command#doAction(ActionEvent)
++     */
++    @Override
++    public void doAction(ActionEvent e) {
++        dialog.setVisible(true);
++    }
++
++
++    /**
++     * @see Command#getActionNames()
++     */
++    @Override
++    public Set<String> getActionNames() {
++        return commands;
++    }
++}
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1489181)
++++ bin/jmeter.properties	(working copy)
+@@ -935,4 +935,8 @@
+ 
+ # Should JMeter automatically load additional system properties?
+ # File name to look for (comment to disable)
+-system.properties=system.properties
+\ No newline at end of file
++system.properties=system.properties
++
++# Comma separated list of files that contain reference to templates and their description
++# Path must be relative to jmeter root folder
++#template.files=/bin/templates/templates.xml
+\ No newline at end of file
+Index: bin/templates/jdbc.jmx
+===================================================================
+--- bin/templates/jdbc.jmx	(revision 0)
++++ bin/templates/jdbc.jmx	(revision 0)
+@@ -0,0 +1,93 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<jmeterTestPlan version="1.2" properties="2.5" jmeter="2.10-SNAPSHOT.20130609">
++  <hashTree>
++    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
++      <stringProp name="TestPlan.comments"></stringProp>
++      <boolProp name="TestPlan.functional_mode">false</boolProp>
++      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
++      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
++        <collectionProp name="Arguments.arguments"/>
++      </elementProp>
++      <stringProp name="TestPlan.user_define_classpath"></stringProp>
++    </TestPlan>
++    <hashTree>
++      <JDBCDataSource guiclass="TestBeanGUI" testclass="JDBCDataSource" testname="JDBC Connection Configuration" enabled="true">
++        <boolProp name="autocommit">true</boolProp>
++        <stringProp name="checkQuery">Select 1</stringProp>
++        <stringProp name="connectionAge">5000</stringProp>
++        <stringProp name="dataSource">jdbcConfig</stringProp>
++        <stringProp name="dbUrl">jdbc:postgresql://hostname:port/dbname</stringProp>
++        <stringProp name="driver">org.postgresql.Driver</stringProp>
++        <boolProp name="keepAlive">true</boolProp>
++        <stringProp name="password">password</stringProp>
++        <stringProp name="poolMax">10</stringProp>
++        <stringProp name="timeout">10000</stringProp>
++        <stringProp name="transactionIsolation">DEFAULT</stringProp>
++        <stringProp name="trimInterval">60000</stringProp>
++        <stringProp name="username">username</stringProp>
++      </JDBCDataSource>
++      <hashTree/>
++      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
++        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
++        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
++          <boolProp name="LoopController.continue_forever">false</boolProp>
++          <stringProp name="LoopController.loops">1</stringProp>
++        </elementProp>
++        <stringProp name="ThreadGroup.num_threads">1</stringProp>
++        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
++        <longProp name="ThreadGroup.start_time">1370729701000</longProp>
++        <longProp name="ThreadGroup.end_time">1370729701000</longProp>
++        <boolProp name="ThreadGroup.scheduler">false</boolProp>
++        <stringProp name="ThreadGroup.duration"></stringProp>
++        <stringProp name="ThreadGroup.delay"></stringProp>
++      </ThreadGroup>
++      <hashTree>
++        <JDBCSampler guiclass="TestBeanGUI" testclass="JDBCSampler" testname="JDBC Request" enabled="true">
++          <stringProp name="dataSource">jdbcConfig</stringProp>
++          <stringProp name="query">select column1 from table</stringProp>
++          <stringProp name="queryArguments"></stringProp>
++          <stringProp name="queryArgumentsTypes"></stringProp>
++          <stringProp name="queryType">Select Statement</stringProp>
++          <stringProp name="resultVariable"></stringProp>
++          <stringProp name="variableNames">col1</stringProp>
++        </JDBCSampler>
++        <hashTree/>
++      </hashTree>
++      <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
++        <boolProp name="ResultCollector.error_logging">false</boolProp>
++        <objProp>
++          <name>saveConfig</name>
++          <value class="SampleSaveConfiguration">
++            <time>true</time>
++            <latency>true</latency>
++            <timestamp>true</timestamp>
++            <success>true</success>
++            <label>true</label>
++            <code>true</code>
++            <message>true</message>
++            <threadName>true</threadName>
++            <dataType>false</dataType>
++            <encoding>false</encoding>
++            <assertions>true</assertions>
++            <subresults>false</subresults>
++            <responseData>false</responseData>
++            <samplerData>false</samplerData>
++            <xml>false</xml>
++            <fieldNames>true</fieldNames>
++            <responseHeaders>false</responseHeaders>
++            <requestHeaders>false</requestHeaders>
++            <responseDataOnError>true</responseDataOnError>
++            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
++            <assertionsResultsToSave>0</assertionsResultsToSave>
++            <bytes>true</bytes>
++            <hostname>true</hostname>
++            <threadCounts>true</threadCounts>
++            <sampleCount>true</sampleCount>
++          </value>
++        </objProp>
++        <stringProp name="filename"></stringProp>
++      </ResultCollector>
++      <hashTree/>
++    </hashTree>
++  </hashTree>
++</jmeterTestPlan>
+Index: bin/templates/recording.jmx
+===================================================================
+--- bin/templates/recording.jmx	(revision 0)
++++ bin/templates/recording.jmx	(revision 0)
+@@ -0,0 +1,158 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<jmeterTestPlan version="1.2" properties="2.5" jmeter="2.10-SNAPSHOT.20130608">
++  <hashTree>
++    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
++      <stringProp name="TestPlan.comments"></stringProp>
++      <boolProp name="TestPlan.functional_mode">false</boolProp>
++      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
++      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
++        <collectionProp name="Arguments.arguments"/>
++      </elementProp>
++      <stringProp name="TestPlan.user_define_classpath"></stringProp>
++    </TestPlan>
++    <hashTree>
++      <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
++        <collectionProp name="Arguments.arguments"/>
++      </Arguments>
++      <hashTree/>
++      <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="HTTP Request Defaults" enabled="true">
++        <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
++          <collectionProp name="Arguments.arguments"/>
++        </elementProp>
++        <stringProp name="HTTPSampler.domain"></stringProp>
++        <stringProp name="HTTPSampler.port"></stringProp>
++        <stringProp name="HTTPSampler.connect_timeout"></stringProp>
++        <stringProp name="HTTPSampler.response_timeout"></stringProp>
++        <stringProp name="HTTPSampler.protocol"></stringProp>
++        <stringProp name="HTTPSampler.contentEncoding"></stringProp>
++        <stringProp name="HTTPSampler.path"></stringProp>
++        <stringProp name="HTTPSampler.concurrentPool">4</stringProp>
++      </ConfigTestElement>
++      <hashTree/>
++      <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
++        <collectionProp name="CookieManager.cookies"/>
++        <boolProp name="CookieManager.clearEachIteration">true</boolProp>
++      </CookieManager>
++      <hashTree/>
++      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
++        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
++        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
++          <boolProp name="LoopController.continue_forever">false</boolProp>
++          <stringProp name="LoopController.loops">1</stringProp>
++        </elementProp>
++        <stringProp name="ThreadGroup.num_threads">1</stringProp>
++        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
++        <longProp name="ThreadGroup.start_time">1370726934000</longProp>
++        <longProp name="ThreadGroup.end_time">1370726934000</longProp>
++        <boolProp name="ThreadGroup.scheduler">false</boolProp>
++        <stringProp name="ThreadGroup.duration"></stringProp>
++        <stringProp name="ThreadGroup.delay"></stringProp>
++      </ThreadGroup>
++      <hashTree>
++        <RecordingController guiclass="RecordController" testclass="RecordingController" testname="Recording Controller" enabled="true"/>
++        <hashTree/>
++      </hashTree>
++      <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
++        <boolProp name="ResultCollector.error_logging">false</boolProp>
++        <objProp>
++          <name>saveConfig</name>
++          <value class="SampleSaveConfiguration">
++            <time>true</time>
++            <latency>true</latency>
++            <timestamp>true</timestamp>
++            <success>true</success>
++            <label>true</label>
++            <code>true</code>
++            <message>true</message>
++            <threadName>true</threadName>
++            <dataType>false</dataType>
++            <encoding>false</encoding>
++            <assertions>true</assertions>
++            <subresults>false</subresults>
++            <responseData>false</responseData>
++            <samplerData>false</samplerData>
++            <xml>false</xml>
++            <fieldNames>true</fieldNames>
++            <responseHeaders>false</responseHeaders>
++            <requestHeaders>false</requestHeaders>
++            <responseDataOnError>true</responseDataOnError>
++            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
++            <assertionsResultsToSave>0</assertionsResultsToSave>
++            <bytes>true</bytes>
++            <hostname>true</hostname>
++            <threadCounts>true</threadCounts>
++            <sampleCount>true</sampleCount>
++          </value>
++        </objProp>
++        <stringProp name="filename"></stringProp>
++      </ResultCollector>
++      <hashTree/>
++    </hashTree>
++    <WorkBench guiclass="WorkBenchGui" testclass="WorkBench" testname="WorkBench" enabled="true">
++      <boolProp name="WorkBench.save">true</boolProp>
++    </WorkBench>
++    <hashTree>
++      <ProxyControl guiclass="ProxyControlGui" testclass="ProxyControl" testname="HTTP Proxy Server" enabled="true">
++        <stringProp name="ProxyControlGui.port">8888</stringProp>
++        <collectionProp name="ProxyControlGui.exclude_list">
++          <stringProp name="-835639533">.*\.jpg</stringProp>
++          <stringProp name="1358517207">.*\.js</stringProp>
++          <stringProp name="-835633829">.*\.png</stringProp>
++          <stringProp name="-835642634">.*\.gif</stringProp>
++          <stringProp name="-835647305">.*\.bmp</stringProp>
++          <stringProp name="-835630668">.*\.swf</stringProp>
++          <stringProp name="-835646155">.*\.css</stringProp>
++        </collectionProp>
++        <collectionProp name="ProxyControlGui.include_list"/>
++        <boolProp name="ProxyControlGui.capture_http_headers">true</boolProp>
++        <intProp name="ProxyControlGui.grouping_mode">4</intProp>
++        <boolProp name="ProxyControlGui.add_assertion">false</boolProp>
++        <stringProp name="ProxyControlGui.sampler_type_name"></stringProp>
++        <boolProp name="ProxyControlGui.sampler_redirect_automatically">false</boolProp>
++        <boolProp name="ProxyControlGui.sampler_follow_redirects">true</boolProp>
++        <boolProp name="ProxyControlGui.use_keepalive">true</boolProp>
++        <boolProp name="ProxyControlGui.sampler_download_images">false</boolProp>
++        <boolProp name="ProxyControlGui.regex_match">true</boolProp>
++        <stringProp name="ProxyControlGui.content_type_include"></stringProp>
++        <stringProp name="ProxyControlGui.content_type_exclude"></stringProp>
++      </ProxyControl>
++      <hashTree>
++        <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
++          <boolProp name="ResultCollector.error_logging">false</boolProp>
++          <objProp>
++            <name>saveConfig</name>
++            <value class="SampleSaveConfiguration">
++              <time>true</time>
++              <latency>true</latency>
++              <timestamp>true</timestamp>
++              <success>true</success>
++              <label>true</label>
++              <code>true</code>
++              <message>true</message>
++              <threadName>true</threadName>
++              <dataType>false</dataType>
++              <encoding>false</encoding>
++              <assertions>true</assertions>
++              <subresults>false</subresults>
++              <responseData>false</responseData>
++              <samplerData>false</samplerData>
++              <xml>false</xml>
++              <fieldNames>true</fieldNames>
++              <responseHeaders>false</responseHeaders>
++              <requestHeaders>false</requestHeaders>
++              <responseDataOnError>true</responseDataOnError>
++              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
++              <assertionsResultsToSave>0</assertionsResultsToSave>
++              <bytes>true</bytes>
++              <hostname>true</hostname>
++              <threadCounts>true</threadCounts>
++              <sampleCount>true</sampleCount>
++            </value>
++          </objProp>
++          <stringProp name="filename"></stringProp>
++        </ResultCollector>
++        <hashTree/>
++      </hashTree>
++    </hashTree>
++  </hashTree>
++</jmeterTestPlan>
+Index: bin/templates/templates.xml
+===================================================================
+--- bin/templates/templates.xml	(revision 0)
++++ bin/templates/templates.xml	(revision 0)
+@@ -0,0 +1,53 @@
++<templates>
++    <template>
++        <name>Recording</name>
++        <fileName>/bin/templates/recording.jmx</fileName>
++        <description><![CDATA[
++        <h1>Template showing how to record</h1>
++        <h2>JMeter Configuration</h2>
++        <p>
++            <ul>
++                <li>JMeter Server Proxy port is set to 8888, you may want to change
++                
++            </ul>
++        </p>
++        <h2>Browser Configuration</h2>
++        <p>Configure your browser so that is uses the JMeter proxy, set:
++            <ul>
++                <li>the host of the machine that runs JMeter</li>
++                <li>the port you setup in JMeter Server Proxy</li>
++            </ul>
++        </p>
++        <h2>Useful links</h2>
++        <p>
++            <ul>
++                <li><a href="http://jmeter.apache.org/usermanual/jmeter_proxy_step_by_step.pdf" >http://jmeter.apache.org/usermanual/jmeter_proxy_step_by_step.pdf</a></li>
++                <li><a href="http://jmeter.apache.org/usermanual/component_reference.html#HTTP_Proxy_Server" >http://jmeter.apache.org/usermanual/component_reference.html#HTTP_Proxy_Server</a></li>
++            </ul>
++        </p>
++        
++        ]]></description>
++    </template>
++    <template>
++        <name>JDBC Load Test</name>
++        <fileName>/bin/templates/jdbc.jmx</fileName>
++        <description>
++        <![CDATA[<h1>Template showing how to Load Test an SQL query on Database</h1>
++        <h2>JMeter Configuration</h2>
++        <p>
++            <ul>
++                <li>Add the database driver to jmeter/lib folder</li>
++                <li>Configure the host, port, username and password in JDBC Configuration</li>
++                <li>Modify the SQL query to match your query</li>
++            </ul>
++        </p>
++        <h2>Useful links</h2>
++        <p>
++            <ul>
++                <li><a href="http://jmeter.apache.org/usermanual/build-db-test-plan.html" >http://jmeter.apache.org/usermanual/build-db-test-plan.html</a></li>
++            </ul>
++        </p>
++        
++        ]]></description>
++    </template>
++</templates>
+\ No newline at end of file

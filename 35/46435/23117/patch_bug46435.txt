@@ -1,0 +1,36 @@
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 734176)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -221,7 +221,9 @@
+             result = generateErrorResult(result, uhe); // Generate result (if nec.) and populate it
+         } catch (IllegalArgumentException e) {
+             log.error("Not implemented (probably used https)", e);
+-            writeErrorToClient(HttpReplyHdr.formNotImplemented());
++            writeErrorToClient(HttpReplyHdr.formNotImplemented("Probably used https instead of http. " +
++            		"To record https requests, see " +
++            		"<a href=\"http://jakarta.apache.org/jmeter/usermanual/component_reference.html#HTTP_Proxy_Server\">JMeter documentation</a>"));
+             result = generateErrorResult(result, e); // Generate result (if nec.) and populate it
+         } catch (Exception e) {
+             log.error("Exception when processing sample", e);
+Index: /src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpReplyHdr.java
+===================================================================
+--- /src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpReplyHdr.java	(revision 734176)
++++ /src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpReplyHdr.java	(working copy)
+@@ -245,6 +245,16 @@
+     }
+ 
+     /**
++     * Server does not do the requested feature.
++     *
++     * @param reason detailed information for causing the failure
++     * @return The header in a string;
++     */
++    public static String formNotImplemented(String reason) {
++        return formError("501 Method not implemented", "Service not implemented. " + reason);
++    }
++    
++    /**
+      * Server is overloaded, client should try again latter.
+      *
+      * @return The header in a string;

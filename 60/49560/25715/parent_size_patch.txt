@@ -1,0 +1,29 @@
+Index: src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	(revision 960919)
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	(working copy)
+@@ -232,7 +232,23 @@
+         setGroupThreads(res.getGroupThreads());
+         setAllThreads(res.getAllThreads());
+ 
+-        addSubResult(res); // this will add res.getTime() to getTime().
++        //addSubResult(res); // this will add res.getTime() to getTime().
++        
++        String tn = getThreadName();
++        if (tn.length()==0) {
++            tn=Thread.currentThread().getName();//TODO do this more efficiently
++            this.setThreadName(tn);
++        }
++        res.setThreadName(tn);
++        if (subResults == null) {
++            subResults = new ArrayList<SampleResult>();
++        }
++        subResults.add(res);
++        // Extend the time to the end of the added sample
++        setEndTime(res.getEndTime());
++        // Include the byte count for the added sample
++        setBytes(res.getBytes());
++        res.setParent(this);
+     }
+ 
+     public boolean isStampedAtStart() {

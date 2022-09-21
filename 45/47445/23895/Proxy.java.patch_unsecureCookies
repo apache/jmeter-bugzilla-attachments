@@ -1,0 +1,15 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 789045)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -336,6 +336,10 @@
+                     headerLines[i]=headerLines[i].replaceFirst(HTTPS_PREFIX, "http://");
+                     continue;
+                 }
++                if (forcedHTTPS && HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(parts[0]) || HTTPConstants.HEADER_SET_COOKIE.equalsIgnoreCase(parts[0]))
++                {
++                	headerLines[i]=headerLines[i].replaceAll(" secure", "").trim(); //in forced https cookies need to be unsecured...
++                }
+             }
+         }
+         if (fixContentLength && contentLengthIndex>=0){// Fix the content length

@@ -1,0 +1,288 @@
+### Eclipse Workspace Patch 1.0
+#P jmeterSVN
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java	(revision 964795)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/protocol/SendMailCommand.java	(working copy)
+@@ -191,9 +191,7 @@
+             message.setFrom(new InternetAddress(sender));
+         }
+ 
+-        if (null != subject) {
+-            message.setSubject(subject);
+-        }
++        message.setSubject(subject);
+ 
+         if (receiverTo != null) {
+             InternetAddress[] to = new InternetAddress[receiverTo.size()];
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 964795)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -789,6 +789,7 @@
+ smime_assertion_signer_serial=Serial Number
+ smime_assertion_title=SMIME Assertion
+ smime_assertion_verify_signature=Verify signature
++smtp_emptysubj=Empty Subject
+ smtp_additional_settings=Additional Settings
+ smtp_attach_file=Attach file(s):
+ smtp_attach_file_tooltip=Separate multiple files with ";"
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java	(revision 964795)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpSamplerGui.java	(working copy)
+@@ -75,6 +75,7 @@
+ 
+         smtpPanel.setBody(element.getPropertyAsString(SmtpSampler.MESSAGE));
+         smtpPanel.setSubject(element.getPropertyAsString(SmtpSampler.SUBJECT));
++        smtpPanel.setEmptySubject(element.getPropertyAsBoolean(SmtpSampler.EMPTY_SUBJECT));
+         smtpPanel.setIncludeTimestamp(element.getPropertyAsBoolean(SmtpSampler.INCLUDE_TIMESTAMP));
+         JMeterProperty headers = element.getProperty(SmtpSampler.HEADER_FIELDS);
+         if (headers instanceof CollectionProperty) { // Might be NullProperty
+@@ -133,6 +134,7 @@
+         te.setProperty(SmtpSampler.RECEIVER_CC, smtpPanel.getReceiverCC());
+         te.setProperty(SmtpSampler.RECEIVER_BCC, smtpPanel.getReceiverBCC());
+         te.setProperty(SmtpSampler.SUBJECT, smtpPanel.getSubject());
++        te.setProperty(SmtpSampler.EMPTY_SUBJECT, Boolean.toString(smtpPanel.isEmptySubject()));
+         te.setProperty(SmtpSampler.INCLUDE_TIMESTAMP, Boolean.toString(smtpPanel.isIncludeTimestamp()));
+         te.setProperty(SmtpSampler.MESSAGE, smtpPanel.getBody());
+         te.setProperty(SmtpSampler.ATTACH_FILE, smtpPanel.getAttachments());
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(revision 964795)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java	(working copy)
+@@ -95,6 +95,7 @@
+     private JTextField tfAuthPassword;
+     private JTextField tfAuthUsername;
+     private JTextField tfSubject;
++    private JCheckBox cbEmptySubject;
+     private JCheckBox cbIncludeTimestamp;
+     private JCheckBox cbMessageSizeStats;
+     private JCheckBox cbEnableDebug;
+@@ -289,6 +290,25 @@
+     }
+ 
+     /**
++     * Returns true if subject line should be empty
++     *
++     * @return true if subject line should be empty
++     */
++    public boolean isEmptySubject() {
++        return cbEmptySubject.isSelected();
++    }
++
++    /**
++     * Sets the property that defines if the subject should be null
++     *
++     * @param emptySubject
++     *            
++     */
++    public void setEmptySubject(boolean emptySubject) {
++        cbEmptySubject.setSelected(emptySubject);
++    }
++    
++    /**
+      * Returns if mail-server needs authentication (checkbox)
+      *
+      * @return true if authentication is used
+@@ -602,6 +622,13 @@
+         tfEmlMessage = new JTextField(30);
+ 
+         taMessage = new JTextArea(5, 20);
++        
++        cbEmptySubject = new JCheckBox(JMeterUtils.getResString("smtp_emptysubj")); // $NON-NLS-1$
++        cbEmptySubject.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent evt) {
++                emptySubjectActionPerformed(evt);
++            }
++        });
+ 
+         cbUseAuth = new JCheckBox(JMeterUtils.getResString("smtp_useauth")); // $NON-NLS-1$
+         rbUseNone = new JRadioButton(JMeterUtils.getResString("smtp_usenone")); // $NON-NLS-1$
+@@ -894,11 +921,18 @@
+         gridBagConstraints.gridy = 0;
+         gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
+         panelMessageSettings.add(tfSubject, gridBagConstraints);
++        
++        cbEmptySubject.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
++        cbEmptySubject.setMargin(new java.awt.Insets(0, 0, 0, 0));
++        gridBagConstraints.gridx = 2;
++        gridBagConstraints.gridy = 0;
++        gridBagConstraints.fill = GridBagConstraints.NONE;
++        panelMessageSettings.add(cbEmptySubject, gridBagConstraints);
+ 
+         cbIncludeTimestamp.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+         cbIncludeTimestamp.setMargin(new java.awt.Insets(0, 0, 0, 0));
+-        gridBagConstraints.gridx = 2;
+-        gridBagConstraints.gridy = 0;
++        gridBagConstraints.gridx = 1;
++        gridBagConstraints.gridy = 1;
+         gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(cbIncludeTimestamp, gridBagConstraints);
+ 
+@@ -933,26 +967,26 @@
+         headerFieldsPanel.add(headerFieldValue, gridBagConstraints);
+         
+         gridBagConstraintsMain.gridx = 1;
+-        gridBagConstraintsMain.gridy = 1;
++        gridBagConstraintsMain.gridy = 2;
+         panelMessageSettings.add(headerFieldsPanel, gridBagConstraintsMain);        
+ 
+         gridBagConstraints.gridx = 0;
+-        gridBagConstraints.gridy = 2;
++        gridBagConstraints.gridy = 3;
+         panelMessageSettings.add(jlMessage, gridBagConstraints);
+ 
+         taMessage.setBorder(BorderFactory.createBevelBorder(1));
+         gridBagConstraints.gridx = 1;
+-        gridBagConstraints.gridy = 2;
++        gridBagConstraints.gridy = 3;
+         gridBagConstraints.fill = GridBagConstraints.BOTH;
+         panelMessageSettings.add(taMessage, gridBagConstraints);
+ 
+         gridBagConstraints.gridx = 0;
+-        gridBagConstraints.gridy = 3;
++        gridBagConstraints.gridy = 4;
+         gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(jlAttachFile, gridBagConstraints);
+ 
+         gridBagConstraints.gridx = 1;
+-        gridBagConstraints.gridy = 3;
++        gridBagConstraints.gridy = 4;
+         gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
+         panelMessageSettings.add(tfAttachment, gridBagConstraints);
+         tfAttachment.setToolTipText(JMeterUtils.getResString("smtp_attach_file_tooltip")); // $NON-NLS-1$
+@@ -964,7 +998,7 @@
+         });
+ 
+         gridBagConstraints.gridx = 2;
+-        gridBagConstraints.gridy = 3;
++        gridBagConstraints.gridy = 4;
+         gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(browseButton, gridBagConstraints);
+ 
+@@ -976,12 +1010,12 @@
+         });
+ 
+         gridBagConstraints.gridx = 0;
+-        gridBagConstraints.gridy = 4;
++        gridBagConstraints.gridy = 5;
+         gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(cbUseEmlMessage, gridBagConstraints);
+ 
+         gridBagConstraints.gridx = 1;
+-        gridBagConstraints.gridy = 4;
++        gridBagConstraints.gridy = 5;
+         gridBagConstraints.fill = GridBagConstraints.HORIZONTAL;
+         tfEmlMessage.setEnabled(false);
+         panelMessageSettings.add(tfEmlMessage, gridBagConstraints);
+@@ -994,12 +1028,12 @@
+         emlBrowseButton.setEnabled(false);
+ 
+         gridBagConstraints.gridx = 2;
+-        gridBagConstraints.gridy = 4;
++        gridBagConstraints.gridy = 5;
+         gridBagConstraints.fill = GridBagConstraints.NONE;
+         panelMessageSettings.add(emlBrowseButton, gridBagConstraints);
+ 
+         gridBagConstraintsMain.gridx = 0;
+-        gridBagConstraintsMain.gridy = 5;
++        gridBagConstraintsMain.gridy = 6;
+         add(panelMessageSettings, gridBagConstraintsMain);
+ 
+         /*
+@@ -1022,7 +1056,7 @@
+         panelAdditionalSettings.add(cbEnableDebug, gridBagConstraints);
+ 
+         gridBagConstraintsMain.gridx = 0;
+-        gridBagConstraintsMain.gridy = 6;
++        gridBagConstraintsMain.gridy = 7;
+         add(panelAdditionalSettings, gridBagConstraintsMain);
+     }
+ 
+@@ -1212,6 +1246,7 @@
+         tfSubject.setText("");
+         tfTrustStoreToUse.setText("");
+         rbUseNone.setSelected(true);
++        cbEmptySubject.setSelected(false);
+    		clearHeaderFields();
+ 		validate();        
+     }
+@@ -1293,4 +1328,16 @@
+ 			validate();
+ 		}
+     }
++    private void emptySubjectActionPerformed(ActionEvent evt) {
++		final Object source = evt.getSource();
++    	if(source != null && source instanceof JCheckBox){
++    		if(cbEmptySubject.isSelected()){
++    			tfSubject.setEnabled(false);
++    			cbIncludeTimestamp.setEnabled(false);
++    		}else{
++    			tfSubject.setEnabled(true);
++    			cbIncludeTimestamp.setEnabled(true);
++    		}
++    	}		
++	}
+ }
+\ No newline at end of file
+Index: src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java
+===================================================================
+--- src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(revision 964795)
++++ src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java	(working copy)
+@@ -65,6 +65,7 @@
+     public final static String RECEIVER_BCC         = "SMTPSampler.receiverBCC"; // $NON-NLS-1$
+ 
+     public final static String SUBJECT              = "SMTPSampler.subject"; // $NON-NLS-1$
++    public final static String EMPTY_SUBJECT        = "SMTPSampler.emptySubject"; // $NON-NLS-1$
+     public final static String MESSAGE              = "SMTPSampler.message"; // $NON-NLS-1$
+     public final static String INCLUDE_TIMESTAMP    = "SMTPSampler.include_timestamp"; // $NON-NLS-1$
+     public final static String ATTACH_FILE          = "SMTPSampler.attachFile"; // $NON-NLS-1$
+@@ -135,12 +136,20 @@
+             instance.setReceiverTo(getPropNameAsAddresses(receiverTo));
+             instance.setReceiverCC(getPropNameAsAddresses(receiverCC));
+             instance.setReceiverBCC(getPropNameAsAddresses(receiverBcc));
+-
+-            instance.setSubject(getPropertyAsString(SUBJECT)
+-                    + (getPropertyAsBoolean(INCLUDE_TIMESTAMP) ?
+-                            " <<< current timestamp: " + new Date().getTime() + " >>>"
+-                            : ""
+-                       ));
++            
++            if(getPropertyAsBoolean(EMPTY_SUBJECT)){
++            	instance.setSubject(null);
++            }else{
++            	String subject = getPropertyAsString(SUBJECT);
++            	if (getPropertyAsBoolean(INCLUDE_TIMESTAMP)){
++            		StringBuffer sb = new StringBuffer(subject);
++            		sb.append(" <<< current timestamp: ");
++            		sb.append(new Date().getTime());
++            		sb.append(" >>>");
++            		subject = sb.toString();
++            	}
++            	instance.setSubject(subject);
++            }
+ 
+             if (!getPropertyAsBoolean(USE_EML)) { // part is only needed if we
+                 // don't send an .eml-file
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 964795)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -1454,6 +1454,16 @@
+ If not, the message headers are stored as Response Headers. 
+ A few headers are stored (Date, To, From, Subject) in the body.
+ </property>
++<property name="Use no security features" required="">Indicates that the connection to the server does not use any security protocol.</property>
++<property name="Use SSL" required="">Indicates that the connection to the server must use the SSL protocol.</property>
++<property name="Use StartTLS" required="">Indicates that the connection to the server should attempt to start the TLS protocol.</property>
++<property name="Enforce StartTLS" required="">If the server does not start the TLS protocol the connection will be terminated.</property>
++<property name="Trust All Certificates" required="">When selected it will accept all certificates independent of the CA.</property>
++<property name="Use local truststore" required="">When selected it will only accept certificates that are locally trusted.</property>
++<property name="Local truststore" required="">Path to file containing the trusted certificates.
++Relative paths are resolved against the current directory.
++<br />Failing that, against the directory containing the test script (JMX file).
++</property>
+ </properties>
+ <p>
+ Messages are stored as subsamples of the main sampler.

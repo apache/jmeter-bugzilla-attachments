@@ -1,0 +1,227 @@
+--- /home/dane/tmp/jakarta-jmeter-2.1/src/core/org/apache/jmeter/visualizers/SamplingStatCalculator.java	2005-07-12 16:51:00.000000000 -0400
++++ /home/dane/dev/jakarta-jmeter-2.1/src/core/org/apache/jmeter/visualizers/SamplingStatCalculator.java	2005-09-06 05:23:04.000000000 -0400
+@@ -13,17 +13,17 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- * 
++ *
+  */
+ 
+ package org.apache.jmeter.visualizers;
+ 
+ import java.io.Serializable;
+ import java.text.DecimalFormat;
+-import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.List;
++import java.util.Vector;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -34,7 +34,7 @@
+  * Aggegate sample data container. Just instantiate a new instance of this
+  * class, and then call {@link #addSample(SampleResult)} a few times, and pull
+  * the stats out with whatever methods you prefer.
+- * 
++ *
+  * @author James Boutcher
+  * @version $Revision: 1.7 $
+  */
+@@ -47,9 +47,9 @@
+ 
+ 	private static DecimalFormat kbFormatter = new DecimalFormat("#0.00");
+ 
+-	private StatCalculator calculator = new StatCalculator();
++	private final StatCalculator calculator = new StatCalculator();
+ 
+-	private ArrayList storedValues = new ArrayList();
++	private final Vector storedValues = new Vector();
+ 
+ 	private double maxThroughput;
+ 
+@@ -72,7 +72,7 @@
+ 
+ 	/**
+ 	 * Essentially a copy function
+-	 * 
++	 *
+ 	 * @param stat
+ 	 */
+ 	public SamplingStatCalculator(SamplingStatCalculator stat) {
+@@ -89,31 +89,37 @@
+ 
+ 	public void addSamples(SamplingStatCalculator ssc) {
+ 		calculator.addAll(ssc.calculator);
+-		storedValues.addAll(ssc.storedValues);
+-		Collections.sort(storedValues);
+-		if (firstTime > ssc.firstTime) {
+-			firstTime = ssc.firstTime;
+-		}
++        synchronized( storedValues )
++        {
++            storedValues.addAll(ssc.storedValues);
++            Collections.sort(storedValues);
++        }
++        if (firstTime > ssc.firstTime) {
++            firstTime = ssc.firstTime;
++        }
+ 	}
+ 
+ 	/**
+ 	 * Clear the counters (useful for differential stats)
+-	 * 
++	 *
+ 	 */
+ 	public synchronized void clear() {
+ 		init();
+ 	}
+ 
+ 	public Sample getCurrentSample() {
+-		if (storedValues.size() == 0) {
+-			return new Sample();
+-		}
+-		return (Sample) storedValues.get(storedValues.size() - 1);
++        synchronized( storedValues )
++        {
++            if (storedValues.size() == 0) {
++                return new Sample();
++            }
++            return (Sample)storedValues.get( storedValues.size() - 1 );
++        }
+ 	}
+ 
+ 	/**
+ 	 * Get the elapsed time for the samples
+-	 * 
++	 *
+ 	 * @return how long the samples took
+ 	 */
+ 	public long getElapsed() {
+@@ -143,7 +149,7 @@
+ 	 * requests/hour.
+ 	 * <p>
+ 	 * Examples: "34.2/sec" "0.1/sec" "43.0/hour" "15.9/min"
+-	 * 
++	 *
+ 	 * @return a String representation of the rate the samples are being taken
+ 	 *         at.
+ 	 */
+@@ -173,7 +179,7 @@
+ 	/**
+ 	 * calculates the average page size, which means divide the bytes by number
+ 	 * of samples.
+-	 * 
++	 *
+ 	 * @return
+ 	 */
+ 	public double getPageSize() {
+@@ -189,7 +195,7 @@
+ 
+ 	/**
+ 	 * formats the rate
+-	 * 
++	 *
+ 	 * @return
+ 	 */
+ 	public String getPageSizeString() {
+@@ -203,11 +209,13 @@
+ 
+ 	/**
+ 	 * Records a sample.
+-	 * 
++	 *
+ 	 */
+ 	public Sample addSample(SampleResult res) {
+-		Sample s = null;
+-		synchronized (calculator) {
++        long rtime, cmean, cstdv, cmedian, cpercent, eCount, endTime;
++        double throughput;
++        boolean rbool;
++        synchronized (calculator) {
+ 			long byteslength = 0;
+ 			// in case the sampler doesn't return the contents
+ 			// we see if the bytes was set
+@@ -230,26 +238,32 @@
+ 				calculator.addBytes(byteslength);
+ 			}
+ 			setStartTime(res);
+-			long eCount = getCurrentSample().errorCount;
++			eCount = getCurrentSample().errorCount;
+ 			if (!res.isSuccessful()) {
+ 				eCount++;
+ 			}
+-			long endTime = getEndTime(res);
++			endTime = getEndTime(res);
+ 			long howLongRunning = endTime - firstTime;
+-			double throughput = 0;
+-			if (howLongRunning <= 0) {
+-				throughput = Double.MAX_VALUE;
+-			}
+ 			throughput = ((double) calculator.getCount() / (double) howLongRunning) * 1000.0;
+ 			if (throughput > maxThroughput) {
+ 				maxThroughput = throughput;
+ 			}
+-			s = new Sample(null, res.getTime(), (long) calculator.getMean(), (long) calculator.getStandardDeviation(),
+-					calculator.getMedian().longValue(), calculator.getPercentPoint(0.500).longValue(), throughput,
+-					eCount, res.isSuccessful(), storedValues.size() + 1, endTime);
+-			storedValues.add(s);
+-		}
+-		return s;
++
++            rtime = res.getTime();
++            cmean = (long)calculator.getMean();
++            cstdv = (long)calculator.getStandardDeviation();
++            cmedian = calculator.getMedian().longValue();
++            cpercent = calculator.getPercentPoint( 0.500 ).longValue();
++            rbool = res.isSuccessful();
++        }
++
++        synchronized( storedValues ){
++            int count = storedValues.size() + 1;
++            Sample s =
++                new Sample( null, rtime, cmean, cstdv, cmedian, cpercent, throughput, eCount, rbool, count, endTime );
++            storedValues.add( s );
++            return s;
++        }
+ 	}
+ 
+ 	public List getSamples() {
+@@ -257,11 +271,13 @@
+ 	}
+ 
+ 	public Sample getSample(int index) {
+-		if (index < storedValues.size()) {
+-			return (Sample) storedValues.get(index);
+-		}
+-		return null;
+-	}
++        synchronized( storedValues ){
++            if (index < storedValues.size()) {
++                return (Sample) storedValues.get(index);
++            }
++            return null;
++        }
++    }
+ 
+ 	private long getEndTime(SampleResult res) {
+ 		long endTime = res.getTimeStamp();
+@@ -293,7 +309,7 @@
+ 	 * Returns the raw double value of the percentage of samples with errors
+ 	 * that were recorded. (Between 0.0 and 1.0) If you want a nicer return
+ 	 * format, see {@link #getErrorPercentageString()}.
+-	 * 
++	 *
+ 	 * @return the raw double value of the percentage of samples with errors
+ 	 *         that were recorded.
+ 	 */
+@@ -310,7 +326,7 @@
+ 	/**
+ 	 * Returns a String which represents the percentage of sample errors that
+ 	 * have occurred. ("0.00%" through "100.00%")
+-	 * 
++	 *
+ 	 * @return a String which represents the percentage of sample errors that
+ 	 *         have occurred.
+ 	 */

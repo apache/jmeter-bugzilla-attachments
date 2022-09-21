@@ -1,0 +1,82 @@
+### Eclipse Workspace Patch 1.0
+#P JmeterTrunk
+Index: src/components/org/apache/jmeter/modifiers/gui/CounterConfigGui.java
+===================================================================
+--- src/components/org/apache/jmeter/modifiers/gui/CounterConfigGui.java	(revision 766452)
++++ src/components/org/apache/jmeter/modifiers/gui/CounterConfigGui.java	(working copy)
+@@ -18,7 +18,14 @@
+ 
+ package org.apache.jmeter.modifiers.gui;
+ 
++import java.awt.Component;
++import java.util.List;
++
+ import javax.swing.JCheckBox;
++import javax.swing.JPanel;
++import javax.swing.JTextField;
++ 
++import net.miginfocom.swing.MigLayout;
+ 
+ import org.apache.jmeter.config.gui.AbstractConfigGui;
+ import org.apache.jmeter.modifiers.CounterConfig;
+@@ -32,7 +39,7 @@
+ 
+     private JCheckBox perUserField;
+ 
+-    public CounterConfigGui() {
++    public CounterConfigGui() { 
+         super();
+         init();
+     }
+@@ -46,7 +53,7 @@
+      */
+     public TestElement createTestElement() {
+         CounterConfig config = new CounterConfig();
+-        modifyTestElement(config);
++        modifyTestElement(config); 
+         return config;
+     }
+ 
+@@ -98,7 +105,7 @@
+ 
+     private void init() {
+         setBorder(makeBorder());
+-        setLayout(new VerticalLayout(5, VerticalLayout.BOTH));
++        setLayout(new MigLayout("","[left]",""));
+ 
+         startField = new JLabeledTextField(JMeterUtils.getResString("start"));//$NON-NLS-1$
+         incrField = new JLabeledTextField(JMeterUtils.getResString("increment"));//$NON-NLS-1$
+@@ -107,12 +114,26 @@
+         formatField = new JLabeledTextField(JMeterUtils.getResString("format"));//$NON-NLS-1$
+         perUserField = new JCheckBox(JMeterUtils.getResString("counter_per_user"));//$NON-NLS-1$
+ 
+-        add(makeTitlePanel());
+-        add(startField);
+-        add(incrField);
+-        add(endField);
+-        add(formatField);
+-        add(varNameField);
+-        add(perUserField);
++        add(makeTitlePanel(), "width 80%,  wrap");
++        JPanel mainPanel = new JPanel(new MigLayout("","[right][left]",""));
++        addField(mainPanel, startField );
++        addField(mainPanel, incrField);
++        addField(mainPanel, endField);
++        addField(mainPanel, formatField);
++        addField(mainPanel, varNameField);
++        mainPanel.add(perUserField, "span 2, left");
++        add( mainPanel);
+     }
++    
++    /*
++     * Helper method to add Jophan Text fields that consist 
++     * of a label and textfield
++     */
++	public static void addField(JPanel panel, final JLabeledTextField field) {
++		List item = field.getComponentList();
++		panel.add((Component) item.get(0));
++		JTextField tf = (JTextField) item.get(1);
++		tf.setColumns(20);
++		panel.add((Component) item.get(1), "wrap");
++	}
+ }

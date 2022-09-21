@@ -1,0 +1,395 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1463928)
++++ src/core/org/apache/jmeter/resources/messages.properties	(revision )
+@@ -878,6 +878,7 @@
+ save_time=Save Elapsed Time
+ save_timestamp=Save Time Stamp
+ save_url=Save URL
++save_workbench=Save WorkBench
+ sbind=Single bind/unbind
+ scheduler=Scheduler
+ scheduler_configuration=Scheduler Configuration
+Index: src/core/org/apache/jmeter/gui/action/Save.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Save.java	(revision 1463928)
++++ src/core/org/apache/jmeter/gui/action/Save.java	(revision )
+@@ -18,17 +18,6 @@
+ 
+ package org.apache.jmeter.gui.action;
+ 
+-import java.awt.event.ActionEvent;
+-import java.io.File;
+-import java.io.FileOutputStream;
+-import java.util.HashSet;
+-import java.util.Iterator;
+-import java.util.LinkedList;
+-import java.util.Set;
+-
+-import javax.swing.JFileChooser;
+-import javax.swing.JOptionPane;
+-
+ import org.apache.commons.io.FilenameUtils;
+ import org.apache.jmeter.exceptions.IllegalUserActionException;
+ import org.apache.jmeter.gui.GuiPackage;
+@@ -36,12 +25,22 @@
+ import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.save.SaveService;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.WorkBench;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
++import javax.swing.*;
++import java.awt.event.ActionEvent;
++import java.io.File;
++import java.io.FileOutputStream;
++import java.util.HashSet;
++import java.util.Iterator;
++import java.util.LinkedList;
++import java.util.Set;
++
+ /**
+  * Save the current test plan; implements:
+  * Save
+@@ -86,7 +85,7 @@
+         }
+         if (e.getActionCommand().equals(ActionNames.SAVE_AS)) {
+             JMeterTreeNode[] nodes = GuiPackage.getInstance().getTreeListener().getSelectedNodes();
+-            if (nodes.length > 1){
++            if (nodes.length > 1) {
+                 JMeterUtils.reportErrorToUser(
+                         JMeterUtils.getResString("save_as_error"), // $NON-NLS-1$
+                         JMeterUtils.getResString("save_as")); // $NON-NLS-1$
+@@ -95,7 +94,14 @@
+             subTree = GuiPackage.getInstance().getCurrentSubTree();
+         } else {
+             fullSave = true;
+-            subTree = GuiPackage.getInstance().getTreeModel().getTestPlan();
++            HashTree testPlan = GuiPackage.getInstance().getTreeModel().getTestPlan();
++            // If saveWorkBench check-box was selected on WorkBenchGui
++            if (WorkBench.saveWorkBench()) {
++                HashTree workbench = GuiPackage.getInstance().getTreeModel().getWorkBench();
++                testPlan.add(workbench);
++            }
++//            subTree = GuiPackage.getInstance().getTreeModel().getTestPlan();
++            subTree = testPlan;
+         }
+ 
+         String updateFile = GuiPackage.getInstance().getTestPlanFile();
+@@ -108,19 +114,19 @@
+             }
+             updateFile = chooser.getSelectedFile().getAbsolutePath();
+             // Make sure the file ends with proper extension
+-            if(FilenameUtils.getExtension(updateFile).equals("")) {
++            if (FilenameUtils.getExtension(updateFile).equals("")) {
+                 updateFile = updateFile + JMX_FILE_EXTENSION;
+             }
+             // Check if the user is trying to save to an existing file
+             File f = new File(updateFile);
+-            if(f.exists()) {
++            if (f.exists()) {
+                 int response = JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(),
+                         JMeterUtils.getResString("save_overwrite_existing_file"), // $NON-NLS-1$
+                         JMeterUtils.getResString("save?"),  // $NON-NLS-1$
+                         JOptionPane.YES_NO_OPTION,
+                         JOptionPane.QUESTION_MESSAGE);
+                 if (response == JOptionPane.CLOSED_OPTION || response == JOptionPane.NO_OPTION) {
+-                    return ; // Do not save, user does not want to overwrite
++                    return; // Do not save, user does not want to overwrite
+                 }
+             }
+ 
+@@ -132,7 +138,7 @@
+         try {
+             convertSubTree(subTree);
+         } catch (Exception err) {
+-            log.warn("Error converting subtree "+err);
++            log.warn("Error converting subtree " + err);
+         }
+ 
+         FileOutputStream ostream = null;
+@@ -145,10 +151,10 @@
+             }
+         } catch (Throwable ex) {
+             log.error("Error saving tree:", ex);
+-            if (ex instanceof Error){
++            if (ex instanceof Error) {
+                 throw (Error) ex;
+             }
+-            if (ex instanceof RuntimeException){
++            if (ex instanceof RuntimeException) {
+                 throw (RuntimeException) ex;
+             }
+             throw new IllegalUserActionException("Couldn't save test plan to file: " + updateFile, ex);
+Index: src/core/org/apache/jmeter/testelement/WorkBench.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/testelement/WorkBench.java	(revision 1463928)
++++ src/core/org/apache/jmeter/testelement/WorkBench.java	(revision )
+@@ -21,7 +21,10 @@
+ public class WorkBench extends AbstractTestElement {
+ 
+     private static final long serialVersionUID = 240L;
++    // Used in Save.java to define whether to save WorkBench content or not.
++    private static boolean saveWorkBench = false;
+ 
++
+     /**
+      * Constructor for the WorkBench object.
+      */
+@@ -30,5 +33,13 @@
+     }
+ 
+     public WorkBench() {
++    }
++
++    public static boolean saveWorkBench() {
++        return saveWorkBench;
++    }
++
++    public static void setSaveWorkBench(boolean saveWorkBench) {
++        WorkBench.saveWorkBench = saveWorkBench;
+     }
+ }
+Index: src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java	(revision 1463928)
++++ src/core/org/apache/jmeter/gui/tree/JMeterTreeModel.java	(revision )
+@@ -18,13 +18,6 @@
+ 
+ package org.apache.jmeter.gui.tree;
+ 
+-import java.util.Enumeration;
+-import java.util.Iterator;
+-import java.util.LinkedList;
+-import java.util.List;
+-
+-import javax.swing.tree.DefaultTreeModel;
+-
+ import org.apache.jmeter.config.gui.AbstractConfigGui;
+ import org.apache.jmeter.control.gui.TestPlanGui;
+ import org.apache.jmeter.control.gui.WorkBenchGui;
+@@ -38,17 +31,23 @@
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.collections.ListedHashTree;
+ 
++import javax.swing.tree.DefaultTreeModel;
++import java.util.Enumeration;
++import java.util.Iterator;
++import java.util.LinkedList;
++import java.util.List;
++
+ public class JMeterTreeModel extends DefaultTreeModel {
+ 
+     private static final long serialVersionUID = 240L;
+ 
+     public JMeterTreeModel(TestElement tp, TestElement wb) {
+         super(new JMeterTreeNode(wb, null));
+-        initTree(tp,wb);
++        initTree(tp, wb);
+     }
+ 
+     public JMeterTreeModel() {
+-        this(new TestPlanGui().createTestElement(),new WorkBenchGui().createTestElement());
++        this(new TestPlanGui().createTestElement(), new WorkBenchGui().createTestElement());
+ //        super(new JMeterTreeNode(new WorkBenchGui().createTestElement(), null));
+ //        TestElement tp = new TestPlanGui().createTestElement();
+ //        initTree(tp);
+@@ -57,12 +56,12 @@
+     /**
+      * Hack to allow TreeModel to be used in non-GUI and headless mode.
+      *
+-     * @deprecated - only for use by JMeter class!
+      * @param o - dummy
++     * @deprecated - only for use by JMeter class!
+      */
+     @Deprecated
+     public JMeterTreeModel(Object o) {
+-        this(new TestPlan(),new WorkBench());
++        this(new TestPlan(), new WorkBench());
+ //      super(new JMeterTreeNode(new WorkBench(), null));
+ //      TestElement tp = new TestPlan();
+ //      initTree(tp, new WorkBench());
+@@ -128,7 +127,7 @@
+             guicomp.configure(component);
+             guicomp.modifyTestElement(component);
+             guiPackage.getCurrentGui(); // put the gui object back
+-                                        // to the way it was.
++            // to the way it was.
+         }
+         JMeterTreeNode newNode = new JMeterTreeNode(component, this);
+ 
+@@ -195,9 +194,13 @@
+         return getCurrentSubTree((JMeterTreeNode) ((JMeterTreeNode) this.getRoot()).getChildAt(0));
+     }
+ 
++    public HashTree getWorkBench() {
++        return getCurrentSubTree((JMeterTreeNode) ((JMeterTreeNode) this.getRoot()).getChildAt(1));
++    }
++
+     /**
+      * Clear the test plan, and use default node for test plan and workbench.
+-     *
++     * <p/>
+      * N.B. Should only be called by {@link GuiPackage#clearTestPlan()}
+      */
+     public void clearTestPlan() {
+@@ -207,7 +210,7 @@
+ 
+     /**
+      * Clear the test plan, and use specified node for test plan and default node for workbench
+-     *
++     * <p/>
+      * N.B. Should only be called by {@link GuiPackage#clearTestPlan(TestElement)}
+      *
+      * @param testPlan the node to use as the testplan top node
+@@ -216,12 +219,12 @@
+         // Remove the workbench and testplan nodes
+         int children = getChildCount(getRoot());
+         while (children > 0) {
+-            JMeterTreeNode child = (JMeterTreeNode)getChild(getRoot(), 0);
++            JMeterTreeNode child = (JMeterTreeNode) getChild(getRoot(), 0);
+             super.removeNodeFromParent(child);
+             children = getChildCount(getRoot());
+         }
+         // Init the tree
+-        initTree(testPlan,new WorkBenchGui().createTestElement()); // Assumes this is only called from GUI mode
++        initTree(testPlan, new WorkBenchGui().createTestElement()); // Assumes this is only called from GUI mode
+     }
+ 
+     /**
+@@ -238,6 +241,6 @@
+         // Let others know that the tree content has changed.
+         // This should not be necessary, but without it, nodes are not shown when the user
+         // uses the Close menu item
+-        nodeStructureChanged((JMeterTreeNode)getRoot());
++        nodeStructureChanged((JMeterTreeNode) getRoot());
+     }
+ }
+Index: src/core/org/apache/jmeter/control/gui/WorkBenchGui.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/control/gui/WorkBenchGui.java	(revision 1463928)
++++ src/core/org/apache/jmeter/control/gui/WorkBenchGui.java	(revision )
+@@ -18,35 +18,39 @@
+ 
+ package org.apache.jmeter.control.gui;
+ 
+-import java.awt.BorderLayout;
+-import java.util.Collection;
+-
+-import javax.swing.JMenu;
+-import javax.swing.JPopupMenu;
+-
+ import org.apache.jmeter.gui.AbstractJMeterGuiComponent;
+ import org.apache.jmeter.gui.action.ActionNames;
+ import org.apache.jmeter.gui.util.MenuFactory;
++import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.WorkBench;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
++import javax.swing.*;
++import java.awt.*;
++import java.awt.event.ItemEvent;
++import java.awt.event.ItemListener;
++import java.util.Collection;
++
+ /**
+  * JMeter GUI component representing a work bench where users can make
+  * preparations for the test plan.
+- *
+  */
+-public class WorkBenchGui extends AbstractJMeterGuiComponent {
++public class WorkBenchGui extends AbstractJMeterGuiComponent implements ItemListener {
+     private static final long serialVersionUID = 240L;
++    // This check-box defines whether to save  WorkBench content or not
++    private final JCheckBox saveWorkBench;
+ 
+     /**
+      * Create a new WorkbenchGui.
+      */
+     public WorkBenchGui() {
+         super();
++        saveWorkBench = new JCheckBox(JMeterUtils.getResString("save_workbench"));
+         init();
+     }
+ 
++
+     /**
+      * This is the list of menu categories this gui component will be available
+      * under. This implementation returns null, since the WorkBench appears at
+@@ -79,7 +83,7 @@
+      * the edit menu when the component is selected, the component will be asked
+      * to return a JPopupMenu that provides all the options available to the
+      * user from this component.
+-     * <p>
++     * <p/>
+      * The WorkBench returns a popup menu allowing you to add anything.
+      *
+      * @return a JPopupMenu appropriate for the component.
+@@ -87,7 +91,7 @@
+     @Override
+     public JPopupMenu createPopupMenu() {
+         JPopupMenu menu = new JPopupMenu();
+-        JMenu addMenu = MenuFactory.makeMenus(new String[] {
++        JMenu addMenu = MenuFactory.makeMenus(new String[]{
+                 MenuFactory.NON_TEST_ELEMENTS,
+                 MenuFactory.CONTROLLERS,
+                 MenuFactory.CONFIG_ELEMENTS,
+@@ -97,7 +101,7 @@
+                 MenuFactory.POST_PROCESSORS,
+                 MenuFactory.ASSERTIONS,
+                 MenuFactory.LISTENERS,
+-                },
++        },
+                 JMeterUtils.getResString("add"), // $NON-NLS-1$
+                 ActionNames.ADD);
+         menu.add(addMenu);
+@@ -115,9 +119,28 @@
+      * Initialize the components and layout of this component.
+      */
+     private void init() {
+-        setLayout(new BorderLayout());
++        setLayout(new BorderLayout(0, 5));
++
+         setBorder(makeBorder());
+ 
+         add(makeTitlePanel(), BorderLayout.NORTH);
++        VerticalPanel workBenchPropsPanel = new VerticalPanel(5, 0);
++
++        workBenchPropsPanel.add(saveWorkBench);
++        saveWorkBench.addItemListener(this);
++        add(workBenchPropsPanel, BorderLayout.CENTER);
++
++    }
++
++    @Override
++    public void itemStateChanged(ItemEvent ie) {
++        //To change body of implemented methods use File | Settings | File Templates.
++        if (ie.getItem().equals(saveWorkBench)) {
++            if (saveWorkBench.isSelected()) {
++                WorkBench.setSaveWorkBench(true);
++            } else {
++                WorkBench.setSaveWorkBench(false);
++            }
++        }
+     }
+ }

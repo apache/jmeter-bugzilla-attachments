@@ -1,0 +1,37 @@
+diff --git a/src/core/src/main/java/org/apache/jmeter/samplers/DataStrippingSampleSender.java b/src/core/src/main/java/org/apache/jmeter/samplers/DataStrippingSampleSender.java
+index 8fba027b08..759bc3d741 100644
+--- a/src/core/src/main/java/org/apache/jmeter/samplers/DataStrippingSampleSender.java
++++ b/src/core/src/main/java/org/apache/jmeter/samplers/DataStrippingSampleSender.java
+@@ -92,12 +92,7 @@ public class DataStrippingSampleSender extends AbstractSampleSender implements S
+         //Strip the response data before writing, but only for a successful request.
+         SampleResult result = event.getResult();
+         if(stripAlsoOnError || result.isSuccessful()) {
+-            // Compute bytes before stripping
+-            stripResponse(result);
+-            // see Bug 57449
+-            for (SampleResult subResult : result.getSubResults()) {
+-                stripResponse(subResult);
+-            }
++            stripContent(result, 3);
+         }
+         if(decoratedSender == null)
+         {
+@@ -113,6 +108,18 @@ public class DataStrippingSampleSender extends AbstractSampleSender implements S
+         }
+     }
+ 
++    private void stripContent(SampleResult result, int level) {
++        if (level < 0) {
++            return;
++        }
++        // Compute bytes before stripping
++        stripResponse(result);
++        // see Bug 57449 and 63674
++        for (SampleResult subResult : result.getSubResults()) {
++            stripContent(subResult, level - 1);
++        }
++    }
++
+     /**
+      * Strip response but fill in bytes field.
+      * @param result {@link SampleResult}

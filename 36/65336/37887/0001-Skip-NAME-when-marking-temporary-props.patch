@@ -1,0 +1,27 @@
+From 7e6e657c118af0d5e0642146c5e2ad393eb706a9 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Thu, 3 Jun 2021 15:25:05 +0200
+Subject: [PATCH] Skip NAME when marking temporary props
+
+---
+ .../org/apache/jmeter/testelement/AbstractTestElement.java    | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java b/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java
+index 94364f26b9..8c4c4690b6 100644
+--- a/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java
++++ b/src/core/src/main/java/org/apache/jmeter/testelement/AbstractTestElement.java
+@@ -548,6 +548,10 @@ public abstract class AbstractTestElement implements TestElement, Serializable,
+         temporaryProperties.add(property);
+         if (property instanceof MultiProperty) {
+             for (JMeterProperty jMeterProperty : (MultiProperty) property) {
++                if (NAME.equals(jMeterProperty.getName())) {
++                    log.debug("Skip marking NAME ({}) as temporary property", jMeterProperty);
++                    continue;
++                }
+                 setTemporary(jMeterProperty);
+             }
+         }
+-- 
+2.25.1
+

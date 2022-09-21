@@ -1,0 +1,77 @@
+Index: src/components/org/apache/jmeter/assertions/XMLAssertion.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/XMLAssertion.java	(revision 1719809)
++++ src/components/org/apache/jmeter/assertions/XMLAssertion.java	(working copy)
+@@ -22,13 +22,18 @@
+ import java.io.Serializable;
+ import java.io.StringReader;
+ 
++import javax.xml.parsers.ParserConfigurationException;
++import javax.xml.parsers.SAXParser;
++import javax.xml.parsers.SAXParserFactory;
++
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+-import org.jdom.JDOMException;
+-import org.jdom.input.SAXBuilder;
++import org.xml.sax.InputSource;
++import org.xml.sax.SAXException;
++import org.xml.sax.helpers.DefaultHandler;
+ 
+ /**
+  * Checks if the result is a well-formed XML content using jdom
+@@ -37,13 +42,17 @@
+ public class XMLAssertion extends AbstractTestElement implements Serializable, Assertion, ThreadListener {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 241L;
+ 
+     // one builder for all requests in a thread
+-    private static final ThreadLocal<SAXBuilder> myBuilder = new ThreadLocal<SAXBuilder>() {
++    private static final ThreadLocal<SAXParser> myBuilder = new ThreadLocal<SAXParser>() {
+         @Override
+-        protected SAXBuilder initialValue() {
+-            return new SAXBuilder();
++        protected SAXParser initialValue() {
++            try {
++                return SAXParserFactory.newInstance().newSAXParser();
++            } catch (ParserConfigurationException | SAXException e) {
++                return null;
++            }
+         }
+     };
+ 
+@@ -62,18 +71,18 @@
+             return result.setResultForNull();
+         }
+         result.setFailure(false);
+-        SAXBuilder builder = myBuilder.get();
+-
+-        try {
+-            builder.build(new StringReader(resultData));
+-        } catch (JDOMException e) {
+-            log.debug("Cannot parse result content", e); // may well happen
+-            result.setFailure(true);
+-            result.setFailureMessage(e.getMessage());
+-        } catch (IOException e) {
+-            log.error("Cannot read result content", e); // should never happen
++        SAXParser builder = myBuilder.get();
++        if(myBuilder!=null) {
++            try {
++                builder.parse(new InputSource(new StringReader(resultData)), new DefaultHandler());
++            } catch (SAXException | IOException e) {
++                log.error("Cannot read result content", e); // should never happen
++                result.setError(true);
++                result.setFailureMessage(e.getMessage());
++            }
++        } else {
+             result.setError(true);
+-            result.setFailureMessage(e.getMessage());
++            result.setFailureMessage("Cannot initialize SAXParser, check jmeter.log file");
+         }
+ 
+         return result;

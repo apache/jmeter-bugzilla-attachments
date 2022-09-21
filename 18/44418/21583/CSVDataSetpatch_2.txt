@@ -1,0 +1,387 @@
+Index: /home/franky/jmeterworkspace/jmeter620583/bin/i18nedit.properties
+===================================================================
+--- /home/franky/jmeterworkspace/jmeter620583/bin/i18nedit.properties	(revision 0)
++++ /home/franky/jmeterworkspace/jmeter620583/bin/i18nedit.properties	(revision 0)
+@@ -0,0 +1,10 @@
++#I18NEdit settings for project
++locale.default=en
++locales=de ja no tw
++main.name=jakarta-jmeter
++personal.Administrator.sourcelocale=en
++personal.Administrator.targetlocale=tw
++personal.Administrator.workmode=directed
++personal.jordi.sourcelocale=en
++personal.jordi.targetlocale=ja
++personal.jordi.workmode=free
+Index: /home/franky/jmeterworkspace/jmeter620583/src/components/org/apache/jmeter/config/CSVDataSet.java
+===================================================================
+--- /home/franky/jmeterworkspace/jmeter620583/src/components/org/apache/jmeter/config/CSVDataSet.java	(revision 620583)
++++ /home/franky/jmeterworkspace/jmeter620583/src/components/org/apache/jmeter/config/CSVDataSet.java	(working copy)
+@@ -55,6 +55,8 @@
+     private transient boolean recycle = true;
+     
+     private transient boolean stopThread = false;
++    
++    private transient boolean independent = false;
+ 
+     transient private String[] vars;
+ 
+@@ -71,7 +73,7 @@
+ 		FileServer server = FileServer.getFileServer();
+ 		String _fileName = getFilename();
+ 		if (vars == null) {
+-			server.reserveFile(_fileName, getFileEncoding());
++			server.reserveFile(this, _fileName, getFileEncoding(), getIndependent());
+ 			vars = JOrphanUtils.split(getVariableNames(), ","); // $NON-NLS-1$
+ 		}
+ 		try {
+@@ -79,7 +81,7 @@
+ 			if (delim.equals("\\t")) // $NON-NLS-1$
+ 				delim = "\t";// Make it easier to enter a Tab // $NON-NLS-1$
+             JMeterVariables threadVars = this.getThreadContext().getVariables();
+-			String line = server.readLine(_fileName,getRecycle());
++			String line = server.readLine(this, _fileName, getRecycle(), getIndependent());
+             if (line!=null) {// i.e. not EOF
+                 String[] lineValues = JOrphanUtils.split(line, delim,false);
+     			for (int a = 0; a < vars.length && a < lineValues.length; a++) {
+@@ -167,5 +169,14 @@
+     public void setStopThread(boolean value) {
+         this.stopThread = value;
+     }
++    
++    public boolean getIndependent() {
++        return independent;
++    }
++
++    public void setIndependent(boolean value) {
++        this.independent = value;
++    }
+ 
++
+ }
+Index: /home/franky/jmeterworkspace/jmeter620583/src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java
+===================================================================
+--- /home/franky/jmeterworkspace/jmeter620583/src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java	(revision 620583)
++++ /home/franky/jmeterworkspace/jmeter620583/src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java	(working copy)
+@@ -35,6 +35,7 @@
+     private static final String DELIMITER = "delimiter";             //$NON-NLS-1$
+     private static final String RECYCLE = "recycle";                 //$NON-NLS-1$
+     private static final String STOPTHREAD = "stopThread";           //$NON-NLS-1$
++   private static final String INDEPENDENT = "independent";         //$NON-NLS-1$
+ 
+ 	public CSVDataSetBeanInfo() {
+ 		super(CSVDataSet.class);
+@@ -39,8 +40,8 @@
+ 	public CSVDataSetBeanInfo() {
+ 		super(CSVDataSet.class);
+ 		createPropertyGroup("csv_data",             //$NON-NLS-1$
+-                new String[] { FILENAME, FILE_ENCODING, VARIABLE_NAMES, DELIMITER, RECYCLE, STOPTHREAD });
+-        
++               new String[] { FILENAME, FILE_ENCODING, VARIABLE_NAMES, DELIMITER, RECYCLE, STOPTHREAD,INDEPENDENT });
++		
+ 		PropertyDescriptor p = property(FILENAME);
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, "");        //$NON-NLS-1$
+@@ -70,5 +71,10 @@
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, Boolean.FALSE);
+         p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        
++        p = property(INDEPENDENT);
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, Boolean.FALSE);
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+ 	}
+ }
+Index: /home/franky/jmeterworkspace/jmeter620583/src/core/org/apache/jmeter/services/FileServer.java
+===================================================================
+--- /home/franky/jmeterworkspace/jmeter620583/src/core/org/apache/jmeter/services/FileServer.java	(revision 620583)
++++ /home/franky/jmeterworkspace/jmeter620583/src/core/org/apache/jmeter/services/FileServer.java	(working copy)
+@@ -63,7 +63,7 @@
+ 
+     //TODO - make "files" and "random" static as the class is a singleton?
+     
+-	private final Map files = new HashMap();
++	private final Map keys = new HashMap();
+     
+ 	private static final FileServer server = new FileServer();
+ 
+@@ -73,6 +73,22 @@
+ 		base = new File(DEFAULT_BASE);
+ 		log.info("Default base="+DEFAULT_BASE);
+ 	}
++	
++	private FileEntry getFileEntrybyFilename(Map map, String filename){
++		FileEntry fileEntry = null;
++		Iterator it;
++		boolean found = false;
++		if (map != null){
++			it = map.values().iterator();
++		    while (it.hasNext() && !found) {
++		    	fileEntry = (FileEntry) it.next();	
++		        if (fileEntry.file.getName().equals(filename)){	
++		    		 found = true;
++		    	}
++		    }
++	    }
++		return fileEntry;
++	}
+ 
+ 	public static FileServer getFileServer() {
+ 		return server;
+@@ -86,7 +102,7 @@
+ 		if (filesOpen()) {
+ 			throw new IOException("Files are still open, cannot change base directory");
+ 		}
+-		files.clear();
++		keys.clear();
+ 		if (basedir != null) {
+ 			base = new File(basedir);
+ 			if (!base.isDirectory()) {
+@@ -103,11 +119,11 @@
+     /**
+      * Creates an association between a filename and a File inputOutputObject,
+      * and stores it for later use - unless it is already stored.
+-     * 
++     * @param key - use a given object as the key for the HashMap
+      * @param filename - relative (to base) or absolute file name
+      */
+-	public synchronized void reserveFile(String filename) {
+-		reserveFile(filename,null);
++	public synchronized void reserveFile(Object key, String filename) {
++		reserveFile(key, filename, null, false);
+ 	}
+ 
+     /**
+@@ -114,17 +130,31 @@
+      * Creates an association between a filename and a File inputOutputObject,
+      * and stores it for later use - unless it is already stored.
+      * 
++     * @param key - use a given object as the key for the HashMap 
+      * @param filename - relative (to base) or absolute file name
+      * @param charsetName - the character set encoding to use for the file
+      */
+-	public synchronized void reserveFile(String filename, String charsetName) {
+-		if (!files.containsKey(filename)) {
+-            File f = new File(filename); 
+-            FileEntry file = 
+-                new FileEntry(f.isAbsolute() ? f : new File(base, filename),null,charsetName);
+-            log.info("Stored: "+filename);
+-			files.put(filename, file);
+-		}
++	public synchronized void reserveFile(Object key, String filename, String charsetName, boolean independent) {	
++	   Iterator it;
++	   FileEntry existFileentry;
++	   boolean b = false;
++       it = keys.values().iterator();
++       while (it.hasNext() && !b) {
++    	 existFileentry = (FileEntry) it.next();
++    	 if (existFileentry.file.getName().equals(filename)){
++    		 b = true;
++    	 }
++       }
++      
++       if (!b || independent){
++           File f = new File(filename); 
++           FileEntry file = 
++               new FileEntry(f.isAbsolute() ? f : new File(base, filename), null, charsetName);
++           
++       log.info("Stored: "+ filename);
++		keys.put(key, file);
++       }
++	
+ 	}
+ 
+    /**
+@@ -130,7 +160,7 @@
+    /**
+ 	 * Get the next line of the named file, recycle by default.
+ 	 *
+-     * @param filename
++	 *@param filename - name of the file
+ 	 * @return String containing the next line in the file
+ 	 * @throws IOException
+ 	 */
+@@ -135,7 +165,7 @@
+ 	 * @throws IOException
+ 	 */
+     public String readLine(String filename) throws IOException {
+-      return readLine(filename, true);
++      return readLine(null, filename, true, false);
+     }
+ 
+    /**
+@@ -141,7 +171,8 @@
+    /**
+ 	 * Get the next line of the named file.
+ 	 * 
+-     * @param filename
++     * @param key - use a given object as the key for the HashMap
++     * @param filename - name of the file
+      * @param recycle - should file be restarted at EOF?
+ 	 * @return String containing the next line in the file (null if EOF reached and not recycle)
+ 	 * @throws IOException
+@@ -146,13 +177,22 @@
+ 	 * @return String containing the next line in the file (null if EOF reached and not recycle)
+ 	 * @throws IOException
+ 	 */
+-	public synchronized String readLine(String filename, boolean recycle) throws IOException {
+-		FileEntry fileEntry = (FileEntry) files.get(filename);
++	public synchronized String readLine(Object key, String filename, boolean recycle, boolean independent) throws IOException {
++		FileEntry fileEntry = null;
++		
++		if (independent){
++			// get FileEntry by key if the same file is more than once in the HashMap (independent = true)
++			fileEntry = (FileEntry) keys.get(key);
++		} else {
++			// get FileEntry by filename if a file is only once in the HashMap (independent = false)
++			fileEntry = (FileEntry) getFileEntrybyFilename(keys, filename);
++		}
++		
+ 		if (fileEntry != null) {
+ 			if (fileEntry.inputOutputObject == null) {
+-				fileEntry.inputOutputObject = createBufferedReader(fileEntry, filename);
++				fileEntry.inputOutputObject = createBufferedReader(fileEntry);
+             } else if (!(fileEntry.inputOutputObject instanceof Reader)) {
+-                throw new IOException("File " + filename + " already in use");
++                throw new IOException("File " + fileEntry.file.getName() + " already in use");
+             }
+ 			BufferedReader reader = (BufferedReader) fileEntry.inputOutputObject;
+ 			String line = reader.readLine();
+@@ -158,7 +198,7 @@
+ 			String line = reader.readLine();
+ 			if (line == null && recycle) {
+ 				reader.close();
+-				reader = createBufferedReader(fileEntry, filename);
++				reader = createBufferedReader(fileEntry);
+ 				fileEntry.inputOutputObject = reader;
+ 				line = reader.readLine();
+ 			}
+@@ -165,10 +205,10 @@
+             if (log.isDebugEnabled()) log.debug("Read:"+line);
+ 			return line;
+ 		}
+-		throw new IOException("File never reserved: "+filename);
++		throw new IOException("File never reserved: "+ filename);
+ 	}
+ 	
+-	private BufferedReader createBufferedReader(FileEntry fileEntry, String filename) throws IOException { 
++	private BufferedReader createBufferedReader(FileEntry fileEntry) throws IOException { 
+ 		FileInputStream fis = new FileInputStream(fileEntry.file);				
+ 		InputStreamReader isr = null;
+         // If file encoding is specified, read using that encoding, otherwise use default platform encoding
+@@ -182,10 +222,10 @@
+ 	}
+ 
+ 	public synchronized void write(String filename, String value) throws IOException {
+-		FileEntry fileEntry = (FileEntry) files.get(filename);
++		FileEntry fileEntry = (FileEntry) getFileEntrybyFilename(keys, filename);
+ 		if (fileEntry != null) {
+ 			if (fileEntry.inputOutputObject == null) {
+-				fileEntry.inputOutputObject = createBufferedWriter(fileEntry, filename);
++				fileEntry.inputOutputObject = createBufferedWriter(fileEntry);
+ 			} else if (!(fileEntry.inputOutputObject instanceof Writer)) {
+ 				throw new IOException("File " + filename + " already in use");
+ 			}
+@@ -197,7 +237,7 @@
+         }
+ 	}
+ 
+-	private BufferedWriter createBufferedWriter(FileEntry fileEntry, String filename) throws IOException { 
++	private BufferedWriter createBufferedWriter(FileEntry fileEntry) throws IOException { 
+ 		FileOutputStream fos = new FileOutputStream(fileEntry.file);				
+ 		OutputStreamWriter osw = null;
+         // If file encoding is specified, write using that encoding, otherwise use default platform encoding
+@@ -211,12 +251,12 @@
+ 	}
+ 
+ 	public void closeFiles() throws IOException {
+-		Iterator iter = files.entrySet().iterator();
++		Iterator iter = keys.entrySet().iterator();
+ 		while (iter.hasNext()) {
+             Map.Entry me = (Map.Entry) iter.next();
+-			closeFile((String)me.getKey(),(FileEntry)me.getValue() );
++			closeFile((Object)me.getKey(),(FileEntry)me.getValue() );
+ 		}
+-		files.clear();
++		keys.clear();
+ 	}
+ 
+ 	/**
+@@ -223,14 +263,14 @@
+ 	 * @param name
+ 	 * @throws IOException
+ 	 */
+-	public synchronized void closeFile(String name) throws IOException {
+-		FileEntry fileEntry = (FileEntry) files.get(name);
+-		closeFile(name, fileEntry);
++	public synchronized void closeFile(Object key) throws IOException {
++		FileEntry fileEntry = (FileEntry) keys.get(key);
++		closeFile(keys.get(key), fileEntry);
+ 	}
+ 
+-    private void closeFile(String name, FileEntry fileEntry) throws IOException {
++    private void closeFile(Object key, FileEntry fileEntry) throws IOException {
+         if (fileEntry != null && fileEntry.inputOutputObject != null) {
+-            log.info("Close: "+name);
++            log.info("Close: "+fileEntry.file.getName());
+             if (fileEntry.inputOutputObject instanceof Reader) {
+                 ((Reader) fileEntry.inputOutputObject).close();
+             } else if (fileEntry.inputOutputObject instanceof Writer) {
+@@ -243,7 +283,7 @@
+     }
+ 
+ 	protected boolean filesOpen() {
+-		Iterator iter = files.values().iterator();
++		Iterator iter = keys.values().iterator();
+ 		while (iter.hasNext()) {
+ 			FileEntry fileEntry = (FileEntry) iter.next();
+             if (fileEntry.inputOutputObject != null) {
+Index: /home/franky/jmeterworkspace/jmeter620583/src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+--- /home/franky/jmeterworkspace/jmeter620583/src/core/org/apache/jmeter/util/JMeterVersion.java	(revision 620583)
++++ /home/franky/jmeterworkspace/jmeter620583/src/core/org/apache/jmeter/util/JMeterVersion.java	(working copy)
+@@ -44,7 +44,7 @@
+ 	 * This ensures that JMeterUtils always gets the correct
+ 	 * version, even if JMeterUtils is not re-compiled during the build.
+ 	 */
+-	private static final String VERSION = "2.3.2";
++	private static final String VERSION = "2.3.20080222";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2008 The Apache Software Foundation";
+ 
+Index: /home/franky/jmeterworkspace/jmeter620583/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java
+===================================================================
+--- /home/franky/jmeterworkspace/jmeter620583/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java	(revision 620583)
++++ /home/franky/jmeterworkspace/jmeter620583/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/SharedTCLogParser.java	(working copy)
+@@ -49,7 +49,7 @@
+ 	 */
+ 	public int parse(TestElement el, int parseCount) {
+ 		FileServer fileServer = FileServer.getFileServer();
+-		fileServer.reserveFile(FILENAME);
++		fileServer.reserveFile(this, FILENAME);
+ 		try {
+ 			return parse(fileServer, el, parseCount);
+ 		} catch (Exception exception) {
+Index: /home/franky/jmeterworkspace/jmeter620583/test/src/org/apache/jmeter/services/TestFileServer.java
+===================================================================
+--- /home/franky/jmeterworkspace/jmeter620583/test/src/org/apache/jmeter/services/TestFileServer.java	(revision 620583)
++++ /home/franky/jmeterworkspace/jmeter620583/test/src/org/apache/jmeter/services/TestFileServer.java	(working copy)
+@@ -59,7 +59,7 @@
+         FS.closeFile("xxx"); // Unrecognised files are ignored
+         assertFalse("Should not have any files open",FS.filesOpen());
+         String infile="testfiles/test.csv";
+-        FS.reserveFile(infile); // Does not open file
++        FS.reserveFile(this, infile); // Does not open file
+         assertFalse("Should not have any files open",FS.filesOpen());
+         assertEquals("a1,b1,c1,d1",FS.readLine(infile));
+         assertTrue("Should have some files open",FS.filesOpen());
+@@ -86,7 +86,7 @@
+         }
+         String base=FS.getBaseDir();
+         infile=base+"/testfiles/test.csv";
+-        FS.reserveFile(infile); // Does not open file
++        FS.reserveFile(this, infile); // Does not open file
+         assertFalse("Should not have any files open",FS.filesOpen());
+         assertEquals("a1,b1,c1,d1",FS.readLine(infile));
+         try {

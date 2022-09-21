@@ -1,0 +1,141 @@
+From 4a83147c809c9ad4714fc3767ccf84d6b7370cbe Mon Sep 17 00:00:00 2001
+From: Gordon Daugherty <gordon@idisagree.org>
+Date: Tue, 9 Aug 2016 08:31:10 -0500
+Subject: [PATCH] Added new behavior UI mockup. Not hooked up to anything
+ yet...
+
+---
+ .../apache/jmeter/resources/messages.properties    |  4 ++
+ .../protocol/jms/control/gui/JMSSamplerGui.java    | 64 ++++++++++++++++++++--
+ 2 files changed, 64 insertions(+), 4 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/resources/messages.properties b/src/core/org/apache/jmeter/resources/messages.properties
+index 57bb28d..5a6d444 100644
+--- a/src/core/org/apache/jmeter/resources/messages.properties
++++ b/src/core/org/apache/jmeter/resources/messages.properties
+@@ -476,6 +476,10 @@ jms_publisher=JMS Publisher
+ jms_pwd=Password
+ jms_queue=Queue
+ jms_queue_connection_factory=QueueConnection Factory
++jms_load_generation_mode=Load Generation Mode
++jms_load_generation_mode_synchronous=Synchronous / wait for each reply
++jms_load_generation_mode_asynchronous=Asynchronous
++jms_load_generation_use_temp_reply_queue=Use temp reply queue
+ jms_queueing=JMS Resources
+ jms_random_file=Random folder containing files ending with .dat for bytes messages, .txt or .obj for text and Object messages
+ jms_receive_queue=JNDI name Receive queue
+diff --git a/src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java b/src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java
+index 7be28dc..2758872 100644
+--- a/src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java
++++ b/src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java
+@@ -19,13 +19,19 @@
+ package org.apache.jmeter.protocol.jms.control.gui;
+ 
+ import java.awt.BorderLayout;
++import java.awt.Dimension;
++import java.awt.FlowLayout;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
++import javax.swing.ButtonGroup;
+ import javax.swing.JCheckBox;
+ import javax.swing.JComboBox;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
++import javax.swing.JRadioButton;
+ 
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.config.gui.ArgumentsPanel;
+@@ -54,7 +60,7 @@ public class JMSSamplerGui extends AbstractSamplerGui {
+ 
+     private JLabeledTextField sendQueue = new JLabeledTextField(JMeterUtils.getResString("jms_send_queue")); //$NON-NLS-1$
+ 
+-    private JLabeledTextField receiveQueue = new JLabeledTextField(JMeterUtils.getResString("jms_receive_queue")); //$NON-NLS-1$
++    private JLabeledTextField receiveQueue = new JLabeledTextField(JMeterUtils.getResString("jms_receive_queue"), 45); //$NON-NLS-1$
+ 
+     private JLabeledTextField timeout = new JLabeledTextField(JMeterUtils.getResString("jms_timeout"),10); //$NON-NLS-1$
+ 
+@@ -80,6 +86,10 @@ public class JMSSamplerGui extends AbstractSamplerGui {
+ 
+     private ArgumentsPanel jndiPropertiesPanel;
+ 
++    private JRadioButton jmsLoadGenerationModeSyncRadio;
++    private JRadioButton jmsLoadGenerationModeAsyncRadio;
++    private JCheckBox useTempReplyQueue;
++    
+     private JCheckBox useNonPersistentDelivery;
+ 
+     private JCheckBox useReqMsgIdAsCorrelId;
+@@ -218,11 +228,56 @@ public class JMSSamplerGui extends AbstractSamplerGui {
+         sendQueuePanel.add(sendQueue);
+         jmsQueueingPanel.add(sendQueuePanel, BorderLayout.CENTER);
+ 
+-        JPanel receiveQueuePanel = new JPanel(new BorderLayout(5, 0));
+-        receiveQueuePanel.add(jmsSelector,BorderLayout.SOUTH);
++        final JPanel receiveQueuePanel = new JPanel(new BorderLayout(5, 0));
++
+         receiveQueuePanel.add(receiveQueue,BorderLayout.NORTH);
+-        jmsQueueingPanel.add(receiveQueuePanel, BorderLayout.SOUTH);
++        receiveQueuePanel.add(jmsSelector,BorderLayout.SOUTH);
+ 
++// *********
++        JPanel loadGenerationModePanel = new JPanel(new FlowLayout());
++        final JPanel tempReplyOrNotPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
++        loadGenerationModePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("jms_load_generation_mode"))); //$NON-NLS-1$
++        
++        jmsLoadGenerationModeSyncRadio = new JRadioButton(JMeterUtils.getResString("jms_load_generation_mode_synchronous"));
++        jmsLoadGenerationModeSyncRadio.addActionListener(new ActionListener() {
++            @Override
++            public void actionPerformed(ActionEvent e) {
++              tempReplyOrNotPanel.setVisible(false);
++            }
++        });
++        
++        jmsLoadGenerationModeAsyncRadio = new JRadioButton(JMeterUtils.getResString("jms_load_generation_mode_asynchronous"),true);
++        jmsLoadGenerationModeAsyncRadio.addActionListener(new ActionListener() {
++          @Override
++          public void actionPerformed(ActionEvent e) {
++            tempReplyOrNotPanel.setVisible(true);
++          }
++        });
++
++        ButtonGroup loadGenerationRadioGroup = new ButtonGroup();
++        loadGenerationRadioGroup.add(jmsLoadGenerationModeSyncRadio);
++        loadGenerationRadioGroup.add(jmsLoadGenerationModeAsyncRadio);
++        
++        loadGenerationModePanel.add(jmsLoadGenerationModeSyncRadio);
++        loadGenerationModePanel.add(jmsLoadGenerationModeAsyncRadio);
++        
++        useTempReplyQueue = new JCheckBox(JMeterUtils.getResString("jms_load_generation_use_temp_reply_queue"),true);
++        useTempReplyQueue.addActionListener(new ActionListener() {
++          @Override
++          public void actionPerformed(ActionEvent e) {
++            if (((JCheckBox)e.getSource()).isSelected()) {  
++              receiveQueuePanel.setVisible(false);
++            } else {
++              receiveQueuePanel.setVisible(true);
++            }
++          }
++        });
++        tempReplyOrNotPanel.add(useTempReplyQueue);
++        tempReplyOrNotPanel.add(receiveQueuePanel);
++        receiveQueuePanel.setVisible(false);
++        jmsQueueingPanel.add(tempReplyOrNotPanel, BorderLayout.SOUTH);
++// *********        
+         JPanel messagePanel = new JPanel(new BorderLayout());
+         messagePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
+                 JMeterUtils.getResString("jms_message_title"))); //$NON-NLS-1$
+@@ -265,6 +320,7 @@ public class JMSSamplerGui extends AbstractSamplerGui {
+ 
+         Box mainPanel = Box.createVerticalBox();
+         add(mainPanel, BorderLayout.CENTER);
++        mainPanel.add(loadGenerationModePanel, BorderLayout.NORTH); // GJD
+         mainPanel.add(jmsQueueingPanel, BorderLayout.NORTH);
+         mainPanel.add(messagePanel, BorderLayout.CENTER);
+         JPanel jndiPanel = createJNDIPanel();
+-- 
+1.9.5.msysgit.1
+

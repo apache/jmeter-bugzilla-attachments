@@ -1,0 +1,34 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 1176814)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -1198,7 +1198,7 @@
+                 final ThreadPoolExecutor exec = new ThreadPoolExecutor(
+                         poolSize, poolSize, KEEPALIVETIME, TimeUnit.SECONDS,
+                         new LinkedBlockingQueue<Runnable>());
+-
++                boolean wasSuccessful = false;
+                 try {
+                     // sample all resources with threadpool
+                     final List<Future<HTTPSampleResult>> retExec = exec.invokeAll(liste);
+@@ -1213,10 +1213,20 @@
+                         res.addSubResult(binRes);
+                         res.setSuccessful(res.isSuccessful() && binRes.isSuccessful());
+                     }
++                    wasSuccessful = true;
+                 } catch (InterruptedException ie) {
+                     log.warn("Interruped fetching embedded resources", ie); // $NON-NLS-1$
+                 } catch (ExecutionException ee) {
+                     log.warn("Execution issue when fetching embedded resources", ee); // $NON-NLS-1$
++                } finally {
++                    if(!wasSuccessful)
++                    {
++                        try {
++                            exec.shutdownNow();
++                        } catch (Exception e) {
++                            //NOOP
++                        }
++                    }
+                 }
+             }
+         }

@@ -1,0 +1,165 @@
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java	(revision 1172239)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java	(working copy)
+@@ -36,6 +36,7 @@
+ import org.apache.jmeter.protocol.jms.Utils;
+ import org.apache.jmeter.protocol.jms.control.gui.JMSPublisherGui;
+ import org.apache.jmeter.protocol.jms.client.ClientPool;
++import org.apache.jmeter.protocol.jms.client.InitialContextFactory;
+ import org.apache.jmeter.protocol.jms.client.Publisher;
+ 
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -84,7 +85,7 @@
+     /**
+      * the implementation calls testEnded() without any parameters.
+      */
+-    public void testEnded(String test) {
++    public void testEnded(String host) {
+         testEnded();
+     }
+ 
+@@ -96,6 +97,7 @@
+     public void testEnded() {
+         log.debug("PublisherSampler.testEnded called");
+         ClientPool.clearClient();
++        InitialContextFactory.close();
+     }
+ 
+     public void testStarted() {
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java	(revision 1172239)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/SubscriberSampler.java	(working copy)
+@@ -25,11 +25,14 @@
+ import javax.jms.TextMessage;
+ import javax.naming.NamingException;
+ 
++import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.protocol.jms.Utils;
++import org.apache.jmeter.protocol.jms.client.InitialContextFactory;
+ import org.apache.jmeter.protocol.jms.client.ReceiveSubscriber;
+ import org.apache.jmeter.protocol.jms.control.gui.JMSSubscriberGui;
+ import org.apache.jmeter.samplers.Interruptible;
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -48,7 +51,7 @@
+ // Note: originally the code did use the ClientPool to "share" subscribers, however since the
+ // key was "this" and each sampler is unique - nothing was actually shared.
+ 
+-public class SubscriberSampler extends BaseJMSSampler implements Interruptible, ThreadListener {
++public class SubscriberSampler extends BaseJMSSampler implements Interruptible, ThreadListener, TestListener {
+ 
+     private static final long serialVersionUID = 240L;
+ 
+@@ -375,4 +378,38 @@
+         setProperty(STOP_BETWEEN, selected, false);                
+     }
+ 
++    /**
++     * {@inheritDoc}
++     */
++    public void testEnded() {
++        InitialContextFactory.close();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testEnded(String host) {
++        testEnded();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testIterationStart(LoopIterationEvent event) {
++        //NOOP
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testStarted() {
++        //NOOP
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testStarted(String host) {
++        // NOOP        
++    }
+ }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java	(revision 1172239)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java	(working copy)
+@@ -18,9 +18,10 @@
+ 
+ package org.apache.jmeter.protocol.jms.client;
+ 
+-import java.util.HashMap;
+ import java.util.Iterator;
++import java.util.Map;
+ import java.util.Properties;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ import javax.naming.Context;
+ import javax.naming.InitialContext;
+@@ -36,7 +37,7 @@
+ public class InitialContextFactory {
+ 
+     //GuardedBy("this")
+-    private static final HashMap<String, Context> MAP = new HashMap<String, Context>();
++    private static final ConcurrentHashMap<String, Context> MAP = new ConcurrentHashMap<String, Context>();
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+@@ -51,7 +52,7 @@
+      * @return the context, never null
+      * @throws NamingException 
+      */
+-    public static synchronized Context lookupContext(String initialContextFactory, 
++    public static Context lookupContext(String initialContextFactory, 
+             String providerUrl, boolean useAuth, String securityPrincipal, String securityCredentials) throws NamingException {
+         String cacheKey = createKey(initialContextFactory ,providerUrl, securityPrincipal, securityCredentials);
+         Context ctx = MAP.get(cacheKey);
+@@ -72,7 +73,7 @@
+             } catch (Exception e) {
+                 throw new NamingException(e.toString());
+             }
+-            MAP.put(cacheKey, ctx);
++            MAP.putIfAbsent(cacheKey, ctx);
+         }
+         return ctx;
+     }
+@@ -131,13 +132,14 @@
+             return lookupContext(initialContextFactory, providerUrl, useAuth, securityPrincipal, securityCredentials);
+         }
+     }
++    
+     /**
+      * clear all the InitialContext objects.
+      */
+-    public synchronized static void close() { // TODO - why is this not used?
+-        Iterator<?> itr = MAP.keySet().iterator();
+-        while (itr.hasNext()) {
+-            Context ctx = MAP.get(itr.next());
++    public static void close() { 
++        for (Iterator<Map.Entry<String, Context>> iterator = MAP.entrySet().iterator(); iterator.hasNext();) {
++            Map.Entry<String, Context> entry = iterator.next();
++            Context ctx = entry.getValue();
+             try {
+                 ctx.close();
+             } catch (NamingException e) {
+@@ -147,4 +149,4 @@
+         MAP.clear();
+         log.info("InitialContextFactory.close() called and Context instances cleaned up");
+     }
+-}
++}
+\ No newline at end of file

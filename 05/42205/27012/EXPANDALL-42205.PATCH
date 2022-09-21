@@ -1,0 +1,489 @@
+Index: src/core/org/apache/jmeter/gui/MainFrame.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/MainFrame.java	(revision 1103731)
++++ src/core/org/apache/jmeter/gui/MainFrame.java	(working copy)
+@@ -21,6 +21,7 @@
+ import java.awt.BorderLayout;
+ import java.awt.Component;
+ import java.awt.Dimension;
++import java.awt.FlowLayout;
+ import java.awt.Font;
+ import java.awt.Insets;
+ import java.awt.event.ActionEvent;
+@@ -57,6 +58,8 @@
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.gui.action.ActionNames;
+ import org.apache.jmeter.gui.action.ActionRouter;
++import org.apache.jmeter.gui.action.CollapseExpand;
++import org.apache.jmeter.gui.action.Command;
+ import org.apache.jmeter.gui.tree.JMeterCellRenderer;
+ import org.apache.jmeter.gui.tree.JMeterTreeListener;
+ import org.apache.jmeter.gui.util.JMeterMenuBar;
+@@ -70,7 +73,7 @@
+ /**
+  * The main JMeter frame, containing the menu bar, test tree, and an area for
+  * JMeter component GUIs.
+- *
++ * 
+  */
+ public class MainFrame extends JFrame implements TestListener, Remoteable {
+ 
+@@ -81,8 +84,8 @@
+     private static final String LOCAL = "*local*"; // $NON-NLS-1$
+ 
+     // The default title for the Menu bar
+-    private static final String DEFAULT_TITLE =
+-        "Apache JMeter ("+JMeterUtils.getJMeterVersion()+")"; // $NON-NLS-1$ $NON-NLS-2$
++    private static final String DEFAULT_TITLE = "Apache JMeter ("
++            + JMeterUtils.getJMeterVersion() + ")"; // $NON-NLS-1$ $NON-NLS-2$
+ 
+     /** The menu bar. */
+     private JMeterMenuBar menuBar;
+@@ -96,6 +99,8 @@
+     /** The test tree. */
+     private JTree tree;
+ 
++    private JPanel treeButtons;
++
+     /** An image which is displayed when a test is running. */
+     private ImageIcon runningIcon = JMeterUtils.getImage("thread.enabled.gif");// $NON-NLS-1$
+ 
+@@ -122,7 +127,7 @@
+ 
+     /**
+      * Create a new JMeter frame.
+-     *
++     * 
+      * @param actionHandler
+      *            this parameter is not used
+      * @param treeModel
+@@ -130,7 +135,8 @@
+      * @param treeListener
+      *            the listener for the test tree
+      */
+-    public MainFrame(ActionListener actionHandler, TreeModel treeModel, JMeterTreeListener treeListener) {
++    public MainFrame(ActionListener actionHandler, TreeModel treeModel,
++            JMeterTreeListener treeListener) {
+         // TODO: actionHandler isn't used -- remove it from the parameter list
+         // this.actionHandler = actionHandler;
+ 
+@@ -153,7 +159,7 @@
+     /**
+      * Default constructor for the JMeter frame. This constructor will not
+      * properly initialize the tree, so don't use it.
+-     *
++     * 
+      * @deprecated Do not use - only needed for JUnit tests
+      */
+     @Deprecated
+@@ -166,7 +172,7 @@
+ 
+     /**
+      * Specify whether or not the File|Load menu item should be enabled.
+-     *
++     * 
+      * @param enabled
+      *            true if the menu item should be enabled, false otherwise
+      */
+@@ -176,7 +182,7 @@
+ 
+     /**
+      * Specify whether or not the File|Save menu item should be enabled.
+-     *
++     * 
+      * @param enabled
+      *            true if the menu item should be enabled, false otherwise
+      */
+@@ -186,7 +192,7 @@
+ 
+     /**
+      * Specify whether or not the File|Revert item should be enabled.
+-     *
++     * 
+      * @param enabled
+      *            true if the menu item should be enabled, false otherwise
+      */
+@@ -196,8 +202,9 @@
+ 
+     /**
+      * Specify the project file that was just loaded
+-     *
+-     * @param file - the full path to the file that was loaded
++     * 
++     * @param file
++     *            - the full path to the file that was loaded
+      */
+     public void setProjectFileLoaded(String file) {
+         menuBar.setProjectFileLoaded(file);
+@@ -205,7 +212,7 @@
+ 
+     /**
+      * Set the menu that should be used for the Edit menu.
+-     *
++     * 
+      * @param menu
+      *            the new Edit menu
+      */
+@@ -215,7 +222,7 @@
+ 
+     /**
+      * Specify whether or not the Edit menu item should be enabled.
+-     *
++     * 
+      * @param enabled
+      *            true if the menu item should be enabled, false otherwise
+      */
+@@ -225,7 +232,7 @@
+ 
+     /**
+      * Set the menu that should be used for the Edit|Add menu.
+-     *
++     * 
+      * @param menu
+      *            the new Edit|Add menu
+      */
+@@ -235,7 +242,7 @@
+ 
+     /**
+      * Specify whether or not the Edit|Add menu item should be enabled.
+-     *
++     * 
+      * @param enabled
+      *            true if the menu item should be enabled, false otherwise
+      */
+@@ -245,7 +252,7 @@
+ 
+     /**
+      * Specify whether or not the Edit|Remove menu item should be enabled.
+-     *
++     * 
+      * @param enabled
+      *            true if the menu item should be enabled, false otherwise
+      */
+@@ -275,16 +282,18 @@
+     /**
+      * Show a dialog indicating that JMeter threads are stopping on a particular
+      * host.
+-     *
++     * 
+      * @param host
+      *            the host where JMeter threads are stopping
+      */
+     public void showStoppingMessage(String host) {
+-        if (stoppingMessage != null){
++        if (stoppingMessage != null) {
+             stoppingMessage.dispose();
+         }
+-        stoppingMessage = new JDialog(this, JMeterUtils.getResString("stopping_test_title"), true); //$NON-NLS-1$
+-        JLabel stopLabel = new JLabel(JMeterUtils.getResString("stopping_test") + ": " + host); //$NON-NLS-1$$NON-NLS-2$
++        stoppingMessage = new JDialog(this,
++                JMeterUtils.getResString("stopping_test_title"), true); //$NON-NLS-1$
++        JLabel stopLabel = new JLabel(
++                JMeterUtils.getResString("stopping_test") + ": " + host); //$NON-NLS-1$$NON-NLS-2$
+         stopLabel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+         stoppingMessage.getContentPane().add(stopLabel);
+         stoppingMessage.pack();
+@@ -301,8 +310,10 @@
+     public void updateCounts() {
+         SwingUtilities.invokeLater(new Runnable() {
+             public void run() {
+-                activeThreads.setText(Integer.toString(JMeterContextService.getNumberOfThreads()));
+-                totalThreads.setText(Integer.toString(JMeterContextService.getTotalThreads()));
++                activeThreads.setText(Integer.toString(JMeterContextService
++                        .getNumberOfThreads()));
++                totalThreads.setText(Integer.toString(JMeterContextService
++                        .getTotalThreads()));
+             }
+         });
+     }
+@@ -331,7 +342,7 @@
+      * Called when a test is started on a specific host. This implementation
+      * sets the running indicator and ensures that the menubar is in the running
+      * state.
+-     *
++     * 
+      * @param host
+      *            the host where the test is starting
+      */
+@@ -356,7 +367,7 @@
+     /**
+      * Called when a test is ended on the remote system. This implementation
+      * stops the running indicator and closes the stopping message dialog.
+-     *
++     * 
+      * @param host
+      *            the host where the test is ending
+      */
+@@ -389,9 +400,25 @@
+ 
+         JSplitPane treeAndMain = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+ 
++        JSplitPane treeAndButtons = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
++        treeAndButtons.setDividerLocation(30);
++        treeAndButtons.setDividerSize(0);
++
++        treeButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
++        treeButtons.setAlignmentX(RIGHT_ALIGNMENT);
++
++        JButton expandAll = this.createButton(ActionNames.EXPAND_ALL);
++        JButton minimizeAll = this.createButton(ActionNames.COLLAPSE_ALL);
++
++        treeButtons.add(expandAll);
++        treeButtons.add(minimizeAll);
++
+         treePanel = createTreePanel();
+-        treeAndMain.setLeftComponent(treePanel);
++        treeAndButtons.setTopComponent(treeButtons);
++        treeAndButtons.setBottomComponent(treePanel);
+ 
++        treeAndMain.setLeftComponent(treeAndButtons);
++
+         mainPanel = createMainPanel();
+         treeAndMain.setRightComponent(mainPanel);
+ 
+@@ -406,8 +433,32 @@
+ 
+         setTitle(DEFAULT_TITLE);
+         setIconImage(JMeterUtils.getImage("jmeter.jpg").getImage());// $NON-NLS-1$
++
+     }
+ 
++    private JButton createButton(String actionName) {
++        JButton button = null;
++        if (ActionNames.EXPAND_ALL.equals(actionName)) {
++            button = new JButton(new ImageIcon(JMeterUtils.getImage(
++                    "expandall.gif").getImage()));
++            button.setToolTipText("Expand All");
++        } else if (ActionNames.COLLAPSE_ALL.equals(actionName)) {
++            button = new JButton(new ImageIcon(JMeterUtils.getImage(
++                    "collapseall.gif").getImage()));
++            button.setToolTipText("Collapse All");
++        } else {
++            throw new IllegalArgumentException(actionName
++                    + " is not a valid option for this factory method.");
++        }
++
++        button.setActionCommand(actionName);
++        button.setAlignmentX(Component.LEFT_ALIGNMENT);
++        button.addActionListener(GuiPackage.getInstance().getTreeListener());
++        button.setPreferredSize(new Dimension(20, 20));
++        button.setSize(new Dimension(20, 20));
++        return button;
++    }
++
+     public void setExtendedFrameTitle(String fname) {
+         // file New operation may set to null, so just return app name
+         if (fname == null) {
+@@ -418,12 +469,14 @@
+         // allow for windows / chars in filename
+         String temp = fname.replace('\\', '/'); // $NON-NLS-1$ // $NON-NLS-2$
+         String simpleName = temp.substring(temp.lastIndexOf("/") + 1);// $NON-NLS-1$
+-        setTitle(simpleName + " (" + fname + ") - " + DEFAULT_TITLE); // $NON-NLS-1$ // $NON-NLS-2$
++        setTitle(simpleName + " (" + fname + ") - " + DEFAULT_TITLE); // $NON-NLS-1$
++                                                                      // //
++                                                                      // $NON-NLS-2$
+     }
+ 
+     /**
+      * Create the JMeter tool bar pane containing the running indicator.
+-     *
++     * 
+      * @return a panel containing the running indicator
+      */
+     private Component createToolBar() {
+@@ -441,7 +494,7 @@
+     /**
+      * Create the panel where the GUI representation of the test tree is
+      * displayed. The tree should already be created before calling this method.
+-     *
++     * 
+      * @return a scroll pane containing the test tree GUI
+      */
+     private JScrollPane createTreePanel() {
+@@ -452,7 +505,7 @@
+ 
+     /**
+      * Create the main panel where components can display their GUIs.
+-     *
++     * 
+      * @return the main scroll pane
+      */
+     private JScrollPane createMainPanel() {
+@@ -461,12 +514,12 @@
+ 
+     /**
+      * Create and initialize the GUI representation of the test tree.
+-     *
++     * 
+      * @param treeModel
+      *            the test tree model
+      * @param treeListener
+      *            the test tree listener
+-     *
++     * 
+      * @return the initialized test tree GUI
+      */
+     private JTree makeTree(TreeModel treeModel, JMeterTreeListener treeListener) {
+@@ -475,23 +528,26 @@
+ 
+             @Override
+             public String getToolTipText(MouseEvent event) {
+-                TreePath path = this.getPathForLocation(event.getX(), event.getY());
++                TreePath path = this.getPathForLocation(event.getX(),
++                        event.getY());
+                 if (path != null) {
+                     Object treeNode = path.getLastPathComponent();
+                     if (treeNode instanceof DefaultMutableTreeNode) {
+-                        Object testElement = ((DefaultMutableTreeNode) treeNode).getUserObject();
++                        Object testElement = ((DefaultMutableTreeNode) treeNode)
++                                .getUserObject();
+                         if (testElement instanceof TestElement) {
+-                            String comment = ((TestElement) testElement).getComment();
++                            String comment = ((TestElement) testElement)
++                                    .getComment();
+                             if (comment != null && comment.length() > 0) {
+                                 return comment;
+-                                }
+                             }
+                         }
+                     }
++                }
+                 return null;
+-                }
+-            };
+-           treevar.setToolTipText("");
++            }
++        };
++        treevar.setToolTipText("");
+         treevar.setCellRenderer(getCellRenderer());
+         treevar.setRootVisible(false);
+         treevar.setShowsRootHandles(true);
+@@ -502,12 +558,15 @@
+         treevar.addMouseMotionListener(treeListener);
+         treevar.addKeyListener(treeListener);
+ 
++        Command collapseExpand = new CollapseExpand();
++        treeListener.addCommand(collapseExpand);
++
+         return treevar;
+     }
+ 
+     /**
+      * Create the tree cell renderer used to draw the nodes in the test tree.
+-     *
++     * 
+      * @return a renderer to draw the test tree nodes
+      */
+     private TreeCellRenderer getCellRenderer() {
+@@ -519,7 +578,7 @@
+     /**
+      * Repaint pieces of the GUI as needed while dragging. This method should
+      * only be called from the Swing event thread.
+-     *
++     * 
+      * @param dragIcon
+      *            the component being dragged
+      * @param x
+@@ -529,9 +588,11 @@
+      */
+     public void drawDraggedComponent(Component dragIcon, int x, int y) {
+         Dimension size = dragIcon.getPreferredSize();
+-        treePanel.paintImmediately(previousDragXLocation, previousDragYLocation, size.width, size.height);
++        treePanel.paintImmediately(previousDragXLocation,
++                previousDragYLocation, size.width, size.height);
+         this.getLayeredPane().setLayer(dragIcon, 400);
+-        SwingUtilities.paintComponent(treePanel.getGraphics(), dragIcon, treePanel, x, y, size.width, size.height);
++        SwingUtilities.paintComponent(treePanel.getGraphics(), dragIcon,
++                treePanel, x, y, size.width, size.height);
+         previousDragXLocation = x;
+         previousDragYLocation = y;
+     }
+@@ -544,13 +605,14 @@
+         /**
+          * Called when the main JMeter frame is being closed. Sends a
+          * notification so that JMeter can react appropriately.
+-         *
++         * 
+          * @param event
+          *            the WindowEvent to handle
+          */
+         @Override
+         public void windowClosing(WindowEvent event) {
+-            ActionRouter.getInstance().actionPerformed(new ActionEvent(this, event.getID(), ActionNames.EXIT));
++            ActionRouter.getInstance().actionPerformed(
++                    new ActionEvent(this, event.getID(), ActionNames.EXIT));
+         }
+     }
+ }
+Index: src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java	(revision 1103731)
++++ src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java	(working copy)
+@@ -26,6 +26,8 @@
+ import java.awt.event.MouseEvent;
+ import java.awt.event.MouseListener;
+ import java.awt.event.MouseMotionListener;
++import java.util.HashMap;
++import java.util.Map;
+ 
+ import javax.swing.JLabel;
+ import javax.swing.JMenuItem;
+@@ -38,19 +40,23 @@
+ 
+ import org.apache.jmeter.control.gui.TestPlanGui;
+ import org.apache.jmeter.control.gui.WorkBenchGui;
++import org.apache.jmeter.exceptions.IllegalUserActionException;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.MainFrame;
+ import org.apache.jmeter.gui.action.ActionNames;
+ import org.apache.jmeter.gui.action.ActionRouter;
++import org.apache.jmeter.gui.action.Command;
+ import org.apache.jmeter.gui.action.KeyStrokes;
+ import org.apache.jmeter.gui.util.MenuFactory;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+-public class JMeterTreeListener implements TreeSelectionListener, MouseListener, KeyListener, MouseMotionListener {
++public class JMeterTreeListener implements TreeSelectionListener, MouseListener, KeyListener, MouseMotionListener, ActionListener {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
++    private Map<String, Command> commandMap = new HashMap<String, Command>();
++
+     // Container endWindow;
+     // JPopupMenu pop;
+     private TreePath currentPath;
+@@ -319,4 +325,20 @@
+             popup.requestFocus();
+         }
+     }
++
++    @Override
++    public void actionPerformed(ActionEvent e) {
++        Command command = this.commandMap.get(e.getActionCommand());
++        try {
++            command.doAction(e);
++        } catch (IllegalUserActionException e1) {
++            log.equals(e);
++        }
++    }
++
++    public void addCommand(Command command) {
++        for (String name : command.getActionNames()) {
++            this.commandMap.put(name, command);
++        }
++    }
+ }
+Index: src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterVersion.java	(revision 1103731)
++++ src/core/org/apache/jmeter/util/JMeterVersion.java	(working copy)
+@@ -44,7 +44,7 @@
+      * This ensures that JMeterUtils always gets the correct
+      * version, even if JMeterUtils is not re-compiled during the build.
+      */
+-    private static final String VERSION = "2.4.20101216";
++    private static final String VERSION = "2.4.20110516";
+ 
+     static final String COPYRIGHT = "Copyright (c) 1998-2010 The Apache Software Foundation";
+ 

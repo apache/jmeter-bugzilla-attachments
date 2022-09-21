@@ -1,0 +1,178 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	(working copy)
+@@ -23,7 +23,7 @@
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.OutputStream;
+-import java.io.PrintWriter;
++import java.io.OutputStreamWriter;
+ import java.io.UnsupportedEncodingException;
+ import java.net.HttpURLConnection;
+ import java.net.URLConnection;
+@@ -87,8 +87,8 @@
+ 		// No filename specified, so send the post using normal syntax
+ 		else {
+ 			String postData = sampler.getQueryString();
+-			PrintWriter out = new PrintWriter(connection.getOutputStream());
+-			out.print(postData);
++			OutputStreamWriter out = new OutputStreamWriter(connection.getOutputStream(), sampler.getContentEncoding());
++			out.write(postData);
+ 			out.flush();
+             out.close();
+ 		}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	(working copy)
+@@ -227,10 +227,12 @@
+ 	 * 
+ 	 * @param connection
+ 	 *            <code>URLConnection</code> where POST data should be sent
++	 * @param contentEncoding
++	 *            the character set encoding used for sending POST data
+ 	 * @exception IOException
+ 	 *                if an I/O exception occurs
+ 	 */
+-	private void sendPostData(PostMethod post) throws IOException {
++	private void sendPostData(PostMethod post, String contentEncoding) throws IOException {
+ 		// If filename was specified then send the post using multipart syntax
+ 		String filename = getFilename();
+ 		if ((filename != null) && (filename.trim().length() > 0)) {
+@@ -251,6 +253,11 @@
+ 	            post.setRequestEntity(new MultipartRequestEntity(parts, post.getParams()));
+ 			}
+ 		} else {
++            // If a content encoding is specified, we set it as http parameter, so that
++            // the post body will be encoded in the specified content encoding
++            if(contentEncoding != null && contentEncoding.trim().length() > 0) {
++    			post.getParams().setContentCharset(contentEncoding);
++            }
+             PropertyIterator args = getArguments().iterator();
+             while (args.hasNext()) {
+                 Argument arg = (Argument) args.next().getObjectValue();
+@@ -561,7 +568,7 @@
+ 
+ 			if (method.equals(POST)) {
+                 res.setQueryString(getQueryString());
+-				sendPostData((PostMethod)httpMethod);
++				sendPostData((PostMethod)httpMethod, getContentEncoding());
+ 			} else if (method.equals(PUT)) {
+                 setPutHeaders((PutMethod) httpMethod);
+             }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -82,6 +82,8 @@
+ 
+ 	public final static String METHOD = "HTTPSampler.method"; // $NON-NLS-1$
+ 
++	public final static String CONTENT_ENCODING = "HTTPSampler.contentEncoding"; // $NON-NLS-1$
++
+     public final static String IMPLEMENTATION = "HTTPSampler.implementation"; // $NON-NLS-1$
+ 
+     public final static String PATH = "HTTPSampler.path"; // $NON-NLS-1$
+@@ -343,6 +345,14 @@
+ 		return getPropertyAsString(METHOD);
+ 	}
+ 
++	public void setContentEncoding(String value) {
++		setProperty(CONTENT_ENCODING, value);
++	}
++
++	public String getContentEncoding() {
++		return getPropertyAsString(CONTENT_ENCODING);
++	}
++
+ 	public void setUseKeepAlive(boolean value) {
+ 		setProperty(new BooleanProperty(USE_KEEPALIVE, value));
+ 	}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(revision 510870)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(working copy)
+@@ -54,6 +54,8 @@
+ 
+ 	private static String PROTOCOL = "protocol"; // $NON-NLS-1$
+ 
++	private static String CONTENT_ENCODING = "content_encoding"; // $NON-NLS-1$
++
+ 	private static String PATH = "path"; // $NON-NLS-1$
+ 
+ 	private static String FOLLOW_REDIRECTS = "follow_redirects"; // $NON-NLS-1$
+@@ -68,6 +70,8 @@
+ 
+ 	private JTextField protocol;
+ 
++	private JTextField contentEncoding;
++
+ 	private JTextField path;
+ 
+ 	private JCheckBox followRedirects;
+@@ -96,9 +100,9 @@
+ 		path.setText(""); // $NON-NLS-1$
+ 		port.setText(""); // $NON-NLS-1$
+ 		protocol.setText(""); // $NON-NLS-1$
++		contentEncoding.setText(""); // $NON-NLS-1$
+ 		useKeepAlive.setSelected(true);
+ 		argsPanel.clear();
+-
+ 	}
+ 
+ 	public TestElement createTestElement() {
+@@ -113,6 +117,7 @@
+ 		element.setProperty(HTTPSamplerBase.PORT, port.getText());
+ 		element.setProperty(HTTPSamplerBase.PROTOCOL, protocol.getText());
+ 		element.setProperty(HTTPSamplerBase.METHOD, method.getText());
++		element.setProperty(HTTPSamplerBase.CONTENT_ENCODING, contentEncoding.getText());
+ 		element.setProperty(HTTPSamplerBase.PATH, path.getText());
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.FOLLOW_REDIRECTS, followRedirects.isSelected()));
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.AUTO_REDIRECTS, autoRedirects.isSelected()));
+@@ -141,6 +146,7 @@
+ 		}
+ 		protocol.setText(el.getPropertyAsString(HTTPSamplerBase.PROTOCOL));
+         method.setText(el.getPropertyAsString(HTTPSamplerBase.METHOD));
++        contentEncoding.setText(el.getPropertyAsString(HTTPSamplerBase.CONTENT_ENCODING));
+ 		path.setText(el.getPropertyAsString(HTTPSamplerBase.PATH));
+ 		followRedirects.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.FOLLOW_REDIRECTS));
+ 
+@@ -251,9 +257,14 @@
+ 		// PROTOCOL
+ 		protocol = new JTextField(20);
+ 		protocol.setName(PROTOCOL);
++		// CONTENT_ENCODING
++		contentEncoding = new JTextField(10);
++		contentEncoding.setName(CONTENT_ENCODING);
+ 
+ 		JLabel protocolLabel = new JLabel(JMeterUtils.getResString("protocol")); // $NON-NLS-1$
+ 		protocolLabel.setLabelFor(protocol);
++		JLabel contentEncodingLabel = new JLabel(JMeterUtils.getResString("content_encoding")); // $NON-NLS-1$
++		protocolLabel.setLabelFor(contentEncoding);
+         method = new JLabeledChoice(JMeterUtils.getResString("method"), // $NON-NLS-1$
+                 HTTPSamplerBase.getValidMethodsAsArray());
+ 
+@@ -265,6 +276,10 @@
+ 
+         panel.add(method);
+ 		panel.setMinimumSize(panel.getPreferredSize());
++        panel.add(Box.createHorizontalStrut(5));
++		
++		panel.add(contentEncodingLabel);
++		panel.add(contentEncoding);
+ 		return panel;
+ 	}
+ 
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties	(revision 511787)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -100,6 +100,7 @@
+ constant_timer_delay=Thread Delay (in milliseconds)\:
+ constant_timer_memo=Add a constant delay between sampling
+ constant_timer_title=Constant Timer
++content_encoding=Content encoding\:
+ controller=Controller
+ cookie_manager_policy=Cookie Policy
+ cookie_manager_title=HTTP Cookie Manager

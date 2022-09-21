@@ -1,0 +1,67 @@
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/TableVisualizer.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(revision 519440)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/TableVisualizer.java	(working copy)
+@@ -25,6 +25,7 @@
+ import java.text.SimpleDateFormat;
+ 
+ import javax.swing.BorderFactory;
++import javax.swing.ImageIcon;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+@@ -55,7 +56,13 @@
+  */
+ public class TableVisualizer extends AbstractVisualizer implements Clearable {
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
++	
++	private static final ImageIcon imageSuccess = JMeterUtils.getImage(
++	        JMeterUtils.getPropDefault("viewResultsTree.success", "icon_success_sml.gif"));
+ 
++	private static final ImageIcon imageFailure = JMeterUtils.getImage(
++			JMeterUtils.getPropDefault("viewResultsTree.failure", "icon_warning_sml.gif"));
++
+ 	private final String[] COLUMNS = new String[] {
+             JMeterUtils.getResString("table_visualizer_sample_num"), // $NON-NLS-1$
+             JMeterUtils.getResString("table_visualizer_start_time"), // $NON-NLS-1$
+@@ -99,11 +106,11 @@
+                 new Functor("getThreadName"), // $NON-NLS-1$
+                 new Functor("getLabel"), // $NON-NLS-1$
+ 				new Functor("getData"), // $NON-NLS-1$
+-                new Functor("isSuccess"), // $NON-NLS-1$
++                new SampleSuccessFunctor("isSuccess"), // $NON-NLS-1$
+                 new Functor("getBytes") }, // $NON-NLS-1$
+                 new Functor[] { null, null, null, null, null, null, null }, 
+                 new Class[] { 
+-				Long.class, String.class, String.class, String.class, Long.class, Boolean.class, Integer.class });
++				Long.class, String.class, String.class, String.class, Long.class, ImageIcon.class, Integer.class });
+ 		init();
+ 	}
+ 
+@@ -237,4 +244,26 @@
+ 		this.add(mainPanel, BorderLayout.NORTH);
+ 		this.add(tablePanel, BorderLayout.CENTER);
+ 	}
++	
++	public class SampleSuccessFunctor extends Functor {
++		public SampleSuccessFunctor(String methodName) {
++			super(methodName);
++		}
++		
++		public Object invoke(Object p_invokee) {
++			Boolean success = (Boolean)super.invoke(p_invokee);
++			
++			if(success != null) {
++				if(success.booleanValue()) {
++					return imageSuccess;
++				}
++				else {
++					return imageFailure;
++				}
++			}
++			else {
++				return null;
++			}
++		}
++	}
+ }

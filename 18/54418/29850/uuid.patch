@@ -1,0 +1,99 @@
+Index: src/functions/org/apache/jmeter/functions/Uuid.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/Uuid.java	(revision 0)
++++ src/functions/org/apache/jmeter/functions/Uuid.java	(working copy)
+@@ -0,0 +1,68 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++
++import java.util.Collection;
++import java.util.LinkedList;
++import java.util.List;
++import java.util.UUID;
++
++/**
++ * Function to create a UUID
++ *
++ * Parameters:
++ * - None
++ *
++ * Returns:
++ * - A pseudo random UUID 4
++ */
++public class Uuid extends AbstractFunction {
++
++	private static final List<String> desc = new LinkedList<String>();
++
++	private static final String KEY = "__UUID"; //$NON-NLS-1$
++
++	public Uuid() {
++	}
++
++	@Override
++	public String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++		return UUID.randomUUID().toString();
++	}
++
++	@Override
++	public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++		checkParameterCount(parameters, 0, 0);
++	}
++
++	@Override
++	public String getReferenceKey() {
++		return KEY;
++	}
++
++	@Override
++	public List<String> getArgumentDesc() {
++		return desc;
++	}
++
++}
+Index: xdocs/usermanual/functions.xml
+===================================================================
+--- xdocs/usermanual/functions.xml	(revision 1433090)
++++ xdocs/usermanual/functions.xml	(working copy)
+@@ -109,6 +109,7 @@
+         <tr><td>Calculation</td><td> <a href="#__longSum">longSum</a></td><td>add long numbers</td><td>2.3.2</td></tr>
+         <tr><td>Calculation</td><td> <a href="#__Random">Random</a></td><td>generate a random number</td><td>1.9</td></tr>
+         <tr><td>Calculation</td><td> <a href="#__RandomString">RandomString</a></td><td>generate a random string</td><td>2.6</td></tr>
++        <tr><td>Calculation</td><td> <a href="#__UUID">UUID</a></td><td>generate a random type 4 UUID</td><td>2.9</td></tr>
+         <tr><td>Scripting</td><td> <a href="#__BeanShell">BeanShell</a></td><td>run a BeanShell script</td><td>1.X</td></tr>
+         <tr><td>Scripting</td><td> <a href="#__javaScript">javaScript</a></td><td>process JavaScript (Mozilla Rhino)</td><td>1.9</td></tr>
+         <tr><td>Scripting</td><td> <a href="#__jexl">jexl, jexl2</a></td><td>evaluate a Commons Jexl expression</td><td>jexl(2.2), jexl2(2.6)</td></tr>
+@@ -578,6 +579,13 @@
+ </properties>
+ </component>
+ 
++<component index="&sect-num;.5.8" name="__UUID">
++<description><p>The UUID function returns a pseudo random type 4 Universally Unique IDentifier (UUID).
++
++<properties>
++</properties>
++</component>
++
+ <component index="&sect-num;.5.8" name="__CSVRead">
+ <description><p>The CSVRead function returns a string from a CSV file (c.f. <a href="#_StringFromFile">StringFromFile</a>)</p>
+ 	<p>NOTE: versions up to 1.9.1 only supported a single file. 

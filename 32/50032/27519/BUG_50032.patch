@@ -1,0 +1,125 @@
+Index: src/core/org/apache/jmeter/threads/JMeterContext.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterContext.java	(revision 1171944)
++++ src/core/org/apache/jmeter/threads/JMeterContext.java	(working copy)
+@@ -21,6 +21,8 @@
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
+ import org.apache.jmeter.engine.StandardJMeterEngine;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ /**
+  * Holds context for a thread.
+@@ -29,6 +31,8 @@
+  * The class is not thread-safe - it is only intended for use within a single thread.
+  */
+ public class JMeterContext {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    
+     private JMeterVariables variables;
+ 
+     private SampleResult previousResult;
+@@ -49,6 +53,8 @@
+ 
+     private byte[] readBuffer = null;
+ 
++    private boolean isReinitializingSubControllers = false;
++
+     JMeterContext() {
+         clear0();
+     }
+@@ -66,6 +72,7 @@
+         threadNum = 0;
+         readBuffer = null;
+         thread = null;
++        isReinitializingSubControllers = false;
+     }
+ 
+     /**
+@@ -169,4 +176,43 @@
+     public void setSamplingStarted(boolean b) {
+         samplingStarted = b;
+     }
++
++    /**
++     * Reset flag indicating listeners should not be notified since reinit of sub 
++     * controllers is being done
++     * @see ISSUE 50032 
++     */
++    public void unsetIsReinitializingSubControllers() {
++        if(isReinitializingSubControllers)
++        {
++            isReinitializingSubControllers = false;
++        }
++        else
++        {
++            log.warn("Unsetting while flag is not true");
++        }
++    }
++
++    /**
++     * Set flag indicating listeners should not be notified since reinit of sub 
++     * controllers is being done
++     * @return true if it is the first one to set
++     * @see ISSUE 50032 
++     */
++    public boolean setIsReinitializingSubControllers() {
++        if(!isReinitializingSubControllers)
++        {
++            isReinitializingSubControllers = true;
++            return true;
++        }
++        return false;
++    }
++
++    /**
++     * @return true if within reinit of Sub Controllers
++     * @see ISSUE 50032 
++     */
++    public boolean isReinitializingSubControllers() {
++        return isReinitializingSubControllers;
++    }
+ }
+Index: src/core/org/apache/jmeter/control/GenericController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/GenericController.java	(revision 1171944)
++++ src/core/org/apache/jmeter/control/GenericController.java	(working copy)
+@@ -228,6 +228,7 @@
+      * 
+      */
+     protected void reInitializeSubController() {
++        boolean wasFlagSet = getThreadContext().setIsReinitializingSubControllers();
+         try {
+             TestElement currentElement = getCurrentElement();
+             if (currentElement != null) {
+@@ -241,6 +242,12 @@
+             }
+         } catch (NextIsNullException e) {
+         }
++        finally
++        {
++            if(wasFlagSet) {                
++                getThreadContext().unsetIsReinitializingSubControllers();
++            }
++        }
+     }
+     
+     /**
+Index: src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/TransactionController.java	(revision 1166194)
++++ src/core/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -192,7 +192,11 @@
+                     // We must set res to null now, before sending the event for the transaction,
+                     // so that we can ignore that event in our sampleOccured method
+                     res = null;
+-                    lnf.notifyListeners(event, pack.getSampleListeners());
++                    // RELATED TO ISSUE 50032 
++                    if(!getThreadContext().isReinitializingSubControllers())
++                    {
++                        lnf.notifyListeners(event, pack.getSampleListeners());
++                    }
+                 }
+             }
+         }

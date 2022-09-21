@@ -1,0 +1,212 @@
+Index: trunk/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+===================================================================
+--- trunk/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(revision 537585)
++++ trunk/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(working copy)
+@@ -718,7 +718,7 @@
+ 	 * @return !ToDo (Return description)
+ 	 **************************************************************************/
+ 	public SampleResult sample(Entry e) {
+-		String responseData = "<ldapanswer>";
++		StringBuilder responseData = new StringBuilder("<ldapanswer>");
+ 		SampleResult res = new SampleResult();
+ 		res.setResponseData("successfull".getBytes());
+ 		res.setResponseMessage("Success");
+@@ -744,29 +744,41 @@
+ 			log.debug("performing test: " + getPropertyAsString(TEST));
+ 			if (getPropertyAsString(TEST).equals("unbind")) {
+ 				res.setSamplerData("Unbind");
+-				responseData = responseData + "<operation><opertype>unbind</opertype>";
+-				responseData = responseData + "<baseobj>" + getRootdn() + "</baseobj>";
+-				responseData = responseData + "<binddn>" + getUserDN() + "</binddn></operation>";
++				responseData.append("<operation><opertype>unbind</opertype>");
++				responseData.append("<baseobj>");
++				responseData.append(getRootdn());
++				responseData.append("</baseobj>");
++				responseData.append("<binddn>");
++				responseData.append(getUserDN());
++				responseData.append("</binddn></operation>");
+ 				unbindOp(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("bind")) {
+ 				res.setSamplerData("Bind as " + getUserDN());
+-				responseData = responseData + "<operation><opertype>bind</opertype>";
+-				responseData = responseData + "<baseobj>" + getRootdn() + "</baseobj>";
+-				responseData = responseData + "<binddn>" + getUserDN() + "</binddn></operation>";
++				responseData.append("<operation><opertype>bind</opertype>");
++				responseData.append("<baseobj>");
++				responseData.append(getRootdn());
++				responseData.append("</baseobj>");
++				responseData.append("<binddn>");
++				responseData.append(getUserDN());
++				responseData.append("</binddn></operation>");
+ 				bindOp(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("sbind")) {
+ 				res.setSamplerData("SingleBind as " + getSuserDN());
+-				responseData = responseData + "<operation><opertype>bind</opertype>";
+-				responseData = responseData + "<binddn>" + getSuserDN() + "</binddn></operation>";
++				responseData.append("<operation><opertype>bind</opertype>");
++				responseData.append("<binddn>");
++				responseData.append(getSuserDN());
++				responseData.append("</binddn></operation>");
+ 				singleBindOp(res);
+ 			} else if (getPropertyAsString(TEST).equals("compare")) {
+-				res
+-						.setSamplerData("Compare " + getPropertyAsString(COMPAREFILT) + " "
++				res.setSamplerData("Compare " + getPropertyAsString(COMPAREFILT) + " "
+ 								+ getPropertyAsString(COMPAREDN));
+-				responseData = responseData + "<operation><opertype>compare</opertype>";
+-				responseData = responseData + "<comparedn>" + getPropertyAsString(COMPAREDN) + "</comparedn>";
+-				responseData = responseData + "<comparefilter>" + getPropertyAsString(COMPAREFILT)
+-						+ "</comparefilter></operation>";
++				responseData.append("<operation><opertype>compare</opertype>");
++				responseData.append("<comparedn>");
++				responseData.append(getPropertyAsString(COMPAREDN));
++				responseData.append("</comparedn>");
++				responseData.append("<comparefilter>");
++				responseData.append(getPropertyAsString(COMPAREFILT));
++				responseData.append("</comparefilter></operation>");
+ 				compareOp(temp_client, dirContext, res);
+ 				if (temp_client.compareAnswer.hasMore()) {
+ 				} else {
+@@ -776,56 +788,94 @@
+ 				}
+ 			} else if (getPropertyAsString(TEST).equals("add")) {
+ 				res.setSamplerData("Add object " + getPropertyAsString(BASE_ENTRY_DN));
+-				responseData = responseData + "<operation><opertype>add</opertype>";
+-				responseData = responseData + "<attributes>" + getArguments().toString() + "</attributes>";
+-				responseData = responseData + "<dn>" + getPropertyAsString(BASE_ENTRY_DN) + "</dn></operation>";
++				responseData.append("<operation><opertype>add</opertype>");
++				responseData.append("<attributes>");
++				responseData.append(getArguments());
++				responseData.append("</attributes>");
++				responseData.append("<dn>");
++				responseData.append(getPropertyAsString(BASE_ENTRY_DN));
++				responseData.append("</dn></operation>");
+ 				addTest(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("delete")) {
+ 				res.setSamplerData("Delete object " + getPropertyAsString(DELETE));
+-				responseData = responseData + "<operation><opertype>delete</opertype>";
+-				responseData = responseData + "<dn>" + getPropertyAsString(DELETE) + "</dn></operation>";
++				responseData.append("<operation><opertype>delete</opertype>");
++				responseData.append("<dn>");
++				responseData.append(getPropertyAsString(DELETE));
++				responseData.append("</dn></operation>");
+ 				deleteTest(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("modify")) {
+-				res.setSamplerData("Modify object " + getPropertyAsString(BASE_ENTRY_DN));
+-				responseData = responseData + "<operation><opertype>modify</opertype>";
+-				responseData = responseData + "<dn>" + getPropertyAsString(BASE_ENTRY_DN) + "</dn>";
+-				responseData = responseData + "<attributes>" + getLDAPArguments().toString()
+-						+ "</attributes></operation>";
++				res.setSamplerData("Modify object " + 
++						getPropertyAsString(BASE_ENTRY_DN));
++				responseData.append("<operation><opertype>modify</opertype>");
++				responseData.append("<dn>");
++				responseData.append(getPropertyAsString(BASE_ENTRY_DN));
++				responseData.append("</dn>");
++				responseData.append("<attributes>");
++				responseData.append(getLDAPArguments());
++				responseData.append("</attributes></operation>");
+ 				modifyTest(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("rename")) {
+-				res.setSamplerData("ModDN object " + getPropertyAsString(MODDDN) + " to " + getPropertyAsString(NEWDN));
+-				responseData = responseData + "<operation><opertype>moddn</opertype>";
+-				responseData = responseData + "<dn>" + getPropertyAsString(MODDDN) + "</dn>";
+-				responseData = responseData + "<newdn>" + getPropertyAsString(NEWDN) + "</newdn></operation>";
++				res.setSamplerData("ModDN object " + 
++						getPropertyAsString(MODDDN) + 
++						" to " + getPropertyAsString(NEWDN));
++				responseData.append("<operation><opertype>moddn</opertype>");
++				responseData.append("<dn>");
++				responseData.append(getPropertyAsString(MODDDN));
++				responseData.append("</dn>");
++				responseData.append("<newdn>");
++				responseData.append(getPropertyAsString(NEWDN));
++				responseData.append("</newdn></operation>");
+ 				renameTest(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals("search")) {
+-				res.setSamplerData("Search with filter " + getPropertyAsString(SEARCHFILTER));
+-				responseData = responseData + "<operation><opertype>search</opertype>";
+-				responseData = responseData + "<searchfilter>" + getPropertyAsString(SEARCHFILTER) + "</searchfilter>";
+-				responseData = responseData + "<searchbase>" + getPropertyAsString(SEARCHBASE) + ","
+-						+ getPropertyAsString(ROOTDN) + "</searchbase>";
+-				responseData = responseData + "<scope>" + getPropertyAsString(SCOPE) + "</scope>";
+-				responseData = responseData + "<countlimit>" + getPropertyAsString(COUNTLIM) + "</countlimit>";
+-				responseData = responseData + "<timelimit>" + getPropertyAsString(TIMELIM) + "</timelimit>";
+-				responseData = responseData + "</operation><searchresult>";
++				res.setSamplerData("Search with filter "+ 
++						getPropertyAsString(SEARCHFILTER));
++				responseData.append("<operation><opertype>search</opertype>");
++				responseData.append("<searchfilter>");
++				responseData.append(getPropertyAsString(SEARCHFILTER));
++				responseData.append("</searchfilter>");
++				responseData.append("<searchbase>");
++				responseData.append(getPropertyAsString(SEARCHBASE));
++				responseData.append(",");
++				responseData.append(getPropertyAsString(ROOTDN));
++				responseData.append("</searchbase>");
++				responseData.append("<scope>");
++				responseData.append(getPropertyAsString(SCOPE));
++				responseData.append("</scope>");
++				responseData.append("<countlimit>");
++				responseData.append(getPropertyAsString(COUNTLIM));
++				responseData.append("</countlimit>");
++				responseData.append("<timelimit>");
++				responseData.append(getPropertyAsString(TIMELIM));
++				responseData.append("</timelimit>");
++				responseData.append("</operation><searchresult>");
+ 				searchTest(temp_client, dirContext, res);
+ 				while (temp_client.answer.hasMore()) {
+ 					sr = (SearchResult) temp_client.answer.next();
+-					responseData = responseData + "<dn>" + sr.getName() + "," + getPropertyAsString(SEARCHBASE) + ","
+-							+ getRootdn() + "</dn>";
+-					responseData = responseData + "<returnedattr>" + sr.getAttributes().size() + "</returnedattr>";
++					responseData.append("<dn>");
++					responseData.append(sr.getName());
++					responseData.append(",");
++					responseData.append(getPropertyAsString(SEARCHBASE));
++					responseData.append(",");
++					responseData.append(getRootdn());
++					responseData.append("</dn>");
++					responseData.append("<returnedattr>");
++					responseData.append(sr.getAttributes().size());
++					responseData.append("</returnedattr>");
+ 					attrlist = sr.getAttributes().getIDs();
+ 					while (attrlist.hasMore()) {
+ 						iets = (String) attrlist.next();
+-						responseData = responseData + "<attribute><attributename>" + iets.toString()
+-								+ "</attributename>";
+-						responseData = responseData
+-								+ "<attributevalue>"
+-								+ sr.getAttributes().get(iets.toString()).toString().substring(
+-										iets.toString().length() + 2) + "</attributevalue></attribute>";
++						String ietsString = iets.toString();
++						responseData.append("<attribute><attributename>");
++						responseData.append(ietsString);
++						responseData.append("</attributename>");
++						responseData.append("<attributevalue>");
++						responseData.append(sr.getAttributes().get(
++								ietsString).toString().substring(
++										ietsString.length() + 2));
++						responseData.append("</attributevalue></attribute>");
+ 					}
+ 				}
+-				responseData = responseData + "</searchresult></operation>";
++				responseData.append("</searchresult></operation>");
+ 			}
+ 
+ 		} catch (NamingException ex) {
+@@ -841,10 +891,10 @@
+ 			}
+ 			isSuccessful = false;
+ 		} finally {
+-			responseData = responseData + "<responsecode>" + res.getResponseCode() + "</responsecode>";
+-			responseData = responseData + "<responsemessage>" + res.getResponseMessage() + "</responsemessage>";
+-			responseData = responseData + "</ldapanswer>";
+-			res.setResponseData(responseData.getBytes());
++			responseData.append("<responsecode>" + res.getResponseCode() + "</responsecode>");
++			responseData.append("<responsemessage>" + res.getResponseMessage() + "</responsemessage>");
++			responseData.append("</ldapanswer>");
++			res.setResponseData(responseData.toString().getBytes());
+ 			res.setDataType(SampleResult.TEXT);
+ 			res.setSuccessful(isSuccessful);
+ 		}

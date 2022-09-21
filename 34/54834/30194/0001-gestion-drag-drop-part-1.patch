@@ -1,0 +1,697 @@
+From 06a95f2380f517d590301d0456f855bb32009e8f Mon Sep 17 00:00:00 2001
+From: benoit <b.wiart@ubik-ingenierie.com>
+Date: Thu, 11 Apr 2013 22:26:01 +0200
+Subject: [PATCH] gestion drag drop part 1
+
+
+diff --git src/core/org/apache/jmeter/gui/MainFrame.java src/core/org/apache/jmeter/gui/MainFrame.java
+index 41fb49a..843b935 100644
+--- src/core/org/apache/jmeter/gui/MainFrame.java
++++ src/core/org/apache/jmeter/gui/MainFrame.java
+@@ -49,6 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+ import javax.swing.BoxLayout;
++import javax.swing.DropMode;
+ import javax.swing.ImageIcon;
+ import javax.swing.JButton;
+ import javax.swing.JComponent;
+@@ -74,6 +75,7 @@ import org.apache.jmeter.gui.action.ActionRouter;
+ import org.apache.jmeter.gui.action.LoadDraggedFile;
+ import org.apache.jmeter.gui.tree.JMeterCellRenderer;
+ import org.apache.jmeter.gui.tree.JMeterTreeListener;
++import org.apache.jmeter.gui.tree.JMeterTreeTransferHandler;
+ import org.apache.jmeter.gui.util.EscapeDialog;
+ import org.apache.jmeter.gui.util.JMeterMenuBar;
+ import org.apache.jmeter.gui.util.JMeterToolBar;
+@@ -151,12 +153,6 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+     /** The button used to display the running/stopped image. */
+     private JButton runningIndicator;
+ 
+-    /** The x coordinate of the last location where a component was dragged. */
+-    private int previousDragXLocation = 0;
+-
+-    /** The y coordinate of the last location where a component was dragged. */
+-    private int previousDragYLocation = 0;
+-
+     /** The set of currently running hosts. */
+     private final Set<String> hosts = new HashSet<String>();
+ 
+@@ -619,7 +615,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+                 return null;
+                 }
+             };
+-           treevar.setToolTipText("");
++        treevar.setToolTipText("");
+         treevar.setCellRenderer(getCellRenderer());
+         treevar.setRootVisible(false);
+         treevar.setShowsRootHandles(true);
+@@ -627,8 +623,12 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+         treeListener.setJTree(treevar);
+         treevar.addTreeSelectionListener(treeListener);
+         treevar.addMouseListener(treeListener);
+-        treevar.addMouseMotionListener(treeListener);
+         treevar.addKeyListener(treeListener);
++        
++        // enable drag&drop, install a custom transfer handler
++        treevar.setDragEnabled(true);
++        treevar.setDropMode(DropMode.ON_OR_INSERT);
++        treevar.setTransferHandler(new JMeterTreeTransferHandler());
+ 
+         return treevar;
+     }
+@@ -645,26 +645,6 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+     }
+ 
+     /**
+-     * Repaint pieces of the GUI as needed while dragging. This method should
+-     * only be called from the Swing event thread.
+-     *
+-     * @param dragIcon
+-     *            the component being dragged
+-     * @param x
+-     *            the current mouse x coordinate
+-     * @param y
+-     *            the current mouse y coordinate
+-     */
+-    public void drawDraggedComponent(Component dragIcon, int x, int y) {
+-        Dimension size = dragIcon.getPreferredSize();
+-        treePanel.paintImmediately(previousDragXLocation, previousDragYLocation, size.width, size.height);
+-        this.getLayeredPane().setLayer(dragIcon, 400);
+-        SwingUtilities.paintComponent(treePanel.getGraphics(), dragIcon, treePanel, x, y, size.width, size.height);
+-        previousDragXLocation = x;
+-        previousDragYLocation = y;
+-    }
+-
+-    /**
+      * A window adapter used to detect when the main JMeter frame is being
+      * closed.
+      */
+@@ -710,20 +690,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+                 if (flavors[i].isFlavorJavaFileListType()) {
+                     dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);
+                     try {
+-                        @SuppressWarnings("unchecked")
+-                        List<File> files = (List<File>)
+-                                tr.getTransferData(DataFlavor.javaFileListFlavor);
+-                        if(files.isEmpty()) {
+-                            return;
+-                        }
+-                        File file = files.get(0);
+-                        if(!file.getName().endsWith(".jmx")) {
+-                            log.warn("Importing file:" + file.getName()+ "from DnD failed because file extension does not end with .jmx");
+-                            return;
+-                        }
+-
+-                        ActionEvent fakeEvent = new ActionEvent(this, ActionEvent.ACTION_PERFORMED, ActionNames.OPEN);
+-                        LoadDraggedFile.loadProject(fakeEvent, file);
++                        openJmxFilesFromDragAndDrop(tr);
+                     } finally {
+                         dtde.dropComplete(true);
+                     }
+@@ -738,6 +705,25 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable,
+ 
+     }
+ 
++    public boolean openJmxFilesFromDragAndDrop(Transferable tr) throws UnsupportedFlavorException, IOException {
++        @SuppressWarnings("unchecked")
++        List<File> files = (List<File>)
++                tr.getTransferData(DataFlavor.javaFileListFlavor);
++        if(files.isEmpty()) {
++            return false;
++        }
++        File file = files.get(0);
++        if(!file.getName().endsWith(".jmx")) {
++            log.warn("Importing file:" + file.getName()+ "from DnD failed because file extension does not end with .jmx");
++            return false;
++        }
++
++        ActionEvent fakeEvent = new ActionEvent(this, ActionEvent.ACTION_PERFORMED, ActionNames.OPEN);
++        LoadDraggedFile.loadProject(fakeEvent, file);
++        
++        return true;
++    }
++
+     @Override
+     public void dropActionChanged(DropTargetDragEvent dtde) {
+         // NOOP
+diff --git src/core/org/apache/jmeter/gui/action/ActionNames.java src/core/org/apache/jmeter/gui/action/ActionNames.java
+index c89c5e6..fd02ae4 100644
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java
+@@ -48,7 +48,6 @@ public final class ActionNames {
+     public static final String DEBUG_ON         = "debug_on"; // $NON-NLS-1$
+     public static final String DEBUG_OFF        = "debug_off"; // $NON-NLS-1$
+     public static final String DISABLE          = "disable"; // $NON-NLS-1$
+-    public static final String DRAG_ADD         = "drag_n_drop.add";//$NON-NLS-1$
+     /** Copy, then paste afterwards */
+     public static final String DUPLICATE        = "duplicate"; // $NON-NLS-1$
+     public static final String EDIT             = "edit"; // $NON-NLS-1$
+@@ -58,8 +57,6 @@ public final class ActionNames {
+     public static final String FUNCTIONS        = "functions"; // $NON-NLS-1$
+     public static final String HELP             = "help"; // $NON-NLS-1$
+     public static final String HEAP_DUMP        = "heap_dump"; // $NON-NLS-1$
+-    public static final String INSERT_AFTER     = "drag_n_drop.insert_after";//$NON-NLS-1$
+-    public static final String INSERT_BEFORE    = "drag_n_drop.insert_before";//$NON-NLS-1$
+     public static final String LAF_PREFIX       = "laf:"; // Look and Feel prefix
+     public static final String LOGGER_PANEL_ENABLE_DISABLE     = "logger_panel_enable_disable"; // $NON-NLS-1$
+     public static final String MERGE            = "merge"; // $NON-NLS-1$
+diff --git src/core/org/apache/jmeter/gui/action/DragNDrop.java src/core/org/apache/jmeter/gui/action/DragNDrop.java
+deleted file mode 100644
+index 7c269e1..0000000
+--- src/core/org/apache/jmeter/gui/action/DragNDrop.java
++++ /dev/null
+@@ -1,104 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-
+-package org.apache.jmeter.gui.action;
+-
+-import java.awt.Toolkit;
+-import java.awt.event.ActionEvent;
+-import java.util.HashSet;
+-import java.util.Set;
+-
+-import org.apache.jmeter.gui.GuiPackage;
+-import org.apache.jmeter.gui.tree.JMeterTreeListener;
+-import org.apache.jmeter.gui.tree.JMeterTreeNode;
+-import org.apache.jmeter.gui.util.MenuFactory;
+-import org.apache.jmeter.testelement.TestElement;
+-import org.apache.jmeter.testelement.TestPlan;
+-import org.apache.jmeter.testelement.WorkBench;
+-
+-public class DragNDrop extends AbstractAction {
+-    private static final Set<String> commands = new HashSet<String>();
+-
+-    static {
+-        commands.add(ActionNames.DRAG_ADD);
+-        commands.add(ActionNames.INSERT_BEFORE);
+-        commands.add(ActionNames.INSERT_AFTER);
+-    }
+-
+-    /**
+-     * @see Command#doAction(ActionEvent)
+-     */
+-    @Override
+-    public void doAction(ActionEvent e) {
+-        String action = e.getActionCommand();
+-        GuiPackage guiPackage = GuiPackage.getInstance();
+-        JMeterTreeNode[] draggedNodes = guiPackage.getTreeListener().getDraggedNodes();
+-        JMeterTreeListener treeListener = guiPackage.getTreeListener();
+-        JMeterTreeNode currentNode = treeListener.getCurrentNode();
+-        JMeterTreeNode parentNode = (JMeterTreeNode) currentNode.getParent();
+-        TestElement te = currentNode.getTestElement();
+-        if (te instanceof TestPlan || te instanceof WorkBench) {
+-            parentNode = null; // So elements can only be added as children
+-        }
+-
+-        if (ActionNames.DRAG_ADD.equals(action) && canAddTo(currentNode,draggedNodes)) {
+-            removeNodesFromParents(draggedNodes);
+-            for (int i = 0; i < draggedNodes.length; i++) {
+-                GuiPackage.getInstance().getTreeModel().insertNodeInto(draggedNodes[i], currentNode,
+-                        currentNode.getChildCount());
+-            }
+-        } else if (parentNode != null) {
+-            if (ActionNames.INSERT_BEFORE.equals(action) && canAddTo(parentNode,draggedNodes)) {
+-                removeNodesFromParents(draggedNodes);
+-                for (int i = 0; i < draggedNodes.length; i++) {
+-                    int index = parentNode.getIndex(currentNode);
+-                    GuiPackage.getInstance().getTreeModel().insertNodeInto(draggedNodes[i], parentNode, index);
+-                }
+-            } else if (ActionNames.INSERT_AFTER.equals(action) && canAddTo(parentNode,draggedNodes)) {
+-                removeNodesFromParents(draggedNodes);
+-                for (int i = 0; i < draggedNodes.length; i++) {
+-                    int index = parentNode.getIndex(currentNode) + 1;
+-                    GuiPackage.getInstance().getTreeModel().insertNodeInto(draggedNodes[i], parentNode, index);
+-                }
+-            }
+-        }
+-        GuiPackage.getInstance().getMainFrame().repaint();
+-    }
+-
+-    private static boolean canAddTo(JMeterTreeNode parentNode, JMeterTreeNode[] draggedNodes) {
+-        boolean ok = MenuFactory.canAddTo(parentNode, draggedNodes);
+-        if (!ok){
+-            Toolkit.getDefaultToolkit().beep();
+-        }
+-        return ok;
+-    }
+-
+-    private void removeNodesFromParents(JMeterTreeNode[] nodes) {
+-        for (int i = 0; i < nodes.length; i++) {
+-            GuiPackage.getInstance().getTreeModel().removeNodeFromParent(nodes[i]);
+-        }
+-    }
+-
+-    /**
+-     * @see Command#getActionNames()
+-     */
+-    @Override
+-    public Set<String> getActionNames() {
+-        return commands;
+-    }
+-}
+diff --git src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+index a521d47..e83204e 100644
+--- src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
++++ src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+@@ -26,30 +26,22 @@ import java.awt.event.KeyEvent;
+ import java.awt.event.KeyListener;
+ import java.awt.event.MouseEvent;
+ import java.awt.event.MouseListener;
+-import java.awt.event.MouseMotionListener;
+ 
+-import javax.swing.JLabel;
+-import javax.swing.JMenuItem;
+ import javax.swing.JPopupMenu;
+ import javax.swing.JTree;
+ import javax.swing.event.TreeSelectionEvent;
+ import javax.swing.event.TreeSelectionListener;
+-import javax.swing.tree.TreeNode;
+ import javax.swing.tree.TreePath;
+ 
+-import org.apache.jmeter.control.gui.TestPlanGui;
+-import org.apache.jmeter.control.gui.WorkBenchGui;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.MainFrame;
+ import org.apache.jmeter.gui.action.ActionNames;
+ import org.apache.jmeter.gui.action.ActionRouter;
+ import org.apache.jmeter.gui.action.KeyStrokes;
+-import org.apache.jmeter.gui.util.MenuFactory;
+-import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+-public class JMeterTreeListener implements TreeSelectionListener, MouseListener, KeyListener, MouseMotionListener {
++public class JMeterTreeListener implements TreeSelectionListener, MouseListener, KeyListener {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     // Container endWindow;
+@@ -62,24 +54,14 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+ 
+     private JTree tree;
+ 
+-    private boolean dragging = false;
+-
+-    private JMeterTreeNode[] draggedNodes;
+-
+-    private final JLabel dragIcon = new JLabel(JMeterUtils.getImage("leafnode.gif")); // $NON-NLS-1$
+-
+     /**
+      * Constructor for the JMeterTreeListener object.
+      */
+     public JMeterTreeListener(JMeterTreeModel model) {
+         this.model = model;
+-        dragIcon.validate();
+-        dragIcon.setVisible(true);
+     }
+ 
+     public JMeterTreeListener() {
+-        dragIcon.validate();
+-        dragIcon.setVisible(true);
+     }
+ 
+     public void setModel(JMeterTreeModel m) {
+@@ -171,77 +153,13 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+ 
+     @Override
+     public void mouseReleased(MouseEvent e) {
+-        if (dragging && isValidDragAction(draggedNodes, getCurrentNode())) {
+-            dragging = false;
+-            JPopupMenu dragNdrop = new JPopupMenu();
+-            JMenuItem item = new JMenuItem(JMeterUtils.getResString("insert_before")); // $NON-NLS-1$
+-            item.addActionListener(actionHandler);
+-            item.setActionCommand(ActionNames.INSERT_BEFORE);
+-            dragNdrop.add(item);
+-            item = new JMenuItem(JMeterUtils.getResString("insert_after")); // $NON-NLS-1$
+-            item.addActionListener(actionHandler);
+-            item.setActionCommand(ActionNames.INSERT_AFTER);
+-            dragNdrop.add(item);
+-            if (MenuFactory.canAddTo(getCurrentNode(), draggedNodes)){
+-                item = new JMenuItem(JMeterUtils.getResString("add_as_child")); // $NON-NLS-1$
+-                item.addActionListener(actionHandler);
+-                item.setActionCommand(ActionNames.DRAG_ADD);
+-                dragNdrop.add(item);
+-            }
+-            dragNdrop.addSeparator();
+-            item = new JMenuItem(JMeterUtils.getResString("cancel")); // $NON-NLS-1$
+-            dragNdrop.add(item);
+-            displayPopUp(e, dragNdrop);
+-        } else {
+-            GuiPackage.getInstance().getMainFrame().repaint();
+-        }
+-        dragging = false;
+-    }
+-
+-    public JMeterTreeNode[] getDraggedNodes() {
+-        return draggedNodes;
+-    }
+-
+-    /**
+-     * Tests if the node is being dragged into one of it's own sub-nodes, or
+-     * into itself.
+-     */
+-    private boolean isValidDragAction(JMeterTreeNode[] source, JMeterTreeNode dest) {
+-        boolean isValid = true;
+-        TreeNode[] path = dest.getPath();
+-        for (int i = 0; i < path.length; i++) {
+-            if (contains(source, path[i])) {
+-                isValid = false;
+-            }
+-        }
+-        return isValid;
++        GuiPackage.getInstance().getMainFrame().repaint();
+     }
+ 
+     @Override
+     public void mouseEntered(MouseEvent e) {
+     }
+ 
+-    private void changeSelectionIfDragging(MouseEvent e) {
+-        if (dragging) {
+-            GuiPackage.getInstance().getMainFrame().drawDraggedComponent(dragIcon, e.getX(), e.getY());
+-            if (tree.getPathForLocation(e.getX(), e.getY()) != null) {
+-                currentPath = tree.getPathForLocation(e.getX(), e.getY());
+-                if (!contains(draggedNodes, getCurrentNode())) {
+-                    tree.setSelectionPath(currentPath);
+-                }
+-            }
+-        }
+-    }
+-
+-    private boolean contains(Object[] container, Object item) {
+-        for (int i = 0; i < container.length; i++) {
+-            if (container[i] == item) {
+-                return true;
+-            }
+-        }
+-        return false;
+-    }
+-
+     @Override
+     public void mousePressed(MouseEvent e) {
+         // Get the Main Frame.
+@@ -266,23 +184,6 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+         }
+     }
+ 
+-    @Override
+-    public void mouseDragged(MouseEvent e) {
+-        if (!dragging) {
+-            dragging = true;
+-            draggedNodes = getSelectedNodes();
+-            if (draggedNodes[0].getUserObject() instanceof TestPlanGui
+-                    || draggedNodes[0].getUserObject() instanceof WorkBenchGui) {
+-                dragging = false;
+-            }
+-
+-        }
+-        changeSelectionIfDragging(e);
+-    }
+-
+-    @Override
+-    public void mouseMoved(MouseEvent e) {
+-    }
+ 
+     @Override
+     public void mouseExited(MouseEvent ev) {
+@@ -341,15 +242,4 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+         JPopupMenu pop = getCurrentNode().createPopupMenu();
+         GuiPackage.getInstance().displayPopUp(e, pop);
+     }
+-
+-    private void displayPopUp(MouseEvent e, JPopupMenu popup) {
+-        // See Bug 46108 - this log message is unnecessary and misleading
+-        // log.warn("Shouldn't be here");
+-        if (popup != null) {
+-            popup.pack();
+-            popup.show(tree, e.getX(), e.getY());
+-            popup.setVisible(true);
+-            popup.requestFocus();
+-        }
+-    }
+ }
+diff --git src/core/org/apache/jmeter/gui/tree/JMeterTreeTransferHandler.java src/core/org/apache/jmeter/gui/tree/JMeterTreeTransferHandler.java
+new file mode 100644
+index 0000000..c894047
+--- /dev/null
++++ src/core/org/apache/jmeter/gui/tree/JMeterTreeTransferHandler.java
+@@ -0,0 +1,239 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.tree;
++
++import java.awt.datatransfer.DataFlavor;
++import java.awt.datatransfer.Transferable;
++import java.awt.datatransfer.UnsupportedFlavorException;
++
++import javax.swing.JComponent;
++import javax.swing.JTree;
++import javax.swing.TransferHandler;
++import javax.swing.tree.TreePath;
++
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.util.MenuFactory;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class JMeterTreeTransferHandler extends TransferHandler {
++    
++    private static final long serialVersionUID = 8560957372186260765L;
++
++    private static final Logger LOG = LoggingManager.getLoggerForClass();
++  
++    private DataFlavor nodeFlavor;
++    private DataFlavor[] jMeterTreeNodeDataFlavors = new DataFlavor[1];
++
++    public JMeterTreeTransferHandler() {
++        try {
++            String mimeType = DataFlavor.javaJVMLocalObjectMimeType + ";class=\"" + JMeterTreeNode[].class.getName() + "\"";
++            nodeFlavor = new DataFlavor(mimeType);
++            jMeterTreeNodeDataFlavors[0] = nodeFlavor;
++        }
++        catch (ClassNotFoundException e) {
++            LOG.error("Class Not Found", e);
++        }
++    }
++
++    
++    @Override
++    public int getSourceActions(JComponent c) {
++        return MOVE;
++    }
++    
++
++    @Override
++    protected Transferable createTransferable(JComponent c) {
++        JTree tree = (JTree) c;
++        TreePath[] paths = tree.getSelectionPaths();
++        if (paths != null) {
++           
++            //TODO : deal with all the selected nodes
++            JMeterTreeNode node = (JMeterTreeNode) paths[0].getLastPathComponent();
++            
++            return new NodesTransferable(new JMeterTreeNode[] {node});
++        }
++        
++        return null;
++    }
++   
++    @Override
++    protected void exportDone(JComponent source, Transferable data, int action) {
++    }
++
++    @Override
++    public boolean canImport(TransferHandler.TransferSupport support) {
++        if (!support.isDrop()) {
++            return false;
++        }
++        
++        // the tree accepts a jmx file 
++        DataFlavor[] flavors = support.getDataFlavors();
++        for (int i = 0; i < flavors.length; i++) {
++            // Check for file lists specifically
++            if (flavors[i].isFlavorJavaFileListType()) {
++                return true;
++            }
++        }
++
++        // or a treenode from the same tree
++        if (!support.isDataFlavorSupported(nodeFlavor)) {
++            return false;
++        }
++        
++        // the copy is disabled
++        int action = support.getDropAction();
++        if(action != MOVE) {
++            return false;
++        }
++        
++        support.setShowDropLocation(true);
++
++        // Do not allow a drop on the drag source selections.
++        JTree.DropLocation dl = (JTree.DropLocation) support.getDropLocation();
++        JTree tree = (JTree) support.getComponent();
++        int dropRow = tree.getRowForPath(dl.getPath());
++        int[] selRows = tree.getSelectionRows();
++        for (int i = 0; i < selRows.length; i++) {
++            if (selRows[i] == dropRow) {
++                return false;
++            }
++        }
++        
++        TreePath dest = dl.getPath();
++        JMeterTreeNode target = (JMeterTreeNode) dest.getLastPathComponent();
++        
++        // TestPlan and WorkBench are the only children of the root
++        if(target.isRoot()) {
++            return false;
++        }
++        
++        TreePath path = tree.getPathForRow(selRows[0]);
++        JMeterTreeNode draggedNode = (JMeterTreeNode) path.getLastPathComponent();
++        
++        // Do not allow a non-leaf node to be moved into one of its children
++        if (draggedNode.getChildCount() > 0
++                && target.isNodeAncestor(draggedNode)) {
++            return false;
++        }
++        
++        // re-use node association logic
++        return MenuFactory.canAddTo(target, new JMeterTreeNode[] { draggedNode });
++    }
++
++
++    @Override
++    public boolean importData(TransferHandler.TransferSupport support) {
++        if (!canImport(support)) {
++            return false;
++        }
++        
++        // deal with the jmx files
++        GuiPackage guiInstance = GuiPackage.getInstance();
++        DataFlavor[] flavors = support.getDataFlavors();
++        Transferable t = support.getTransferable();
++        for (int i = 0; i < flavors.length; i++) {
++            // Check for file lists specifically
++            if (flavors[i].isFlavorJavaFileListType()) {
++                try {
++                    return guiInstance.getMainFrame().openJmxFilesFromDragAndDrop(t);
++                }
++                catch (Exception e) {
++                    LOG.error("Drop file failed", e);
++                }
++                return false;
++            }
++        }
++        
++        // Extract transfer data.
++        JMeterTreeNode[] nodes = null;
++        try {
++            nodes = (JMeterTreeNode[]) t.getTransferData(nodeFlavor);
++        }
++        catch (Exception e) {
++            LOG.error("Unsupported Flavor in Transferable", e);
++        }
++
++        if(nodes == null || nodes.length == 0) {
++            return false;
++        }
++        
++        // Get drop location and mode
++        JTree.DropLocation dl = (JTree.DropLocation) support.getDropLocation();
++        TreePath dest = dl.getPath();
++        JMeterTreeNode target = (JMeterTreeNode) dest.getLastPathComponent();
++       
++        //TODO : deal with all the selected nodes
++        JMeterTreeNode draggedNode = nodes[0];
++        
++        int index = dl.getChildIndex();
++        if (index == -1) { // drop mode is ON
++            index = target.getChildCount();
++            if(draggedNode.getParent() == target) {
++                //when the target is the current parent of the node being dragged
++                // re-add it as the last child
++                index--;
++            }
++        }
++        else if(draggedNode.getParent() == target) { // insert mode
++            if(guiInstance.getTreeModel().getIndexOfChild(target, draggedNode) < index) {
++                index--;
++            }
++        }
++        
++        // remove - add the nodes
++        for (int i = 0; i < nodes.length; i++) {
++            guiInstance.getTreeModel().removeNodeFromParent(nodes[i]);
++            guiInstance.getTreeModel().insertNodeInto(nodes[i], target, index);
++        }
++        
++        // expand the destination node
++        JTree tree = (JTree) support.getComponent();
++        tree.expandPath(new TreePath(target.getPath()));
++        
++        return true;
++    }
++
++    private class NodesTransferable implements Transferable {
++        JMeterTreeNode[] nodes;
++
++        public NodesTransferable(JMeterTreeNode[] nodes) {
++            this.nodes = nodes;
++        }
++
++        @Override
++        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
++            if (!isDataFlavorSupported(flavor)) {
++                throw new UnsupportedFlavorException(flavor);
++            }
++            return nodes;
++        }
++
++        @Override
++        public DataFlavor[] getTransferDataFlavors() {
++            return jMeterTreeNodeDataFlavors;
++        }
++
++        @Override
++        public boolean isDataFlavorSupported(DataFlavor flavor) {
++            return nodeFlavor.equals(flavor);
++        }
++    }
++}
+\ No newline at end of file
+-- 
+1.7.12
+

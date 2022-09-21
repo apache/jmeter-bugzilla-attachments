@@ -1,0 +1,76 @@
+Index: src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatVisualizer.java	(revision 1637590)
++++ src/components/org/apache/jmeter/visualizers/StatVisualizer.java	(working copy)
+@@ -75,6 +75,8 @@
+             "average",                       //$NON-NLS-1$
+             "aggregate_report_median",       //$NON-NLS-1$
+             "aggregate_report_90%_line",     //$NON-NLS-1$
++            "aggregate_report_95%_line",     //$NON-NLS-1$
++            "aggregate_report_99%_line",     //$NON-NLS-1$
+             "aggregate_report_min",          //$NON-NLS-1$
+             "aggregate_report_max",          //$NON-NLS-1$
+             "aggregate_report_error%",       //$NON-NLS-1$
+@@ -118,15 +120,21 @@
+                     new Functor("getMedian"),  //$NON-NLS-1$
+                     new Functor("getPercentPoint",  //$NON-NLS-1$
+                             new Object[] { new Float(.900) }),
++                    new Functor("getPercentPoint",  //$NON-NLS-1$
++                            new Object[] { new Float(.950) }),
++                    new Functor("getPercentPoint",  //$NON-NLS-1$
++                            new Object[] { new Float(.990) }),
++
+                     new Functor("getMin"),  //$NON-NLS-1$
+                     new Functor("getMax"),   //$NON-NLS-1$
+                     new Functor("getErrorPercentage"),   //$NON-NLS-1$
+                     new Functor("getRate"),  //$NON-NLS-1$
+                     new Functor("getKBPerSecond")   //$NON-NLS-1$
+                 },
+-                new Functor[] { null, null, null, null, null, null, null, null, null, null },
++                new Functor[] { null, null, null, null, null, null, null, null, null, null, null, null },
+                 new Class[] { String.class, Long.class, Long.class, Long.class, Long.class,
+-                              Long.class, Long.class, String.class, String.class, String.class });
++                              Long.class,Long.class, Long.class, Long.class, String.class, 
++                              String.class, String.class });
+         clearData();
+         init();
+     }
+@@ -139,6 +147,8 @@
+             null, // Mean
+             null, // median
+             null, // 90%
++            null, // 95%
++            null, // 99%
+             null, // Min
+             null, // Max
+             new NumberRenderer("#0.00%"), // Error %age //$NON-NLS-1$
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1637590)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -80,6 +80,10 @@
+ aggregate_report_90=90%
+ aggregate_report_90%_line=90% Line
+ aggregate_report_bandwidth=KB/sec
++aggregate_report_95=95%
++aggregate_report_95%_line=95% Line
++aggregate_report_99=99%
++aggregate_report_99%_line=99% Line
+ aggregate_report_count=# Samples
+ aggregate_report_error=Error
+ aggregate_report_error%=Error %
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1637590)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -73,6 +73,10 @@
+ aggregate_report=Rapport agr\u00E9g\u00E9
+ aggregate_report_90=90%
+ aggregate_report_90%_line=90e centile
++aggregate_report_95=95%
++aggregate_report_95%_line=95e centile
++aggregate_report_99=99%
++aggregate_report_99%_line=99e centile
+ aggregate_report_bandwidth=Ko/sec
+ aggregate_report_count=\# Echantillons
+ aggregate_report_error=Erreur

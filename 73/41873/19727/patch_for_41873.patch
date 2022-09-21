@@ -1,0 +1,528 @@
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	(working copy)
+@@ -74,6 +74,7 @@
+ 
+ 				if (item.isFailure() || item.isError()) {
+ 					display.append("\n\t"); // $NON-NLS-1$
++					display.append(item.getName() != null ? item.getName() + " : " : "");
+ 					display.append(item.getFailureMessage());
+ 				}
+ 			}
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -70,6 +70,7 @@
+ import javax.xml.parsers.DocumentBuilderFactory;
+ import javax.xml.parsers.ParserConfigurationException;
+ 
++import org.apache.jmeter.assertions.AssertionResult;
+ import org.apache.jmeter.samplers.Clearable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -144,9 +145,13 @@
+ 
+ 	private JScrollPane resultsScrollPane;
+ 
++	private JPanel resultsPane;
++
+ 	private JLabel imageLabel;
+ 
+ 	private JTextArea sampleDataField;
++	
++	private JPanel requestPane;
+ 
+ 	private JRadioButton textButton;
+ 
+@@ -158,6 +163,8 @@
+ 
+ 	private JTree jTree;
+ 
++	private JTabbedPane rightSide;
++	
+ 	private static final ImageIcon imageSuccess = JMeterUtils.getImage(
+ 	        JMeterUtils.getPropDefault("viewResultsTree.success", "icon_success_sml.gif"));
+ 
+@@ -187,9 +194,21 @@
+ 		if (log.isDebugEnabled()) {
+ 			log.debug("updateGui1 : sample result - " + res);
+ 		}
++		// Add sample
+ 		DefaultMutableTreeNode currNode = new DefaultMutableTreeNode(res);
+ 		treeModel.insertNodeInto(currNode, root, root.getChildCount());
+ 		addSubResults(currNode, res);
++		// Add any assertion that failed as children of the sample node
++		AssertionResult assertionResults[] = res.getAssertionResults();
++		int assertionIndex = 0;
++		for (int j = 0; j < assertionResults.length; j++) {
++			AssertionResult item = assertionResults[j];
++			
++			if (item.isFailure() || item.isError()) {
++				DefaultMutableTreeNode assertionNode = new DefaultMutableTreeNode(item);
++				treeModel.insertNodeInto(assertionNode, currNode, assertionIndex++);
++			}
++		}			
+ 
+ 		if (root.getChildCount() == 1) {
+ 			jTree.expandPath(new TreePath(root));
+@@ -266,90 +285,116 @@
+ 			sampleDataField.setText(""); // $NON-NLS-1$
+ 			results.setText(""); // $NON-NLS-1$
+ 			if (node != null) {
+-				SampleResult res = (SampleResult) node.getUserObject();
++				Object userObject = node.getUserObject();
++				if(userObject instanceof SampleResult) {					
++					SampleResult res = (SampleResult) userObject;
++					
++					// We are displaying a SampleResult
++					setupTabPaneForSampleResult();
+ 
+-				if (log.isDebugEnabled()) {
+-					log.debug("valueChanged1 : sample result - " + res);
+-				}
++					if (log.isDebugEnabled()) {
++						log.debug("valueChanged1 : sample result - " + res);
++					}
+ 
+-				if (res != null) {
+-					// load time label
++					if (res != null) {
++						// load time label
+ 
+-					log.debug("valueChanged1 : load time - " + res.getTime());
+-                    String sd=res.getSamplerData();
+-					if (sd != null) {
+-						String rh = res.getRequestHeaders();
+-						if (rh != null) {
+-                            StringBuffer sb = new StringBuffer(sd.length()+rh.length()+20);
+-                            sb.append(sd);
+-                            sb.append("\nRequest Headers:\n");
+-                            sb.append(rh);
+-							sd = sb.toString();
+-                        }
+-						sampleDataField.setText(sd);
+-                    }
++						log.debug("valueChanged1 : load time - " + res.getTime());
++						String sd = res.getSamplerData();
++						if (sd != null) {
++							String rh = res.getRequestHeaders();
++							if (rh != null) {
++								StringBuffer sb = new StringBuffer(sd.length() + rh.length()+20);
++								sb.append(sd);
++								sb.append("\nRequest Headers:\n");
++								sb.append(rh);
++								sd = sb.toString();
++							}
++							sampleDataField.setText(sd);
++						}
+ 
+-					statsDoc.insertString(statsDoc.getLength(), "Thread Name: "+res.getThreadName()+"\n", null);
+-                    String startTime = new Date(res.getStartTime()).toString();
+-                    statsDoc.insertString(statsDoc.getLength(), "Sample Start: "+startTime+"\n", null);
+-					statsDoc.insertString(statsDoc.getLength(), "Load time: " + res.getTime() + "\n", null);
++						statsDoc.insertString(statsDoc.getLength(), "Thread Name: " + res.getThreadName() + "\n", null);
++						String startTime = new Date(res.getStartTime()).toString();
++						statsDoc.insertString(statsDoc.getLength(), "Sample Start: " + startTime + "\n", null);
++						statsDoc.insertString(statsDoc.getLength(), "Load time: " + res.getTime() + "\n", null);
+ 
+-					String responseCode = res.getResponseCode();
+-					log.debug("valueChanged1 : response code - " + responseCode);
++						String responseCode = res.getResponseCode();
++						log.debug("valueChanged1 : response code - " + responseCode);
+ 
+-					int responseLevel = 0;
+-					if (responseCode != null) {
+-						try {
+-							responseLevel = Integer.parseInt(responseCode) / 100;
+-						} catch (NumberFormatException numberFormatException) {
+-							// no need to change the foreground color
++						int responseLevel = 0;
++						if (responseCode != null) {
++							try {
++								responseLevel = Integer.parseInt(responseCode) / 100;
++							} catch (NumberFormatException numberFormatException) {
++								// no need to change the foreground color
++							}
+ 						}
+-					}
+ 
+-					Style style = null;
+-					switch (responseLevel) {
+-					case 3:
+-						style = statsDoc.getStyle(STYLE_REDIRECT);
+-						break;
+-					case 4:
+-						style = statsDoc.getStyle(STYLE_CLIENT_ERROR);
+-						break;
+-					case 5:
+-						style = statsDoc.getStyle(STYLE_SERVER_ERROR);
+-						break;
+-					}
+-					statsDoc.insertString(statsDoc.getLength(), "HTTP response code: " + responseCode + "\n", style);
++						Style style = null;
++						switch (responseLevel) {
++						case 3:
++							style = statsDoc.getStyle(STYLE_REDIRECT);
++							break;
++						case 4:
++							style = statsDoc.getStyle(STYLE_CLIENT_ERROR);
++							break;
++						case 5:
++							style = statsDoc.getStyle(STYLE_SERVER_ERROR);
++							break;
++						}
++						statsDoc.insertString(statsDoc.getLength(), "HTTP response code: " + responseCode + "\n", style);
+ 
+-					// response message label
+-					String responseMsgStr = res.getResponseMessage();
++						// response message label
++						String responseMsgStr = res.getResponseMessage();
+ 
+-					log.debug("valueChanged1 : response message - " + responseMsgStr);
+-					statsDoc
+-							.insertString(statsDoc.getLength(), "HTTP response message: " + responseMsgStr + "\n", null);
++						log.debug("valueChanged1 : response message - " + responseMsgStr);
++						statsDoc.insertString(statsDoc.getLength(), "HTTP response message: " + responseMsgStr + "\n", null);
+ 
+-					statsDoc.insertString(statsDoc.getLength(), "\nHTTP response headers:\n" + res.getResponseHeaders()
+-							+ "\n", null);
++						statsDoc.insertString(statsDoc.getLength(), "\nHTTP response headers:\n" + res.getResponseHeaders() + "\n", null);
+ 
+-					// get the text response and image icon
+-					// to determine which is NOT null
+-					if ((SampleResult.TEXT).equals(res.getDataType())) // equals(null)
+-																		// is OK
+-					{
+-						String response = getResponseAsString(res);
+-						if (command.equals(TEXT_COMMAND)) {
+-							showTextResponse(response);
+-						} else if (command.equals(HTML_COMMAND)) {
+-							showRenderedResponse(response, res);
+-						} else if (command.equals(XML_COMMAND)) {
+-							showRenderXMLResponse(response);
++						// get the text response and image icon
++						// to determine which is NOT null
++						if ((SampleResult.TEXT).equals(res.getDataType())) // equals(null)
++																			// is OK
++						{
++							String response = getResponseAsString(res);
++							if (command.equals(TEXT_COMMAND)) {
++								showTextResponse(response);
++							} else if (command.equals(HTML_COMMAND)) {
++								showRenderedResponse(response, res);
++							} else if (command.equals(XML_COMMAND)) {
++								showRenderXMLResponse(response);
++							}
++						} else {
++							byte[] responseBytes = res.getResponseData();
++							if (responseBytes != null) {
++								showImage(new ImageIcon(responseBytes));
++							}
+ 						}
+-					} else {
+-						byte[] responseBytes = res.getResponseData();
+-						if (responseBytes != null) {
+-							showImage(new ImageIcon(responseBytes));
+-						}
+ 					}
+ 				}
++				else if(userObject instanceof AssertionResult) {
++					AssertionResult res = (AssertionResult) userObject;
++					
++					// We are displaying an AssertionResult
++					setupTabPaneForAssertionResult();
++					
++					if (log.isDebugEnabled()) {
++						log.debug("valueChanged1 : sample result - " + res);
++					}
++
++					if (res != null) {
++						statsDoc.insertString(statsDoc.getLength(),
++								"Assertion error: " + res.isError() + "\n",
++								null);
++						statsDoc.insertString(statsDoc.getLength(),
++								"Assertion failure: " + res.isFailure() + "\n",
++								null);
++						statsDoc.insertString(statsDoc.getLength(),
++								"Assertion failure message : " + res.getFailureMessage() + "\n",
++								null);
++					}
++				}
+ 			}
+ 		} catch (BadLocationException exc) {
+ 			log.error("Error setting statistics text", exc);
+@@ -600,15 +645,42 @@
+ 		add(makeTitlePanel(), BorderLayout.NORTH);
+ 
+ 		Component leftSide = createLeftPanel();
+-		JTabbedPane rightSide = new JTabbedPane();
+-
++		rightSide = new JTabbedPane();
++		// Add the common tab
+ 		rightSide.addTab(JMeterUtils.getResString("view_results_tab_sampler"), createResponseMetadataPanel()); // $NON-NLS-1$
+-		rightSide.addTab(JMeterUtils.getResString("view_results_tab_request"), createRequestPanel()); // $NON-NLS-1$
+-		rightSide.addTab(JMeterUtils.getResString("view_results_tab_response"), createResponseDataPanel()); // $NON-NLS-1$
++		// Create the panels for the other tabs
++		requestPane = createRequestPanel();
++		resultsPane = createResponseDataPanel();
+ 
+ 		JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftSide, rightSide);
+ 		add(mainSplit, BorderLayout.CENTER);
+ 	}
++	
++	private void setupTabPaneForSampleResult() {
++		// Set the title for the first tab
++		rightSide.setTitleAt(0, JMeterUtils.getResString("view_results_tab_sampler"));
++		// Add the other tabs if not present
++		if(rightSide.indexOfTab(JMeterUtils.getResString("view_results_tab_request")) < 0) { // $NON-NLS-1$
++			rightSide.addTab(JMeterUtils.getResString("view_results_tab_request"), requestPane); // $NON-NLS-1$
++		}
++		if(rightSide.indexOfTab(JMeterUtils.getResString("view_results_tab_response")) < 0) { // $NON-NLS-1$
++			rightSide.addTab(JMeterUtils.getResString("view_results_tab_response"), resultsPane); // $NON-NLS-1$
++		}
++	}
++	
++	private void setupTabPaneForAssertionResult() {
++		// Set the title for the first tab
++		rightSide.setTitleAt(0, JMeterUtils.getResString("view_results_tab_assertion"));
++		// Remove the other tabs if present
++		int requestTabIndex = rightSide.indexOfTab(JMeterUtils.getResString("view_results_tab_request")); // $NON-NLS-1$
++		if(requestTabIndex >= 0) {
++			rightSide.removeTabAt(requestTabIndex);
++		}
++		int responseTabIndex = rightSide.indexOfTab(JMeterUtils.getResString("view_results_tab_response")); // $NON-NLS-1$
++		if(responseTabIndex >= 0) {
++			rightSide.removeTabAt(responseTabIndex);
++		}
++	}
+ 
+ 	private Component createLeftPanel() {
+ 		SampleResult rootSampleResult = new SampleResult();
+@@ -651,7 +723,7 @@
+ 		return pane;
+ 	}
+ 
+-	private Component createRequestPanel() {
++	private JPanel createRequestPanel() {
+ 		sampleDataField = new JTextArea();
+ 		sampleDataField.setEditable(false);
+ 		sampleDataField.setLineWrap(true);
+@@ -662,7 +734,7 @@
+ 		return pane;
+ 	}
+ 
+-	private Component createResponseDataPanel() {
++	private JPanel createResponseDataPanel() {
+ 		results = new JEditorPane();
+ 		results.setEditable(false);
+ 
+@@ -680,7 +752,18 @@
+ 		public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded,
+ 				boolean leaf, int row, boolean focus) {
+ 			super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, focus);
+-			if (!((SampleResult) ((DefaultMutableTreeNode) value).getUserObject()).isSuccessful()) {
++			boolean failure = true;
++			Object userObject = ((DefaultMutableTreeNode) value).getUserObject();
++			if(userObject instanceof SampleResult) {
++				failure = !(((SampleResult) userObject).isSuccessful());
++			}
++			else if(userObject instanceof AssertionResult) {
++				AssertionResult assertion = (AssertionResult) userObject;
++				failure =  assertion.isError() || assertion.isFailure();
++			}
++			
++			// Set the status for the node
++			if (failure) {
+ 				this.setForeground(Color.red);
+ 				this.setIcon(imageFailure);
+ 			} else {
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/MD5HexAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/MD5HexAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/MD5HexAssertion.java	(working copy)
+@@ -51,7 +51,7 @@
+ 	 */
+ 	public AssertionResult getResult(SampleResult response) {
+ 
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 		result.setFailure(false);
+ 		byte[] resultData = response.getResponseData();
+ 
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/SizeAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/SizeAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/SizeAssertion.java	(working copy)
+@@ -64,7 +64,7 @@
+ 	 * AssertionResult will reflect the success of the Sample.
+ 	 */
+ 	public AssertionResult getResult(SampleResult response) {
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 		result.setFailure(false);
+ 		resultData = response.getResponseData();
+ 		long resultSize = resultData.length;
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/BeanShellAssertion.java	(working copy)
+@@ -96,7 +96,7 @@
+ 	 * @see org.apache.jmeter.assertions.Assertion#getResult(org.apache.jmeter.samplers.SampleResult)
+ 	 */
+ 	public AssertionResult getResult(SampleResult response) {
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 
+ 		if (bshInterpreter == null) {
+ 			result.setFailure(true);
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/ResponseAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/ResponseAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/ResponseAssertion.java	(working copy)
+@@ -254,7 +254,7 @@
+ 	AssertionResult evaluateResponse(SampleResult response) {
+ 		boolean pass = true;
+ 		boolean not = (NOT & getTestType()) > 0;
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 		String toCheck = ""; // The string to check (Url or data)
+ 
+ 		if (getAssumeSuccess()) {
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XMLAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XMLAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XMLAssertion.java	(working copy)
+@@ -53,7 +53,7 @@
+ 	 */
+ 	public AssertionResult getResult(SampleResult response) {
+ 		// no error as default
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 		byte[] responseData = response.getResponseData();
+ 		if (responseData.length == 0) {
+ 			return result.setResultForNull();
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XMLSchemaAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XMLSchemaAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XMLSchemaAssertion.java	(working copy)
+@@ -63,7 +63,7 @@
+ 	 * 
+ 	 */
+ 	public AssertionResult getResult(SampleResult response) {
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 		// Note: initialised with error = failure = false
+ 
+ 		byte data[] = response.getResponseData();
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/HTMLAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/HTMLAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/HTMLAssertion.java	(working copy)
+@@ -75,7 +75,7 @@
+ 		log.debug("HTMLAssertions.getResult() called");
+ 
+ 		// no error as default
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 
+ 		if (inResponse.getResponseData().length == 0) {
+ 			return result.setResultForNull();
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XPathAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XPathAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/XPathAssertion.java	(working copy)
+@@ -69,7 +69,7 @@
+ 	 */
+ 	public AssertionResult getResult(SampleResult response) {
+ 		// no error as default
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 		byte[] responseData = response.getResponseData();
+ 		if (responseData.length == 0) {
+ 			return result.setResultForNull();
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/DurationAssertion.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/DurationAssertion.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/components/org/apache/jmeter/assertions/DurationAssertion.java	(working copy)
+@@ -43,7 +43,7 @@
+ 	 * AssertionResult will reflect the success of the Sample.
+ 	 */
+ 	public AssertionResult getResult(SampleResult response) {
+-		AssertionResult result = new AssertionResult();
++		AssertionResult result = new AssertionResult(getName());
+ 		result.setFailure(false);
+ 		long duration=getAllowedDuration();
+ 		if (duration > 0) {
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/assertions/AssertionResult.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/assertions/AssertionResult.java	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/assertions/AssertionResult.java	(working copy)
+@@ -27,6 +27,9 @@
+ public class AssertionResult implements Serializable {
+ 	public static final String RESPONSE_WAS_NULL = "Response was null";
+ 
++	/** Name of the assertion. */
++	private String name;
++	
+ 	/** True if the assertion failed. */
+ 	private boolean failure;
+ 
+@@ -42,8 +45,36 @@
+ 	 */
+ 	public AssertionResult() {
+ 	}
++	
++	/**
++	 * Create a new Assertion Result. The result will indicate no failure or
++	 * error.
++	 * 
++	 * @param name the name of the assertion
++	 */
++	public AssertionResult(String name) {
++		setName(name);
++	}
++	
++	/**
++	 * Get the name of the assertion
++	 * 
++	 * @return the name of the assertion
++	 */
++	public String getName() {
++		return name;
++	}
+ 
+ 	/**
++	 * Set the name of the assertion
++	 * 
++	 * @param name the name of the assertion
++	 */
++	public void setName(String name) {
++		this.name = name;
++	}
++	
++	/**
+ 	 * Check if the assertion failed. If it failed, the failure message may give
+ 	 * more details about the failure.
+ 	 * 
+@@ -132,4 +163,7 @@
+ 		return this;
+ 	}
+ 
++	public String toString() {
++		return getName() != null ? getName() : super.toString();
++	}
+ }
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(revision 519305)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -760,6 +760,7 @@
+ view_results_tab_request=Request
+ view_results_tab_response=Response data
+ view_results_tab_sampler=Sampler result
++view_results_tab_assertion=Assertion result
+ view_results_title=View Results
+ view_results_tree_title=View Results Tree
+ warning=Warning!

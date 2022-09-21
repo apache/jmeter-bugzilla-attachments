@@ -1,0 +1,36 @@
+Index: src/core/org/apache/jmeter/gui/AbstractScopedJMeterGuiComponent.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/AbstractScopedJMeterGuiComponent.java	(revision 1148076)
++++ src/core/org/apache/jmeter/gui/AbstractScopedJMeterGuiComponent.java	(working copy)
+@@ -117,7 +117,7 @@
+         } else if (testElement.isScopeAll(scope)){
+             scopePanel.setScopeAll(enableVariableButton);
+         } else if (testElement.isScopeVariable(scope)){
+-            scopePanel.setScopeVariable(testElement.getVariableName());
++            scopePanel.setScopeVariable(testElement.getVariableName(), enableVariableButton);
+         } else {
+             throw new IllegalArgumentException("Invalid scope: "+scope);
+         }
+Index: src/core/org/apache/jmeter/util/ScopePanel.java
+===================================================================
+--- src/core/org/apache/jmeter/util/ScopePanel.java	(revision 1148076)
++++ src/core/org/apache/jmeter/util/ScopePanel.java	(working copy)
+@@ -134,9 +134,15 @@
+         }
+     }
+ 
+-    public void setScopeVariable(String value){
++    public void setScopeVariable(String value) {
++        setScopeVariable(value, false);
++    }
++
++    public void setScopeVariable(String value, boolean enableVariableButton) {
+         variableButton.setSelected(true);
+-        variableName.setText(value);
++        if (enableVariableButton) {
++            variableName.setText(value);
++        }
+     }
+ 
+     public boolean isScopeParent() {
+

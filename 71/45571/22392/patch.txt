@@ -1,0 +1,161 @@
+Index: C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java
+===================================================================
+--- C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java	(revision 682002)
++++ C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSConfigGui.java	(working copy)
+@@ -70,6 +70,8 @@
+     private ArgumentsPanel jndiPropertiesPanel;
+ 
+     private JCheckBox useNonPersistentDelivery;
++    
++    private JCheckBox useReqMsgIdAsCorrelId;
+ 
+     public JMSConfigGui() {
+         init();
+@@ -110,6 +112,7 @@
+         element.setIsOneway(isOneway);
+ 
+         element.setNonPersistent(useNonPersistentDelivery.isSelected());
++        element.setUseReqMsgIdAsCorrelId(useReqMsgIdAsCorrelId.isSelected());
+         element.setTimeout(timeout.getText());
+         element.setContent(soapXml.getText());
+ 
+@@ -179,7 +182,8 @@
+         box.setSelectedItem(selected);
+ 
+         useNonPersistentDelivery.setSelected(sampler.isNonPersistent());
+-
++        useReqMsgIdAsCorrelId.setSelected(sampler.isUseReqMsgIdAsCorrelId());
++        
+         timeout.setText(String.valueOf(sampler.getTimeout()));
+         soapXml.setText(sampler.getContent());
+         initialContextFactory.setText(sampler.getInitialContextFactory());
+@@ -227,13 +231,16 @@
+         messagePanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
+                 JMeterUtils.getResString("jms_message_title"))); //$NON-NLS-1$
+ 
++        useReqMsgIdAsCorrelId = new JCheckBox(JMeterUtils.getResString("jms_use_req_msgid_as_correlid"),false); //$NON-NLS-1$
++        
+         JPanel messageNorthPanel = new JPanel(new BorderLayout());
+-        JPanel onewayPanel = new JPanel(new BorderLayout());
++        JPanel onewayPanel = new HorizontalPanel();
+         onewayPanel.add(oneWay);
++        onewayPanel.add(useReqMsgIdAsCorrelId);
+         messageNorthPanel.add(onewayPanel, BorderLayout.NORTH);
+ 
+         useNonPersistentDelivery = new JCheckBox(JMeterUtils.getResString("jms_use_non_persistent_delivery"),false); //$NON-NLS-1$
+-
++        
+         JPanel timeoutPanel = new HorizontalPanel();
+         timeoutPanel.add(timeout);
+         timeoutPanel.add(useNonPersistentDelivery);
+Index: C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/FixedQueueExecutor.java
+===================================================================
+--- C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/FixedQueueExecutor.java	(revision 682002)
++++ C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/FixedQueueExecutor.java	(working copy)
+@@ -42,6 +42,8 @@
+ 
+     /** Timeout used for waiting on message. */
+     private final int timeout;
++    
++    private final boolean useReqMsgIdAsCorrelId;
+ 
+     /**
+      * Constructor.
+@@ -51,9 +53,10 @@
+      * @param timeout
+      *            timeout to use for the return message
+      */
+-    public FixedQueueExecutor(QueueSender producer, int timeout) {
++    public FixedQueueExecutor(QueueSender producer, int timeout, boolean useReqMsgIdAsCorrelId) {
+         this.producer = producer;
+         this.timeout = timeout;
++        this.useReqMsgIdAsCorrelId = useReqMsgIdAsCorrelId;
+     }
+ 
+     /*
+@@ -63,11 +66,15 @@
+      */
+     public Message sendAndReceive(Message request) throws JMSException {
+         String id = request.getJMSCorrelationID();
+-        if(id == null){
++        if(id == null && !useReqMsgIdAsCorrelId){
+             log.error("Correlation id is null. Set the JMSCorrelationID header");
+             return null;
+         }
+         producer.send(request);
++        
++        if(useReqMsgIdAsCorrelId) {
++        	id = request.getJMSMessageID();
++        }
+         MessageAdmin.getAdmin().putRequest(id, request);
+         try {
+             if (log.isDebugEnabled()) {
+Index: C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java
+===================================================================
+--- C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(revision 682002)
++++ C:/dev/apache/jakarta-jmeter-trunk/src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(working copy)
+@@ -82,6 +82,7 @@
+ 
+     private static final String IS_NON_PERSISTENT = "JMSSampler.isNonPersistent"; // $NON-NLS-1$
+ 
++    private static final String USE_REQ_MSGID_AS_CORRELID = "JMSSamplere.useReqMsgIdAsCorrelId";
+     //--
+ 
+     //
+@@ -179,7 +180,12 @@
+             if (LOGGER.isDebugEnabled()) {
+                 LOGGER.debug("Adding property [" + name + "=" + value + "]");
+             }
+-            msg.setStringProperty(name, value);
++            
++            if("JMSCorrelationID".equalsIgnoreCase(name)) {
++            	msg.setJMSCorrelationID(value);
++            } else {
++            	msg.setStringProperty(name, value);
++            }
+         }
+     }
+ 
+@@ -239,6 +245,10 @@
+         return getPropertyAsBoolean(IS_NON_PERSISTENT);
+     }
+ 
++    public boolean isUseReqMsgIdAsCorrelId() {
++        return getPropertyAsBoolean(USE_REQ_MSGID_AS_CORRELID);
++    }
++
+     public String getInitialContextFactory() {
+         return getPropertyAsString(JMSSampler.JNDI_INITIAL_CONTEXT_FACTORY);
+     }
+@@ -255,6 +265,10 @@
+         setProperty(new BooleanProperty(IS_NON_PERSISTENT, value));
+     }
+ 
++    public void setUseReqMsgIdAsCorrelId(boolean value) {
++        setProperty(new BooleanProperty(USE_REQ_MSGID_AS_CORRELID, value));
++    }
++
+     public String toString() {
+         return getQueueConnectionFactory() + ", queue: " + getSendQueue();
+     }
+@@ -315,7 +329,7 @@
+                     if (isNonPersistent()) {
+                         producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
+                     }
+-                    executor = new FixedQueueExecutor(producer, getTimeout());
++                    executor = new FixedQueueExecutor(producer, getTimeout(), isUseReqMsgIdAsCorrelId());
+                 }
+             }
+             if (LOGGER.isDebugEnabled()) {
+Index: C:/dev/apache/jakarta-jmeter-trunk/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/dev/apache/jakarta-jmeter-trunk/src/core/org/apache/jmeter/resources/messages.properties	(revision 682002)
++++ C:/dev/apache/jakarta-jmeter-trunk/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -364,6 +364,7 @@
+ jms_use_non_persistent_delivery=Use non-persistent delivery mode?
+ jms_use_properties_file=Use jndi.properties file
+ jms_use_random_file=Random File
++jms_use_req_msgid_as_correlid=Use Request Message Id As Correlation Id
+ jms_use_text=Textarea
+ jms_user=User
+ jndi_config_title=JNDI Configuration

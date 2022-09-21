@@ -1,0 +1,28 @@
+Index: src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java	(revision 479800)
++++ src/core/org/apache/jmeter/engine/RemoteJMeterEngineImpl.java	(working copy)
+@@ -51,13 +51,19 @@
+ 		log.debug("This = " + this);
+ 		try {
+ 			Registry reg = LocateRegistry.getRegistry(port);
+-			backingEngine = new StandardJMeterEngine(InetAddress.getLocalHost().getHostName());
++			final InetAddress localHost = java.net.InetAddress.getLocalHost();
++			if (localHost.isLoopbackAddress()) {
++				throw new RuntimeException("java.net.InetAddress.getLocalHost() returned a loopback address, we can bind to the registry but the server will not be accessible. If you are running on linux check sun bug id (http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4665037) for solutions to this problem");
++			}
++			final String hostName = localHost.getHostName();
++			backingEngine = new StandardJMeterEngine(hostName);
++			log.info("this: " + this);
+ 			reg.rebind("JMeterEngine", this); // $NON-NLS-1$
+-			log.info("Bound to registry on port " + port);
++			log.info("Bound to registry on port " + port + " with hostname " + hostName);
+ 		} catch (Exception ex) {
+-			log.error("rmiregistry needs to be running to start JMeter in server " + "mode\n\t" + ex.toString());
++			log.error("rmiregistry needs to be running to start JMeter in server " + "mode\n\t", ex);
+ 			// Throw an Exception to ensure caller knows ...
+-			throw new RemoteException("Cannot start. See server log file.");
++			throw new RemoteException("Cannot start. See server log file.",ex);
+ 		}
+ 	}
+ 

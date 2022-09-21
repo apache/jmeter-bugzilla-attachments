@@ -1,0 +1,169 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 527881)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -233,17 +233,30 @@
+ 		return ""; // $NON-NLS-1$
+ 	}
+ 
+-	private MultipartUrlConfig isMultipart(String contentType) {
+-		if (contentType != null && contentType.startsWith(MultipartUrlConfig.MULTIPART_FORM)) {
+-			return new MultipartUrlConfig(contentType.substring(contentType.indexOf("oundary=") + 8));
+-		} else {
+-			return null;
+-		}
+-	}
++    private boolean isMultipart(String contentType) {
++        if (contentType != null && contentType.startsWith(MultipartUrlConfig.MULTIPART_FORM)) {
++            return true;
++        } else {
++            return false;
++        }
++    }
+ 
++    private MultipartUrlConfig getMultipartConfig(String contentType) {
++        if(isMultipart(contentType)) {
++            // Get the boundary string for the multiparts from the
++            // content type
++            //int startOfBoundaryValuePos = contentType.toLowerCase().substring(beginIndex)
++            String boundaryString = contentType.substring(contentType.toLowerCase().indexOf("boundary=") + "boundary=".length());
++            System.out.println("boundaryString " + boundaryString);
++            return new MultipartUrlConfig(boundaryString);
++        }
++        else {
++            System.out.println("Not multipart");
++            return null;
++        }
++    }
++
+ 	private void populateSampler() {
+-		MultipartUrlConfig urlConfig = null;
+-		
+ 		sampler.setDomain(serverName());
+         if (log.isDebugEnabled())
+     		log.debug("Proxy: setting server: " + sampler.getDomain());
+@@ -275,19 +288,23 @@
+     			log.debug("Proxy setting default protocol to: http");
+ 			sampler.setProtocol(HTTP);
+ 		}
+-		if ((urlConfig = isMultipart(getContentType())) != null) {
+-			urlConfig.parseArguments(postData);
+-			// If no file is uploaded, then it was really a multipart/form-data
+-			// post request. But currently, that is not supported, so we must
+-			// change the "Content-Type" header from multipart/form-data to
+-			// application/x-www-form-urlencoded, which is the one the HTTP Request
+-			// sampler will send
+-			if(urlConfig.getFilename() == null) {
+-				System.out.println("jada");
+-				getHeaderManager().removeHeaderNamed("Content-Type");
+-				getHeaderManager().add(new Header("Content-Type", "application/x-www-form-urlencoded"));
+-			}
+-			sampler.setArguments(urlConfig.getArguments());
++
++        // Check if it was a multipart http post request
++        MultipartUrlConfig urlConfig = getMultipartConfig(getContentType());
++        if (urlConfig != null) {
++            urlConfig.parseArguments(postData);
++            // Tell the sampler to do a multipart post
++            sampler.setDoMultipartPost(true);
++            // Remove the header for content-type and content-length, since
++            // those values will most likely be incorrect when the sampler
++            // performs the multipart request, because the boundary string
++            // will change
++            getHeaderManager().removeHeaderNamed(CONTENT_TYPE);
++            getHeaderManager().removeHeaderNamed(CONTENT_LENGTH);
++            
++            // Set the form data
++            sampler.setArguments(urlConfig.getArguments());
++            // Set the file uploads
+ 			sampler.setFileField(urlConfig.getFileFieldName());
+ 			sampler.setFilename(urlConfig.getFilename());
+ 			sampler.setMimetype(urlConfig.getMimeType());
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(revision 527881)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(working copy)
+@@ -64,6 +64,8 @@
+ 
+ 	private static String USE_KEEPALIVE = "use_keepalive"; // $NON-NLS-1$
+ 
++    private static String USE_MULTIPART_FOR_POST = "use_multipart_for_post"; // $NON-NLS-1$
++
+ 	private JTextField domain;
+ 
+ 	private JTextField port;
+@@ -80,6 +82,8 @@
+ 
+ 	private JCheckBox useKeepAlive;
+ 
++    private JCheckBox useMultipartForPost;
++
+     private JLabeledChoice method;
+     
+ 	public UrlConfigGui() {
+@@ -102,6 +106,7 @@
+ 		protocol.setText(""); // $NON-NLS-1$
+ 		contentEncoding.setText(""); // $NON-NLS-1$
+ 		useKeepAlive.setSelected(true);
++        useMultipartForPost.setSelected(false);
+ 		argsPanel.clear();
+ 	}
+ 
+@@ -122,6 +127,7 @@
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.FOLLOW_REDIRECTS, followRedirects.isSelected()));
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.AUTO_REDIRECTS, autoRedirects.isSelected()));
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.USE_KEEPALIVE, useKeepAlive.isSelected()));
++        element.setProperty(new BooleanProperty(HTTPSamplerBase.DO_MULTIPART_POST, useMultipartForPost.isSelected()));
+ 		return element;
+ 	}
+ 
+@@ -152,6 +158,7 @@
+ 
+ 		autoRedirects.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.AUTO_REDIRECTS));
+ 		useKeepAlive.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.USE_KEEPALIVE));
++        useMultipartForPost.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.DO_MULTIPART_POST));
+ 	}
+ 
+ 	protected void init() {
+@@ -209,8 +216,8 @@
+ 	}
+ 
+ 	/**
+-	 * This method defines the Panel for the HTTP path, 'Follow Redirects' and
+-	 * 'Use KeepAlive' elements.
++	 * This method defines the Panel for the HTTP path, 'Follow Redirects'
++	 * 'Use KeepAlive', and 'Use multipart for HTTP POST' elements.
+ 	 * 
+ 	 * @return JPanel The Panel for the path, 'Follow Redirects' and 'Use
+ 	 *         KeepAlive' elements.
+@@ -235,6 +242,10 @@
+ 		useKeepAlive.setName(USE_KEEPALIVE);
+ 		useKeepAlive.setSelected(true);
+ 
++        useMultipartForPost = new JCheckBox(JMeterUtils.getResString("use_multipart_for_http_post")); // $NON-NLS-1$
++        useMultipartForPost.setName(USE_MULTIPART_FOR_POST);
++        useMultipartForPost.setSelected(false);
++
+ 		JPanel pathPanel = new JPanel(new BorderLayout(5, 0));
+ 		pathPanel.add(label, BorderLayout.WEST);
+ 		pathPanel.add(path, BorderLayout.CENTER);
+@@ -244,6 +255,7 @@
+ 		optionPanel.add(autoRedirects);
+ 		optionPanel.add(followRedirects);
+ 		optionPanel.add(useKeepAlive);
++ 		optionPanel.add(useMultipartForPost);
+ 		optionPanel.setMinimumSize(optionPanel.getPreferredSize());
+ 
+ 		JPanel panel = new JPanel();
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/resources/messages.properties	(revision 527881)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -750,6 +750,7 @@
+ url_full_config_title=UrlFull Sample
+ url_multipart_config_title=HTTP Multipart Request Defaults
+ use_keepalive=Use KeepAlive
++use_multipart_for_http_post=Use multipart/form-data for HTTP POST
+ use_recording_controller=Use Recording Controller
+ user=User
+ user_defined_test=User Defined Test

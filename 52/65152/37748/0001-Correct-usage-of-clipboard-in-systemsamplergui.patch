@@ -1,0 +1,234 @@
+From f606c1c5f647ebe231935dffd81dc1591d9fe360 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 21 Feb 2021 18:56:33 +0100
+Subject: [PATCH] Correct usage of clipboard in systemsamplergui
+
+---
+ .../jmeter/config/gui/ArgumentsPanel.java     | 42 +++++++++++++++++--
+ .../jmeter/config/gui/RowDetailDialog.java    | 41 ++++++++++++------
+ .../protocol/system/gui/SystemSamplerGui.java | 16 ++++---
+ 3 files changed, 74 insertions(+), 25 deletions(-)
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/config/gui/ArgumentsPanel.java b/src/core/src/main/java/org/apache/jmeter/config/gui/ArgumentsPanel.java
+index f71a81254e..8e95fef540 100644
+--- a/src/core/src/main/java/org/apache/jmeter/config/gui/ArgumentsPanel.java
++++ b/src/core/src/main/java/org/apache/jmeter/config/gui/ArgumentsPanel.java
+@@ -29,6 +29,7 @@ import java.awt.event.ActionListener;
+ import java.io.IOException;
+ import java.util.Collection;
+ import java.util.Iterator;
++import java.util.function.Function;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+@@ -62,7 +63,7 @@ import org.apache.jorphan.reflect.Functor;
+ @TestElementMetadata(labelResource = "user_defined_variables")
+ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener {
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 241L;
+ 
+     /** The title label for this component. */
+     private JLabel tableLabel;
+@@ -107,6 +108,8 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+     /** Disable buttons :Detail, Add, Add from Clipboard, Delete, Up and Down*/
+     private final boolean disableButtons;
+ 
++    private final Function<String[], Argument> argCreator;
++
+     /** Command for adding a row to the table. */
+     private static final String ADD = "add"; // $NON-NLS-1$
+ 
+@@ -175,7 +178,7 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+      * @param label the title for the component.
+      */
+     public ArgumentsPanel(boolean disableButtons, String label) {
+-        this(label, null, false, false, null, disableButtons);
++        this(label, null, false, false, null, disableButtons, null);
+     }
+ 
+     /**
+@@ -195,7 +198,7 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+      * @param standalone is standalone
+      */
+     public ArgumentsPanel(String label, Color bkg, boolean enableUpDown, boolean standalone) {
+-        this(label, bkg, enableUpDown, standalone, null, false);
++        this(label, bkg, enableUpDown, standalone, null, false, null);
+     }
+ 
+     /**
+@@ -207,7 +210,20 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+      * @param model the table model to use
+      */
+     public ArgumentsPanel(String label, Color bkg, boolean enableUpDown, boolean standalone, ObjectTableModel model) {
+-        this(label, bkg, enableUpDown, standalone, model, false);
++        this(label, bkg, enableUpDown, standalone, model, null);
++    }
++
++    /**
++     * Create a new ArgumentsPanel with a border and color background
++     * @param label text for label
++     * @param bkg background colour
++     * @param enableUpDown Add up/down buttons
++     * @param standalone is standalone
++     * @param model the table model to use
++     * @param argCreator function to create {@link Argument}s from Strings taken from clipboard
++     */
++    public ArgumentsPanel(String label, Color bkg, boolean enableUpDown, boolean standalone, ObjectTableModel model, Function<String[], Argument> argCreator) {
++        this(label, bkg, enableUpDown, standalone, model, false, argCreator);
+     }
+ 
+     /**
+@@ -220,12 +236,27 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+      * @param disableButtons Remove all buttons
+      */
+     public ArgumentsPanel(String label, Color bkg, boolean enableUpDown, boolean standalone, ObjectTableModel model, boolean disableButtons) {
++        this(label, bkg, enableUpDown, standalone, model, disableButtons, null);
++    }
++
++    /**
++     * Create a new ArgumentsPanel with a border and color background
++     * @param label text for label
++     * @param bkg background colour
++     * @param enableUpDown Add up/down buttons
++     * @param standalone is standalone
++     * @param model the table model to use
++     * @param disableButtons Remove all buttons
++     * @param argCreator function to create {@link Argument}s from Strings taken from clipboard
++     */
++    public ArgumentsPanel(String label, Color bkg, boolean enableUpDown, boolean standalone, ObjectTableModel model, boolean disableButtons, Function<String[], Argument> argCreator) {
+         tableLabel = new JLabel(label);
+         this.enableUpDown = enableUpDown;
+         this.disableButtons = disableButtons;
+         this.background = bkg;
+         this.standalone = standalone;
+         this.tableModel = model;
++        this.argCreator = argCreator;
+         init();
+     }
+ 
+@@ -584,6 +615,9 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+     }
+ 
+     protected Argument createArgumentFromClipboard(String[] clipboardCols) {
++        if (argCreator != null) {
++            return argCreator.apply(clipboardCols);
++        }
+         Argument argument = makeNewArgument();
+         argument.setName(clipboardCols[0]);
+         if (clipboardCols.length > 1) {
+diff --git a/src/core/src/main/java/org/apache/jmeter/config/gui/RowDetailDialog.java b/src/core/src/main/java/org/apache/jmeter/config/gui/RowDetailDialog.java
+index ec90c817b6..627f3cbd1c 100644
+--- a/src/core/src/main/java/org/apache/jmeter/config/gui/RowDetailDialog.java
++++ b/src/core/src/main/java/org/apache/jmeter/config/gui/RowDetailDialog.java
+@@ -132,12 +132,14 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+     private void init() { // WARNING: called from ctor so must not be overridden (i.e. must be private or final)
+         this.getContentPane().setLayout(new BorderLayout(10,10));
+ 
+-        nameLabel = new JLabel(JMeterUtils.getResString("name")); //$NON-NLS-1$
+-        nameTF = new JTextField(JMeterUtils.getResString("name"), 20); //$NON-NLS-1$
+-        nameTF.getDocument().addDocumentListener(this);
+         JPanel namePane = new JPanel(new BorderLayout());
+-        namePane.add(nameLabel, BorderLayout.WEST);
+-        namePane.add(nameTF, BorderLayout.CENTER);
++        if (tableModel.getColumnCount() > 1) {
++            nameLabel = new JLabel(JMeterUtils.getResString("name")); //$NON-NLS-1$
++            nameTF = new JTextField(JMeterUtils.getResString("name"), 20); //$NON-NLS-1$
++            nameTF.getDocument().addDocumentListener(this);
++            namePane.add(nameLabel, BorderLayout.WEST);
++            namePane.add(nameTF, BorderLayout.CENTER);
++        }
+ 
+         valueLabel = new JLabel(JMeterUtils.getResString("value")); //$NON-NLS-1$
+         valueTA = JSyntaxTextArea.getInstance(30, 80);
+@@ -149,7 +151,9 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+         valuePane.add(jTextScrollPane, BorderLayout.CENTER);
+ 
+         JPanel detailPanel = new JPanel(new BorderLayout());
+-        detailPanel.add(namePane, BorderLayout.NORTH);
++        if (tableModel.getColumnCount() > 1) {
++            detailPanel.add(namePane, BorderLayout.NORTH);
++        }
+         detailPanel.add(valuePane, BorderLayout.CENTER);
+ 
+         JPanel mainPanel = new JPanel();
+@@ -180,7 +184,11 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+         buttonsPanel.add(closeButton);
+         mainPanel.add(buttonsPanel, BorderLayout.SOUTH);
+         this.getContentPane().add(mainPanel);
+-        nameTF.requestFocusInWindow();
++        if (tableModel.getColumnCount() > 1) {
++            nameTF.requestFocusInWindow();
++        } else {
++            valueTA.requestFocusInWindow();
++        }
+ 
+         this.pack();
+         ComponentUtil.centerComponentInWindow(this);
+@@ -218,9 +226,14 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+      * @param selectedRow Selected row
+      */
+     private void setValues(int selectedRow) {
+-        nameTF.setText((String)tableModel.getValueAt(selectedRow, 0));
+-        valueTA.setInitialText((String)tableModel.getValueAt(selectedRow, 1));
+-        valueTA.setCaretPosition(0);
++        if (tableModel.getColumnCount() > 1) {
++            nameTF.setText((String)tableModel.getValueAt(selectedRow, 0));
++            valueTA.setInitialText((String)tableModel.getValueAt(selectedRow, 1));
++            valueTA.setCaretPosition(0);
++        } else {
++            valueTA.setInitialText((String)tableModel.getValueAt(selectedRow, 0));
++            valueTA.setCaretPosition(0);
++        }
+         textChanged = false;
+     }
+ 
+@@ -229,8 +242,12 @@ public class RowDetailDialog extends JDialog implements ActionListener, Document
+      * @param actionEvent the event that led to this call
+      */
+     protected void doUpdate(ActionEvent actionEvent) {
+-        tableModel.setValueAt(nameTF.getText(), selectedRow, 0);
+-        tableModel.setValueAt(valueTA.getText(), selectedRow, 1);
++        if (tableModel.getColumnCount() > 1) {
++            tableModel.setValueAt(nameTF.getText(), selectedRow, 0);
++            tableModel.setValueAt(valueTA.getText(), selectedRow, 1);
++        } else {
++            tableModel.setValueAt(valueTA.getText(), selectedRow, 0);
++        }
+         // Change Cancel label to Close
+         closeButton.setText(JMeterUtils.getResString("close")); //$NON-NLS-1$
+         textChanged = false;
+diff --git a/src/protocol/native/src/main/java/org/apache/jmeter/protocol/system/gui/SystemSamplerGui.java b/src/protocol/native/src/main/java/org/apache/jmeter/protocol/system/gui/SystemSamplerGui.java
+index 6c884a531b..7b43e03364 100644
+--- a/src/protocol/native/src/main/java/org/apache/jmeter/protocol/system/gui/SystemSamplerGui.java
++++ b/src/protocol/native/src/main/java/org/apache/jmeter/protocol/system/gui/SystemSamplerGui.java
+@@ -213,19 +213,17 @@ public class SystemSamplerGui extends AbstractSamplerGui implements ItemListener
+         return panel;
+     }
+ 
+-
+     /**
+      * @return JPanel Arguments Panel
+      */
+     private JPanel makeArgumentsPanel() {
+-        argsPanel = new ArgumentsPanel(JMeterUtils.getResString("arguments_panel_title"), null, true, false ,  // $NON-NLS-1$
+-                new ObjectTableModel(new String[] { ArgumentsPanel.COLUMN_RESOURCE_NAMES_1 },
+-                        Argument.class,
+-                        new Functor[] {
+-                        new Functor("getValue") },  // $NON-NLS-1$
+-                        new Functor[] {
+-                        new Functor("setValue") }, // $NON-NLS-1$
+-                        new Class[] {String.class }));
++        final ObjectTableModel objectTableModel = new ObjectTableModel(
++                new String[] { ArgumentsPanel.COLUMN_RESOURCE_NAMES_1 }, Argument.class,
++                new Functor[] { new Functor("getValue") }, // $NON-NLS-1$
++                new Functor[] { new Functor("setValue") }, // $NON-NLS-1$
++                new Class[] { String.class });
++        argsPanel = new ArgumentsPanel(JMeterUtils.getResString("arguments_panel_title"), null, true, false, // $NON-NLS-1$
++                objectTableModel, cols -> new Argument("", cols[0]));
+         return argsPanel;
+     }
+ 
+-- 
+2.25.1
+

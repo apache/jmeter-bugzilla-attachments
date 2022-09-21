@@ -1,0 +1,56 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(revision 1666357)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	(working copy)
+@@ -25,6 +25,7 @@
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ 
++import javax.swing.BorderFactory;
+ import javax.swing.JCheckBox;
+ import javax.swing.JPanel;
+ 
+@@ -33,8 +34,10 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.gui.util.FilePanel;
+-import org.apache.jorphan.gui.JLabeledTextArea;
++import org.apache.jmeter.gui.util.JSyntaxTextArea;
++import org.apache.jmeter.gui.util.JTextScrollPane;
+ import org.apache.jorphan.gui.JLabeledTextField;
++import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+ 
+ public class SoapSamplerGui extends AbstractSamplerGui {
+     private static final long serialVersionUID = 240L;
+@@ -43,7 +46,7 @@
+     private JLabeledTextField soapAction;
+     private JCheckBox sendSoapAction;
+     private JCheckBox useKeepAlive;
+-    private JLabeledTextArea soapXml;
++    private JSyntaxTextArea soapXml;
+ 
+     private FilePanel soapXmlFile = new FilePanel();
+ 
+@@ -107,7 +110,8 @@
+         add(makeTitlePanel(), BorderLayout.NORTH);
+ 
+         urlField = new JLabeledTextField(JMeterUtils.getResString("url"), 10); //$NON-NLS-1$
+-        soapXml = new JLabeledTextArea(JMeterUtils.getResString("soap_data_title")); //$NON-NLS-1$
++        soapXml = new JSyntaxTextArea(20, 20);
++        soapXml.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_XML);
+         soapAction = new JLabeledTextField("", 10); //$NON-NLS-1$
+         sendSoapAction = new JCheckBox(JMeterUtils.getResString("soap_send_action"), true); //$NON-NLS-1$
+         useKeepAlive = new JCheckBox(JMeterUtils.getResString("use_keepalive")); // $NON-NLS-1$
+@@ -138,8 +142,11 @@
+         c.gridx = 0;
+         soapActionPanel.add(useKeepAlive, c);
+ 
++        JTextScrollPane soapXmlPanel=new JTextScrollPane(soapXml);
++        soapXmlPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++              JMeterUtils.getResString("soap_data_title"))); //$NON-NLS-1$
+         mainPanel.add(soapActionPanel, BorderLayout.NORTH);
+-        mainPanel.add(soapXml, BorderLayout.CENTER);
++        mainPanel.add(soapXmlPanel, BorderLayout.CENTER);
+         mainPanel.add(soapXmlFile, BorderLayout.SOUTH);
+ 
+         sendSoapAction.addActionListener(new ActionListener() {

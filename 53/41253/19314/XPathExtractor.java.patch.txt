@@ -1,0 +1,43 @@
+37a38
+> import org.apache.xpath.objects.XObject;
+186,187c187,190
+< 		NodeList matches = XPathAPI.selectNodeList(d,query);
+< 		int length = matches.getLength();
+---
+>       XObject xObject = XPathAPI.eval(d, query);
+>       if (xObject.getType() == XObject.CLASS_NODESET) {
+>         NodeList matches = xObject.nodelist();
+>         int length = matches.getLength();
+191,197c194,200
+< 			if ( match instanceof Element){
+< 			   // elements have empty nodeValue, but we are usually
+< 			   // interested in their content
+< 			   val = match.getFirstChild().getNodeValue();
+< 			} else {				
+< 			   val = match.getNodeValue();
+< 			}
+---
+>         if ( match instanceof Element){
+>            // elements have empty nodeValue, but we are usually
+>            // interested in their content
+>            val = match.getFirstChild().getNodeValue();
+>         } else {
+>            val = match.getNodeValue();
+>         }
+200c203
+<                     vars.put(refName,val);                    
+---
+>                     vars.put(refName,val);
+204c207
+< 		}
+---
+>         }
+205a209,216
+>       }
+>       else {
+>         val = xObject.toString();
+>         vars.put(concat(refName, MATCH_NR), "1");
+>         vars.put(refName, val);
+>         vars.put(concat(refName, "1"), val);
+>         vars.remove(concat(refName, "2"));
+>       }

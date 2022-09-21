@@ -1,0 +1,82 @@
+From 2621c270de5ea7f49c1fe89cf0c263569993f191 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 20 Feb 2021 11:03:02 +0100
+Subject: [PATCH] Encode the personal part of email addresses in SMTP Sampler
+
+Often those personal parts contain umlauts. Try to find these
+and let MimeUtility encode those as quoted encodings.
+
+Bugzilla Id: 65149
+---
+ .../protocol/smtp/sampler/SmtpSampler.java    | 23 +++++++++++++++++--
+ 1 file changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/src/protocol/mail/src/main/java/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java b/src/protocol/mail/src/main/java/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java
+index 70697b5ac3..833dc05b1f 100644
+--- a/src/protocol/mail/src/main/java/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java
++++ b/src/protocol/mail/src/main/java/org/apache/jmeter/protocol/smtp/sampler/SmtpSampler.java
+@@ -20,6 +20,7 @@ package org.apache.jmeter.protocol.smtp.sampler;
+ import java.io.File;
+ import java.io.IOException;
+ import java.io.InputStream;
++import java.io.UnsupportedEncodingException;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Enumeration;
+@@ -38,10 +39,12 @@ import javax.mail.Part;
+ import javax.mail.internet.AddressException;
+ import javax.mail.internet.ContentType;
+ import javax.mail.internet.InternetAddress;
++import javax.mail.internet.MimeUtility;
+ 
+ import org.apache.commons.io.IOUtils;
+ import org.apache.commons.io.output.CountingOutputStream;
+ import org.apache.commons.io.output.NullOutputStream;
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.protocol.smtp.sampler.gui.SecuritySettingsPanel;
+ import org.apache.jmeter.protocol.smtp.sampler.protocol.SendMailCommand;
+@@ -272,7 +275,7 @@ public class SmtpSampler extends AbstractSampler {
+         sendMailCmd.setEnableDebug(getPropertyAsBoolean(ENABLE_DEBUG));
+ 
+         if (getPropertyAsString(MAIL_FROM).matches(".*@.*")) {
+-            sendMailCmd.setSender(getPropertyAsString(MAIL_FROM));
++            sendMailCmd.setSender(encodeAddress(getPropertyAsString(MAIL_FROM)));
+         }
+ 
+         // Process address lists
+@@ -368,7 +371,7 @@ public class SmtpSampler extends AbstractSampler {
+         if (!propValue.isEmpty()) { // we have at least one potential address
+             List<InternetAddress> addresses = new ArrayList<>();
+             for (String address : propValue.split(";")) {
+-                addresses.add(new InternetAddress(address.trim()));
++                addresses.add(new InternetAddress(encodeAddress(address)));
+             }
+             return addresses;
+         } else {
+@@ -376,6 +379,22 @@ public class SmtpSampler extends AbstractSampler {
+         }
+     }
+ 
++    private String encodeAddress(String address) throws AddressException {
++        String encodedAddress = address.trim();
++        if (!StringUtils.isAsciiPrintable(encodedAddress)) {
++            try {
++                final int startOfRealAddress = encodedAddress.indexOf('<');
++                if (startOfRealAddress >= 0) {
++                    String personalPart = encodedAddress.substring(0, startOfRealAddress);
++                    encodedAddress = MimeUtility.encodeWord(personalPart) + encodedAddress.substring(startOfRealAddress);
++                }
++            } catch (UnsupportedEncodingException e) {
++                log.warn("Can't encode [{}] as quoted printable", encodedAddress, e);
++            }
++        }
++        return encodedAddress;
++    }
++
+     /**
+      * @see org.apache.jmeter.samplers.AbstractSampler#applies(org.apache.jmeter.config.ConfigTestElement)
+      */
+-- 
+2.25.1
+

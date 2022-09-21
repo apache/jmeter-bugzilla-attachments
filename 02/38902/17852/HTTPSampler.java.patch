@@ -1,0 +1,19 @@
+--- jakarta-jmeter-2.1.1/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2005-07-12 13:50:57.000000000 -0700
++++ ../src/jakarta-jmeter-2.1.1/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2006-03-08 13:54:28.000000000 -0800
+@@ -461,6 +461,16 @@
+ 
+ 			res.setResponseMessage(conn.getResponseMessage());
+ 
++      if(errorLevel == - 1) {
++        try {
++          int code = Integer.parseInt(res.getResponseMessage().substring(0, 3));
++          res.setResponseCode(Integer.toString(code));
++          res.setSuccessful(200 <= code && code <= 399);
++        } catch (Exception e) {
++          res.setSuccessful(false);
++        }
++      }
++
+ 			String ct = conn.getContentType();// getHeaderField("Content-type");
+ 			res.setContentType(ct);// e.g. text/html; charset=ISO-8859-1
+ 			if (ct != null) {

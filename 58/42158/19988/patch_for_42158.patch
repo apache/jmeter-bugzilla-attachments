@@ -1,0 +1,386 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	(revision 529493)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	(working copy)
+@@ -20,6 +20,7 @@
+ 
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
++import java.net.URLEncoder;
+ 
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.junit.JMeterTestCase;
+@@ -43,47 +44,49 @@
+         // Check arguments
+         Arguments arguments = s.getArguments();
+         assertEquals(13, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", false);
+-        // I see that the value gets trimmed, not sure if that is correct
+-        checkArgument((HTTPArgument)arguments.getArgument(12), "d", "", false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", "yes", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", "1", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", "2", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", "1", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", "2", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", "1", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(12), "d", "", "", "UTF-8", false);
+ 
+         // A HTTP POST request
+-        String postBody = "update=yes&d=1&d=2&d=&d=&d=&d=&d=&d=1&d=2&d=1&d=&d= ";
++        String postBody = "update=yes&d=1&d=2&d=&d=&d=&d=&d=&d=1&d=2&d=1&d=&d=";
+         String TEST_POST_REQ = "POST http://localhost/matrix.html HTTP/1.0\n"
+                 + "Content-type: "
+                 + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED
+-                + "; charset=UTF-8\n"
++                + "; charset=UTF-8\r\n"
++                + "Content-length: " + postBody.length() + "\r\n"
++                + "\r\n"
+                 + postBody;
+         s = getSamplerForRequest(TEST_POST_REQ, "UTF-8");
+         assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertFalse(s.getDoMultipartPost());
+ 
+         // Check arguments
+         arguments = s.getArguments();
+         assertEquals(13, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(12), "d", " ", false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", "yes", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", "1", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", "2", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", "1", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", "2", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", "1", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", "", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(12), "d", "", "", "UTF-8", false);
+ 
+         // A HTTP POST request, with content-type text/plain
+         TEST_POST_REQ = "POST http://localhost/matrix.html HTTP/1.0\n"
+@@ -91,12 +94,13 @@
+                 + postBody;
+         s = getSamplerForRequest(TEST_POST_REQ, "UTF-8");
+         assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertFalse(s.getDoMultipartPost());
+ 
+         // Check arguments
+         // We should have one argument, with the value equal to the post body
+         arguments = s.getArguments();
+         assertEquals(1, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "", postBody, false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "", postBody, postBody, "UTF-8", false);
+     }
+         
+     // TODO: will need changing if arguments can be saved in decoded form 
+@@ -114,9 +118,9 @@
+         // Check arguments
+         Arguments arguments = s.getArguments();
+         assertEquals(3, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a+b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a+b", "a+b", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", "a%20b", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", "What?", "UTF-8", false);
+ 
+         // A HTTP POST request
+         String postBody = "abc?SPACE=a+b&space=a%20b&query=What?";
+@@ -127,15 +131,164 @@
+             + postBody;
+         s = getSamplerForRequest(TEST_POST_REQ, "UTF-8");
+         assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertFalse(s.getDoMultipartPost());
+         
+         // Check arguments
+         arguments = s.getArguments();
+         assertEquals(3, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a+b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a+b", "a+b", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", "a%20b", "UTF-8", false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", "What?", "UTF-8", false);
+     }
++    
++    public void testPostMultipartFormData() throws Exception {
++        // A HTTP POST request, multipart/form-data, simple values,
++        String contentEncoding = "UTF-8";
++        String boundary = "xf8SqlDNvmn6mFYwrioJaeUR2_Z4cLRXOSmB";
++        String endOfLine = "\r\n";
++        String titleValue = "mytitle";
++        String descriptionValue = "mydescription";
++        String postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        String testPostRequest = createMultipartFormRequest(postBody, boundary, endOfLine);
+ 
++        HTTPSamplerBase s = getSamplerForRequest(testPostRequest, "UTF-8");
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        Arguments arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, titleValue, contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, descriptionValue, contentEncoding, true);
++        
++        // A HTTP POST request, multipart/form-data, simple values,
++        // with \r\n as end of line, which is according to spec,
++        // and with more headers in each multipart
++        endOfLine = "\r\n";
++        titleValue = "mytitle";
++        descriptionValue = "mydescription";
++        postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        testPostRequest = createMultipartFormRequest(postBody, boundary, endOfLine);
++
++        s = getSamplerForRequest(testPostRequest, "UTF-8");
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, titleValue, contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, descriptionValue, contentEncoding, true);
++
++        // A HTTP POST request, multipart/form-data, simple values,
++        // with \n as end of line, which should also be handled,
++        // and with more headers in each multipart
++        endOfLine = "\n";
++        titleValue = "mytitle";
++        descriptionValue = "mydescription";
++        postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        testPostRequest = createMultipartFormRequest(postBody, boundary, endOfLine);
++
++        s = getSamplerForRequest(testPostRequest, "UTF-8");
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, titleValue, contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, descriptionValue, contentEncoding, true);
++        
++        // A HTTP POST request, multipart/form-data, with value that will change
++        // if they are url encoded
++        // Values are similar to __VIEWSTATE parameter that .net uses
++        endOfLine = "\r\n";
++        titleValue = "/wEPDwULLTE2MzM2OTA0NTYPZBYCAgMPZ/rA+8DZ2dnZ2dnZ2d/GNDar6OshPwdJc=";
++        descriptionValue = "mydescription";
++        postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        testPostRequest = createMultipartFormRequest(postBody, boundary, endOfLine);
++
++        s = getSamplerForRequest(testPostRequest, "UTF-8");
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, URLEncoder.encode(titleValue, contentEncoding), contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, URLEncoder.encode(descriptionValue, contentEncoding), contentEncoding, true);
++    }
++
++    public void testPostMultipartFileUpload() throws Exception {
++        // A HTTP POST request, multipart/form-data, simple values,
++        String boundary = "xf8SqlDNvmn6mFYwrioJaeUR2_Z4cLRXOSmB";
++        String endOfLine = "\r\n";
++        String fileFieldValue = "test_file";
++        String fileName = "somefilename.txt";
++        String mimeType = "text/plain";
++        String fileContent = "somedummycontent\n\ndfgdfg\r\nfgdgdg\nContent-type:dfsfsfds";
++        String postBody = createMultipartFileUploadBody(fileFieldValue, fileName, mimeType, fileContent, boundary, endOfLine);
++        String testPostRequest = createMultipartFormRequest(postBody, boundary, endOfLine);
++        
++        HTTPSamplerBase s = getSamplerForRequest(testPostRequest, "UTF-8");
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertTrue(s.getDoMultipartPost());
++
++        // Check arguments
++        Arguments arguments = s.getArguments();
++        assertEquals(0, arguments.getArgumentCount());
++        assertEquals(fileFieldValue, s.getFileField());
++        assertEquals(fileName, s.getFilename());
++        assertEquals(mimeType, s.getMimetype());
++    }        
++    
++    private String createMultipartFormBody(String titleValue, String descriptionValue, String contentEncoding, boolean includeExtraHeaders, String boundary, String endOfLine) {
++        // Title multipart
++        String postBody = "--" + boundary + endOfLine
++            + "Content-Disposition: form-data; name=\"title\"" + endOfLine;
++        if(includeExtraHeaders) {
++            postBody += "Content-Type: text/plain; charset=" + contentEncoding + endOfLine
++            + "Content-Transfer-Encoding: 8bit" + endOfLine;
++        }
++        postBody += endOfLine
++            + titleValue + endOfLine
++            + "--" + boundary + endOfLine;
++        // Description multipart
++        postBody += "Content-Disposition: form-data; name=\"description\"" + endOfLine;
++        if(includeExtraHeaders) {
++            postBody += "Content-Type: text/plain; charset=" + contentEncoding + endOfLine
++                + "Content-Transfer-Encoding: 8bit" + endOfLine;
++        }
++        postBody += endOfLine
++            + descriptionValue + endOfLine
++            + "--" + boundary + "--" + endOfLine;
++
++        return postBody;
++    }
++
++    private String createMultipartFileUploadBody(String fileField, String fileName, String fileMimeType, String fileContent, String boundary, String endOfLine) {
++        // File upload multipart
++        String postBody = "--" + boundary + endOfLine
++            + "Content-Disposition: form-data; name=\"" + fileField + "\" filename=\"" + fileName + "\"" + endOfLine
++            + "Content-Type: " + fileMimeType + endOfLine
++            + "Content-Transfer-Encoding: binary" + endOfLine
++            + endOfLine
++            + fileContent + endOfLine
++            + "--" + boundary + "--" + endOfLine;
++        return postBody;
++    }
++    
++    private String createMultipartFormRequest(String postBody, String boundary, String endOfLine) {
++        String postRequest = "POST http://localhost:80/matrix.html HTTP/1.1" + endOfLine
++            + "Content-type: "
++            + HTTPSamplerBase.MULTIPART_FORM_DATA
++            + "; boundary=" + boundary + endOfLine
++            + "Content-length: " + postBody.length() + endOfLine
++            + endOfLine
++            + postBody;
++        return postRequest;
++    }
++
+     private HTTPSamplerBase getSamplerForRequest(String request, String contentEncoding)
+             throws IOException {
+         HttpRequestHdr req = new HttpRequestHdr();
+@@ -149,9 +302,12 @@
+             HTTPArgument arg,
+             String expectedName,
+             String expectedValue,
+-            boolean expectedEncoded) {
++            String expectedEncodedValue,
++            String contentEncoding,
++            boolean expectedEncoded) throws IOException {
+         assertEquals(expectedName, arg.getName());
+         assertEquals(expectedValue, arg.getValue());
++        assertEquals(expectedEncodedValue, arg.getEncodedValue(contentEncoding));
+         assertEquals(expectedEncoded, arg.isAlwaysEncoded());
+     }
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java	(revision 529493)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java	(working copy)
+@@ -22,7 +22,11 @@
+ 
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.oro.text.regex.Pattern;
++import org.apache.oro.text.regex.Perl5Compiler;
++import org.apache.oro.text.regex.Perl5Matcher;
+ 
+ /**
+  * @author Michael Stover
+@@ -109,24 +113,50 @@
+ 	public void parseArguments(String queryString) {
+ 		String[] parts = JOrphanUtils.split(queryString, "--" + getBoundary());
+ 		for (int i = 0; i < parts.length; i++) {
+-			if (parts[i].indexOf("filename=") > -1) {
+-				int index = parts[i].indexOf("name=\"") + 6;
+-				String name = parts[i].substring(index, parts[i].indexOf("\"", index));
+-				index = parts[i].indexOf("filename=\"") + 10;
+-				String fn = parts[i].substring(index, parts[i].indexOf("\"", index));
+-				index = parts[i].indexOf("\n", index);
+-				index = parts[i].indexOf(":", index) + 1;
+-				String mt = parts[i].substring(index, parts[i].indexOf("\n", index)).trim();
+-				this.setFileFieldName(name);
+-				this.setFilename(fn);
+-				this.setMimeType(mt);
+-			} else if (parts[i].indexOf("name=") > -1) {
+-				int index = parts[i].indexOf("name=\"") + 6;
+-				String name = parts[i].substring(index, parts[i].indexOf("\"", index));
+-				index = parts[i].indexOf("\n", index) + 2;
+-				String value = parts[i].substring(index).trim();
+-				this.addArgument(name, value);
+-			}
++            String contentDisposition = getHeaderValue("Content-disposition", parts[i]);
++            String contentType = getHeaderValue("Content-type", parts[i]);
++            // Check if it is form data
++            if (contentDisposition != null && contentDisposition.indexOf("form-data") > -1) {
++                // Get the form field name
++                int index = contentDisposition.indexOf("name=\"") + 6;
++                String name = contentDisposition.substring(index, contentDisposition.indexOf("\"", index));
++
++                // Check if it is a file being uploaded
++                if (contentDisposition.indexOf("filename=") > -1) {
++                    // Get the filename
++                    index = contentDisposition.indexOf("filename=\"") + 10;
++                    String fn = contentDisposition.substring(index, contentDisposition.indexOf("\"", index));
++                    // Set the values retrieves for the file upload
++                    this.setFileFieldName(name);
++                    this.setFilename(fn);
++                    this.setMimeType(contentType);
++                }
++                else {
++                    // Find the first empty line of the multipart, it signals end of headers for multipart
++                    int indexEmptyLfCrLfLinePos = parts[i].indexOf("\n\r\n");
++                    int indexEmptyLfLfLinePos = parts[i].indexOf("\n\n");
++                    String value = null;
++                    if(indexEmptyLfCrLfLinePos > -1) {
++                        value = parts[i].substring(indexEmptyLfCrLfLinePos).trim();
++                    }
++                    else if(indexEmptyLfLfLinePos > -1) {
++                        value = parts[i].substring(indexEmptyLfLfLinePos).trim();
++                    }
++                    this.addArgument(name, value);
++                }
++            }
+ 		}
+ 	}
++    
++    private String getHeaderValue(String headerName, String multiPart) {
++        String regularExpression = headerName + "\\s*:\\s*(.*)$";
++        Perl5Matcher localMatcher = JMeterUtils.getMatcher();
++        Pattern pattern = JMeterUtils.getPattern(regularExpression, Perl5Compiler.READ_ONLY_MASK | Perl5Compiler.CASE_INSENSITIVE_MASK | Perl5Compiler.MULTILINE_MASK);
++        if(localMatcher.contains(multiPart, pattern)) {
++            return localMatcher.getMatch().group(1).trim();
++        }
++        else {
++            return null;
++        }
++    }
+ }

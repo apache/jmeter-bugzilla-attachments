@@ -1,0 +1,274 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.118
+diff -u -r1.118 messages.properties
+--- src/core/org/apache/jmeter/resources/messages.properties	9 Jul 2004 23:15:27 -0000	1.118
++++ src/core/org/apache/jmeter/resources/messages.properties	6 Aug 2004 09:15:32 -0000
+@@ -503,6 +503,7 @@
+ url_config_http=HTTP
+ url_config_https=HTTPS
+ url_config_post=POST
++url_config_multipart_post=Multipart POST
+ url_config_protocol=Protocol\:
+ url_config_title=HTTP Request Defaults
+ url_full_config_title=UrlFull Sample
+Index: src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/util/JMeterVersion.java,v
+retrieving revision 1.25
+diff -u -r1.25 JMeterVersion.java
+--- src/core/org/apache/jmeter/util/JMeterVersion.java	27 Jul 2004 14:19:40 -0000	1.25
++++ src/core/org/apache/jmeter/util/JMeterVersion.java	6 Aug 2004 09:15:33 -0000
+@@ -39,7 +39,7 @@
+ 	 * pattern: VERSION = <quote>.*<quote>
+ 	 * 
+ 	 */
+-	static final String VERSION = "2.0.20040727";
++	static final String VERSION = "2.0.20040806";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2004 The Apache Software Foundation";
+ 	
+Index: src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java,v
+retrieving revision 1.19
+diff -u -r1.19 UrlConfigGui.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	3 Jul 2004 02:40:41 -0000	1.19
++++ src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	6 Aug 2004 09:15:33 -0000
+@@ -65,6 +65,7 @@
+     private JCheckBox useKeepAlive;
+     private JRadioButton post;
+     private JRadioButton get;
++    private JRadioButton multipart_post;
+ 
+     public UrlConfigGui()
+     {
+@@ -105,8 +106,27 @@
+         element.setProperty(HTTPSamplerBase.DOMAIN, domain.getText());
+         element.setProperty(HTTPSamplerBase.PORT, port.getText());
+         element.setProperty(HTTPSamplerBase.PROTOCOL, protocol.getText());
+-        element.setProperty(HTTPSamplerBase.METHOD,
+-                (post.isSelected() ? "POST" : "GET"));
++        
++        String method = null;
++        boolean isMultipart = false;
++        
++        if ( post.isSelected() )
++        {
++        	method = "POST";
++        }
++        else if ( get.isSelected() )
++        {
++        	method = "GET";
++        }
++        else if ( multipart_post.isSelected() )
++        {
++        	method = "POST";
++        	isMultipart = true;
++        }
++        
++        element.setProperty(HTTPSamplerBase.METHOD,method);
++        element.setProperty(new BooleanProperty ( HTTPSamplerBase.MULTIPART_FORM, isMultipart ) );
++        element.setProperty(new BooleanProperty ( HTTPSamplerBase.NORMAL_FORM, !isMultipart ) );
+         element.setProperty(HTTPSamplerBase.PATH, path.getText());
+         element.setProperty(new BooleanProperty(HTTPSamplerBase.FOLLOW_REDIRECTS,
+                 followRedirects.isSelected()));
+@@ -160,16 +180,31 @@
+             port.setText(portString);
+         }
+         protocol.setText(el.getPropertyAsString(HTTPSamplerBase.PROTOCOL));
+-        if ("POST".equals(el.getPropertyAsString(HTTPSamplerBase.METHOD)))
++        String method = el.getPropertyAsString(HTTPSamplerBase.METHOD);
++        boolean isMultipart = el.getPropertyAsBoolean(HTTPSamplerBase.MULTIPART_FORM );
++        
++        if ("POST".equals(method))
+         {
+-            post.setSelected(true);
+-            get.setSelected(false);
++        	if ( isMultipart )
++        	{
++                post.setSelected(false);
++                get.setSelected(false);
++                multipart_post.setSelected(true);
++        	}
++        	else
++        	{
++            	post.setSelected(true);
++                get.setSelected(false);
++                multipart_post.setSelected(false);
++        	}
+         }
+-        else
++        else if ("GET".equals(method))
+         {
+             get.setSelected(true);
+             post.setSelected(false);
++            multipart_post.setSelected(false);
+         }
++        	
+         path.setText(el.getPropertyAsString(HTTPSamplerBase.PATH));
+         followRedirects.setSelected(
+             ((AbstractTestElement) el).getPropertyAsBoolean(
+@@ -305,10 +340,12 @@
+         post = new JRadioButton(JMeterUtils.getResString("url_config_post"));
+         methodButtonGroup.add(post);
+         post.setSelected(true);
++        
++        multipart_post = new JRadioButton (JMeterUtils.getResString ("url_config_multipart_post"));
++        methodButtonGroup.add(multipart_post);
+ 
+         JLabel methodLabel = new JLabel(JMeterUtils.getResString("method"));
+ 
+-
+         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+ 
+         panel.add(protocolLabel);
+@@ -318,6 +355,7 @@
+         panel.add(methodLabel);
+         panel.add(get);
+         panel.add(post);
++        panel.add(multipart_post);
+         panel.setMinimumSize(panel.getPreferredSize());
+         return panel;
+     }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java,v
+retrieving revision 1.14
+diff -u -r1.14 HTTPSampler2.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	14 Jul 2004 21:24:04 -0000	1.14
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java	6 Aug 2004 09:15:34 -0000
+@@ -20,7 +20,6 @@
+ import java.io.IOException;
+ import java.net.MalformedURLException;
+ import java.net.URL;
+-
+ import java.util.Date;
+ 
+ import org.apache.commons.httpclient.ConnectMethod;
+@@ -33,20 +32,19 @@
+ import org.apache.commons.httpclient.HttpState;
+ import org.apache.commons.httpclient.methods.EntityEnclosingMethod;
+ import org.apache.commons.httpclient.methods.GetMethod;
++import org.apache.commons.httpclient.methods.MultipartPostMethod;
+ import org.apache.commons.httpclient.methods.PostMethod;
++import org.apache.commons.httpclient.methods.multipart.FilePart;
++import org.apache.commons.httpclient.methods.multipart.StringPart;
+ import org.apache.commons.httpclient.protocol.Protocol;
+ import org.apache.jmeter.config.Argument;
+-
+ import org.apache.jmeter.protocol.http.control.AuthManager;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+-
+ import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.util.JMeterUtils;
+-
+ import org.apache.jorphan.logging.LoggingManager;
+-
+ import org.apache.log.Logger;
+ 
+ /**
+@@ -86,18 +84,6 @@
+ 	{
+ 	}
+ 
+-    /**
+-     * Set request headers in preparation to opening a connection.
+-     *
+-     * @param conn       <code>URLConnection</code> to set headers on
+-     * @exception IOException  if an I/O exception occurs
+-     */
+-    private void setPostHeaders(PostMethod post) throws IOException
+-    {
+-    	// Probably nothing needed, because the PostMethod class takes care of it
+-//        /*postWriter.*/
+-//    	setHeaders(post, this);
+-    }
+ 
+     /**
+      * Send POST data from <code>Entry</code> to the open connection.
+@@ -108,8 +94,14 @@
+      */
+     private void sendPostData(HttpMethod connection) throws IOException
+     {
+-        /*postWriter.*/
+-    	sendPostData((PostMethod)connection, this);
++        if ( connection instanceof PostMethod )
++        {
++        	sendPostData((PostMethod)connection, this);	
++        }
++        else
++        {
++        	sendMultipartPostData((MultipartPostMethod)connection, this);
++        }
+     }
+ 
+     /**
+@@ -146,6 +138,28 @@
+             post.setRequestBody(new FileInputStream(input));
+         }
+     }
++    
++    /**
++     * Send POST data from Entry to the open connection.
++     */
++    public void sendMultipartPostData(MultipartPostMethod post, HTTPSampler2 sampler)
++        throws IOException
++    {
++        PropertyIterator args = sampler.getArguments().iterator();
++        while (args.hasNext())
++        {
++            Argument arg = (Argument) args.next().getObjectValue();
++            post.addPart( new StringPart( arg.getName(),arg.getValue(), "UTF-8" ) );
++        }
++
++        // If filename was specified then send the post using multipart syntax
++        String filename = sampler.getFilename();
++        if ((filename != null) && (filename.trim().length() > 0))
++        {
++        	File input = new File(filename);
++            post.addPart ( new FilePart ( sampler.getFileField(), input, sampler.getMimetype(), "UTF-8" ) );
++        }
++    }
+ 
+     private String encode(String value)
+     {
+@@ -199,6 +213,7 @@
+ 
+         String host = uri.getHost();
+         int port = uri.getPort();
++        boolean isMultipost = getPropertyAsBoolean ( HTTPSamplerBase.MULTIPART_FORM );
+         
+         HostConfiguration hc = new HostConfiguration();
+         hc.setHost(host,port,protocol);
+@@ -216,7 +231,14 @@
+ 
+         if (method.equals(POST))
+         {
+-            httpMethod = new PostMethod(urlStr);
++        	if ( isMultipost )
++        	{
++            	httpMethod = new MultipartPostMethod(urlStr);
++        	}
++        	else
++        	{
++            	httpMethod = new PostMethod(urlStr);
++        	}
+         }
+         else
+         {
+@@ -284,11 +306,6 @@
+         }
+ 
+         setConnectionAuthorization(httpMethod, u, getAuthManager());
+-
+-        if (method.equals(POST))
+-        {
+-            setPostHeaders((PostMethod) httpMethod);
+-        }
+         return httpConn;
+     }
+ 

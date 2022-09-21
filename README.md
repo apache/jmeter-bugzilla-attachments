@@ -1,0 +1,1 @@
+This repository stores attachments from Bugzilla

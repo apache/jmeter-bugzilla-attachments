@@ -1,0 +1,181 @@
+diff --git a/src/jorphan/org/apache/jorphan/math/StatCalculator.java b/src/jorphan/org/apache/jorphan/math/StatCalculator.java
+index 42e3954..4286ca1 100644
+--- a/src/jorphan/org/apache/jorphan/math/StatCalculator.java
++++ b/src/jorphan/org/apache/jorphan/math/StatCalculator.java
+@@ -23,6 +23,7 @@ import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.Iterator;
+ import java.util.List;
++import java.util.TreeSet;
+ 
+ /**
+  * This class serves as a way to calculate the median, max, min etc. of a list of values.
+@@ -31,7 +32,7 @@ import java.util.List;
+  */
+ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+     
+-    private final List<T> values = new ArrayList<T>();
++    private final HashMap <T, Long> valuesMap = new HashMap <T, Long> ();
+ 
+     private double sum = 0;
+ 
+@@ -53,8 +54,6 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+     
+     /**
+      * This constructor is used to set up particular values for the generic class instance.
+-     *
+-     * @param zero - value to return for Median and PercentPoint if there are no values
+      * @param min - value to return for minimum if there are no values
+      * @param max - value to return for maximum if there are no values
+      */
+@@ -66,7 +65,7 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+     }
+ 
+     public void clear() {
+-        values.clear();
++	valuesMap.clear();
+         sum = 0;
+         sumOfSquares = 0;
+         mean = 0;
+@@ -80,17 +79,14 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+     }
+ 
+     public void addAll(StatCalculator<T> calc) {
+-        Iterator<T> iter = calc.values.iterator();
++	Iterator<T> iter = calc .valuesMap .keySet() .iterator();
+         while (iter.hasNext()) {
+             addValue(iter.next());
+         }
+     }
+ 
+     public T getMedian() {
+-        if (count > 0) {
+-            return values.get((int) (values.size() * .5));
+-        }
+-        return ZERO;
++	return getPercentPoint (0.5);
+     }
+ 
+     public long getTotalBytes() {
+@@ -107,10 +103,7 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+      * @return number of values less than the percentage
+      */
+     public T getPercentPoint(float percent) {
+-        if (count > 0) {
+-            return values.get((int) (values.size() * percent));
+-        }
+-        return ZERO;
++	return getPercentPoint ((double) percent);
+     }
+ 
+     /**
+@@ -123,9 +116,25 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+      * @return number of values less than the percentage
+      */
+     public T getPercentPoint(double percent) {
+-        if (count > 0) {
+-            return values.get((int) (values.size() * percent));
+-        }
++        if (count <= 0) {
++	    return ZERO;
++	}
++	if (percent >= 1.) {
++	    return getMax ();
++	}
++
++        // use Math.round () instead of simple (long) to provide correct value rounding 
++	long target = Math.round (count * percent);
++	TreeSet <T> sortedKeys = new TreeSet <T> (valuesMap .keySet ());
++	Iterator <T> iter = sortedKeys .iterator ();
++
++	while (iter .hasNext ()) {
++	    T val = iter .next ();
++	    target -= valuesMap .get (val);
++	    if (target <= 0)
++		return val;
++	}
++        
+         return ZERO;
+     }
+ 
+@@ -138,26 +147,19 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+      * TODO - why is the key value also stored in the entry array?
+      */
+     public synchronized HashMap<Number, Number[]> getDistribution() {
+-        HashMap<Number, Number[]> items = new HashMap<Number, Number[]>();
+-        Iterator<T> itr = this.values.iterator();
+-        Number[] dis;
+-        while (itr.hasNext()) {
+-            Number nx = itr.next();
+-            if (!(nx instanceof Integer || nx instanceof Long)){
+-                nx=new Long(nx.longValue()); // convert to Long unless Integer or Long
+-            }
+-            if (items.containsKey(nx)) {
+-                dis = items.get(nx);
+-                dis[1] = new Integer(dis[1].intValue() + 1);
+-                items.put(nx, dis);
+-            } else {
+-                dis = new Number[2];
+-                dis[0] = nx;
+-                dis[1] = new Integer(1);
+-                items.put(nx, dis);
+-            }
+-        }
+-        return items;
++	HashMap<Number, Number[]> items = new HashMap <Number, Number[]> ();
++	Iterator<T> iter = valuesMap. keySet() .iterator ();
++	Number[] dis;
++
++	while (iter .hasNext ()) {
++	    T nx = iter .next ();
++	    dis = new Number [2];
++	    dis [0] = nx;
++	    dis [1] = valuesMap .get (nx);
++	    items .put (nx, dis);
++	}
++
++	return items;
+     }
+ 
+     public double getMean() {
+@@ -170,14 +172,16 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+ 
+     public T getMin() {
+         if (count > 0) {
+-            return values.get(0);
++	    TreeSet <T> sortedKeys = new TreeSet <T> (valuesMap .keySet ());
++	    return (T) sortedKeys .first ();
+         }
+         return MIN_VALUE;
+     }
+ 
+     public T getMax() {
+-        if (count > 0) {
+-            return values.get(count - 1);
++	if (count > 0) {
++	    TreeSet <T> sortedKeys = new TreeSet <T> (valuesMap .keySet ());
++	    return (T) sortedKeys .last ();
+         }
+         return MAX_VALUE;
+     }
+@@ -197,13 +201,12 @@ public abstract class StatCalculator<T extends Number & Comparable<T>> {
+     }
+ 
+     private void addSortedValue(T val) {
+-        int index = Collections.binarySearch(values, val);
+-        if (index >= 0 && index < values.size()) {
+-            values.add(index, val);
+-        } else if (index == values.size() || values.size() == 0) {
+-            values.add(val);
+-        } else {
+-            values.add((index * (-1)) - 1, val);
+-        }
++	if (valuesMap .containsKey (val)) {
++	    // increment counter of exsiting value
++	    valuesMap .put (val, valuesMap .get (val) + 1l);
++	} else {	    
++	    // insert new value
++	    valuesMap .put (val, 1l);
++	}
+     }
+ }

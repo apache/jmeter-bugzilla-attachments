@@ -1,0 +1,60 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1835010)
++++ bin/jmeter.properties	(working copy)
+@@ -507,7 +507,7 @@
+ #jmeter.save.saveservice.bytes=true
+ # Only available with HttpClient4
+ #jmeter.save.saveservice.sent_bytes=true
+-#jmeter.save.saveservice.url=false
++jmeter.save.saveservice.url=true
+ #jmeter.save.saveservice.filename=false
+ #jmeter.save.saveservice.hostname=false
+ #jmeter.save.saveservice.thread_counts=true
+Index: src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	(revision 1835968)
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	(working copy)
+@@ -267,6 +267,8 @@
+     private URL location;
+ 
+     private transient boolean ignore;
++    
++    private transient int subResultIndex;
+ 
+     /**
+      * Cache for responseData as string to avoid multiple computations
+@@ -657,6 +659,7 @@
+         if (subResults == null) {
+             subResults = new ArrayList<>();
+         }
++        subResult.setSampleLabel(getSampleLabel()+"-"+subResultIndex++);
+         subResults.add(subResult);
+         subResult.setParent(this);
+     }
+Index: src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(revision 1835968)
++++ src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(working copy)
+@@ -332,7 +332,7 @@
+         
+         SENT_BYTES = TRUE.equalsIgnoreCase(props.getProperty(SAVE_SENT_BYTES_PROP, TRUE));
+ 
+-        URL = TRUE.equalsIgnoreCase(props.getProperty(SAVE_URL_PROP, FALSE));
++        URL = TRUE.equalsIgnoreCase(props.getProperty(SAVE_URL_PROP, TRUE));
+ 
+         FILE_NAME = TRUE.equalsIgnoreCase(props.getProperty(SAVE_FILENAME_PROP, FALSE));
+ 
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1835010)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -803,7 +803,7 @@
+     protected HTTPSampleResult createSampleResult(URL url, String method) {
+         HTTPSampleResult res = new HTTPSampleResult();
+ 
+-        res.setSampleLabel(url.toString()); // May be replaced later
++        res.setSampleLabel(this.testElement.getName());
+         res.setHTTPMethod(method);
+         res.setURL(url);
+         

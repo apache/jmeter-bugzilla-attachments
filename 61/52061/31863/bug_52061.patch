@@ -1,0 +1,112 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(date 1406666749000)
++++ src/core/org/apache/jmeter/resources/messages.properties	(revision )
+@@ -776,11 +776,12 @@
+ regex_params_values_field=Parameter values regex group number
+ regex_params_ref_name_field=Regular Expression Reference Name
+ regex_params_title=RegEx User Parameters
+-regex_source=Response Field to check
++regex_source=Field to check
+ regex_src_body=Body
+ regex_src_body_as_document=Body as a Document
+ regex_src_body_unescaped=Body (unescaped)
+-regex_src_hdrs=Headers
++regex_src_hdrs=Resp. Headers
++regex_src_hdrs_req=Req. Headers
+ regex_src_url=URL
+ regexfunc_param_1=Regular expression used to search previous sample - or variable.
+ regexfunc_param_2=Template for the replacement string, using groups from the regular expression.  Format is $[group]$.  Example $1$.
+Index: src/components/org/apache/jmeter/extractor/RegexExtractor.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/components/org/apache/jmeter/extractor/RegexExtractor.java	(date 1406666749000)
++++ src/components/org/apache/jmeter/extractor/RegexExtractor.java	(revision )
+@@ -62,6 +62,7 @@
+      *  Do not change these values!
+     */
+     public static final String USE_HDRS = "true"; // $NON-NLS-1$
++    public static final String USE_REQUEST_HDRS = "request_headers"; // $NON-NLS-1$
+     public static final String USE_BODY = "false"; // $NON-NLS-1$
+     public static final String USE_BODY_UNESCAPED = "unescaped"; // $NON-NLS-1$
+     public static final String USE_BODY_AS_DOCUMENT = "as_document"; // $NON-NLS-1$
+@@ -172,6 +173,7 @@
+     private String getInputString(SampleResult result) {
+         String inputString = useUrl() ? result.getUrlAsString() // Bug 39707
+                 : useHeaders() ? result.getResponseHeaders()
++                : useRequestHeaders() ? result.getRequestHeaders()
+                 : useCode() ? result.getResponseCode() // Bug 43451
+                 : useMessage() ? result.getResponseMessage() // Bug 43451
+                 : useUnescapedBody() ? StringEscapeUtils.unescapeHtml4(result.getResponseDataAsString())
+@@ -433,6 +435,10 @@
+ 
+     public boolean useHeaders() {
+         return USE_HDRS.equalsIgnoreCase( getPropertyAsString(MATCH_AGAINST));
++    }
++
++    public boolean useRequestHeaders() {
++        return USE_REQUEST_HDRS.equalsIgnoreCase(getPropertyAsString(MATCH_AGAINST));
+     }
+ 
+     // Allow for property not yet being set (probably only applies to Test cases)
+Index: src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java	(date 1406666749000)
++++ src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java	(revision )
+@@ -61,6 +61,8 @@
+ 
+     private JRadioButton useHeaders;
+ 
++    private JRadioButton useRequestHeaders;
++
+     private JRadioButton useURL;
+ 
+     private JRadioButton useCode;
+@@ -86,6 +88,7 @@
+             RegexExtractor re = (RegexExtractor) el;
+             showScopeSettings(re, true);
+             useHeaders.setSelected(re.useHeaders());
++            useRequestHeaders.setSelected(re.useRequestHeaders());
+             useBody.setSelected(re.useBody());
+             useUnescapedBody.setSelected(re.useUnescapedBody());
+             useBodyAsDocument.setSelected(re.useBodyAsDocument());
+@@ -166,6 +169,7 @@
+         useUnescapedBody = new JRadioButton(JMeterUtils.getResString("regex_src_body_unescaped")); //$NON-NLS-1$
+         useBodyAsDocument = new JRadioButton(JMeterUtils.getResString("regex_src_body_as_document")); //$NON-NLS-1$
+         useHeaders = new JRadioButton(JMeterUtils.getResString("regex_src_hdrs")); //$NON-NLS-1$
++        useRequestHeaders = new JRadioButton(JMeterUtils.getResString("regex_src_hdrs_req")); //$NON-NLS-1$
+         useURL = new JRadioButton(JMeterUtils.getResString("regex_src_url")); //$NON-NLS-1$
+         useCode = new JRadioButton(JMeterUtils.getResString("assertion_code_resp")); //$NON-NLS-1$
+         useMessage = new JRadioButton(JMeterUtils.getResString("assertion_message_resp")); //$NON-NLS-1$
+@@ -175,6 +179,7 @@
+         group.add(useUnescapedBody);
+         group.add(useBodyAsDocument);
+         group.add(useHeaders);
++        group.add(useRequestHeaders);
+         group.add(useURL);
+         group.add(useCode);
+         group.add(useMessage);
+@@ -183,6 +188,7 @@
+         panel.add(useUnescapedBody);
+         panel.add(useBodyAsDocument);
+         panel.add(useHeaders);
++        panel.add(useRequestHeaders);
+         panel.add(useURL);
+         panel.add(useCode);
+         panel.add(useMessage);
+@@ -194,6 +200,7 @@
+         useUnescapedBody.setActionCommand(RegexExtractor.USE_BODY_UNESCAPED);
+         useBodyAsDocument.setActionCommand(RegexExtractor.USE_BODY_AS_DOCUMENT);
+         useHeaders.setActionCommand(RegexExtractor.USE_HDRS);
++        useRequestHeaders.setActionCommand(RegexExtractor.USE_REQUEST_HDRS);
+         useURL.setActionCommand(RegexExtractor.USE_URL);
+         useCode.setActionCommand(RegexExtractor.USE_CODE);
+         useMessage.setActionCommand(RegexExtractor.USE_MESSAGE);

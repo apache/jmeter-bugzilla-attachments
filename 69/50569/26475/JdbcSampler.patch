@@ -1,0 +1,111 @@
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(revision 1057632)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(working copy)
+@@ -28,10 +28,12 @@
+ import java.sql.ResultSetMetaData;
+ import java.sql.SQLException;
+ import java.sql.Statement;
++import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.HashMap;
+ import java.util.Iterator;
+ import java.util.LinkedHashMap;
++import java.util.List;
+ import java.util.Map;
+ 
+ import org.apache.commons.lang.text.StrBuilder;
+@@ -118,6 +120,7 @@
+     private String queryArguments = ""; // $NON-NLS-1$
+     private String queryArgumentsTypes = ""; // $NON-NLS-1$
+     private String variableNames = ""; // $NON-NLS-1$
++    private String resultVariable = ""; // $NON-NLS-1$
+ 
+     /**
+      *  Cache of PreparedStatements stored in a per-connection basis. Each entry of this
+@@ -425,17 +428,31 @@
+                 sb.append('\t');
+             }
+         }
++        
++        List<HashMap<String, Object> > results = null;
+ 
+         JMeterVariables jmvars = null;
+         String varnames[] = getVariableNames().split(COMMA);
+         if (varnames.length > 0){
+             jmvars = getThreadContext().getVariables();
++        	if(getResultVariable().length() > 0) {
++        		results = new ArrayList<HashMap<String,Object> >();
++        		jmvars.putObject(getResultVariable(), results);
++        	}
+         }
+         int j = 0;
+         while (rs.next()) {
++        	HashMap<String, Object> row = null;
+             j++;
+             for (int i = 1; i <= numColumns; i++) {
+                 Object o = rs.getObject(i);
++                if(results != null) {
++                	if(row == null) {
++                		row = new HashMap<String, Object>(numColumns);
++                		results.add(row);
++                	}
++                	row.put(meta.getColumnName(i), o);
++                }
+                 if (o instanceof byte[]) {
+                     o = new String((byte[]) o, ENCODING);
+                 }
+@@ -587,4 +604,19 @@
+     public void setVariableNames(String variableNames) {
+         this.variableNames = variableNames;
+     }
++
++    /**
++     * @return the resultVariable
++     */
++	public String getResultVariable() {
++		return resultVariable;
++	}
++
++    /**
++     * @param resultVariable the variable name in which results will be stored
++     */
++	public void setResultVariable(String resultVariable) {
++		this.resultVariable = resultVariable;
++	}
++    
+ }
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerBeanInfo.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerBeanInfo.java	(revision 1057632)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerBeanInfo.java	(working copy)
+@@ -45,6 +45,7 @@
+                 "queryArguments", // $NON-NLS-1$
+                 "queryArgumentsTypes", // $NON-NLS-1$
+                 "variableNames", // $NON-NLS-1$
++                "resultVariable", // $NON-NLS-1$
+                 });
+ 
+         PropertyDescriptor p = property("dataSource"); // $NON-NLS-1$
+@@ -63,6 +64,10 @@
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, "");
+ 
++        p = property("resultVariable"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "");
++
+         p = property("queryType"); // $NON-NLS-1$
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, JDBCSampler.SELECT);
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	(revision 1057632)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	(working copy)
+@@ -28,4 +28,6 @@
+ queryArgumentsTypes.shortDescription=JDBC Type names from java.sql.Types. VARCHAR, INTEGER, etc. (comma separated)
+ variableNames.displayName=Variable names
+ variableNames.shortDescription=Output variable names for each column  (comma separated)
++resultVariable.displayName=Result variable name
++resultVariable.shortDescription=Name of the JMeter variable that stores the result set objects in a list of maps for looking up results by column name.
+ 

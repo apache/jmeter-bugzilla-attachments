@@ -1,0 +1,99 @@
+diff -urN apache-jmeter-2.8/src/core/org/apache/jmeter/resources/messages.properties apache-jmeter-2.8.dev/src/core/org/apache/jmeter/resources/messages.properties
+--- apache-jmeter-2.8/src/core/org/apache/jmeter/resources/messages.properties	2012-10-02 22:29:05.000000000 +0200
++++ apache-jmeter-2.8.dev/src/core/org/apache/jmeter/resources/messages.properties	2012-11-08 04:56:23.802050201 +0200
+@@ -1162,7 +1162,7 @@
+ web_server_timeout_connect=Connect:
+ web_server_timeout_response=Response:
+ web_server_timeout_title=Timeouts (milliseconds)
+-web_testing2_source_ip=Source IP address:
++web_testing2_source_ip=Source IP address / device:
+ web_testing2_title=HTTP Request HTTPClient
+ web_testing_concurrent_download=Use concurrent pool. Size:
+ web_testing_embedded_url_pattern=Embedded URLs must match\:
+diff -urN apache-jmeter-2.8/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java apache-jmeter-2.8.dev/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+--- apache-jmeter-2.8/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	2012-10-02 22:29:01.000000000 +0200
++++ apache-jmeter-2.8.dev/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	2012-11-08 04:53:15.591076581 +0200
+@@ -30,9 +30,15 @@
+ import java.nio.charset.Charset;
+ import java.security.GeneralSecurityException;
+ import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Enumeration;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.net.Inet4Address;
++import java.net.Inet6Address;
++import java.net.NetworkInterface;
++import java.net.SocketException;
+ 
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.http.Header;
+@@ -568,6 +574,33 @@
+         return httpClient;
+     }
+ 
++    static private String getInterfaceAddress(String interfaceName) throws SocketException {
++        // By default use ipv4 addresses
++        Class<?> inetClass = Inet4Address.class;
++        if (interfaceName.toLowerCase().startsWith("ipv6:")) {
++            interfaceName = interfaceName.substring(5);
++            inetClass = Inet6Address.class;
++        } else {
++            if ( interfaceName.toLowerCase().startsWith("ipv4:")) {
++                interfaceName = interfaceName.substring(5);
++            }
++        }
++
++        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
++        for (NetworkInterface netInterface : Collections.list(nets)) {
++            if (netInterface.getName().equals(interfaceName)) {
++                Enumeration<InetAddress> inetAddresses = netInterface.getInetAddresses();
++                ArrayList<InetAddress> inetAddressesList = Collections.list(inetAddresses);
++                for (int i=0; i < inetAddressesList.size(); i++) {
++                    if (inetClass == inetAddressesList.get(i).getClass()) {
++                        return inetAddressesList.get(i).getHostAddress();
++                    }
++                }
++            }
++        }
++        return "";
++    }
++
+     private void setupRequest(URL url, HttpRequestBase httpRequest, HTTPSampleResult res)
+         throws IOException {
+ 
+@@ -576,8 +609,16 @@
+     // Set up the local address if one exists
+     final String ipSource = getIpSource();
+     if (ipSource.length() > 0) {// Use special field ip source address (for pseudo 'ip spoofing')
+-        InetAddress inetAddr = InetAddress.getByName(ipSource);
+-        requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, inetAddr);
++        // Try to treat ipSource as interface
++        String interfaceAddress = getInterfaceAddress(ipSource);
++        if (interfaceAddress.length() > 0) {
++            InetAddress inetAddr = InetAddress.getByName(interfaceAddress);
++            requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, inetAddr);
++        }
++        else {
++            InetAddress inetAddr = InetAddress.getByName(ipSource);
++            requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, inetAddr);
++        }
+     } else if (localAddress != null){
+         requestParams.setParameter(ConnRoutePNames.LOCAL_ADDRESS, localAddress);
+     } else { // reset in case was set previously
+diff -urN apache-jmeter-2.8/xdocs/usermanual/component_reference.xml apache-jmeter-2.8.dev/xdocs/usermanual/component_reference.xml
+--- apache-jmeter-2.8/xdocs/usermanual/component_reference.xml	2012-10-02 22:29:00.000000000 +0200
++++ apache-jmeter-2.8.dev/xdocs/usermanual/component_reference.xml	2012-11-08 04:52:12.111434584 +0200
+@@ -316,9 +316,10 @@
+         </property>
+         <property name="Use concurrent pool" required="No">Use a pool of concurrent connections to get embedded resources.</property>
+         <property name="Size" required="No">Pool size for concurrent connections used to get embedded resources.</property>
+-        <property name="Source IP address:" required="No">
++        <property name="Source IP address / device:" required="No">
+         [Only for HTTP Request HTTPClient] 
+         Override the default local IP address for this sample.
++        To specify a device use ipvX:device, for instance 'ipv4:eth0'. If IP family not specified, ipv4 used by default.
+         The JMeter host must have multiple IP addresses (i.e. IP aliases or network interfaces). 
+         If the property <b>httpclient.localaddress</b> is defined, that is used for all HttpClient requests.
+         </property>

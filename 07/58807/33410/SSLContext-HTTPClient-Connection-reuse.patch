@@ -1,0 +1,208 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(revision 1723146)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java	(working copy)
+@@ -112,8 +112,23 @@
+     // Needs to be accessible by HTTPSampler2
+     volatile HttpClient savedClient;
+ 
+-    private volatile boolean resetSSLContext;
++    private static final ThreadLocal<Boolean> closeConnections = 
++        new ThreadLocal<Boolean>(){
++        @Override
++        protected Boolean initialValue() {
++            return new Boolean(false);
++        }
++    };
+ 
++    private static final ThreadLocal<Boolean> resetHTTPClient = 
++        new ThreadLocal<Boolean>(){
++        @Override
++        protected Boolean initialValue() {
++            return new Boolean(false);
++        }
++    };
++
++
+     static {
+         log.info("HTTP request retry count = "+RETRY_COUNT);
+         if (CPS_HTTP > 0) {
+@@ -470,12 +485,22 @@
+         // N.B. HostConfiguration.equals() includes proxy settings in the compare.
+         HttpClient httpClient = map.get(hc);
+ 
+-        if (httpClient != null && resetSSLContext && isHTTPS) {
+-            httpClient.getHttpConnectionManager().closeIdleConnections(-1000);
+-            httpClient = null;
++        if (closeConnections.get()) {
++            for (HttpClient cl : map.values()) {
++                cl.getHttpConnectionManager().closeIdleConnections(-1000);
++            }
++            closeConnections.set(false);
++        }
++        if (resetHTTPClient.get()) {
++            if (httpClient != null) {
++                httpClient = null;
++            }
++            resetHTTPClient.set(false);
++        }
++        if (resetSSLContext.get() && isHTTPS) {
+             JsseSSLManager sslMgr = (JsseSSLManager) SSLManager.getInstance();
+             sslMgr.resetContext();
+-            resetSSLContext = false;
++            resetSSLContext.set(false);
+         }
+ 
+         if ( httpClient == null )
+@@ -1117,8 +1142,11 @@
+ 
+     @Override
+     protected void notifyFirstSampleAfterLoopRestart() {
++        // see https://bz.apache.org/bugzilla/show_bug.cgi?id=51380
+         log.debug("notifyFirstSampleAfterLoopRestart");
+-        resetSSLContext = !USE_CACHED_SSL_CONTEXT;
++        closeConnections.set(!REUSE_HTTP_CONNECTIONS);
++        resetHTTPClient.set(!REUSE_HTTP_CLIENT);
++        resetSSLContext.set(!USE_CACHED_SSL_CONTEXT);
+     }
+ 
+     /**
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1723146)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -253,8 +253,22 @@
+ 
+     private volatile HttpUriRequest currentRequest; // Accessed from multiple threads
+ 
+-    private volatile boolean resetSSLContext;
++    private static final ThreadLocal<Boolean> closeConnections =
++        new ThreadLocal<Boolean>(){
++        @Override
++        protected Boolean initialValue() {
++            return new Boolean(false);
++        }
++    };
+ 
++    private static final ThreadLocal<Boolean> resetHTTPClient =
++        new ThreadLocal<Boolean>(){
++        @Override
++        protected Boolean initialValue() {
++            return new Boolean(false);
++        }
++    };
++
+     protected HTTPHC4Impl(HTTPSamplerBase testElement) {
+         super(testElement);
+     }
+@@ -697,14 +711,24 @@
+         
+         HttpClient httpClient = mapHttpClientPerHttpClientKey.get(key);
+ 
+-        if (httpClient != null && resetSSLContext && HTTPConstants.PROTOCOL_HTTPS.equalsIgnoreCase(url.getProtocol())) {
+-            ((AbstractHttpClient) httpClient).clearRequestInterceptors(); 
+-            ((AbstractHttpClient) httpClient).clearResponseInterceptors(); 
+-            httpClient.getConnectionManager().closeIdleConnections(1L, TimeUnit.MICROSECONDS);
+-            httpClient = null;
++        if (closeConnections.get()) {
++            for (HttpClient cl : mapHttpClientPerHttpClientKey.values()) {
++                cl.getConnectionManager().closeIdleConnections(1L, TimeUnit.MICROSECONDS);
++            }
++            closeConnections.set(false);
++        }
++        if (resetHTTPClient.get()) {
++            if (httpClient != null) {
++                ((AbstractHttpClient) httpClient).clearRequestInterceptors(); 
++                ((AbstractHttpClient) httpClient).clearResponseInterceptors(); 
++                httpClient = null;
++            }
++            resetHTTPClient.set(false);
++        }
++        if (resetSSLContext.get() && HTTPConstants.PROTOCOL_HTTPS.equalsIgnoreCase(url.getProtocol())) {
+             JsseSSLManager sslMgr = (JsseSSLManager) SSLManager.getInstance();
+             sslMgr.resetContext();
+-            resetSSLContext = false;
++            resetSSLContext.set(false);
+         }
+ 
+         if (httpClient == null){ // One-time init for this client
+@@ -1395,8 +1419,11 @@
+ 
+     @Override
+     protected void notifyFirstSampleAfterLoopRestart() {
++        // see https://bz.apache.org/bugzilla/show_bug.cgi?id=51380
+         log.debug("notifyFirstSampleAfterLoopRestart");
+-        resetSSLContext = !USE_CACHED_SSL_CONTEXT;
++        closeConnections.set(!REUSE_HTTP_CONNECTIONS);
++        resetHTTPClient.set(!REUSE_HTTP_CLIENT);
++        resetSSLContext.set(!USE_CACHED_SSL_CONTEXT);
+     }
+ 
+     @Override
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHCAbstractImpl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHCAbstractImpl.java	(revision 1723146)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHCAbstractImpl.java	(working copy)
+@@ -78,10 +78,27 @@
+     // -1 means not defined
+     protected static final int SO_TIMEOUT = JMeterUtils.getPropDefault("httpclient.timeout", -1);
+     
++    // Control reuse of HTTP connections in subsequent iterations
++    protected static final boolean REUSE_HTTP_CONNECTIONS = 
++            JMeterUtils.getPropDefault("reuse.http.connections", true);//$NON-NLS-1$
++
++    // Control reuse of HTTPClient in subsequent iterations
++    protected static final boolean REUSE_HTTP_CLIENT = 
++            JMeterUtils.getPropDefault("reuse.http.client", true);//$NON-NLS-1$
++
+     // Control reuse of cached SSL Context in subsequent iterations
+     protected static final boolean USE_CACHED_SSL_CONTEXT = 
+             JMeterUtils.getPropDefault("https.use.cached.ssl.context", true);//$NON-NLS-1$
+ 
++    // Shared state for any HC based implementation, because SSL contexts are the same
++    protected static final ThreadLocal<Boolean> resetSSLContext =
++        new ThreadLocal<Boolean>(){
++        @Override
++        protected Boolean initialValue() {
++            return new Boolean(false);
++        }
++    };
++
+     static {
+         if(!StringUtils.isEmpty(JMeterUtils.getProperty("httpclient.timeout"))) { //$NON-NLS-1$
+             log.warn("You're using property 'httpclient.timeout' that will soon be deprecated for HttpClient3.1, you should either set "
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java	(revision 1723146)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerProxy.java	(working copy)
+@@ -36,8 +36,6 @@
+ 
+     private transient HTTPAbstractImpl impl;
+     
+-    private transient volatile boolean notifyFirstSampleAfterLoopRestart;
+-
+     public HTTPSamplerProxy(){
+         super();
+     }
+@@ -66,11 +64,6 @@
+                 return errorResult(ex, new HTTPSampleResult());
+             }
+         }
+-        // see https://bz.apache.org/bugzilla/show_bug.cgi?id=51380
+-        if(notifyFirstSampleAfterLoopRestart) {
+-            impl.notifyFirstSampleAfterLoopRestart();
+-            notifyFirstSampleAfterLoopRestart = false;
+-        }
+         return impl.sample(u, method, areFollowingRedirect, depth);
+     }
+ 
+@@ -97,6 +90,8 @@
+      */
+     @Override
+     public void testIterationStart(LoopIterationEvent event) {
+-        notifyFirstSampleAfterLoopRestart = true;
++        if (impl != null) {
++            impl.notifyFirstSampleAfterLoopRestart();
++        }
+     }
+ }

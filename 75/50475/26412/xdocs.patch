@@ -1,0 +1,47 @@
+Index: test_plan.xml
+===================================================================
+--- test_plan.xml	(revision 1048910)
++++ test_plan.xml	(working copy)
+@@ -83,7 +83,15 @@
+ 	 Note that delay overrides start-time, and duration over-rides end-time.</p>
+ </subsection>
+ 
+-<subsection name="&sect-num;.2 Controllers" anchor="controllers">
++<subsection name="&sect-num;.2 Test Fragments" anchor="test_fragments">
++<p>Test Fragment element is a special type of <a href="#controllers">controller</a> that
++exist on the Test Plan tree at the same level as the Thread Group element.  They are distinguised
++from the Thread Group in that they are not executed with the Test Plan unless they are 
++reference by either a <complink name="Module Controller"/> or an <complink name="Include_Controller"/>.
++</p>
++<p>This element is purely for code re-use within Test Plans and was introduced in Version 2.5</p>
++</subsection>
++<subsection name="&sect-num;.3 Controllers" anchor="controllers">
+ 
+ <p>
+ JMeter has two types of Controllers: Samplers and Logical Controllers.
+Index: component_reference.xml
+===================================================================
+--- component_reference.xml	(revision 1048910)
++++ component_reference.xml	(working copy)
+@@ -2025,13 +2025,16 @@
+ <component name="Include Controller" index="&sect-num;.2.14"  width="419" height="118" screenshot="includecontroller.png">
+ 	<description>
+ <p>
+-The include controller is designed to use an external jmx file. To use it, add
+-samples to a simple controller, then save the simple controller as a jmx file.
+-The file can then be used in a test plan.
+-The included test plan must not include a Thread Group.
+-It should only contain the Simple Controller and any samplers, controllers etc below it.
++The include controller is designed to use an external jmx file. To use it, create a Test Fragment 
++underneath a Test Plan and add any desired samplers, controller etc below it.  Then save the Test Plan.  
++The file is now ready to be included as part of other Test Plans.
+ </p>
+ <p>
++For convience purposes, a Thread Group can also be added in the external JMX file for debugging purposes.
++A Module Controller can be used to reference the Test Fragment.  The Thread Group will be ignored during the 
++include process.
++</p>
++<p>
+ If the test uses a Cookie Manager or User Defined Variables, these should be placed in the top-level
+ test plan, not the included file, otherwise they are not guaranteed to work.
+ </p>

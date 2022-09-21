@@ -1,0 +1,185 @@
+Index: src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java	(revision 497882)
++++ src/components/org/apache/jmeter/control/gui/TransactionControllerGui.java	(working copy)
+@@ -20,16 +20,28 @@
+ 
+ import java.awt.BorderLayout;
+ 
++import org.apache.jmeter.control.ForeachController;
+ import org.apache.jmeter.control.TransactionController;
+ import org.apache.jmeter.control.gui.AbstractControllerGui;
++import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
+ 
++import javax.swing.JCheckBox;
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++import javax.swing.JTextField;
++
+ /**
+  * A Transaction controller component.
+  * 
+  * @version $Revision$ on $Date$
+  */
+ public class TransactionControllerGui extends AbstractControllerGui {
++
++	// add duration of timers to total con
++	private JCheckBox includeTimers;
++
+ 	/**
+ 	 * Create a new TransactionControllerGui instance.
+ 	 */
+@@ -37,6 +49,20 @@
+ 		init();
+ 	}
+ 
++	/**
++	 * A newly created component can be initialized with the contents of a Test
++	 * Element object by calling this method. The component is responsible for
++	 * querying the Test Element object for the relevant information to display
++	 * in its GUI.
++	 * 
++	 * @param element
++	 *            the TestElement to configure
++	 */
++	public void configure(TestElement element) {
++		super.configure(element);
++		includeTimers.setSelected(((TransactionController) element).getIncludeTimers());
++	}
++	
+ 	/* Implements JMeterGUIComponent.createTestElement() */
+ 	public TestElement createTestElement() {
+ 		TransactionController lc = new TransactionController();
+@@ -45,8 +71,11 @@
+ 	}
+ 
+ 	/* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+-	public void modifyTestElement(TestElement el) {
+-		configureTestElement(el);
++	public void modifyTestElement(TestElement lc) {
++		configureTestElement(lc);
++		if (lc instanceof TransactionController) {
++			((TransactionController) lc).setIncludeTimers(includeTimers.isSelected());
++		}
+ 	}
+ 
+ 	public String getLabelResource() {
+@@ -60,5 +89,24 @@
+ 		setLayout(new BorderLayout());
+ 		setBorder(makeBorder());
+ 		add(makeTitlePanel(), BorderLayout.NORTH);
++		JPanel mainPanel = new JPanel(new BorderLayout());
++		mainPanel.add(createPanel(), BorderLayout.NORTH);
++		add(mainPanel, BorderLayout.CENTER);
+ 	}
++	
++	/**
++	 * Create a GUI panel containing the possible options
++	 * 
++	 * @return a GUI panel containing the possible options
++	 */
++	private JPanel createPanel() {
++		VerticalPanel panel = new VerticalPanel();
++
++		// Checkbox
++		includeTimers = new JCheckBox(JMeterUtils.getResString("transaction_controller_include_timers"), true);
++
++		panel.add(includeTimers);
++
++		return panel;
++	}
+ }
+Index: src/components/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- src/components/org/apache/jmeter/control/TransactionController.java	(revision 497882)
++++ src/components/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -21,8 +21,10 @@
+ import java.io.Serializable;
+ 
+ import org.apache.jmeter.samplers.SampleEvent;
++import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterThread;
+ import org.apache.jmeter.threads.JMeterVariables;
+@@ -35,15 +37,19 @@
+  * Transaction Controller to measure transaction times
+  * 
+  */
+-public class TransactionController extends GenericController implements Controller, Serializable {
++public class TransactionController extends GenericController implements Controller, SampleListener, Serializable {
+ 	protected static final Logger log = LoggingManager.getLoggerForClass();
+ 
++	private final static String INCLUDE_TIMERS = "TransactionController.includeTimers";
++
+ 	transient private String threadName;
+ 
+ 	transient private ListenerNotifier lnf;
+ 
+ 	transient private SampleResult res;
+ 
++	transient private long pauseTime, prevEndTime;
++	
+ 	/**
+ 	 * Creates a Transaction Controller
+ 	 */
+@@ -76,6 +82,8 @@
+ 			calls = 0;
+ 			res = new SampleResult();
+ 			res.sampleStart();
++			prevEndTime = res.getStartTime();
++			pauseTime = 0;
+ 		}
+ 
+ 		calls++;
+@@ -88,6 +96,7 @@
+ 			if (res == null) {
+ 				log_debug("already called");
+ 			} else {
++				res.incIdleTime(pauseTime);
+ 				res.sampleEnd();
+ 				res.setSuccessful(true);
+ 				res.setSampleLabel(getName());
+@@ -111,4 +120,26 @@
+ 
+ 		return returnValue;
+ 	}
++	
++	public void sampleOccurred(SampleEvent e) {
++		if (!getIncludeTimers()) {
++			SampleResult r = e.getResult();
++			pauseTime += r.getEndTime() - r.getTime() - prevEndTime;
++			prevEndTime = r.getEndTime();
++		}
++	}
++	
++	public void sampleStarted(SampleEvent e) {
++	}
++	
++	public void sampleStopped(SampleEvent e) {
++	}
++	
++	public void setIncludeTimers(boolean b) {
++		setProperty(new BooleanProperty(INCLUDE_TIMERS, b));
++	}
++
++	public boolean getIncludeTimers() {
++		return getPropertyAsBoolean(INCLUDE_TIMERS, false);
++	}
+ }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 497856)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -712,6 +712,7 @@
+ timelim=Time limit
+ time_format=Format string for SimpleDateFormat (optional)
+ transaction_controller_title=Transaction Controller
++transaction_controller_include_timers=Include timer duration in runtime summary.
+ unbind=Thread Unbind
+ uniform_timer_delay=Constant Delay Offset (in milliseconds)\:
+ uniform_timer_memo=Adds a random delay with a uniform distribution

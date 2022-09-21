@@ -1,0 +1,615 @@
+Index: C:/Projects/JMeter - 2.2 Devel/src/components/org/apache/jmeter/assertions/gui/XMLSchemaAssertionGUI.java
+===================================================================
+--- C:/Projects/JMeter - 2.2 Devel/src/components/org/apache/jmeter/assertions/gui/XMLSchemaAssertionGUI.java	(revision 482689)
++++ C:/Projects/JMeter - 2.2 Devel/src/components/org/apache/jmeter/assertions/gui/XMLSchemaAssertionGUI.java	(working copy)
+@@ -18,15 +18,23 @@
+ package org.apache.jmeter.assertions.gui;
+ 
+ import java.awt.BorderLayout;
++import java.awt.Dimension;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++
+ import javax.swing.BorderFactory;
+-import javax.swing.JLabel;
++import javax.swing.Box;
++import javax.swing.JButton;
+ import javax.swing.JPanel;
+-import javax.swing.JTextField;
+-// import javax.swing.event.ChangeEvent;
++import javax.swing.JScrollPane;
++import javax.swing.JTable;
++
+ import org.apache.jmeter.assertions.XMLSchemaAssertion;
+-import org.apache.jmeter.gui.util.HorizontalPanel;
+-import org.apache.jmeter.gui.util.VerticalPanel;
++import org.apache.jmeter.gui.util.PowerTableModel;
++import org.apache.jmeter.gui.util.TextAreaCellRenderer;
++import org.apache.jmeter.gui.util.TextAreaTableCellEditor;
+ import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -39,13 +47,28 @@
+  */
+ 
+ public class XMLSchemaAssertionGUI extends AbstractAssertionGui {
++  
+ 	// class attributes
+ 	 private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-	private JTextField xmlSchema;
++  /** The name of the table column in the list of file names. */
++  private static final String COL_NAME = JMeterUtils.getResString("xmlschema_assertion_filename_label");
+ 
++  /** A table of patterns to test against. */
++  private JTable filenameTable;
++
++  /** Button to add a new XSD file. */
++  private JButton addFile;
++
++  /** Button to delete an XSD file. */
++  private JButton deleteFile;
++
++  /** Table model for the pattern table. */
++  private PowerTableModel tableModel;
++
++
+ 	/**
+-	 * The constructor.
++	 * Create a new XML Schema Assertion window.
+ 	 */
+ 	public XMLSchemaAssertionGUI() {
+ 		init();
+@@ -59,7 +82,9 @@
+ 	}
+ 
+ 	/**
+-	 * create Test Element
++	 * Create Test Element.
++   * 
++   * @see org.apache.jmeter.gui.JMeterGUIComponent#createTestElement()
+ 	 */
+ 	public TestElement createTestElement() {
+ 		log.debug("XMLSchemaAssertionGui.createTestElement() called");
+@@ -73,56 +98,141 @@
+ 	 * 
+ 	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
+ 	 */
+-	public void modifyTestElement(TestElement inElement) {
++	public void modifyTestElement(TestElement el) {
++    
++		configureTestElement(el);
++    
++    if (el instanceof XMLSchemaAssertion) {
++      XMLSchemaAssertion xmlSchemaAssertion = (XMLSchemaAssertion) el;
+ 
+-		log.debug("XMLSchemaAssertionGui.modifyTestElement() called");
+-		configureTestElement(inElement);
+-		((XMLSchemaAssertion) inElement).setXsdFileName(xmlSchema.getText());
++      xmlSchemaAssertion.clearXsdFilenames();
++      
++      String[] xsdFilenames = tableModel.getData().getColumn(COL_NAME);
++      
++      for (int i = 0; i < xsdFilenames.length; i++) {
++        xmlSchemaAssertion.addXsdFilename(xsdFilenames[i]);
++      }
++    }
+ 	}
+ 
+ 	/**
+ 	 * Configures the GUI from the associated test element.
+ 	 * 
+-	 * @param el -
+-	 *            the test element (should be XMLSchemaAssertion)
++	 * @param el is the test element. (should be XMLSchemaAssertion)
+ 	 */
+ 	public void configure(TestElement el) {
+ 		super.configure(el);
+-		XMLSchemaAssertion assertion = (XMLSchemaAssertion) el;
+-		xmlSchema.setText(assertion.getXsdFileName());
+-	}
++    log.debug("XMLSchemaAssertionGui.configure() called");
++		XMLSchemaAssertion model = (XMLSchemaAssertion) el;
+ 
+-	/**
+-	 * Inits the GUI.
+-	 */
+-	private void init() {
+-		setLayout(new BorderLayout(0, 10));
+-		setBorder(makeBorder());
++    tableModel.clearData();
++    PropertyIterator filenames = model.getXsdFilenames().iterator();
++    while (filenames.hasNext()) {
++      tableModel.addRow(new Object[] { filenames.next().getStringValue() });
++    }
+ 
+-		add(makeTitlePanel(), BorderLayout.NORTH);
++    if (model.getXsdFilenames().size() == 0) {
++      deleteFile.setEnabled(false);
++    } else {
++      deleteFile.setEnabled(true);
++    }
+ 
+-		JPanel mainPanel = new JPanel(new BorderLayout());
++    tableModel.fireTableDataChanged();
++  }
+ 
+-		// USER_INPUT
+-		VerticalPanel assertionPanel = new VerticalPanel();
+-		assertionPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), "XML Schema"));
++  
++  /**
++   * Initialize the GUI components and layout.
++   */
++  private void init() {
++    log.debug("XMLSchemaAssertionGui.init() called");
+ 
+-		// doctype
+-		HorizontalPanel xmlSchemaPanel = new HorizontalPanel();
++    setLayout(new BorderLayout());
++    Box box = Box.createVerticalBox();
++    setBorder(makeBorder());
+ 
+-		xmlSchemaPanel.add(new JLabel(JMeterUtils.getResString("xmlschema_assertion_label"))); //$NON-NLS-1$
++    box.add(makeTitlePanel());
++    add(box, BorderLayout.NORTH);
++    add(createFilenamePanel(), BorderLayout.CENTER);
++  }
+ 
+-		xmlSchema = new JTextField(26);
+-		xmlSchemaPanel.add(xmlSchema);
++  /**
++   * Create a panel with buttons to add and delete string patterns.
++   * 
++   * @return the new panel with add and delete buttons
++   */
++  private JPanel createButtonPanel() {
++    addFile = new JButton(JMeterUtils.getResString("add"));
++    addFile.addActionListener(new AddXsdFilenameListener());
++  
++    deleteFile = new JButton(JMeterUtils.getResString("delete"));
++    deleteFile.addActionListener(new ClearXsdFilenameListener());
++    deleteFile.setEnabled(false);
++  
++    JPanel buttonPanel = new JPanel();
++    buttonPanel.add(addFile);
++    buttonPanel.add(deleteFile);
++    return buttonPanel;
++  }
+ 
+-		assertionPanel.add(xmlSchemaPanel);
++  /**
++   * Create a panel allowing the user to supply a list of string patterns to
++   * test against.
++   * 
++   * @return a new panel for adding string patterns
++   */
++  private JPanel createFilenamePanel() {
++    tableModel = new PowerTableModel(new String[] { COL_NAME }, new Class[] { String.class });
++    filenameTable = new JTable(tableModel);
+ 
+-		mainPanel.add(assertionPanel, BorderLayout.NORTH);
+-		add(mainPanel, BorderLayout.CENTER);
+-	}
++    TextAreaCellRenderer renderer = new TextAreaCellRenderer();
++    filenameTable.setRowHeight(renderer.getPreferredHeight());
++    filenameTable.setDefaultRenderer(String.class, renderer);
++    filenameTable.setDefaultEditor(String.class, new TextAreaTableCellEditor());
++    filenameTable.setPreferredScrollableViewportSize(new Dimension(100, 70));
+ 
+-	// public void stateChanged(ChangeEvent e) {
+-	// log.debug("XMLSchemaAssertionGui.stateChanged() called");
+-	// }
++    JPanel panel = new JPanel();
++    panel.setLayout(new BorderLayout());
++    panel.setBorder(BorderFactory.createTitledBorder(JMeterUtils.getResString("xmlschema_assertion_file_pane_label")));
+ 
++    panel.add(new JScrollPane(filenameTable), BorderLayout.CENTER);
++    panel.add(createButtonPanel(), BorderLayout.SOUTH);
++
++    return panel;
++  }
++
++  
++  /**
++   * An ActionListener for adding a pattern.
++   * 
++   * @version $Revision$ Last updated: $Date$
++   */
++  private class AddXsdFilenameListener implements ActionListener {
++    public void actionPerformed(ActionEvent e) {
++      tableModel.addNewRow();
++      deleteFile.setEnabled(true);
++      tableModel.fireTableDataChanged();
++    }
++  }
++
++  /**
++   * An ActionListener for deleting a pattern.
++   * 
++   * @author
++   * @version $Revision$ Last updated: $Date$
++   */
++  private class ClearXsdFilenameListener implements ActionListener {
++    public void actionPerformed(ActionEvent e) {
++      int index = filenameTable.getSelectedRow();
++      if (index > -1) {
++        filenameTable.getCellEditor(index, filenameTable.getSelectedColumn()).cancelCellEditing();
++        tableModel.removeRow(index);
++        tableModel.fireTableDataChanged();
++      }
++      if (filenameTable.getModel().getRowCount() == 0) {
++        deleteFile.setEnabled(false);
++      }
++    }
++  }
++
+ }
+\ No newline at end of file
+Index: C:/Projects/JMeter - 2.2 Devel/src/components/org/apache/jmeter/assertions/XMLSchemaAssertion.java
+===================================================================
+--- C:/Projects/JMeter - 2.2 Devel/src/components/org/apache/jmeter/assertions/XMLSchemaAssertion.java	(revision 482689)
++++ C:/Projects/JMeter - 2.2 Devel/src/components/org/apache/jmeter/assertions/XMLSchemaAssertion.java	(working copy)
+@@ -19,6 +19,7 @@
+ import java.io.IOException;
+ import java.io.Serializable;
+ import java.io.StringReader;
++import java.util.ArrayList;
+ 
+ import javax.xml.parsers.DocumentBuilder;
+ import javax.xml.parsers.DocumentBuilderFactory;
+@@ -26,10 +27,12 @@
+ 
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.property.CollectionProperty;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+-// import org.w3c.dom.Document;
+ import org.xml.sax.ErrorHandler;
+ import org.xml.sax.InputSource;
+ import org.xml.sax.SAXException;
+@@ -38,141 +41,16 @@
+ // See Bug 34383
+ 
+ /**
+- * XMLSchemaAssertion.java Validate response against an XML Schema author <a
+- * href="mailto:d.maung@mdl.com">Dave Maung</a>
++ * Validate response against a set of XML Schemas.
+  * 
++ * @author <a href="mailto:d.maung@mdl.com">Dave Maung</a>
++ * @author <a href="mailto:pkuyken@gmail.com">Paul Kuykendall</a>
++ * 
+  */
+-public class XMLSchemaAssertion extends AbstractTestElement implements Serializable, Assertion {
+-	public static final String FILE_NAME_IS_REQUIRED = "FileName is required";
+-
+-	public static final String JAXP_SCHEMA_LANGUAGE = "http://java.sun.com/xml/jaxp/properties/schemaLanguage";
+-
+-	public static final String W3C_XML_SCHEMA = "http://www.w3.org/2001/XMLSchema";
+-
+-	public static final String JAXP_SCHEMA_SOURCE = "http://java.sun.com/xml/jaxp/properties/schemaSource";
+-
+-	private static final Logger log = LoggingManager.getLoggerForClass();
+-
+-	public static final String XSD_FILENAME_KEY = "xmlschema_assertion_filename";
+-
+-	// private StringBuffer failureMessage = new StringBuffer();
+-
+-	/**
+-	 * getResult
+-	 * 
+-	 */
+-	public AssertionResult getResult(SampleResult response) {
+-		AssertionResult result = new AssertionResult();
+-		// Note: initialised with error = failure = false
+-
+-		byte data[] = response.getResponseData();
+-		if (data.length == 0) {
+-			return result.setResultForNull();
+-		}
+-		String resultData = new String(getResultBody(data));
+-
+-		String xsdFileName = getXsdFileName();
+-		if (log.isDebugEnabled()) {
+-			log.debug("xmlString: " + resultData);
+-			log.debug("xsdFileName: " + xsdFileName);
+-		}
+-		if (xsdFileName == null || xsdFileName.length() == 0) {
+-			result.setResultForFailure(FILE_NAME_IS_REQUIRED);
+-		} else {
+-			setSchemaResult(result, resultData, xsdFileName);
+-		}
+-		return result;
+-	}
+-
+-	/*
+-	 * TODO move to SampleResult class? Return the body of the http return.
+-	 */
+-	private byte[] getResultBody(byte[] resultData) {
+-		for (int i = 0; i < (resultData.length - 1); i++) {
+-			if (resultData[i] == '\n' && resultData[i + 1] == '\n') {
+-				return JOrphanUtils.getByteArraySlice(resultData, (i + 2), resultData.length - 1);
+-			}
+-		}
+-		return resultData;
+-	}
+-
+-	public void setXsdFileName(String xmlSchemaFileName) throws IllegalArgumentException {
+-		setProperty(XSD_FILENAME_KEY, xmlSchemaFileName);
+-	}
+-
+-	public String getXsdFileName() {
+-		return getPropertyAsString(XSD_FILENAME_KEY);
+-	}
+-
+-	/**
+-	 * set Schema result
+-	 * 
+-	 * @param result
+-	 * @param xmlStr
+-	 * @param xsdFileName
+-	 */
+-	private void setSchemaResult(AssertionResult result, String xmlStr, String xsdFileName) {
+-		try {
+-			// boolean toReturn = true;
+-
+-			// Document doc = null;
+-			DocumentBuilderFactory parserFactory = DocumentBuilderFactory.newInstance();
+-			parserFactory.setValidating(true);
+-			parserFactory.setNamespaceAware(true);
+-			parserFactory.setAttribute(JAXP_SCHEMA_LANGUAGE, W3C_XML_SCHEMA);
+-			parserFactory.setAttribute(JAXP_SCHEMA_SOURCE, xsdFileName);
+-
+-			// create a parser:
+-			DocumentBuilder parser = parserFactory.newDocumentBuilder();
+-			parser.setErrorHandler(new SAXErrorHandler(result));
+-
+-			// doc =
+-			parser.parse(new InputSource(new StringReader(xmlStr)));
+-			// if everything went fine then xml schema validation is valid
+-		} catch (SAXParseException e) {
+-
+-			// Only set message if error not yet flagged
+-			if (!result.isError() && !result.isFailure()) {
+-				result.setError(true);
+-				result.setFailureMessage(errorDetails(e));
+-			}
+-
+-		} catch (SAXException e) {
+-
+-			log.warn(e.toString());
+-			result.setResultForFailure(e.getMessage());
+-
+-		} catch (IOException e) {
+-
+-			log.warn("IO error", e);
+-			result.setResultForFailure(e.getMessage());
+-
+-		} catch (ParserConfigurationException e) {
+-
+-			log.warn("Problem with Parser Config", e);
+-			result.setResultForFailure(e.getMessage());
+-
+-		}
+-
+-	}
+-
+-	// Helper method to construct SAX error details
+-	private static String errorDetails(SAXParseException spe) {
+-		StringBuffer str = new StringBuffer(80);
+-		int i;
+-		i = spe.getLineNumber();
+-		if (i != -1) {
+-			str.append("line=");
+-			str.append(i);
+-			str.append(" col=");
+-			str.append(spe.getColumnNumber());
+-			str.append(" ");
+-		}
+-		str.append(spe.getLocalizedMessage());
+-		return str.toString();
+-	}
+-
+-	/**
++public class XMLSchemaAssertion extends AbstractTestElement 
++    implements Serializable, Assertion {
++  
++  /**
+ 	 * SAXErrorHandler class
+ 	 */
+ 	private static class SAXErrorHandler implements ErrorHandler {
+@@ -220,4 +98,174 @@
+ 
+ 		}
+ 	}
++
++  /** W3C XML Schema URI  */
++  public final static String W3C_XML_SCHEMA = "http://www.w3.org/2001/XMLSchema";
++  public final static String JAXP_SCHEMA_LANGUAGE = "http://java.sun.com/xml/jaxp/properties/schemaLanguage";
++  public final static String JAXP_SCHEMA_SOURCE = "http://java.sun.com/xml/jaxp/properties/schemaSource";
++  
++  public final static String SAMPLE_LABEL     = "XMLSchemaAssertion.sample_label"; // $NON-NLS-1$
++  public final static String FILENAME_STRINGS = "XMLSchemaAssertion.xsd_filenames";    // $NON-NLS-1$
++  
++  public final static String FILE_NAME_IS_REQUIRED = "XMLSchema.filename_required";
++
++  private final static Logger log = LoggingManager.getLoggerForClass();
++
++  
++  /**
++   * Default constructor.
++   */
++  public XMLSchemaAssertion() {
++    setProperty(new CollectionProperty(FILENAME_STRINGS, new ArrayList()));
++  }
++
++  /**
++   * Constructor that initializes the Assertion with an initial filename.
++   * 
++   * @param filename
++   */
++  public XMLSchemaAssertion(String filename) {
++    this();
++    getXsdFilenames().addProperty(new StringProperty(filename, filename));
++  }
++
++  
++	// Helper method to construct SAX error details
++	private static String errorDetails(SAXParseException spe) {
++		StringBuffer str = new StringBuffer(80);
++		int i;
++		i = spe.getLineNumber();
++		if (i != -1) {
++			str.append("line=");
++			str.append(i);
++			str.append(" col=");
++			str.append(spe.getColumnNumber());
++			str.append(" ");
++		}
++		str.append(spe.getLocalizedMessage());
++		return str.toString();
++	}
++
++  public void clear() {
++    super.clear();
++    setProperty(new CollectionProperty(FILENAME_STRINGS, new ArrayList()));
++  }
++
++  
++	/**
++   * Clears the XSD filenames.
++   *
++   */
++  public void clearXsdFilenames() {
++    getXsdFilenames().clear();
++  }
++
++  /**
++   * Retrieves the XSD filenames.
++   * 
++   * @return The collection of properties containing the XSD filenames.
++   */
++  public CollectionProperty getXsdFilenames() {
++    return (CollectionProperty) getProperty(FILENAME_STRINGS);
++    
++  }
++
++  /**
++   * Add a new XSD Filename to the filename collection.
++   * 
++   * @param xsdFilename
++	 */
++  public void addXsdFilename(String xsdFilename) {
++    getXsdFilenames().addProperty(new StringProperty(String.valueOf(xsdFilename.hashCode()), xsdFilename));
++  }
++
++  
++  /**
++   * 
++   */
++  public AssertionResult getResult(SampleResult response) {
++		AssertionResult result = new AssertionResult();
++		// Note: initialised with error = failure = false
++
++		byte data[] = response.getResponseData();
++		if (data.length == 0) {
++			return result.setResultForNull();
++		}
++		String resultData = new String(getResultBody(data));
++
++		CollectionProperty xsdFilenamesCollection = getXsdFilenames();
++    int numberOfFiles = xsdFilenamesCollection.size();
++    String[] xsdFilenames = new String[numberOfFiles];
++
++    PropertyIterator iter = getXsdFilenames().iterator();
++
++    for (int i = 0 ; (iter.hasNext()) && (i < numberOfFiles); i++) {
++     
++      xsdFilenames[i] = iter.next().getStringValue();
++      log.debug("XSD Schema Filename: " + xsdFilenames[i]);
++    }
++       
++		if (log.isDebugEnabled()) {
++			log.debug("xmlString: " + resultData);
++		}
++		if (xsdFilenames == null || xsdFilenames[0].length() == 0) {
++			result.setResultForFailure(FILE_NAME_IS_REQUIRED);
++		} else {
++      try {
++        DocumentBuilderFactory parserFactory = DocumentBuilderFactory.newInstance();
++        parserFactory.setValidating(true);
++        parserFactory.setNamespaceAware(true);
++        parserFactory.setAttribute(JAXP_SCHEMA_LANGUAGE, W3C_XML_SCHEMA);
++        parserFactory.setAttribute(JAXP_SCHEMA_SOURCE, xsdFilenames);
++  
++        // create a parser:
++        DocumentBuilder parser = parserFactory.newDocumentBuilder();
++        parser.setErrorHandler(new SAXErrorHandler(result));
++  
++        // doc =
++        parser.parse(new InputSource(new StringReader(resultData)));
++        // if everything went fine then xml schema validation is valid
++      } catch (SAXParseException e) {
++  
++        // Only set message if error not yet flagged
++        if (!result.isError() && !result.isFailure()) {
++          result.setError(true);
++          result.setFailureMessage(errorDetails(e));
++        }
++  
++      } catch (SAXException e) {
++  
++        log.warn(e.toString());
++        result.setResultForFailure(e.getMessage());
++  
++      } catch (IOException e) {
++  
++        log.warn("IO error", e);
++        result.setResultForFailure(e.getMessage());
++  
++      } catch (ParserConfigurationException e) {
++  
++        log.warn("Problem with Parser Config", e);
++        result.setResultForFailure(e.getMessage());
++  
++      }
++		}
++		return result;
++	}
++
++	/*
++	 * TODO move to SampleResult class? Return the body of the http return.
++	 */
++	private byte[] getResultBody(byte[] resultData) {
++		for (int i = 0; i < (resultData.length - 1); i++) {
++			if (resultData[i] == '\n' && resultData[i + 1] == '\n') {
++				return JOrphanUtils.getByteArraySlice(resultData, (i + 2), resultData.length - 1);
++			}
++		}
++		return resultData;
++	}
++
++
++
++
+ }
+\ No newline at end of file
+Index: C:/Projects/JMeter - 2.2 Devel/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/Projects/JMeter - 2.2 Devel/src/core/org/apache/jmeter/resources/messages.properties	(revision 482689)
++++ C:/Projects/JMeter - 2.2 Devel/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -778,6 +778,8 @@
+ xml_whitespace_button=Ignore Whitespace
+ xmlschema_assertion_label=File Name:
+ xmlschema_assertion_title=XML Schema Assertion
++xmlschema_assertion_filename_label=XSD Files
++xmlschema_assertion_file_pane_label=XSD Validation Files
+ xpath_assertion_button=Validate
+ xpath_assertion_check=Check XPath Expression
+ xpath_assertion_error=Error with XPath

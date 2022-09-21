@@ -1,0 +1,30 @@
+diff --git a/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java b/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java
+index 5c19d4e951..d7b7208ec3 100644
+--- a/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java
++++ b/src/core/src/main/java/org/apache/jmeter/engine/util/FunctionParser.java
+@@ -128,7 +128,7 @@ class FunctionParser {
+                     function = CompoundVariable.getNamedFunction(funcName);
+                     if (function instanceof Function) {
+                         ((Function) function).setParameters(parseParams(reader));
+-                        if (reader.read(current) == 0 || current[0] != '}') {
++                        if (firstNonSpace(reader, '#') != '}') {
+                             reader.reset();// set to start of string
+                             char []cb = new char[100];
+                             int nbRead = reader.read(cb);
+@@ -162,6 +162,16 @@ class FunctionParser {
+         return buffer.toString();
+     }
+ 
++    private char firstNonSpace(StringReader reader, char defaultResult) throws IOException {
++        char[] current = new char[1];
++        while (reader.read(current) == 1) {
++            if (!Character.isSpaceChar(current[0])) {
++                return current[0];
++            }
++        }
++        return defaultResult;
++    }
++
+     /**
+      * Compile a String into a list of parameters, each made into a
+      * CompoundVariable.

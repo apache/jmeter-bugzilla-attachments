@@ -1,0 +1,96 @@
+diff -crB -r jakarta-jmeter-2.3.4-old/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java jakarta-jmeter-2.3.4/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+*** jakarta-jmeter-2.3.4-old/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	2009-06-17 17:06:20.000000000 +0300
+--- jakarta-jmeter-2.3.4/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	2009-09-25 14:00:42.562500000 +0300
+***************
+*** 29,34 ****
+--- 29,35 ----
+  
+  import org.apache.jmeter.assertions.ResponseAssertion;
+  import org.apache.jmeter.assertions.gui.AssertionGui;
++ import org.apache.jmeter.config.Argument;
+  import org.apache.jmeter.config.Arguments;
+  import org.apache.jmeter.config.ConfigElement;
+  import org.apache.jmeter.config.ConfigTestElement;
+***************
+*** 36,41 ****
+--- 37,44 ----
+  import org.apache.jmeter.control.gui.LogicControllerGui;
+  import org.apache.jmeter.engine.util.ValueReplacer;
+  import org.apache.jmeter.exceptions.IllegalUserActionException;
++ import org.apache.jmeter.extractor.RegexExtractor;
++ import org.apache.jmeter.extractor.gui.RegexExtractorGui;
+  import org.apache.jmeter.functions.InvalidVariableException;
+  import org.apache.jmeter.gui.GuiPackage;
+  import org.apache.jmeter.gui.tree.JMeterTreeModel;
+***************
+*** 392,399 ****
+              sampler.setFollowRedirects(samplerFollowRedirects);
+              sampler.setUseKeepAlive(useKeepAlive);
+              sampler.setImageParser(samplerDownloadImages);
+! 
+!             placeSampler(sampler, subConfigs, myTarget);
+          }
+          else {
+              if(log.isDebugEnabled()) {
+--- 395,440 ----
+              sampler.setFollowRedirects(samplerFollowRedirects);
+              sampler.setUseKeepAlive(useKeepAlive);
+              sampler.setImageParser(samplerDownloadImages);
+!             
+!             // prepare value for next sampler
+!             final TestElement[] elements = new TestElement[subConfigs.length+1];
+!             System.arraycopy(subConfigs, 0, elements, 0, subConfigs.length);
+!             final String responseData = result.getResponseDataAsString();
+!             
+!             if (responseData.contains("_flowExecutionKey")) {
+!             	
+!             	// add extractor
+!             	final RegexExtractor keyExtractor = new RegexExtractor();
+!             	keyExtractor.setName("flowExecutionKey extractor");
+!             	keyExtractor.setRefName("flowExecutionKey");
+!             	keyExtractor.setRegex(
+!         			"(?s)name=\"_flowExecutionKey\"\\s+value=\"(.+?)\"");
+!             	keyExtractor.setTemplate("$1$");
+!             	keyExtractor.setMatchNumber(0);
+!             	keyExtractor.setDefaultValue(
+!         			"No proper _flowExecutionKey found in response.");
+! 				            	
+!             	elements[subConfigs.length] = keyExtractor;
+!             	
+!             }
+!             
+!             // use previous value for this sampler
+!             final Arguments arguments = sampler.getArguments();
+!             final PropertyIterator iterator = arguments.iterator();
+!             
+!             while (iterator.hasNext()) {
+! 				final Argument argument =
+! 					(Argument)iterator.next().getObjectValue();
+! 				if ("_flowExecutionKey".equals(argument.getName())) {
+! 					argument.setValue("${flowExecutionKey}");
+! 				}
+! 				
+! 			}
+!             
+!             placeSampler(
+!         		sampler,
+!         		elements,
+!         		myTarget);
+          }
+          else {
+              if(log.isDebugEnabled()) {
+***************
+*** 783,788 ****
+--- 824,835 ----
+                      subConfigs[i].setProperty(TestElement.GUI_CLASS, HEADER_PANEL);
+                      treeModel.addComponent(subConfigs[i], newNode);
+                  }
++                 if (subConfigs[i] instanceof RegexExtractor) {
++                     subConfigs[i].setProperty(
++                 		TestElement.GUI_CLASS,
++                 		RegexExtractorGui.class.getName());
++                     treeModel.addComponent(subConfigs[i], newNode);
++                 }
+              }
+          } catch (IllegalUserActionException e) {
+              JMeterUtils.reportErrorToUser(e.getMessage());

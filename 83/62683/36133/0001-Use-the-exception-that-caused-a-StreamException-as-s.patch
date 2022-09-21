@@ -1,0 +1,38 @@
+From eb9f0c0355424295dfc8e9d6675becb3db2866cc Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Wed, 5 Sep 2018 21:39:35 +0200
+Subject: [PATCH] Use the exception that caused a StreamException as source for
+ the error message
+
+---
+ src/core/org/apache/jmeter/gui/action/Load.java | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/core/org/apache/jmeter/gui/action/Load.java b/src/core/org/apache/jmeter/gui/action/Load.java
+index 912fd53cf..1f1a617a2 100644
+--- a/src/core/org/apache/jmeter/gui/action/Load.java
++++ b/src/core/org/apache/jmeter/gui/action/Load.java
+@@ -44,6 +44,7 @@ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+ import com.thoughtworks.xstream.converters.ConversionException;
++import com.thoughtworks.xstream.io.StreamException;
+ 
+ /**
+  * Handles the Open (load a new file) and Merge commands.
+@@ -144,6 +145,12 @@ public class Load extends AbstractActionWithNoRunningTest {
+                 JMeterUtils.reportErrorToUser(SaveService.CEtoString(ex));
+             } catch (IOException ex) {
+                 reportError("Error reading file. {}", ex, false);
++            } catch (StreamException ex) {
++                Throwable exceptionToDisplay = ex;
++                if ("".equals(ex.getMessage()) && ex.getCause() != null) {
++                    exceptionToDisplay = ex.getCause();
++                }
++                reportError("Error in XML format. {}", exceptionToDisplay, false);
+             } catch (Exception ex) {
+                 reportError("Unexpected error. {}", ex, true);
+             }
+-- 
+2.17.1
+

@@ -1,0 +1,162 @@
+=== modified file 'src/core/org/apache/jmeter/samplers/SampleResult.java'
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	2008-03-12 13:02:10 +0000
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	2008-03-15 16:31:18 +0000
+@@ -140,6 +140,23 @@
+ 	private String dataEncoding;// (is this really the character set?) e.g.
+ 								// ISO-8895-1, UTF-8
+ 
++	private static boolean initHaveNanoTime() {
++		try {
++			System.nanoTime();
++			return true;
++		} catch (NoSuchMethodError e) {
++			return false;
++		}
++	}
++
++	private static final boolean haveNanoTime = initHaveNanoTime();
++
++	// a reference time from the nanosecond clock
++	private static final long referenceTimeNsClock = haveNanoTime ? sampleNsClockInMs() : Long.MIN_VALUE;
++
++	private static final long referenceTimeMsClock = System.currentTimeMillis(); // a reference time from the
++																				 //  millisecond clock
++
+ 	private long time = 0; // elapsed time
+ 
+ 	private long latency = 0; // time to first response
+@@ -228,7 +245,7 @@
+ 	 *            create the sample finishing now, else starting now
+ 	 */
+ 	protected SampleResult(long elapsed, boolean atend) {
+-		long now = System.currentTimeMillis();
++		long now = currentTimeInMs();
+ 		if (atend) {
+ 			setTimes(now - elapsed, now);
+ 		} else {
+@@ -262,7 +279,7 @@
+ 	 *            desired elapsed time
+ 	 */
+ 	public static SampleResult createTestSample(long elapsed) {
+-		long now = System.currentTimeMillis();
++		long now = currentTimeInMs();
+ 		return createTestSample(now, now + elapsed);
+ 	}
+ 
+@@ -280,6 +297,20 @@
+ 		stampAndTime(stamp, elapsed);
+ 	}
+ 
++	private static long sampleNsClockInMs() {
++		return System.nanoTime() / 1000000;
++	}
++
++	// Helper method to get 1 ms resolution timing.
++	private static long currentTimeInMs() {
++		if (haveNanoTime) {
++			long elapsedInMs = sampleNsClockInMs() - referenceTimeNsClock;
++			return referenceTimeMsClock + elapsedInMs;
++		} else {
++			return System.currentTimeMillis();
++		}
++	}
++
+ 	// Helper method to maintain timestamp relationships
+ 	private void stampAndTime(long stamp, long elapsed) {
+ 		if (startTimeStamp) {
+@@ -325,7 +356,7 @@
+ 		if (startTime != 0 || endTime != 0){
+ 			throw new RuntimeException("Calling setTime() after start/end times have been set");
+ 		}
+-		long now = System.currentTimeMillis();
++		long now = currentTimeInMs();
+ 	    setTimes(now - elapsed, now);
+ 	}
+ 
+@@ -805,7 +836,7 @@
+ 	 */
+ 	public void sampleStart() {
+ 		if (startTime == 0) {
+-			setStartTime(System.currentTimeMillis());
++			setStartTime(currentTimeInMs());
+ 		} else {
+ 			log.error("sampleStart called twice", new Throwable("Invalid call sequence"));
+ 		}
+@@ -817,7 +848,7 @@
+ 	 */
+ 	public void sampleEnd() {
+ 		if (endTime == 0) {
+-			setEndTime(System.currentTimeMillis());
++			setEndTime(currentTimeInMs());
+ 		} else {
+ 			log.error("sampleEnd called twice", new Throwable("Invalid call sequence"));
+ 		}
+@@ -831,7 +862,7 @@
+ 		if (pauseTime != 0) {
+ 			log.error("samplePause called twice", new Throwable("Invalid call sequence"));
+ 		}
+-		pauseTime = System.currentTimeMillis();
++		pauseTime = currentTimeInMs();
+ 	}
+ 
+ 	/**
+@@ -842,7 +873,7 @@
+ 		if (pauseTime == 0) {
+ 			log.error("sampleResume without samplePause", new Throwable("Invalid call sequence"));
+ 		}
+-		idleTime += System.currentTimeMillis() - pauseTime;
++		idleTime += currentTimeInMs() - pauseTime;
+ 		pauseTime = 0;
+ 	}
+ 
+@@ -943,7 +974,7 @@
+      *
+      */
+ 	public void latencyEnd() {
+-		latency = System.currentTimeMillis() - startTime - idleTime;
++		latency = currentTimeInMs() - startTime - idleTime;
+ 	}
+ 
+ 	/**
+
+=== modified file 'test/src/org/apache/jmeter/samplers/TestSampleResult.java'
+--- test/src/org/apache/jmeter/samplers/TestSampleResult.java	2008-03-12 13:02:10 +0000
++++ test/src/org/apache/jmeter/samplers/TestSampleResult.java	2008-03-15 15:50:36 +0000
+@@ -98,6 +98,14 @@
+             assertEquals("sample of size 100 bytes", res.getSampleLabel());
+         }
+ 
++        private static long sampleClock() {
++            try {
++                return System.nanoTime() / 1000000;
++            } catch (NoSuchMethodError e) {
++                return System.currentTimeMillis();
++            }
++        }
++
+         public void testSubResults() throws Exception {
+         	// This test tries to emulate a http sample, with two
+         	// subsamples, representing images that are downloaded for the
+@@ -106,8 +114,8 @@
+             // Sample that will get two sub results, simulates a web page load 
+             SampleResult resWithSubResults = new SampleResult();            
+ 
+-            long beginTest = System.currentTimeMillis();
+-            
++            long beginTest = sampleClock();
++
+             resWithSubResults.sampleStart();
+             Thread.sleep(100);
+             resWithSubResults.setBytes(300);
+@@ -142,8 +150,8 @@
+             resNoSubResults2.sampleEnd();
+             long sample2Time = resNoSubResults2.getTime();
+ 
+-            long overallTime = System.currentTimeMillis() - beginTest;
+-            
++            long overallTime = sampleClock() - beginTest;
++
+             assertTrue(resNoSubResults2.isSuccessful());
+             assertEquals(200, resNoSubResults2.getBytes());
+             assertEquals("sample with no subresults", resNoSubResults2.getSampleLabel());
+

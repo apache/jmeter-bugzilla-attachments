@@ -1,0 +1,81 @@
+From c866e4279031364f76e2f34cf3165253b1cdc9e5 Mon Sep 17 00:00:00 2001
+From: benoit <b.wiart@ubik-ingenierie.com>
+Date: Thu, 25 Feb 2016 16:15:09 +0100
+Subject: [PATCH] Bug 59067 JMeter fail to iterate over SimpleController after
+ an assertion error. The controller does not restart at the first sampler The
+ pb is that in JMeterThread#triggerEndOfLoopOnParentControllers the Sampler
+ used is not always the "real" one, but it can be a TransactionSampler, if
+ there are some other controllers (Simplecontroller) between this
+ TransactionSampler and the http sampler, triggerEndOfLoop will not be called
+ for those controllers.
+
+the idea behind the patch is to always do the tree traversal from the
+real sampler.
+---
+ .../jmeter/control/TransactionController.java      |  1 -
+ .../org/apache/jmeter/threads/JMeterThread.java    | 29 +++++++++++++++++++---
+ 2 files changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/control/TransactionController.java b/src/core/org/apache/jmeter/control/TransactionController.java
+index 9634655..7a86211 100644
+--- a/src/core/org/apache/jmeter/control/TransactionController.java
++++ b/src/core/org/apache/jmeter/control/TransactionController.java
+@@ -283,7 +283,6 @@ public void triggerEndOfLoop() {
+             // update them with SubSamplerResult
+             if(subSampler instanceof TransactionSampler) {
+                 TransactionSampler tc = (TransactionSampler) subSampler;
+-                tc.getTransactionController().triggerEndOfLoop();
+                 transactionSampler.addSubSamplerResult(tc.getTransactionResult());
+             }
+             transactionSampler.setTransactionDone();
+diff --git a/src/core/org/apache/jmeter/threads/JMeterThread.java b/src/core/org/apache/jmeter/threads/JMeterThread.java
+index b00a4f8..7d6e4f2 100644
+--- a/src/core/org/apache/jmeter/threads/JMeterThread.java
++++ b/src/core/org/apache/jmeter/threads/JMeterThread.java
+@@ -308,14 +308,25 @@ public void run() {
+      * @param threadContext 
+      */
+     private void triggerEndOfLoopOnParentControllers(Sampler sam, JMeterContext threadContext) {
+-        // Find parent controllers of current sampler
+-        FindTestElementsUpToRootTraverser pathToRootTraverser = null;
++        
+         TransactionSampler transactionSampler = null;
+         if(sam instanceof TransactionSampler) {
+             transactionSampler = (TransactionSampler) sam;
+-            pathToRootTraverser = new FindTestElementsUpToRootTraverser(transactionSampler.getTransactionController());
++        }
++
++        // Bug 59067
++        // the Sampler provided is not always the "real" one, but it can be a TransactionSampler, 
++        //   if there are some other controllers (SimpleController) between this TransactionSampler and the real sampler, 
++        //   triggerEndOfLoop will not be called for those controllers.
++        // the following method will try to find the sampler that really generate an error
++        Sampler realSampler = findRealSampler(sam);
++        
++        // Find parent controllers of current sampler
++        FindTestElementsUpToRootTraverser pathToRootTraverser = null;
++        if(realSampler instanceof TransactionSampler) {
++            pathToRootTraverser = new FindTestElementsUpToRootTraverser(((TransactionSampler) realSampler).getTransactionController());
+         } else {
+-            pathToRootTraverser = new FindTestElementsUpToRootTraverser(sam);
++            pathToRootTraverser = new FindTestElementsUpToRootTraverser(realSampler);
+         }
+         testTree.traverse(pathToRootTraverser);
+         
+@@ -340,6 +351,16 @@ private void triggerEndOfLoopOnParentControllers(Sampler sam, JMeterContext thre
+         }
+     }
+ 
++    private Sampler findRealSampler(Sampler sam) {
++        Sampler realSampler = sam;
++
++        while(realSampler instanceof TransactionSampler) {
++            realSampler = ((TransactionSampler) realSampler).getSubSampler();
++        }
++       
++        return realSampler;
++    }
++
+     /**
+      * Process the current sampler, handling transaction samplers.
+      *

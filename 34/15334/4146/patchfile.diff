@@ -1,0 +1,642 @@
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties ./core/org/apache/jmeter/resources/messages.properties
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties	2002-08-30 14:42:10.000000000 -0400
++++ ./core/org/apache/jmeter/resources/messages.properties	2002-11-21 13:56:41.000000000 -0500
+@@ -244,7 +244,10 @@
+ graph_results_throughput=Throughput
+ minute=minute
+ http_url_rewriting_modifier_title=HTTP URL Re-writing Modifier
++http_url_session_argument_filter_title=HTTP URL Session Argument Filter
++http_url_session_argument_modifier_title=HTTP URL Session Argument Modifier
+ session_argument_name=Session Argument Name
++argument_group_number=Argument Group Number
+ path_extension_choice=Path Extension (use ";" as separator)
+ you_must_enter_a_valid_number=You must enter a valid number
+ invalid_data=Invalid data
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_de.properties ./core/org/apache/jmeter/resources/messages_de.properties
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_de.properties	2002-09-02 10:33:36.000000000 -0400
++++ ./core/org/apache/jmeter/resources/messages_de.properties	2002-11-21 14:41:26.000000000 -0500
+@@ -244,7 +244,10 @@
+ graph_results_throughput=Durchsatz
+ minute=Minute
+ http_url_rewriting_modifier_title=HTTP URL-Rewriting Modifier
++http_url_session_argument_filter_title=HTTP URL Session Argument Filter
++http_url_session_argument_modifier_title=HTTP URL Session Argument Modifier
+ session_argument_name=Session Argument Name
++argument_group_number=Argument Group Number
+ path_extension_choice=Path Erweiterung (benutze ";" als Trennzeichen)
+ you_must_enter_a_valid_number=Sie müssen ein gültige Nummer eingeben
+ invalid_data=ungültige Daten
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_ja.properties ./core/org/apache/jmeter/resources/messages_ja.properties
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_ja.properties	2002-08-30 14:43:22.000000000 -0400
++++ ./core/org/apache/jmeter/resources/messages_ja.properties	2002-11-21 14:40:41.000000000 -0500
+@@ -239,7 +239,10 @@
+ graph_results_throughput=Throughput
+ minute=minute
+ http_url_rewriting_modifier_title=HTTP URL-Rewriting Modifier
++http_url_session_argument_filter_title=HTTP URL Session Argument Filter
++http_url_session_argument_modifier_title=HTTP URL Session Argument Modifier
+ session_argument_name=Session Argument Name
++argument_group_number=Argument Group Number
+ path_extension_choice=Path Extension (use ";" as separator)
+ you_must_enter_a_valid_number=You must enter a valid number
+ invalid_data=Invalid data
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_no.properties ./core/org/apache/jmeter/resources/messages_no.properties
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages_no.properties	2002-08-30 14:43:06.000000000 -0400
++++ ./core/org/apache/jmeter/resources/messages_no.properties	2002-11-21 14:41:21.000000000 -0500
+@@ -231,7 +231,10 @@
+ graph_results_throughput=Throughput
+ minute=minute
+ http_url_rewriting_modifier_title=HTTP URL-Rewriting Modifier
++http_url_session_argument_filter_title=HTTP URL Session Argument Filter
++http_url_session_argument_modifier_title=HTTP URL Session Argument Modifier
+ session_argument_name=Session Argument Name
++argument_group_number=Argument Group Number
+ path_extension_choice=Path Extension (use ";" as separator)
+ you_must_enter_a_valid_number=You must enter a valid number
+ invalid_data=Invalid data
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	2002-10-15 20:28:56.000000000 -0400
++++ ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	2002-12-12 08:53:07.000000000 -0500
+@@ -66,7 +66,11 @@
+ 		}
+ 		return false;
+ 	}
+-	private void modify(HTTPSampler sampler, String value)
++        /**
++         * Modifies HTTPSampler with new argument values
++         * Chris Pesarchick: refactored: was private void modify(HTTPSampler sampler, String value)
++         */
++        protected void modify(HTTPSampler sampler, String value)
+ 	{
+ 		if (isPathExtension())
+ 		{
+@@ -85,27 +89,42 @@
+ 		setProperty(ARGUMENT_NAME, argName);
+ 		case1 = case2 = case3 = null;
+ 	}
+-	private void initRegex(String argName)
+-	{
+-		try
+-		{
+-			case1 = compiler.compile(argName + "=([^\"'>& \n\r]*)[& \\n\\r\"'>]?$?");
++	/**
++         * Initilizes the regular expresion patterns
++         * Chris Pesarchick: refactored: Changed to get a compiler;  This change was 
++         * made for remote to work.
++         */
++        private void initRegex(String argName) {
++            try {
++                case1 = getCompiler().compile(argName + "=([^\"'>& \n\r]*)[& \\n\\r\"'>]?$?");
+ 			case2 =
+-				compiler.compile(
++                getCompiler().compile(
+ 					"[Nn][Aa][Mm][Ee]=\""
+ 						+ argName
+ 						+ "\"[^>]+[vV][Aa][Ll][Uu][Ee]=\"([^\"]*)\"");
+ 			case3 =
+-				compiler.compile(
++                getCompiler().compile(
+ 					"[vV][Aa][Ll][Uu][Ee]=\"([^\"]*)\"[^>]+[Nn][Aa][Mm][Ee]=\""
+ 						+ argName
+ 						+ "\"");
+ 		}
+-		catch (MalformedPatternException e)
+-		{
++            catch (MalformedPatternException e) {
+ 			log.error("", e);
+ 		}
+ 	}
++        
++        /**
++         * Gets a regular expresion compiler.
++         * @return A Perl 5 regular expresion compiler.
++         */
++        private Perl5Compiler getCompiler() {
++            if ( compiler == null ) {
++                compiler = new Perl5Compiler();
++            }
++            return compiler;
++        }
++
++
+ 	public String getArgumentName()
+ 	{
+ 		return getPropertyAsString(ARGUMENT_NAME);
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentFilter.java ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentFilter.java
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentFilter.java	1969-12-31 19:00:00.000000000 -0500
++++ ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentFilter.java	2002-12-11 21:01:13.000000000 -0500
+@@ -0,0 +1,162 @@
++package org.apache.jmeter.protocol.http.modifier;
++
++import java.io.Serializable;
++import java.util.ArrayList;
++import java.util.List;
++import junit.framework.TestCase;
++import org.apache.jmeter.config.Argument;
++import org.apache.jmeter.config.Arguments;
++import org.apache.jmeter.config.ResponseBasedModifier;
++import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.util.HTTPArgument;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.log.Hierarchy;
++import org.apache.log.Logger;
++import org.apache.oro.text.regex.MalformedPatternException;
++import org.apache.oro.text.regex.MatchResult;
++import org.apache.oro.text.regex.Pattern;
++import org.apache.oro.text.regex.Perl5Compiler;
++import org.apache.oro.text.regex.Perl5Matcher;
++import org.apache.oro.text.regex.PatternMatcherInput;
++
++/**
++ * Looks for an argument in response data and stores that value.
++ * If it doesn't find that argument then nothing happens to the stored value.
++ * This works on the Thread level.
++ * @author  Chris Pesarchick
++ */
++public class URLSessionArgumentFilter extends AbstractTestElement
++implements Serializable, ResponseBasedModifier
++
++{
++    transient private static Logger log =
++    Hierarchy.getDefaultHierarchy().getLoggerFor("jmeter.protocol.http");
++    private Pattern case1, case2, case3;
++    transient Perl5Compiler compiler = new Perl5Compiler();
++    private final static String ARGUMENT_NAME_FILTER = "argument_name_filter";
++    
++    /** Creates a new instance of URLSessionArgumentFilter */
++    public URLSessionArgumentFilter() {
++        URLSessionArgumentHolder.getInstance().reset();
++    }
++    
++    /**
++     * Checks to see if the argument is in the responseText.  This will look
++     * for all occurances.
++     * @param sampler Understands all the parts necessary to read statistics about
++     * HTTP requests, including cookies and authentication.  This is not used.
++     * @param reponseText The text that was generated after the command was excuted.
++     * @return  true if there were matches, false if not.
++     */
++    public boolean modifyEntry(Sampler sampler, SampleResult responseText) {
++        PatternMatcherInput input;
++
++        if(case1 == null) {
++            initRegex(getArgumentName());
++        }
++        
++        String text = new String(responseText.getResponseData());
++        input   = new PatternMatcherInput(text);
++        Perl5Matcher matcher = new Perl5Matcher();
++        List values = new ArrayList();
++        MatchResult result = null;
++        while(matcher.contains(input, case1)) {
++            result = matcher.getMatch();
++            values.add( result.group(1) );
++        }
++        
++        if ( values.size() == 0 ) {
++            while(matcher.contains(input, case2)) {
++                result = matcher.getMatch();
++                values.add( result.group(1) );
++            }
++        }
++        if ( values.size() == 0 ) {
++            while(matcher.contains(input, case3)) {
++                result = matcher.getMatch();
++                values.add( result.group(1) );
++            }
++        }
++        storeValues( values );
++        
++        if (values.size() > 0) {
++            return true;
++        }
++        return false;
++    }
++    
++    /**
++     * Stores all the filtered values so it can be used later in 
++     * URLSessionArgumentModifier.
++     * @param values All values filtered out for the argument.
++     * @see org.apache.jmeter.protocol.http.modifier.URLSessionArgumentModifier
++     * @see org.apache.jmeter.protocol.http.modifier.URLSessionArgumentHolder
++     */
++    protected void storeValues( List values ) {
++        int listSize = values.size();
++        if ( listSize > 0 ) {
++            String key = "";
++            for ( int i = 0; i < listSize; i++ ) {
++                key = Thread.currentThread().getName() + getArgumentName() + i;
++                URLSessionArgumentHolder.getInstance().setArgument( key, values.get(i) );
++            }
++        } 
++        
++        URLSessionArgumentHolder.getInstance().logHolder();
++    }
++    
++    /**
++     * Sets the argument named to be filtered on.
++     * @param argName String value of the argument name.
++     */
++    public void setArgumentName(String argName) {
++        setProperty(ARGUMENT_NAME_FILTER, argName);
++        case1 = case2 = case3 = null;
++    }
++    
++    /**
++     * Creates the regular expression patterns
++     * @param argName Argument name to filter on.
++     */
++    private void initRegex(String argName) {
++        try {
++            case1 = getCompiler().compile(argName + "=([^\"'>& \n\r]*)[& \\n\\r\"'>]?$?");
++            case2 =
++            getCompiler().compile(
++            "[Nn][Aa][Mm][Ee]=\""
++            + argName
++            + "\"[^>]+[vV][Aa][Ll][Uu][Ee]=\"([^\"]*)\"");
++            case3 =
++            getCompiler().compile(
++            "[vV][Aa][Ll][Uu][Ee]=\"([^\"]*)\"[^>]+[Nn][Aa][Mm][Ee]=\""
++            + argName
++            + "\"");
++        }
++        catch (MalformedPatternException e) {
++            log.error("", e);
++        }
++    }
++    
++    /**
++     * Retrieves the argument name.
++     * @return The name of the argument to filter on.
++     */
++    public String getArgumentName() {
++        return getPropertyAsString(ARGUMENT_NAME_FILTER);
++    }
++    
++    /**
++     * Gets a regular expresion compiler.
++     * @return A Perl 5 regular expresion compiler.
++     */
++    private Perl5Compiler getCompiler() {
++        if ( compiler == null ) {
++            compiler = new Perl5Compiler();
++        }
++        return compiler;
++    }
++    
++    
++}
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentHolder.java ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentHolder.java
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentHolder.java	1969-12-31 19:00:00.000000000 -0500
++++ ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentHolder.java	2002-12-11 21:01:28.000000000 -0500
+@@ -0,0 +1,87 @@
++package org.apache.jmeter.protocol.http.modifier;
++
++import java.util.*;
++import org.apache.log.Hierarchy;
++import org.apache.log.Logger;
++
++/**
++ * Holds all filterd values for to be used later to rewrite URLs.
++ * @author  Chris Pesarchick
++ */
++public class URLSessionArgumentHolder {
++    transient private static Logger log =
++    Hierarchy.getDefaultHierarchy().getLoggerFor("jmeter.protocol.http.modifier");
++    
++    private static URLSessionArgumentHolder instance = null;
++    HashMap holder = new HashMap();
++    private static Object syncObject = new Object();
++    
++    /** 
++     * Creates a new instance of URLSessionArgumentHolder 
++     * Private since I am using the singleton pattern.
++     */
++    private URLSessionArgumentHolder() {
++    }
++    
++    /**
++     * Gets an instance of the URLSessionArgumentHolder so that you can use it.
++     * This is the only way to get a URLSessionArgumentHolder.
++     * @return URLSessionArgumentHolder
++     */
++    public static URLSessionArgumentHolder getInstance() {
++        if ( instance == null ) {
++            synchronized( syncObject ) {
++                instance = new URLSessionArgumentHolder();
++            }
++        }
++        return instance;
++    }
++    
++    /**
++     * This sets the argument name and its value.
++     * @param argumentName The name of the argument.  Since this application
++     * is multithreaded you should include the thread name with the 
++     * argumentName.
++     * @param argumentValue The value to be stored.
++     */
++    public synchronized void setArgument( Object argumentName, Object argumentValue ) {
++        holder.put( argumentName, argumentValue );
++    }
++    
++    /**
++     * Gets the value associated with the argumentName
++     * @param argumentName The key to look for.
++     * @return The value associated with the argumentName.
++     */
++    public synchronized Object getArgumentValue( Object argumentName ) {
++        return holder.get( argumentName );
++    }
++    
++    /**
++     * Returns a String representation of this holder.
++     * @return String
++     */
++    public synchronized String toString() {
++        return holder.toString();
++    }
++    
++    /**
++     * logs the holder if jmeter.protocol.http.modifier is set for at least
++     * info.  This is good when you are setting up your test plan, if you have a
++     * lot of values for the same argument and you are not sure what order they 
++     * are in.
++     */
++    public void logHolder() {
++        if ( log.isInfoEnabled() ) {
++            log.info( toString() );
++        }
++    }
++    
++    /**
++     * Clears out the holder.
++     */
++    public void reset() {
++        holder.clear();
++    }
++    
++}
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentModifier.java ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentModifier.java
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentModifier.java	1969-12-31 19:00:00.000000000 -0500
++++ ./protocol/http/org/apache/jmeter/protocol/http/modifier/URLSessionArgumentModifier.java	2002-12-11 21:01:59.000000000 -0500
+@@ -0,0 +1,57 @@
++/*
++ * URLSessionArgumentFilter.java
++ *
++ * Created on November 19, 2002, 5:38 PM
++ */
++
++package org.apache.jmeter.protocol.http.modifier;
++
++import java.io.Serializable;
++import junit.framework.TestCase;
++import org.apache.jmeter.config.Argument;
++import org.apache.jmeter.config.Arguments;
++import org.apache.jmeter.config.ResponseBasedModifier;
++import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.protocol.http.util.HTTPArgument;
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.log.Hierarchy;
++import org.apache.log.Logger;
++import org.apache.oro.text.regex.MalformedPatternException;
++import org.apache.oro.text.regex.MatchResult;
++import org.apache.oro.text.regex.Pattern;
++import org.apache.oro.text.regex.Perl5Compiler;
++import org.apache.oro.text.regex.Perl5Matcher;
++
++/**
++ * Looks for an argument in response data and stores that value.
++ * If it doesn't find that argument then nothing happens to the stored value.
++ * This works on the Thread level.
++ * @author  Chris Pesarchick
++ */
++public class URLSessionArgumentModifier extends URLRewritingModifier
++
++{
++    private final static String GROUP_NUMBER = "GROUP_NUMBER";
++    
++    /** Creates a new instance of URLSessionArgumentModifier */
++    public URLSessionArgumentModifier() {
++    }
++    
++    protected void modify(HTTPSampler sampler, String value) {
++        //get the global value and pass it on to the super
++        String key = Thread.currentThread().getName() + getArgumentName() + getGroupNumber();
++        String myValue = (String)URLSessionArgumentHolder.getInstance().getArgumentValue( key );
++        super.modify( sampler, myValue );
++    }
++    
++    public String getGroupNumber() {
++        return getPropertyAsString(GROUP_NUMBER);
++    }
++    
++    public void setGroupNumber(String argName) {
++        setProperty(GROUP_NUMBER, argName);
++    }
++    
++}
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentFilterGui.java ./protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentFilterGui.java
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentFilterGui.java	1969-12-31 19:00:00.000000000 -0500
++++ ./protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentFilterGui.java	2002-12-11 14:28:06.000000000 -0500
+@@ -0,0 +1,91 @@
++package org.apache.jmeter.protocol.http.modifier.gui;
++
++import java.awt.Font;
++
++import javax.swing.JCheckBox;
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++import javax.swing.border.Border;
++import javax.swing.border.EmptyBorder;
++
++import org.apache.jmeter.config.gui.AbstractResponseBasedModifierGui;
++import org.apache.jmeter.protocol.http.modifier.URLSessionArgumentFilter;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++
++/**
++ * This is a GUI representation that will setup what argument name will be used
++ * in the URLSessionArgumentFilter class.  This should be used at the thread level.
++ * @author  Chris Pesarchick
++ * @created 12/11/2002
++ */
++public class URLSessionArgumentFilterGui extends AbstractResponseBasedModifierGui {
++    JLabeledTextField argumentName;
++    JCheckBox pathExt;
++    private final static String title = JMeterUtils.getResString("http_url_session_argument_filter_title");
++    
++    /** Creates a new instance of URLSessionArgumentFilter */
++    public URLSessionArgumentFilterGui() {
++        init();
++    }
++    
++    /**
++     * Creates and sets up the filter test modifier.
++     * @param TestElement 
++     * @see JMeterGUIComponent#createTestElement()
++     */
++    public TestElement createTestElement() {
++        URLSessionArgumentFilter modifier = new URLSessionArgumentFilter();
++        this.configureTestElement(modifier);
++        modifier.setArgumentName(argumentName.getText());
++        return modifier;
++    }
++    
++    /**
++     * Prepares the GUI elements from the TestElement
++     * @param TestElement 
++     */
++    public void configure(TestElement el) {
++        argumentName.setText(((URLSessionArgumentFilter)el).getArgumentName());
++        super.configure(el);
++    }
++    
++    /**
++     * Gets the title of the GUI module
++     * @return Title of this GUI module
++     */
++    public String getStaticLabel() {
++        return title;
++    }
++    
++    /**
++     * Intitializes the GUI view for this filter.
++     */
++    private void init() {
++        this.setLayout(new VerticalLayout(5, VerticalLayout.LEFT, VerticalLayout.TOP));
++        
++        // MAIN PANEL
++        JPanel mainPanel = new JPanel();
++        Border margin = new EmptyBorder(10, 10, 5, 10);
++        mainPanel.setBorder(margin);
++        mainPanel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
++        
++        // TITLE
++        JLabel panelTitleLabel = new JLabel(title);
++        Font curFont = panelTitleLabel.getFont();
++        int curFontSize = curFont.getSize();
++        curFontSize += 4;
++        panelTitleLabel.setFont(new Font(curFont.getFontName(), curFont.getStyle(), curFontSize));
++        mainPanel.add(panelTitleLabel);
++        
++        // NAME
++        mainPanel.add(getNamePanel());
++        argumentName = new JLabeledTextField(JMeterUtils.getResString("session_argument_name"));
++        mainPanel.add(argumentName);
++        
++        this.add(mainPanel);
++    }
++    
++}
+diff -urbN --strip-trailing-cr /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentModifierGui.java ./protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentModifierGui.java
+--- /cygdrive/c/devl/jakarta/Jakarta-jmeter1.8_orig/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentModifierGui.java	1969-12-31 19:00:00.000000000 -0500
++++ ./protocol/http/org/apache/jmeter/protocol/http/modifier/gui/URLSessionArgumentModifierGui.java	2002-11-25 08:24:52.000000000 -0500
+@@ -0,0 +1,101 @@
++/*
++ * URLSessionArgumentFilter.java
++ *
++ * Created on November 19, 2002, 5:14 PM
++ */
++
++package org.apache.jmeter.protocol.http.modifier.gui;
++
++import java.awt.Font;
++
++import javax.swing.JCheckBox;
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++import javax.swing.border.Border;
++import javax.swing.border.EmptyBorder;
++
++import org.apache.jmeter.config.gui.AbstractResponseBasedModifierGui;
++import org.apache.jmeter.protocol.http.modifier.URLSessionArgumentModifier;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.JLabeledTextField;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++
++/**
++ * This is a GUI representation that will setup what argument name will be used
++ * in the URLSessionArgumentFilter class.
++ * @author  Chris Pesarchick
++ */
++public class URLSessionArgumentModifierGui extends AbstractResponseBasedModifierGui {
++    JLabeledTextField argumentName;
++    JLabeledTextField groupNumber;
++    JCheckBox pathExt;
++    private final static String title = JMeterUtils.getResString("http_url_session_argument_modifier_title");
++    
++    /** Creates a new instance of URLSessionArgumentFilter */
++    public URLSessionArgumentModifierGui() {
++        init();
++    }
++    
++    /**
++     * @see JMeterGUIComponent#createTestElement()
++     */
++    public TestElement createTestElement() {
++        URLSessionArgumentModifier modifier = new URLSessionArgumentModifier();
++        this.configureTestElement(modifier);
++        modifier.setArgumentName(argumentName.getText());
++        modifier.setGroupNumber( groupNumber.getText() );
++        modifier.setPathExtension(pathExt.isSelected());
++        return modifier;
++    }
++    
++    public void configure(TestElement el) {
++        argumentName.setText(((URLSessionArgumentModifier)el).getArgumentName());
++        groupNumber.setText( ((URLSessionArgumentModifier)el).getGroupNumber() );
++        pathExt.setSelected(((URLSessionArgumentModifier)el).isPathExtension());
++        super.configure(el);
++    }
++    
++    /**
++     * Gets the title of the GUI module
++     * @return Title of this GUI module
++     */
++    public String getStaticLabel() {
++        return title;
++    }
++    
++    /**
++     * Intitializes the GUI view for this filter.
++     */
++    private void init() {
++        this.setLayout(new VerticalLayout(5, VerticalLayout.LEFT, VerticalLayout.TOP));
++        
++        // MAIN PANEL
++        JPanel mainPanel = new JPanel();
++        Border margin = new EmptyBorder(10, 10, 5, 10);
++        mainPanel.setBorder(margin);
++        mainPanel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
++        
++        // TITLE
++        JLabel panelTitleLabel = new JLabel(title);
++        Font curFont = panelTitleLabel.getFont();
++        int curFontSize = curFont.getSize();
++        curFontSize += 4;
++        panelTitleLabel.setFont(new Font(curFont.getFontName(), curFont.getStyle(), curFontSize));
++        mainPanel.add(panelTitleLabel);
++        
++        // NAME
++        mainPanel.add(getNamePanel());
++        argumentName = new JLabeledTextField(JMeterUtils.getResString("session_argument_name"));
++        mainPanel.add(argumentName);
++        groupNumber = new JLabeledTextField(JMeterUtils.getResString("argument_group_number"));
++        groupNumber.setText( "0" );
++        mainPanel.add(groupNumber);
++        pathExt = new JCheckBox(JMeterUtils.getResString("Path_Extension_choice"));
++        
++        mainPanel.add(pathExt);
++        
++        this.add(mainPanel);
++    }
++    
++}

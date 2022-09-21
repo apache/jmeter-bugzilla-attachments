@@ -1,0 +1,63 @@
+Index: src/core/org/apache/jmeter/reporters/ResultCollector.java
+===================================================================
+--- src/core/org/apache/jmeter/reporters/ResultCollector.java	(revision 786693)
++++ src/core/org/apache/jmeter/reporters/ResultCollector.java	(working copy)
+@@ -133,6 +133,9 @@
+     private volatile boolean inTest = false;
+ 
+     private volatile boolean isStats = false;
++    
++    /** the summarizer on which this result collector will forward the samples */
++    private Summariser summariser = null;
+ 
+     /**
+      * No-arg constructor.
+@@ -235,6 +238,10 @@
+                 inTest = false;
+             }            
+         }
++
++        if(summariser != null) {
++            summariser.testEnded(host);
++        }
+     }
+ 
+     public synchronized void testStarted(String host) {
+@@ -250,6 +257,10 @@
+             }
+         }
+         inTest = true;
++
++        if(summariser != null) {
++            summariser.testStarted(host);
++        }
+     }
+ 
+     public void testEnded() {
+@@ -484,6 +495,10 @@
+                 }
+             }
+         }
++        
++        if(summariser != null) {
++        	summariser.sampleOccurred(event);
++        }
+     }
+ 
+     protected final void sendToVisualizer(SampleResult r) {
+@@ -577,5 +592,14 @@
+     // can find the Clearable nodes - the userObject has to implement the interface.
+     public void clearData() {
+     }
++    
++    /**
++     * set the summarizer on which this result collector will forward
++     * When running in distributed testing + non gui, the sample won't be sent twice from the slave to the master
++     * @param summariser the summarizer
++     */
++    public void setSummariser(Summariser summariser) {
++        this.summariser = summariser;
++    }
+ 
+ }
+\ No newline at end of file

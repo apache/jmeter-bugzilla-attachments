@@ -1,0 +1,427 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1778949)
++++ bin/jmeter.properties	(working copy)
+@@ -1281,6 +1281,9 @@
+ # Disabled by default
+ #testplan_validation.tpc_force_100_pct=false
+ 
++#---------------------------------------------------------------------------
++# Think Time configuration
++#---------------------------------------------------------------------------
+ 
+ #
+ # Apply a factor on computed pauses by the following Timers:
+@@ -1290,6 +1293,20 @@
+ #
+ #timer.factor=1.0f
+ 
++# Default implementation that create the Timer structure to add to Test Plan
++# Implementation of interface org.apache.jmeter.gui.action.thinktime.ThinkTimeCreator
++#think_time_creator.impl=org.apache.jmeter.thinktime.DefaultThinkTimeCreator
++
++# Default Timer GUI class added to Test Plan by DefaultThinkTimeCreator
++#think_time_creator.default_timer_implementation=org.apache.jmeter.timers.gui.UniformRandomTimerGui
++
++# Default constant pause of Timer 
++#think_time_creator.default_constant_pause=1000
++
++# Default range pause of Timer
++#think_time_creator.default_range=100
++
++
+ # Change this parameter if you want to override the APDEX satisfaction threshold.
+ jmeter.reportgenerator.apdex_satisfied_threshold=500
+ 
+Index: src/components/org/apache/jmeter/thinktime/DefaultThinkTimeCreator.java
+===================================================================
+--- src/components/org/apache/jmeter/thinktime/DefaultThinkTimeCreator.java	(revision 0)
++++ src/components/org/apache/jmeter/thinktime/DefaultThinkTimeCreator.java	(revision 0)
+@@ -0,0 +1,83 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.thinktime;
++
++import org.apache.jmeter.exceptions.IllegalUserActionException;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.action.thinktime.ThinkTimeCreator;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.sampler.TestAction;
++import org.apache.jmeter.sampler.gui.TestActionGui;
++import org.apache.jmeter.timers.RandomTimer;
++import org.apache.jmeter.timers.gui.UniformRandomTimerGui;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Default implementation of {@link ThinkTimeCreator}
++ * @since 3.2
++ */
++public class DefaultThinkTimeCreator implements ThinkTimeCreator {
++    private static final String DEFAULT_TIMER_IMPLEMENTATION = 
++            JMeterUtils.getPropDefault(
++                    "think_time_creator.default_timer_implementation", 
++                    UniformRandomTimerGui.class.getName());
++
++    private static final String DEFAULT_PAUSE = 
++            JMeterUtils.getPropDefault(
++                    "think_time_creator.default_constant_pause", 
++                    "1000");
++
++    private static final String DEFAULT_RANGE = 
++            JMeterUtils.getPropDefault(
++                    "think_time_creator.default_range", 
++                    "100");
++
++    /**
++     */
++    public DefaultThinkTimeCreator() {
++        super();
++    }
++
++    /**
++     * 
++     * @param guiPackage {@link GuiPackage}
++     * @param parentNode {@link JMeterTreeNode}
++     * @return array of {@link JMeterTreeNode}
++     * @throws IllegalUserActionException
++     */
++    @Override
++    public JMeterTreeNode[] createThinkTime(GuiPackage guiPackage, JMeterTreeNode parentNode) 
++            throws IllegalUserActionException {
++        TestAction testAction = (TestAction) guiPackage.createTestElement(TestActionGui.class.getName());
++        testAction.setAction(TestAction.PAUSE);
++        testAction.setDuration("0");
++        JMeterTreeNode thinkTimeNode = new JMeterTreeNode(testAction, guiPackage.getTreeModel());
++        thinkTimeNode.setName("Think Time");
++        RandomTimer randomTimer = (RandomTimer) 
++                guiPackage.createTestElement(DEFAULT_TIMER_IMPLEMENTATION);
++        randomTimer.setDelay(DEFAULT_PAUSE);
++        randomTimer.setRange(DEFAULT_RANGE);
++        randomTimer.setName("Pause");
++        
++        JMeterTreeNode urtNode = new JMeterTreeNode(randomTimer, guiPackage.getTreeModel());        
++        return new JMeterTreeNode[] {
++                thinkTimeNode,
++                urtNode
++        };
++    }
++}
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1778844)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -34,6 +34,7 @@
+     public static final String ADD_ALL          = "add_all"; // $NON-NLS-1$
+     public static final String ADD_PARENT       = "Add Parent"; // $NON-NLS-1$
+     public static final String ANALYZE_FILE     = "Analyze File"; // $NON-NLS-1$
++    public static final String ADD_THINK_TIME_BETWEEN_EACH_STEP    = "Add Think Time between each step"; // $NON-NLS-1$
+     public static final String CHANGE_LANGUAGE  = "change_language"; // $NON-NLS-1$
+     public static final String CHANGE_PARENT    = "Change Parent"; // $NON-NLS-1$
+     public static final String CHECK_DIRTY      = "check_dirty"; // $NON-NLS-1$
+Index: src/core/org/apache/jmeter/gui/action/AddThinkTimeBetweenEachStep.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/AddThinkTimeBetweenEachStep.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/AddThinkTimeBetweenEachStep.java	(revision 0)
+@@ -0,0 +1,152 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.Toolkit;
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++
++import org.apache.jmeter.control.Controller;
++import org.apache.jmeter.exceptions.IllegalUserActionException;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.action.thinktime.ThinkTimeCreator;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.samplers.Sampler;
++import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Add ThinkTime (TestAction + UniformRandomTimer)
++ * @since 3.2
++ */
++public class AddThinkTimeBetweenEachStep extends AbstractAction {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final Set<String> commands = new HashSet<>();
++    
++    private static final String DEFAULT_IMPLEMENTATION = 
++            JMeterUtils.getPropDefault("think_time_creator.impl", 
++                    "org.apache.jmeter.thinktime.DefaultThinkTimeCreator");
++    static {
++        commands.add(ActionNames.ADD_THINK_TIME_BETWEEN_EACH_STEP);
++    }
++
++    /**
++     * 
++     */
++    public AddThinkTimeBetweenEachStep() {
++        super();
++    }
++
++    @Override
++    public void doAction(ActionEvent e) {
++        GuiPackage guiPackage = GuiPackage.getInstance();
++        JMeterTreeNode currentNode = guiPackage.getTreeListener().getCurrentNode();
++        if (!
++                (currentNode.getUserObject() instanceof Controller ||
++                        currentNode.getUserObject() instanceof ThreadGroup)
++                ) {
++            Toolkit.getDefaultToolkit().beep();
++            return;
++        }
++        try {
++            addThinkTimeToChildren(guiPackage, currentNode);            
++        } catch (Exception err) {
++            Toolkit.getDefaultToolkit().beep();
++            log.error("Failed to add think times", err);
++            JMeterUtils.reportErrorToUser("Failed to add think times", err);
++        }
++    }
++
++    /**
++     * Add Think Time to children of parentNode
++     * @param guiPackage {@link GuiPackage}
++     * @param parentNode Parent node of elements on which we add think times
++     * @throws IllegalUserActionException 
++     */
++    private void addThinkTimeToChildren(GuiPackage guiPackage, 
++            JMeterTreeNode parentNode) throws IllegalUserActionException {
++        guiPackage.updateCurrentNode();
++        boolean insertThinkTime = false;
++        try {
++            int index = 0;
++            while(true) {
++                if(index == parentNode.getChildCount()) {
++                    index++;
++                    break;
++                }
++                JMeterTreeNode childNode = (JMeterTreeNode) parentNode.getChildAt(index);
++                Object userObject = childNode.getUserObject();
++                if(userObject instanceof Sampler ||
++                        userObject instanceof Controller) {
++                    insertThinkTime = true;                
++                }
++                if(insertThinkTime) {
++                    JMeterTreeNode[] nodes = createThinkTime(guiPackage, parentNode);
++                    if(nodes.length != 2) {
++                        throw new IllegalArgumentException("Invalid Think Time, expected 2 nodes, got:"+nodes.length);
++                    }
++                    index++;
++                    addNodesToTreeHierachically(guiPackage, parentNode, nodes, index);
++                    insertThinkTime = false;
++                }
++                index++;
++            }
++        } catch(Exception ex) {
++            throw new IllegalUserActionException("Cannot add think times", ex);
++        }
++    }
++
++    /**
++     * add nodes to JMeter Tree
++     * @param guiPackage {@link GuiPackage}
++     * @param parentNode {@link JMeterTreeNode}
++     * @param childNodes Child nodes
++     * @param index insertion index
++     */
++    private void addNodesToTreeHierachically(GuiPackage guiPackage, 
++            JMeterTreeNode parentNode, 
++            JMeterTreeNode[] childNodes, 
++            int index) {
++        guiPackage.getTreeModel().insertNodeInto(childNodes[0], parentNode, index);    
++        guiPackage.getTreeModel().insertNodeInto(childNodes[1], childNodes[0], 0);
++    }
++
++    /**
++     * 
++     * @param guiPackage {@link GuiPackage}
++     * @param parentNode {@link JMeterTreeNode}
++     * @return array of {@link JMeterTreeNode}
++     * @throws IllegalUserActionException
++     */
++    private JMeterTreeNode[] createThinkTime(GuiPackage guiPackage, JMeterTreeNode parentNode) 
++        throws Exception {
++        Class<?> clazz = Class.forName(DEFAULT_IMPLEMENTATION);
++        ThinkTimeCreator thinkTimeCreator = (ThinkTimeCreator) clazz.newInstance();
++        return thinkTimeCreator.createThinkTime(guiPackage, parentNode);
++    }
++    
++    @Override
++    public Set<String> getActionNames() {
++        return commands;
++    }
++}
+Index: src/core/org/apache/jmeter/gui/action/thinktime/ThinkTimeCreator.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/thinktime/ThinkTimeCreator.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/thinktime/ThinkTimeCreator.java	(revision 0)
+@@ -0,0 +1,39 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action.thinktime;
++
++import org.apache.jmeter.exceptions.IllegalUserActionException;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++
++/**
++ * @since 3.2
++ *
++ */
++public interface ThinkTimeCreator {
++
++    /**
++     * 
++     * @param guiPackage
++     * @param parentNode
++     * @return array of 2 nodes
++     * @throws IllegalUserActionException
++     */
++    JMeterTreeNode[] createThinkTime(GuiPackage guiPackage, JMeterTreeNode parentNode) throws IllegalUserActionException;
++}
+Index: src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 1778844)
++++ src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -293,6 +293,9 @@
+         pop.add(makeMenus(MENU_PARENT_CONTROLLER,
+                 JMeterUtils.getResString("change_parent"),// $NON-NLS-1$
+                 ActionNames.CHANGE_PARENT));
++        pop.add(MenuFactory.makeMenuItemRes("add_think_times",// $NON-NLS-1$
++                ActionNames.ADD_THINK_TIME_BETWEEN_EACH_STEP));
++
+         MenuFactory.addEditMenu(pop, true);
+         MenuFactory.addFileMenu(pop);
+         return pop;
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1778844)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -32,6 +32,7 @@
+ add_user=Add User
+ add_value=Add Value
+ addtest=Add test
++add_think_times=Add Think Times to children
+ aggregate_graph=Statistical Graphs
+ aggregate_graph_choose_color=Choose color
+ aggregate_graph_choose_foreground_color=Foreground color
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1778844)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -23,6 +23,7 @@
+ add_parameter=Ajouter un param\u00E8tre
+ add_pattern=Ajouter un motif \:
+ add_test=Ajout
++add_think_times=Add Think Times to children
+ add_user=Ajouter un utilisateur
+ add_value=Ajouter valeur
+ addtest=Ajout
+Index: src/core/org/apache/jmeter/threads/gui/AbstractThreadGroupGui.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/gui/AbstractThreadGroupGui.java	(revision 1778844)
++++ src/core/org/apache/jmeter/threads/gui/AbstractThreadGroupGui.java	(working copy)
+@@ -38,7 +38,6 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.threads.AbstractThreadGroup;
+-import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ public abstract class AbstractThreadGroupGui extends AbstractJMeterGuiComponent {
+@@ -103,6 +102,12 @@
+             validateTg.addActionListener(ActionRouter.getInstance());
+             validateTg.setActionCommand(ActionNames.VALIDATE_TG);
+             pop.add(validateTg);
++
++            JMenuItem addThinkTimesToChildren = new JMenuItem(JMeterUtils.getResString("add_think_times"));
++            addThinkTimesToChildren.setName("add_think_times");
++            addThinkTimesToChildren.addActionListener(ActionRouter.getInstance());
++            addThinkTimesToChildren.setActionCommand(ActionNames.ADD_THINK_TIME_BETWEEN_EACH_STEP);
++            pop.add(addThinkTimesToChildren);
+         }
+         
+         MenuFactory.addEditMenu(pop, true);
+Index: xdocs/usermanual/properties_reference.xml
+===================================================================
+--- xdocs/usermanual/properties_reference.xml	(revision 1778949)
++++ xdocs/usermanual/properties_reference.xml	(working copy)
+@@ -1791,6 +1791,23 @@
+     </ul>
+     Defaults to: <code>1.0f</code>
+ </property>
++<property name="think_time_creator.impl">
++    Default implementation that create the Timer structure to add to Test Plan. 
++    Implementation of interface org.apache.jmeter.gui.action.thinktime.ThinkTimeCreator
++    Defaults to: <code><a href="../api/org/apache/jmeter/thinktime/DefaultThinkTimeCreator.html"><code>org.apache.jmeter.thinktime.DefaultThinkTimeCreator</code></a></code>
++</property>
++<property name="think_time_creator.default_timer_implementation">
++    Default Timer GUI class added to Test Plan by DefaultThinkTimeCreator
++    Defaults to: <code><a href="../api/org/apache/jmeter/timers/gui/UniformRandomTimerGui.html"><code>org.apache.jmeter.timers.gui.UniformRandomTimerGui</code></a></code>
++</property>
++<property name="think_time_creator.default_constant_pause">
++    Default constant pause of Timer
++    Defaults to: <code>1000</code>
++</property>
++<property name="think_time_creator.default_range">
++    Default range pause of Timer
++    Defaults to: <code>100</code>
++</property>
+ </properties>
+ <a href="#">^</a>
+ </section>

@@ -1,0 +1,97 @@
+Index: src/functions/org/apache/jmeter/functions/Variable.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/Variable.java	(revision 1826703)
++++ src/functions/org/apache/jmeter/functions/Variable.java	(working copy)
+@@ -33,10 +33,11 @@
+  *
+  * Parameters:
+  * - variable name
++ * - default value
+  *
+  * Returns:
+  * - the variable value, but if not found
+- * - the variable name itself
++ * - the default value if sent, and if not the variable name itself
+  * @since 2.3RC3
+  */
+ public class Variable extends AbstractFunction {
+@@ -47,27 +48,32 @@
+ 
+     // Number of parameters expected - used to reject invalid calls
+     private static final int MIN_PARAMETER_COUNT = 1;
+-    private static final int MAX_PARAMETER_COUNT = 1;
++    private static final int MAX_PARAMETER_COUNT = 2;
+ 
+     static {
+-        desc.add(JMeterUtils.getResString("variable_name_param")); //$NON-NLS-1$
++    	desc.add(JMeterUtils.getResString("variable_name_param")); //$NON-NLS-1$
++        desc.add(JMeterUtils.getResString("property_default_param")); //$NON-NLS-1$
+     }
+ 
+     private Object[] values;
+ 
+-    public Variable() {
++    public Variable() { 
++    	//used for test
+     }
+ 
+     /** {@inheritDoc} */
+     @Override
+     public String execute(SampleResult previousResult, Sampler currentSampler)
+-            throws InvalidVariableException {
+-        String variableName = ((CompoundVariable) values[0]).execute();
+-        String variableValue = getVariables().get(variableName);
+-        return variableValue == null? variableName : variableValue;
++			throws InvalidVariableException {
++		String variableName = ((CompoundVariable) values[0]).execute();
++		String variableDefault = variableName;
++		if (values.length > 1) {
++			variableDefault = ((CompoundVariable) values[1]).execute();
++		}
++		String variableValue = getVariables().get(variableName);
++		return variableValue == null ? variableDefault : variableValue;
++	}
+ 
+-    }
+-
+     /** {@inheritDoc} */
+     @Override
+     public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
+Index: test/src/org/apache/jmeter/functions/VariableTest.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/VariableTest.java	(revision 1826703)
++++ test/src/org/apache/jmeter/functions/VariableTest.java	(working copy)
+@@ -57,8 +57,18 @@
+         parms = makeParams("V",null,null);
+         r.setParameters(parms);
+         s = r.execute(null,null);
+-        assertEquals("A",s);
++        assertEquals("A",s);        
+         
++        parms = makeParams("V","DEFAULT",null);
++        r.setParameters(parms);
++        s = r.execute(null,null);
++        assertEquals("A",s);        
++        
++        parms = makeParams("EMPTY","DEFAULT",null);
++        r.setParameters(parms);
++        s = r.execute(null,null);
++        assertEquals("DEFAULT",s);        
++        
+         parms = makeParams("X",null,null);
+         r.setParameters(parms);
+         s = r.execute(null,null);
+Index: xdocs/usermanual/functions.xml
+===================================================================
+--- xdocs/usermanual/functions.xml	(revision 1826703)
++++ xdocs/usermanual/functions.xml	(working copy)
+@@ -1244,6 +1244,9 @@
+         <property name="Variable name" required="Yes">
+         The variable to be evaluated. 
+         </property>
++        <property name="Default value" required="No">
++        The default value in case no variable found, if it's empty and no variable found function returning the variable name 
++        </property>
+ </properties>
+ </component>
+ 

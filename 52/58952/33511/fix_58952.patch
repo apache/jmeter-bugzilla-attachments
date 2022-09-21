@@ -1,0 +1,24 @@
+diff --git a/src/core/org/apache/jmeter/report/processor/graph/AbstractGraphConsumer.java b/src/core/org/apache/jmeter/report/processor/graph/AbstractGraphConsumer.java
+index 779e4c7..d0b9af6 100644
+--- a/src/core/org/apache/jmeter/report/processor/graph/AbstractGraphConsumer.java
++++ b/src/core/org/apache/jmeter/report/processor/graph/AbstractGraphConsumer.java
+@@ -236,6 +236,11 @@ public abstract class AbstractGraphConsumer extends AbstractSampleConsumer {
+     private void addKeyData(MapResultData result, String group, String series,
+             SeriesData seriesData, boolean aggregated) {
+ 
++	// Override series name when aggregated
++	if (aggregated) {
++            series = String.format(aggregatedKeysSeriesFormat, series);
++	}
++	
+         // Add to the result map
+         ListResultData seriesList = (ListResultData) result
+                 .getResult(RESULT_SERIES);
+@@ -275,7 +280,6 @@ public abstract class AbstractGraphConsumer extends AbstractSampleConsumer {
+         if (!aggregated) {
+             aggInfo = seriesData.getAggregatorInfo();
+         } else {
+-            series = String.format(aggregatedKeysSeriesFormat, series);
+             aggInfo = new HashMap<>();
+             aggInfo.put(Double.valueOf(seriesData.getKeysAggregator().getResult()),
+                     seriesData.getValuesAggregator());

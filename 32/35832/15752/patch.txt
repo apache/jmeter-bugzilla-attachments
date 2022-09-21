@@ -1,0 +1,356 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java,v
+retrieving revision 1.22
+diff -r1.22 UrlConfigGui.java
+36a37
+> import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
+81a83,84
+> 	
+> 	private JRadioButton put;
+117c120
+< 		element.setProperty(HTTPSamplerBase.METHOD, (post.isSelected() ? "POST" : "GET"));
+---
+> 		element.setProperty(HTTPSamplerBase.METHOD, getSelectedMethod());
+162,169c165,184
+< 		if ("POST".equals(el.getPropertyAsString(HTTPSamplerBase.METHOD))) {
+< 			post.setSelected(true);
+< 			get.setSelected(false);
+< 		} else {
+< 			get.setSelected(true);
+< 			post.setSelected(false);
+< 		}
+< 		path.setText(el.getPropertyAsString(HTTPSamplerBase.PATH));
+---
+>         String samplerMethod = el.getPropertyAsString(HTTPSamplerBase.METHOD);
+>         if ("POST".equals(samplerMethod))
+>         {
+>             post.setSelected(true);
+>             get.setSelected(false);
+>             put.setSelected(false);
+>         }
+>         else if ("PUT".equals(samplerMethod))
+>         {
+>             put.setSelected(true);
+>             post.setSelected(false);
+>             get.setSelected(false);
+>         }
+>         else
+>         {
+>             get.setSelected(true);
+>             post.setSelected(false);
+>             put.setSelected(false);
+>         }
+>  		path.setText(el.getPropertyAsString(HTTPSamplerBase.PATH));
+293c308,311
+< 		JLabel methodLabel = new JLabel(JMeterUtils.getResString("method"));
+---
+>         put = new JRadioButton(JMeterUtils.getResString("url_config_put"));
+>         methodButtonGroup.add(put);
+> 
+>         JLabel methodLabel = new JLabel(JMeterUtils.getResString("method"));
+303a322
+> 		panel.add(put);
+312a332,345
+> 	
+>     private String getSelectedMethod()
+>     {
+>         String selectedMethod = HTTPSamplerBase.GET;
+>         if (post.isSelected())
+>         {
+>             selectedMethod = HTTPSamplerBase.POST;
+>         }
+>         else if (put.isSelected())
+>         {
+>             selectedMethod = HTTPSamplerBase.PUT;
+>         }
+>         return selectedMethod;
+>     }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java,v
+retrieving revision 1.101
+diff -r1.101 HTTPSampler.java
+32a33
+> import org.apache.jmeter.protocol.http.sampler.PutWriter;
+58a60
+> 	private static final PutWriter putWriter= new PutWriter();
+83a86,96
+>     /**
+>      * Set request headers in preparation to opening a connection.
+>      *
+>      * @param conn       <code>URLConnection</code> to set headers on
+>      * @exception IOException  if an I/O exception occurs
+>      */
+>     protected void setPutHeaders(URLConnection conn) throws IOException
+>     {
+>         putWriter.setHeaders(conn, this);
+>     }
+> 
+95a109,120
+>     /**
+>      * Send PUT data from <code>Entry</code> to the open connection.
+>      *
+>      * @param connection <code>URLConnection</code> where PUT data should
+>      *                   be sent
+>      * @exception IOException  if an I/O exception occurs
+>      */
+>     public void sendPutData(URLConnection connection) throws IOException
+>     {
+>         putWriter.sendPutData(connection, this);
+>     }
+> 
+180a206,209
+> 		else if (method.equals(PUT))
+> 		{
+> 		    setPutHeaders(conn);
+> 		}
+394c423
+< 	 *            HTTP method: GET, POST,...
+---
+> 	 *            HTTP method: GET, POST, PUT,...
+447a477,479
+> 			else if (method.equals(PUT)) {
+> 			    sendPutData(conn);
+> 			}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler2.java,v
+retrieving revision 1.20
+diff -r1.20 HTTPSampler2.java
+35a36
+> import org.apache.commons.httpclient.methods.PutMethod;
+106a108,120
+>     /**
+>      * Set request headers in preparation to opening a connection.
+>      *
+>      * @param conn       <code>URLConnection</code> to set headers on
+>      * @exception IOException  if an I/O exception occurs
+>      */
+>     private void setPutHeaders(PutMethod put) throws IOException
+>     {
+>     	// Probably nothing needed, because the PutMethod class takes care of it
+> //        /*putWriter.*/
+> //    	setHeaders(put, this);
+>     }
+> 
+119a134,145
+>     /**
+>      * Send PUT data from <code>Entry</code> to the open connection.
+>      *
+>      * @param connection <code>HttpMethod</code> used to send PUT data
+>      * @exception IOException  if an I/O exception occurs
+>      */
+>     private void sendPutData(HttpMethod connection) throws IOException
+>     {
+>         /*putWriter.*/
+>     		sendPutData((PutMethod)connection, this);
+>     }
+>     
+146a173,195
+>     /**
+>      * Send PUT data from Entry to the open connection.
+>      */
+>     public void sendPutData(PutMethod put, HTTPSampler2 sampler)
+>         throws IOException
+>     {
+>         // If filename was specified then send the put using multipart syntax
+>         String filename = sampler.getFilename();
+>         if ((filename != null) && (filename.trim().length() > 0))
+>         {
+>         		File input = new File(filename);
+>             if (input.length() < Integer.MAX_VALUE) {
+>                 put.setRequestContentLength((int)input.length());
+>             } else {
+>                 put.setRequestContentLength(EntityEnclosingMethod.CONTENT_LENGTH_CHUNKED);
+>             }
+>             // Specify content type and encoding
+>             put.setRequestHeader("Content-Type", sampler.getMimetype());
+>             put.setRequestBody(new FileInputStream(input));
+>         }
+>     }
+> 
+> 
+204a254,255
+> 		{ else if (method.equals(PUT)) {
+> 		    httpMethod = new PutMethod(urlStr);
+266a318,320
+> 		else if (method.equals(PUT)) {
+> 		    setPutHeaders((PutMethod) httpMethod);
+> 		}
+434a489,491
+> 			else if (method.equals(PUT)) {
+> 			    sendPutData(httpMethod);
+> 			}
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java,v
+retrieving revision 1.14
+diff -r1.14 HTTPSamplerBase.java
+98a99,100
+> 	
+> 	public final static String PUT = "PUT";
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/PutWriter.java
+===================================================================
+RCS file: src/protocol/http/org/apache/jmeter/protocol/http/sampler/PutWriter.java
+diff -N src/protocol/http/org/apache/jmeter/protocol/http/sampler/PutWriter.java
+0a1,159
+> // $Header: /home/cvs/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java,v 1.12.2.2 2004/06/12 20:28:50 sebb Exp $
+> /*
+>  * Copyright 2001-2004 The Apache Software Foundation.
+>  *
+>  * Licensed under the Apache License, Version 2.0 (the "License");
+>  * you may not use this file except in compliance with the License.
+>  * You may obtain a copy of the License at
+>  *
+>  *   http://www.apache.org/licenses/LICENSE-2.0
+>  *
+>  * Unless required by applicable law or agreed to in writing, software
+>  * distributed under the License is distributed on an "AS IS" BASIS,
+>  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+>  * See the License for the specific language governing permissions and
+>  * limitations under the License.
+>  * 
+> */
+> 
+> package org.apache.jmeter.protocol.http.sampler;
+> 
+> import java.io.BufferedInputStream;
+> import java.io.FileInputStream;
+> import java.io.IOException;
+> import java.io.InputStream;
+> import java.io.OutputStream;
+> import java.io.UnsupportedEncodingException;
+> import java.net.HttpURLConnection;
+> import java.net.URLConnection;
+> 
+> /**
+>  * @version $Revision: 1.12.2.2 $
+>  */
+> 
+> public class PutWriter
+> {
+>     private final static byte[] CRLF = { 0x0d, 0x0A };
+>     protected static final String encoding = "iso-8859-1";
+> 
+>     /**
+>      * Send PUT data from Entry to the open connection.
+>      */
+>     public void sendPutData(URLConnection connection, HTTPSampler sampler)
+>         throws IOException
+>     {
+>         String filename = sampler.getFilename();
+>         if ((filename != null) && (filename.trim().length() > 0))
+>         {
+>             OutputStream out = connection.getOutputStream();
+>             writeFileToURL(
+>                 out,
+>                 getFileStream(filename),
+>                 sampler.getMimetype());
+>             out.flush();
+>             out.close();
+>         }
+>     }
+> 
+>     public void setHeaders(URLConnection connection, HTTPSampler sampler)
+>         throws IOException
+>     {
+>         ((HttpURLConnection) connection).setRequestMethod("PUT");
+> 
+>         String filename = sampler.getFileField();
+>         if ((filename != null) && (filename.trim().length() > 0))
+>         {
+>             connection.setRequestProperty("Content-Type", sampler.getMimetype());
+>             connection.setDoOutput(true);
+>             connection.setDoInput(true);
+>         }
+>     }
+> 
+>     private InputStream getFileStream(String filename) throws IOException
+>     {
+>         return new BufferedInputStream(new FileInputStream(filename));
+>     }
+> 
+> 	/* NOTUSED
+>     private String getContentLength(MultipartUrlConfig config)
+>     {
+>         long size = 0;
+>         size += BOUNDARY.length() + 2;
+>         PropertyIterator iter = config.getArguments().iterator();
+>         while (iter.hasNext())
+>         {
+>             Argument item = (Argument) iter.next().getObjectValue();
+>             size += item.getName().length()
+>                 + item.getValue().toString().length();
+>             size += CRLF.length * 4;
+>             size += BOUNDARY.length() + 2;
+>             size += 39;
+>         }
+>         size += new File(config.getFilename()).length();
+>         size += CRLF.length * 5;
+>         size += BOUNDARY.length() + 2;
+>         size += encode(config.getFileFieldName()).length();
+>         size += encode(config.getFilename()).length();
+>         size += config.getMimeType().length();
+>         size += 66;
+>         size += 2 + (CRLF.length * 1);
+>         return Long.toString(size);
+>     }
+> 	*/
+> 	
+>     /**
+>      *  Writes out the contents of a file in correct multipart format.
+>      */
+>     private void writeFileToURL(
+>         OutputStream out,
+>         InputStream in,
+>         String mimetype)
+>         throws IOException
+>     {
+>         byte[] buf = new byte[1024];
+> 	        //1k - the previous 100k made no sense (there's tons of buffers
+> 	        // elsewhere in the chain) and it caused OOM when many concurrent 
+> 	        // uploads were being done. Could be fixed by increasing the evacuation
+> 	        // ratio in bin/jmeter[.bat], but this is better.
+>         int read;
+>         while ((read = in.read(buf)) > 0)
+>         {
+>             out.write(buf, 0, read);
+>         }
+>         out.write(CRLF);
+>         in.close();
+>     }
+> 
+>     private String encode(String value)
+>     {
+>         StringBuffer newValue = new StringBuffer();
+>         char[] chars = value.toCharArray();
+>         for (int i = 0; i < chars.length; i++)
+>         {
+>             if (chars[i] == '\\')
+>             {
+>                 newValue.append("\\\\");
+>             }
+>             else
+>             {
+>                 newValue.append(chars[i]);
+>             }
+>         }
+>         return newValue.toString();
+>     }
+> 
+> 	/* NOTUSED
+>     private void write(OutputStream out, String value)
+>         throws UnsupportedEncodingException, IOException
+>     {
+>         out.write(value.getBytes(encoding));
+>     }
+>     */
+> 
+>     private void writeln(OutputStream out, String value)
+>         throws UnsupportedEncodingException, IOException
+>     {
+>         out.write(value.getBytes(encoding));
+>         out.write(CRLF);
+>     }
+> }

@@ -1,0 +1,249 @@
+Index: core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.15
+diff -u -r1.15 messages.properties
+--- core/org/apache/jmeter/resources/messages.properties	11 Dec 2002 16:07:08 -0000	1.15
++++ core/org/apache/jmeter/resources/messages.properties	18 Dec 2002 01:17:04 -0000
+@@ -175,6 +175,7 @@
+ send_file_browse=Browse...
+ send_file_param_name_label=Parameter Name:
+ send_file_mime_label=MIME Type:
++send_file_eval_file_vars_label=Evaluate variables in file
+ optional_tasks=Optional Tasks
+ proxy_title=HTTP Proxy Server
+ view_results_title=View Results
+Index: protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java,v
+retrieving revision 1.4
+diff -u -r1.4 MultipartUrlConfigGui.java
+--- protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java	17 Oct 2002 19:47:19 -0000	1.4
++++ protocol/http/org/apache/jmeter/protocol/http/config/gui/MultipartUrlConfigGui.java	18 Dec 2002 01:17:07 -0000
+@@ -56,10 +56,18 @@
+ import java.awt.BorderLayout;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
++import java.io.BufferedInputStream;
++import java.io.ByteArrayOutputStream;
+ import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileNotFoundException;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.JButton;
++import javax.swing.JCheckBox;
+ import javax.swing.JFileChooser;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+@@ -67,9 +75,13 @@
+ 
+ import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSampler;
++import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.gui.layout.VerticalLayout;
++import org.apache.log.Hierarchy;
++import org.apache.log.Logger;
++
+ 
+ /****************************************
+  * Title: JMeter Description: Copyright: Copyright (c) 2000 Company: Apache
+@@ -89,10 +101,18 @@
+ 	JLabel paramNameLabel;
+ 	JLabel mimetypeLabel;
+ 	JButton browseFileButton;
++	JCheckBox evalFileVarsCheck;
++	JLabel evalFileVarsLabel;
++	
+ 	private static String FILENAME = "filename";
+ 	private static String BROWSE = "browse";
+ 	private static String PARAMNAME = "paramname";
+ 	private static String MIMETYPE = "mimetype";
++	private static String EVALFILEVARS = "evalfilevars";
++	
++	transient private static Logger log = Hierarchy.getDefaultHierarchy().getLoggerFor(
++		"jmeter.gui");
++
+ 
+ 	/****************************************
+ 	 * !ToDo (Constructor description)
+@@ -114,16 +134,45 @@
+ 		ce.setProperty(HTTPSampler.MIMETYPE, mimetypeField.getText());
+ 		ce.setProperty(HTTPSampler.FILE_NAME, filenameField.getText());
+ 		ce.setProperty(HTTPSampler.FILE_FIELD, paramNameField.getText());
++		ce.setProperty(HTTPSampler.EVAL_FILE_VARS, Boolean.valueOf(evalFileVarsCheck.isSelected()));
++		if (evalFileVarsCheck.isSelected()){
++			ce.setProperty(HTTPSampler.FILE_CONTENT, getFileContent(filenameField.getText()));
++		}
+ 		return ce;
+ 	}
+ 
+-	public void configureSampler(HTTPSampler sampler)
++	private String getFileContent(String filename){
++		try {
++			InputStream in = new BufferedInputStream(new FileInputStream(filename));
++			OutputStream out = new ByteArrayOutputStream();
++			StringBuffer outBuf = new StringBuffer();
++			byte[] buf = new byte[1024 * 100];
++			int read;
++			while ((read = in.read(buf)) > 0){
++				out.write(buf, 0, read);
++			}
++			in.close();
++			return out.toString();
++		} catch (FileNotFoundException e) {
++			log.error("Attached file not found", e);
++			return "";
++		} catch (IOException e) {
++			log.error("Error reading attached file", e);
++			return "";
++		}		
++	}
++
++	/* commented out by Michal Kostrzewa
++	 * What was this for?
++ 	public void configureSampler(HTTPSampler sampler)
+ 	{
+ 		sampler.setMimetype(mimetypeField.getText());
+ 		sampler.setFileField(paramNameField.getText());
+ 		sampler.setFilename(filenameField.getText());
++		sampler.setEvalFileVars(evalFileVarsCheck.isSelected());
+ 		super.configureSampler(sampler);
+ 	}
++	*/
+ 
+ 	/****************************************
+ 	 * !ToDo (Method description)
+@@ -136,6 +185,7 @@
+ 		mimetypeField.setText((String)el.getProperty(HTTPSampler.MIMETYPE));
+ 		filenameField.setText((String)el.getProperty(HTTPSampler.FILE_NAME));
+ 		paramNameField.setText((String)el.getProperty(HTTPSampler.FILE_FIELD));
++		evalFileVarsCheck.setSelected(((AbstractTestElement)el).getPropertyAsBoolean(HTTPSampler.EVAL_FILE_VARS));
+ 	}
+ 
+ 	/****************************************
+@@ -245,10 +295,24 @@
+ 		filenamePanel.add(filenameField);
+ 		filenamePanel.add(browseFileButton);
+ 
++
++		// ---- EVAL FILE PANEL
++		JPanel evalFileVarsPanel = new JPanel();
++		evalFileVarsPanel.setBorder(BorderFactory.createEmptyBorder(0, 25, 0, 0));
++		evalFileVarsLabel = new JLabel(JMeterUtils.getResString("send_file_eval_file_vars_label"));
++		evalFileVarsLabel.setEnabled(true);
++		evalFileVarsCheck = new JCheckBox();
++		evalFileVarsCheck.setName(EVALFILEVARS);
++		evalFileVarsCheck.setEnabled(true);
++
++		evalFileVarsPanel.add(evalFileVarsCheck);
++		evalFileVarsPanel.add(evalFileVarsLabel);
++
++
+ 		// PARAM NAME PANEL (contains param name label and text field)
+ 		JPanel paramNamePanel = new JPanel();
+ 		paramNamePanel.setBorder(BorderFactory.createEmptyBorder(0, 25, 0, 0));
+-
++		
+ 		// --- PARAM NAME LABEL
+ 		paramNameLabel = new JLabel(JMeterUtils.getResString("send_file_param_name_label"));
+ 		paramNameLabel.setEnabled(true);
+@@ -278,6 +342,7 @@
+ 		mimePanel.add(mimetypeField);
+ 
+ 		filePanel.add(filenamePanel);
++		filePanel.add(evalFileVarsPanel);
+ 		filePanel.add(paramNamePanel);
+ 		filePanel.add(mimePanel);
+ 
+Index: protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java,v
+retrieving revision 1.15
+diff -u -r1.15 HTTPSampler.java
+--- protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2 Dec 2002 03:00:26 -0000	1.15
++++ protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	18 Dec 2002 01:17:10 -0000
+@@ -113,6 +113,8 @@
+ 	public final static String FILE_DATA = "HTTPSampler.FILE_DATA";
+ 	public final static String FILE_MIMETYPE = "HTTPSampler.FILE_MIMETYPE";
+ 	public final static String CONTENT_TYPE = "HTTPSampler.CONTENT_TYPE";
++	public final static String EVAL_FILE_VARS = "HTTPSampler.eval_file_vars";
++	public final static String FILE_CONTENT = "HTTPSampler.file_content";
+ 	public final static String NORMAL_FORM = "normal_form";
+ 	public final static String MULTIPART_FORM = "multipart_form";
+ 	private static final int MAX_REDIRECTS=10;
+@@ -283,6 +285,37 @@
+ 	{
+ 		return (String) getProperty(MIMETYPE);
+ 	}
++	
++	
++	
++	/**
++	 * Method setEvaluateFileVariables.
++	 * @param value
++	 * @author mkostrze
++	 */
++	public void setEvalFileVars(boolean value){
++		setProperty(EVAL_FILE_VARS, Boolean.valueOf(value));
++	}
++	
++	/**
++	 * Method getEvaluateFileVariables.
++	 * @return Boolean
++	 * @author mkostrze
++	 */
++	public boolean isEvalFileVars(){
++		return getPropertyAsBoolean(EVAL_FILE_VARS);
++	}
++	
++	/**
++	 * Method getFileContent.
++	 * @return String
++	 * @author mkostrze
++	 */
++	public String getFileContent(){
++		return getPropertyAsString(FILE_CONTENT);
++	}
++	
++	
+ 	protected void addCustomTestElement(TestElement element)
+ 	{
+ 		if (element instanceof Arguments)
+Index: protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java,v
+retrieving revision 1.5
+diff -u -r1.5 PostWriter.java
+--- protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	12 Dec 2002 22:00:16 -0000	1.5
++++ protocol/http/org/apache/jmeter/protocol/http/sampler/PostWriter.java	18 Dec 2002 01:17:10 -0000
+@@ -104,8 +104,9 @@
+ 				writeFormMultipartStyle(out, arg.getName(), (String)arg.getValue());
+ 				writeln(out,"--" + BOUNDARY);
+ 			}
++			
+ 			writeFileToURL(out, filename, sampler.getFileField(),
+-					 getFileStream(filename),sampler.getMimetype());
++				 getAttachedFileStream(sampler),sampler.getMimetype());
+ 
+ 			writeln(out,"--" + BOUNDARY+"--");
+ 			out.flush();
+@@ -148,6 +149,13 @@
+ 	private InputStream getFileStream(String filename) throws IOException
+ 	{
+ 		return new BufferedInputStream(new FileInputStream(filename));
++	}
++	
++	private InputStream getAttachedFileStream(HTTPSampler sampler) throws IOException{
++		if (sampler.isEvalFileVars())
++			return new ByteArrayInputStream(sampler.getFileContent().getBytes());
++		else
++			return getFileStream(sampler.getFilename());
+ 	}
+ 
+ 	private String getContentLength(MultipartUrlConfig config)

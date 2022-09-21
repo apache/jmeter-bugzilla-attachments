@@ -1,0 +1,349 @@
+From adea44fbda4e6b159ecf6a3ff2f9f78c0376677f Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Mon, 24 Aug 2015 22:52:35 +0100
+Subject: [PATCH] Replace old style for loops with forEach part 5
+
+---
+ .../apache/jmeter/extractor/JSoupExtractor.java    |  6 ++----
+ .../org/apache/jmeter/extractor/JoddExtractor.java |  6 ++----
+ .../jmeter/visualizers/RespTimeGraphChart.java     |  5 ++---
+ .../visualizers/ViewResultsFullVisualizer.java     | 12 +++--------
+ .../jmeter/visualizers/backend/SamplerMetric.java  |  4 ++--
+ .../graphite/GraphiteBackendListenerClient.java    | 23 ++++++++++------------
+ .../org/apache/jmeter/functions/RegexFunction.java | 10 +++++-----
+ .../org/apache/commons/cli/avalon/CLUtil.java      | 10 +++++-----
+ .../org/apache/jorphan/collections/Data.java       | 12 +++++------
+ .../org/apache/jorphan/collections/HashTree.java   |  8 ++++----
+ .../apache/jorphan/collections/ListedHashTree.java |  6 +++---
+ .../apache/jorphan/collections/SortedHashTree.java |  8 ++++----
+ .../jmeter/visualizers/MonitorAccumModel.java      |  3 +--
+ 13 files changed, 49 insertions(+), 64 deletions(-)
+
+diff --git a/src/components/org/apache/jmeter/extractor/JSoupExtractor.java b/src/components/org/apache/jmeter/extractor/JSoupExtractor.java
+index 19742b1..c88f34c 100644
+--- a/src/components/org/apache/jmeter/extractor/JSoupExtractor.java
++++ b/src/components/org/apache/jmeter/extractor/JSoupExtractor.java
+@@ -67,10 +67,8 @@ public class JSoupExtractor implements Extractor {
+             document = Jsoup.parse(inputString);
+         }
+         Elements elements = document.select(expression);
+-        int size = elements.size();
+-        for (int i = 0; i < size; i++) {
+-            Element element = elements.get(i);
+-            if (matchNumber <=0 || found != matchNumber) {
++        for (Element element : elements) {
++            if (matchNumber <= 0 || found != matchNumber) {
+                 result.add(extractValue(attribute, element));
+                 found++;
+             } else {
+diff --git a/src/components/org/apache/jmeter/extractor/JoddExtractor.java b/src/components/org/apache/jmeter/extractor/JoddExtractor.java
+index 1c0e957..ba9d83e 100644
+--- a/src/components/org/apache/jmeter/extractor/JoddExtractor.java
++++ b/src/components/org/apache/jmeter/extractor/JoddExtractor.java
+@@ -77,10 +77,8 @@ public class JoddExtractor implements Extractor {
+             nodeSelector = new NodeSelector(doc);
+         }
+         List<Node> elements = nodeSelector.select(expression);
+-        int size = elements.size();
+-        for (int i = 0; i < size; i++) {
+-            Node element = elements.get(i);
+-            if (matchNumber <=0 || found != matchNumber) {
++        for (Node element : elements) {
++            if (matchNumber <= 0 || found != matchNumber) {
+                 result.add(extractValue(attribute, element));
+                 found++;
+             } else {
+diff --git a/src/components/org/apache/jmeter/visualizers/RespTimeGraphChart.java b/src/components/org/apache/jmeter/visualizers/RespTimeGraphChart.java
+index 9ad13ba..f579d42 100644
+--- a/src/components/org/apache/jmeter/visualizers/RespTimeGraphChart.java
++++ b/src/components/org/apache/jmeter/visualizers/RespTimeGraphChart.java
+@@ -404,9 +404,8 @@ public class RespTimeGraphChart extends JPanel {
+      */
+     private double findMax(double datas[][]) {
+         double max = 0;
+-        for (int i = 0; i < datas.length; i++) {
+-            for (int j = 0; j < datas[i].length; j++) {
+-                final double value = datas[i][j]; 
++        for (double[] dataArray : datas) {
++            for (final double value : dataArray) {
+                 if ((!Double.isNaN(value)) && (value > max)) {
+                     max = value;
+                 }
+diff --git a/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java b/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+index 30eecc0..5d16560 100644
+--- a/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
++++ b/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+@@ -150,9 +150,7 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+         // Add any assertion that failed as children of the sample node
+         AssertionResult assertionResults[] = res.getAssertionResults();
+         int assertionIndex = currNode.getChildCount();
+-        for (int j = 0; j < assertionResults.length; j++) {
+-            AssertionResult item = assertionResults[j];
+-
++        for (AssertionResult item : assertionResults) {
+             if (item.isFailure() || item.isError()) {
+                 DefaultMutableTreeNode assertionNode = new DefaultMutableTreeNode(item);
+                 treeModel.insertNodeInto(assertionNode, currNode, assertionIndex++);
+@@ -173,9 +171,7 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+ 
+         int leafIndex = 0;
+ 
+-        for (int i = 0; i < subResults.length; i++) {
+-            SampleResult child = subResults[i];
+-
++        for (SampleResult child : subResults) {
+             if (log.isDebugEnabled()) {
+                 log.debug("updateGui1 : child sample result - " + child);
+             }
+@@ -186,9 +182,7 @@ implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+             // Add any assertion that failed as children of the sample node
+             AssertionResult assertionResults[] = child.getAssertionResults();
+             int assertionIndex = leafNode.getChildCount();
+-            for (int j = 0; j < assertionResults.length; j++) {
+-                AssertionResult item = assertionResults[j];
+-
++            for (AssertionResult item : assertionResults) {
+                 if (item.isFailure() || item.isError()) {
+                     DefaultMutableTreeNode assertionNode = new DefaultMutableTreeNode(item);
+                     treeModel.insertNodeInto(assertionNode, leafNode, assertionIndex++);
+diff --git a/src/components/org/apache/jmeter/visualizers/backend/SamplerMetric.java b/src/components/org/apache/jmeter/visualizers/backend/SamplerMetric.java
+index dc998a0..2de9b45 100644
+--- a/src/components/org/apache/jmeter/visualizers/backend/SamplerMetric.java
++++ b/src/components/org/apache/jmeter/visualizers/backend/SamplerMetric.java
+@@ -79,8 +79,8 @@ public class SamplerMetric {
+         if (!TransactionController.isFromTransactionController(res)) {
+             hits += 1;                 
+         }
+-        for (int i = 0; i < subResults.length; i++) {            
+-            addHits(subResults[i]);
++        for (SampleResult subResult : subResults) {
++            addHits(subResult);
+         }
+     }
+     
+diff --git a/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteBackendListenerClient.java b/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteBackendListenerClient.java
+index 78f456f..5296054 100644
+--- a/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteBackendListenerClient.java
++++ b/src/components/org/apache/jmeter/visualizers/backend/graphite/GraphiteBackendListenerClient.java
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.visualizers.backend.graphite;
+ 
+ import java.text.DecimalFormat;
++import java.util.Arrays;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -237,33 +238,29 @@ public class GraphiteBackendListenerClient extends AbstractBackendListenerClient
+         koPercentiles = new HashMap<>(percentilesStringArray.length);
+         allPercentiles = new HashMap<>(percentilesStringArray.length);
+         DecimalFormat format = new DecimalFormat("0.##");
+-        for (int i = 0; i < percentilesStringArray.length; i++) {
+-            if(!StringUtils.isEmpty(percentilesStringArray[i].trim())) {
++        for (String percentile : percentilesStringArray) {
++            if (!StringUtils.isEmpty(percentile.trim())) {
+                 try {
+-                    Float percentileValue = Float.parseFloat(percentilesStringArray[i].trim());
++                    Float percentileValue = Float.parseFloat(percentile.trim());
+                     okPercentiles.put(
+-                            METRIC_OK_PERCENTILE_PREFIX+AbstractGraphiteMetricsSender.sanitizeString(format.format(percentileValue)),
++                            METRIC_OK_PERCENTILE_PREFIX + AbstractGraphiteMetricsSender.sanitizeString(format.format(percentileValue)),
+                             percentileValue);
+                     koPercentiles.put(
+-                            METRIC_KO_PERCENTILE_PREFIX+AbstractGraphiteMetricsSender.sanitizeString(format.format(percentileValue)),
++                            METRIC_KO_PERCENTILE_PREFIX + AbstractGraphiteMetricsSender.sanitizeString(format.format(percentileValue)),
+                             percentileValue);
+                     allPercentiles.put(
+-                            METRIC_ALL_PERCENTILE_PREFIX+AbstractGraphiteMetricsSender.sanitizeString(format.format(percentileValue)),
++                            METRIC_ALL_PERCENTILE_PREFIX + AbstractGraphiteMetricsSender.sanitizeString(format.format(percentileValue)),
+                             percentileValue);
+ 
+-                } catch(Exception e) {
+-                    LOGGER.error("Error parsing percentile:'"+percentilesStringArray[i]+"'", e);
++                } catch (Exception e) {
++                    LOGGER.error("Error parsing percentile:'" + percentile + "'", e);
+                 }
+             }
+         }
+         Class<?> clazz = Class.forName(graphiteMetricsSenderClass);
+         this.graphiteMetricsManager = (GraphiteMetricsSender) clazz.newInstance();
+         graphiteMetricsManager.setup(graphiteHost, graphitePort, rootMetricsPrefix);
+-        String[] samplers = samplersList.split(SEPARATOR);
+-        samplersToFilter = new HashSet<>();
+-        for (String samplerName : samplers) {
+-            samplersToFilter.add(samplerName);
+-        }
++        samplersToFilter = new HashSet<>(Arrays.asList(samplersList.split(SEPARATOR)));
+         scheduler = Executors.newScheduledThreadPool(MAX_POOL_SIZE);
+         // Don't change this as metrics are per second
+         this.timerHandle = scheduler.scheduleAtFixedRate(this, ONE_SECOND, ONE_SECOND, TimeUnit.SECONDS);
+diff --git a/src/functions/org/apache/jmeter/functions/RegexFunction.java b/src/functions/org/apache/jmeter/functions/RegexFunction.java
+index e02d063..221f1fb 100644
+--- a/src/functions/org/apache/jmeter/functions/RegexFunction.java
++++ b/src/functions/org/apache/jmeter/functions/RegexFunction.java
+@@ -216,14 +216,14 @@ public class RegexFunction extends AbstractFunction {
+         return desc;
+     }
+ 
+-    private String generateResult(MatchResult match, String namep, Object[] template, JMeterVariables vars) {
++    private String generateResult(MatchResult match, String namep, Object[] templates, JMeterVariables vars) {
+         saveGroups(match, namep, vars);
+         StringBuilder result = new StringBuilder();
+-        for (int a = 0; a < template.length; a++) {
+-            if (template[a] instanceof String) {
+-                result.append(template[a]);
++        for (Object template : templates) {
++            if (template instanceof String) {
++                result.append(template);
+             } else {
+-                result.append(match.group(((Integer) template[a]).intValue()));
++                result.append(match.group((Integer) template));
+             }
+         }
+         if (namep.length() > 0){
+diff --git a/src/jorphan/org/apache/commons/cli/avalon/CLUtil.java b/src/jorphan/org/apache/commons/cli/avalon/CLUtil.java
+index 472df65..8719ef0 100644
+--- a/src/jorphan/org/apache/commons/cli/avalon/CLUtil.java
++++ b/src/jorphan/org/apache/commons/cli/avalon/CLUtil.java
+@@ -48,11 +48,11 @@ public final class CLUtil {
+         final String lSep = System.getProperty("line.separator");
+         final StringBuilder sb = new StringBuilder();
+ 
+-        for (int i = 0; i < options.length; i++) {
+-            final char ch = (char) options[i].getId();
+-            final String name = options[i].getName();
+-            String description = options[i].getDescription();
+-            int flags = options[i].getFlags();
++        for (CLOptionDescriptor option : options) {
++            final char ch = (char) option.getId();
++            final String name = option.getName();
++            String description = option.getDescription();
++            int flags = option.getFlags();
+             boolean argumentOptional = ((flags & CLOptionDescriptor.ARGUMENT_OPTIONAL) == CLOptionDescriptor.ARGUMENT_OPTIONAL);
+             boolean argumentRequired = ((flags & CLOptionDescriptor.ARGUMENT_REQUIRED) == CLOptionDescriptor.ARGUMENT_REQUIRED);
+             boolean twoArgumentsRequired = ((flags & CLOptionDescriptor.ARGUMENTS_REQUIRED_2) == CLOptionDescriptor.ARGUMENTS_REQUIRED_2);
+diff --git a/src/jorphan/org/apache/jorphan/collections/Data.java b/src/jorphan/org/apache/jorphan/collections/Data.java
+index d983844..61e1542 100644
+--- a/src/jorphan/org/apache/jorphan/collections/Data.java
++++ b/src/jorphan/org/apache/jorphan/collections/Data.java
+@@ -92,8 +92,8 @@ public class Data implements Serializable {
+         if (headers.length != dHeaders.length) {
+             valid = false;
+         } else {
+-            for (int count = 0; count < dHeaders.length; count++) {
+-                if (!header.contains(dHeaders[count])) {
++            for (String dHeader : dHeaders) {
++                if (!header.contains(dHeader)) {
+                     valid = false;
+                     break;
+                 }
+@@ -104,8 +104,8 @@ public class Data implements Serializable {
+             currentPos = size;
+             d.reset();
+             while (d.next()) {
+-                for (int count = 0; count < headers.length; count++) {
+-                    addColumnValue(headers[count], d.getColumnValue(headers[count]));
++                for (String header : headers) {
++                    addColumnValue(header, d.getColumnValue(header));
+                 }
+             }
+         }
+@@ -685,13 +685,13 @@ public class Data implements Serializable {
+         String[] contents = getDataAsText();
+         StringBuilder sb = new StringBuilder();
+         boolean first = true;
+-        for (int x = 0; x < contents.length; x++) {
++        for (String content : contents) {
+             if (!first) {
+                 sb.append("\n");
+             } else {
+                 first = false;
+             }
+-            sb.append(contents[x]);
++            sb.append(content);
+         }
+         return sb.toString();
+     }
+diff --git a/src/jorphan/org/apache/jorphan/collections/HashTree.java b/src/jorphan/org/apache/jorphan/collections/HashTree.java
+index 799d5ab..616725d 100644
+--- a/src/jorphan/org/apache/jorphan/collections/HashTree.java
++++ b/src/jorphan/org/apache/jorphan/collections/HashTree.java
+@@ -230,8 +230,8 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+      */
+     public HashTree(Object[] keys) {
+         data = new HashMap<>();
+-        for (int x = 0; x < keys.length; x++) {
+-            data.put(keys[x], new HashTree());
++        for (Object key : keys) {
++            data.put(key, new HashTree());
+         }
+     }
+ 
+@@ -432,8 +432,8 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+      *            Array of Keys to be added to HashTree.
+      */
+     public void add(Object[] keys) {
+-        for (int x = 0; x < keys.length; x++) {
+-            add(keys[x]);
++        for (Object key : keys) {
++            add(key);
+         }
+     }
+ 
+diff --git a/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java b/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java
+index f523746..6f98b63 100644
+--- a/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java
++++ b/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java
+@@ -64,9 +64,9 @@ public class ListedHashTree extends HashTree implements Serializable, Cloneable
+ 
+     public ListedHashTree(Object[] keys) {
+         this();
+-        for (int x = 0; x < keys.length; x++) {
+-            data.put(keys[x], new ListedHashTree());
+-            order.add(keys[x]);
++        for (Object key : keys) {
++            data.put(key, new ListedHashTree());
++            order.add(key);
+         }
+     }
+ 
+diff --git a/src/jorphan/org/apache/jorphan/collections/SortedHashTree.java b/src/jorphan/org/apache/jorphan/collections/SortedHashTree.java
+index 6192c19..813ddfe 100644
+--- a/src/jorphan/org/apache/jorphan/collections/SortedHashTree.java
++++ b/src/jorphan/org/apache/jorphan/collections/SortedHashTree.java
+@@ -73,15 +73,15 @@ public class SortedHashTree extends HashTree implements Serializable {
+ 
+     public SortedHashTree(Object[] keys) {
+         this();
+-        for (int x = 0; x < keys.length; x++) {
+-            data.put(keys[x], new SortedHashTree());
++        for (Object key : keys) {
++            data.put(key, new SortedHashTree());
+         }
+     }
+ 
+     public SortedHashTree(Object[] keys, Comparator<? super Object> comper) {
+         this(comper);
+-        for (int x = 0; x < keys.length; x++) {
+-            data.put(keys[x], new SortedHashTree(comper));
++        for (Object key : keys) {
++            data.put(key, new SortedHashTree(comper));
+         }
+     }
+ 
+diff --git a/src/monitor/components/org/apache/jmeter/visualizers/MonitorAccumModel.java b/src/monitor/components/org/apache/jmeter/visualizers/MonitorAccumModel.java
+index 2e36f73..cddac59 100644
+--- a/src/monitor/components/org/apache/jmeter/visualizers/MonitorAccumModel.java
++++ b/src/monitor/components/org/apache/jmeter/visualizers/MonitorAccumModel.java
+@@ -229,8 +229,7 @@ public class MonitorAccumModel implements Clearable, Serializable {
+      *            the {@link MonitorModel} that should be sent to the listeners
+      */
+     public void notifyListeners(MonitorModel model) {
+-        for (int idx = 0; idx < listeners.size(); idx++) {
+-            MonitorListener ml = listeners.get(idx);
++        for (MonitorListener ml : listeners) {
+             ml.addSample(model);
+         }
+     }
+-- 
+1.9.1
+

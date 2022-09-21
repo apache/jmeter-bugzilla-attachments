@@ -1,0 +1,30 @@
+Index: src/core/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java	(revision 1754657)
++++ src/core/org/apache/jmeter/report/processor/ErrorsSummaryConsumer.java	(working copy)
+@@ -78,17 +78,20 @@
+      */
+     @Override
+     protected String getKeyFromSample(Sample sample) {
+-        String code = sample.getResponseCode();
+-        if (isSuccessCode(code)) {
+-            code = ASSERTION_FAILED;
++        String responseCode = sample.getResponseCode();
++        String responseMessage = sample.getResponseMessage();
++        String key = responseCode + (!StringUtils.isEmpty(responseMessage) ? 
++                 "/" + StringEscapeUtils.escapeJson(responseMessage) : "");
++        if (isSuccessCode(responseCode)) {
++            key = ASSERTION_FAILED;
+             if (ASSERTION_RESULTS_FAILURE_MESSAGE) {
+                 String msg = sample.getFailureMessage();
+                 if (!StringUtils.isEmpty(msg)) {
+-                    code = StringEscapeUtils.escapeJson(msg);
++                    key = StringEscapeUtils.escapeJson(msg);
+                 }
+             }
+         }
+-        return code;
++        return key;
+     }
+ 
+     /*

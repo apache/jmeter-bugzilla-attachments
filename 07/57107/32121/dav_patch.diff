@@ -1,0 +1,115 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(révision 1632612)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(copie de travail)
+@@ -263,7 +263,23 @@
+             return HTTPConstants.DELETE;
+         }
+     }
+-    
++
++    public static final class HttpWebdav extends HttpEntityEnclosingRequestBase {
++
++        private String davMethod;
++
++        public HttpWebdav(final String davMethod, final URI uri) {
++            super();
++            this.davMethod = davMethod;
++            setURI(uri);
++        }
++
++        @Override
++        public String getMethod() {
++            return davMethod;
++        }
++    }
++
+     @Override
+     protected HTTPSampleResult sample(URL url, String method,
+             boolean areFollowingRedirect, int frameDepth) {
+@@ -296,6 +312,14 @@
+                 httpRequest = new HttpGet(uri);
+             } else if (method.equals(HTTPConstants.PATCH)) {
+                 httpRequest = new HttpPatch(uri);
++            } else if (method.equals(HTTPConstants.PROPFIND)
++                    || method.equals(HTTPConstants.PROPPATCH)
++                    || method.equals(HTTPConstants.MKCOL)
++                    || method.equals(HTTPConstants.COPY)
++                    || method.equals(HTTPConstants.MOVE)
++                    || method.equals(HTTPConstants.LOCK)
++                    || method.equals(HTTPConstants.UNLOCK)) {
++                httpRequest = new HttpWebdav(method, uri);
+             } else {
+                 throw new IllegalArgumentException("Unexpected method: '"+method+"'");
+             }
+@@ -438,7 +462,15 @@
+             String postBody = sendPostData((HttpPost)httpRequest);
+             result.setQueryString(postBody);
+         } else if (method.equals(HTTPConstants.PUT) || method.equals(HTTPConstants.PATCH)
+-                || method.equals(HTTPConstants.DELETE)) {
++                || method.equals(HTTPConstants.PROPFIND)
++                || method.equals(HTTPConstants.PROPPATCH)
++                || method.equals(HTTPConstants.MKCOL)
++                || method.equals(HTTPConstants.COPY)
++                || method.equals(HTTPConstants.MOVE)
++                || method.equals(HTTPConstants.LOCK)
++                || method.equals(HTTPConstants.UNLOCK)
++                || method.equals(HTTPConstants.DELETE)
++                ) {
+             String entityBody = sendEntityData(( HttpEntityEnclosingRequestBase)httpRequest);
+             result.setQueryString(entityBody);
+         }
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java	(révision 1632612)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java	(copie de travail)
+@@ -138,6 +138,13 @@
+             // Include request body if it is a post or put or patch
+             if (HTTPConstants.POST.equals(method) || HTTPConstants.PUT.equals(method) 
+                     || HTTPConstants.PATCH.equals(method)
++                    || HTTPConstants.PROPFIND.equals(method)
++                    || HTTPConstants.PROPPATCH.equals(method)
++                    || HTTPConstants.MKCOL.equals(method)
++                    || HTTPConstants.COPY.equals(method)
++                    || HTTPConstants.MOVE.equals(method)
++                    || HTTPConstants.LOCK.equals(method)
++                    || HTTPConstants.UNLOCK.equals(method)
+                     || HTTPConstants.DELETE.equals(method)) {
+                 sb.append("\n"+method+" data:\n");
+                 sb.append(queryString);
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(révision 1632612)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(copie de travail)
+@@ -232,6 +232,13 @@
+         HTTPConstants.TRACE,
+         HTTPConstants.DELETE,
+         HTTPConstants.PATCH,
++        HTTPConstants.PROPFIND,
++        HTTPConstants.PROPPATCH,
++        HTTPConstants.MKCOL,
++        HTTPConstants.COPY,
++        HTTPConstants.MOVE,
++        HTTPConstants.LOCK,
++        HTTPConstants.UNLOCK
+         };
+ 
+     private static final List<String> METHODLIST = Collections.unmodifiableList(Arrays.asList(METHODS));
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	(révision 1632612)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	(copie de travail)
+@@ -39,6 +39,13 @@
+     String TRACE = "TRACE"; // $NON-NLS-1$
+     String DELETE = "DELETE"; // $NON-NLS-1$
+     String PATCH = "PATCH"; // $NON-NLS-1$
++    String PROPFIND = "PROPFIND"; // $NON-NLS-1$
++    String PROPPATCH = "PROPPATCH"; // $NON-NLS-1$
++    String MKCOL = "MKCOL"; // $NON-NLS-1$
++    String COPY = "COPY"; // $NON-NLS-1$
++    String MOVE = "MOVE"; // $NON-NLS-1$
++    String LOCK = "LOCK"; // $NON-NLS-1$
++    String UNLOCK = "UNLOCK"; // $NON-NLS-1$
+     String CONNECT = "CONNECT"; // $NON-NLS-1$
+     String HEADER_AUTHORIZATION = "Authorization"; // $NON-NLS-1$
+     String HEADER_COOKIE = "Cookie"; // $NON-NLS-1$

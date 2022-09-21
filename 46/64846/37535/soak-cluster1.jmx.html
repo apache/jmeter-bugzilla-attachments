@@ -1,0 +1,406 @@
+<html xmlns:jmeter="http://jmeter.apache.org/">
+   <title>Schematic view of Test Plan</title>
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+      <style>
+ul.tree, ul.tree ul {
+    list-style-type: none;
+    background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAKAQMAAABPHKYJAAAAA1BMVEWIiIhYZW6zAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH1ggGExMZBky19AAAAAtJREFUCNdjYMAEAAAUAAHlhrBKAAAAAElFTkSuQmCC') repeat-y;
+    margin: 0;
+    padding: 0;
+}
+ul.tree ul {
+    margin-left: 10px;
+}
+ul.tree li {
+    margin: 0;
+    padding: 0 12px;
+    line-height: 20px;
+    background:  url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAUAQMAAACK1e4oAAAABlBMVEUAAwCIiIgd2JB2AAAAAXRSTlMAQObYZgAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9YIBhQIJYVaFGwAAAARSURBVAjXY2hgQIf/GTDFGgDSkwqATqpCHAAAAABJRU5ErkJggg==') no-repeat;
+    color: #369;
+}
+ul.tree li:last-child { 
+    background: #fff url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAUAQMAAACK1e4oAAAABlBMVEUAAwCIiIgd2JB2AAAAAXRSTlMAQObYZgAAAAlwSFlzAAALEwAACxMBAJqcGAAAAAd0SU1FB9YIBhQIIhs+gc8AAAAQSURBVAjXY2hgQIf/GbAAAKCTBYBUjWvCAAAAAElFTkSuQmCC') no-repeat; 
+}
+</style>
+   </head>
+   <body>
+      <ul class="tree" id="tree">
+         <li><b>load test </b>
+            "soak-cluster1" 
+            (globalVars:[
+            "numThreads"
+            =
+            "THREADS_COUNT"
+            ,
+            "rampUpTime"
+            =
+            "RAMPUP_TIME"
+            ,
+            "ctrlLoops"
+            =
+            "CTRL_LOOPS"
+            ,
+            "apiKey"
+            =
+            "API_KEY"
+            ,
+            "csvFileHost"
+            =
+            "DOMAIN_FILE"
+            ,
+            "ipAddressRequest"
+            =
+            "ipAddress_FILE"
+            ,
+            "DATA_DIR"
+            =
+            "/Users/ashok/sunbird-perf-tests/sunbird-platform/soak-cluster1"
+            ,
+            "deviceidRequest"
+            =
+            "deviceId_FILE"
+            ], 
+            executeTearDownThreadsOnShutdown: true)
+            <br>
+            &nbsp;&nbsp;&nbsp;Comments: <i style="color:green"></i></li>
+         <li>
+            <ul>
+               <li><b>set variables for thread</b>
+                  "User Parameters" 
+                  (names=[
+                  
+                  "uuid"
+                  ],values=[
+                  
+                  "${__UUID()}"
+                  ]
+                  )
+                  </li>
+               <li><b>run</b>
+                  "Thread Group - SendTelemetry" 
+                  (
+                  threads: "${numThreads}",
+                  loops: "${ctrlLoops}",
+                  ramp-up: "${rampUpTime}"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>http request</b>
+                        "SendTelemetry" 
+                        (method: "POST",
+                        url: "
+                        ${protocol}://${host}:${port}//api/data/v1/telemetry",
+                        
+                        body: [
+                        
+                        ]
+                        ,
+                        upload-files: [
+                        
+                        {param="",
+                        path="${DATA_DIR}/telemetry-23kb-to-3kb.json.gz",
+                        mime-type="application/gzip"}
+                        
+                        ]
+                        )
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>add headers</b>
+                              "HTTP Header Manager" 
+                              (headers:[
+                              
+                              {"Content-Type"=
+                              "application/json"
+                              ,
+                              {"Authorization"=
+                              "Bearer eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJMb2FkVGVzdERldmljZUEyLTI1MzQifQ.oO0cTTtWrLzElk-8KBag_T7-KX3lywGMrl5xyqeCSYw"
+                              ,
+                              {"Content-Encoding"=
+                              "gzip"
+                              ,
+                              {"Accept-Encoding"=
+                              "gzip, deflate"
+                              ])
+                              </li>
+                        </ul>
+                     </li>
+                  </ul>
+               </li>
+               <li><b>run</b>
+                  "Thread Group - device-profile" 
+                  (
+                  threads: "${numThreads}",
+                  loops: "${ctrlLoops}",
+                  ramp-up: "${rampUpTime}"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>http request</b>
+                        "device-profile" 
+                        (method: "GET",
+                        url: "
+                        ${protocol}://${host}:${port}//api/v3/device/profile/${deviceId}",
+                        
+                        body: [
+                        
+                        ]
+                        ,
+                        upload-files: [
+                        
+                        ]
+                        )
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>add headers</b>
+                              "HTTP Header Manager" 
+                              (headers:[
+                              
+                              {"Content-Type"=
+                              "application/json"
+                              ,
+                              {"X-Real-IP"=
+                              "${ipAddress}"
+                              ,
+                              {"Authorization"=
+                              "Bearer ${apiKey}"
+                              ,
+                              {"Accept-Encoding"=
+                              "gzip, deflate"
+                              ])
+                              </li>
+                        </ul>
+                     </li>
+                  </ul>
+               </li>
+               <li><b>run</b>
+                  "Thread Group - device-register" 
+                  (
+                  threads: "${numThreads}",
+                  loops: "${ctrlLoops}",
+                  ramp-up: "${rampUpTime}"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>http request</b>
+                        "device-register" 
+                        (method: "POST",
+                        url: "
+                        ${protocol}://${host}:${port}//api/v3/device/register/${deviceId}",
+                        
+                        body: "{&#xD;
+                        "id": "preprod.diksha.portal",&#xD;
+                        "ver": "2.6.5",&#xD;
+                        "ts": "${__time(yyyy-MM-dd'T'HH:mm:ss.SSSZ)}",&#xD;
+                        "params": {&#xD;
+                        "msgid": "a1687e7f-ede7-e433-f6a6-18a18333e7ff"&#xD;
+                        },&#xD;
+                        "request": {&#xD;
+                        "did": "${deviceId}",&#xD;
+                        "producer": "preprod.diksha.portal",&#xD;
+                        "uaspec": {&#xD;
+                        "agent": "Chrome",&#xD;
+                        "ver": "79.0.3945.74",&#xD;
+                        "system": "mac-os-x-15",&#xD;
+                        "platform": "Mac",&#xD;
+                        "raw": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_1) AppleWebKit/537.36 (KHTML,
+                        like Gecko) Chrome/79.0.3945.74 Safari/537.36"&#xD;
+                        },&#xD;
+                        "userDeclaredLocation": {&#xD;
+                        "state": "Karnataka",&#xD;
+                        "district": "Belagavi"&#xD;
+                        }&#xD;
+                        }&#xD;
+                        }&#xD;
+                        &#xD;
+                        "
+                        ,
+                        upload-files: [
+                        
+                        ]
+                        )
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>add headers</b>
+                              "HTTP Header Manager" 
+                              (headers:[
+                              
+                              {"Content-Type"=
+                              "application/json"
+                              ,
+                              {"X-Real-IP"=
+                              "${ipAddress}"
+                              ,
+                              {"Authorization"=
+                              "Bearer ${apiKey}"
+                              ,
+                              {"Accept-Encoding"=
+                              "gzip, deflate"
+                              ])
+                              </li>
+                        </ul>
+                     </li>
+                  </ul>
+               </li>
+               <li><b>run</b>
+                  "Thread Group - PageAssemble" 
+                  (
+                  threads: "${numThreads}",
+                  loops: "${ctrlLoops}",
+                  ramp-up: "${rampUpTime}"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>http request</b>
+                        "PageAssemble" 
+                        (method: "POST",
+                        url: "
+                        ${protocol}://${host}:${port}//api/data/v1/page/assemble?orgdetails=orgName",
+                        
+                        body: "{"request":{"name":"Course","filters":{},"source":"app","from":"cache"}}"
+                        ,
+                        upload-files: [
+                        
+                        ]
+                        )
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>add headers</b>
+                              "HTTP Header Manager" 
+                              (headers:[
+                              
+                              {"Content-Type"=
+                              "application/json"
+                              ,
+                              {"Accept-Encoding"=
+                              "gzip,deflate,sdch"
+                              ,
+                              {"Authorization"=
+                              "Bearer ${apiKey}"
+                              ,
+                              {"Accept-Encoding"=
+                              "gzip, deflate"
+                              ])
+                              </li>
+                        </ul>
+                     </li>
+                  </ul>
+               </li>
+               <li><b>run</b>
+                  "Thread Group - consumer-mobile-device-register" 
+                  (
+                  threads: "${numThreads}",
+                  loops: "${ctrlLoops}",
+                  ramp-up: "${rampUpTime}"
+                  )
+                  </li>
+               <li>
+                  <ul>
+                     <li><b>http request</b>
+                        "consumer-mobile-device-register" 
+                        (method: "POST",
+                        url: "
+                        ${protocol}://${host}:${port}//api/api-manager/v2/consumer/mobile_device/credential/register",
+                        
+                        body: "{&#xD;
+                        "id": "ekstep.genie.device.register",&#xD;
+                        "ver": "1.0",&#xD;
+                        "ts": "2020-03-17T22:24:31+05:30",&#xD;
+                        "request": {&#xD;
+                        "key": "loadtest.sunbird.app-a8cbcf6fb7fc86780d82783a906afd614cc57b08"&#xD;
+                        }&#xD;
+                        }"
+                        ,
+                        upload-files: [
+                        
+                        ]
+                        )
+                        </li>
+                     <li>
+                        <ul>
+                           <li><b>add headers</b>
+                              "HTTP Header Manager" 
+                              (headers:[
+                              
+                              {"X-Device-Id"=
+                              "${uuid}"
+                              ,
+                              {"Content-Encoding"=
+                              "gzip"
+                              ,
+                              {"Accept-Charset"=
+                              "UTF-8"
+                              ,
+                              {"Accept"=
+                              "application/json"
+                              ,
+                              {"Access-Control-Allow-Origin"=
+                              "*"
+                              ,
+                              {"Authorization"=
+                              "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdW5iaXJkLTEuMCJ9.hupJSdO54Cz47nB3PQb0Sp0wWFF2rC_SRTWUihQLWgM"
+                              ,
+                              {"X-App-Id"=
+                              "loadtest.sunbird.app"
+                              ,
+                              {"X-Channel-Id"=
+                              "505c7c48ac6dc1edc9b08f21db5a571d"
+                              ,
+                              {"Content-Type"=
+                              "application/json"
+                              ,
+                              {"Accept-Encoding"=
+                              "gzip, deflate"
+                              ,
+                              {"User-Agent"=
+                              "Dalvik/2.1.0 (Linux; U; Android 6.0; XT1068 Build/MPB24.65-34-3)"
+                              ])
+                              </li>
+                        </ul>
+                     </li>
+                  </ul>
+               </li>
+               <li><b>read csv into vars</b>
+                  "CSV Data Set Config" 
+                  (file: "${csvFileHost}", 
+                  vars:"protocol,host,port",
+                  sharing:"shareMode.all",
+                  recycleOnEof:true,
+                  stopThreadOnEof:false
+                  )
+                  <br></li>
+               <li><b>read csv into vars</b>
+                  "CSV Data Set Config" 
+                  (file: "${ipAddressRequest}", 
+                  vars:"ipAddress",
+                  sharing:"shareMode.all",
+                  recycleOnEof:true,
+                  stopThreadOnEof:false
+                  )
+                  <br></li>
+               <li><b>read csv into vars</b>
+                  "CSV Data Set Config" 
+                  (file: "${deviceidRequest}", 
+                  vars:"deviceId",
+                  sharing:"shareMode.all",
+                  recycleOnEof:true,
+                  stopThreadOnEof:false
+                  )
+                  <br></li>
+               <li><b>write samples</b>
+                  "Summary Report" </li>
+               <li><b>write samples</b>
+                  "View Results Tree" </li>
+            </ul>
+         </li>
+      </ul>
+   </body>
+</html>

@@ -1,0 +1,236 @@
+From 3d6e12288eb123430bd8f7b2599b4d9505463eb8 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sat, 13 Nov 2021 15:46:37 +0100
+Subject: [PATCH] Use default values for null values when extracting with
+ JSONPostProcessor
+
+When we extract a null value for a given expression, we now replace that
+null with the given default value for the expression.
+
+That leads to slight change of the meaning of a missing value.
+
+Consider the JSON structure: {"context": null} and the JSON Path: "$.context"
+
+The new implementation will replace the `null` with the default value, while
+the old would have stringified it to the empty string.
+
+Cleanup of parameter handling of default values. We should use the default
+value for the current handled expression and not pass all default values
+for all expression. That leads to confusion, only. (Well, I was confused)
+
+Bugzilla Id: 65681
+---
+ .../extractor/json/jsonpath/JSONManager.java  |  2 +-
+ .../json/jsonpath/JSONPostProcessor.java      | 51 +++++++++----------
+ .../extractor/TestJSONPostProcessor.java      | 25 ++++++---
+ 3 files changed, 44 insertions(+), 34 deletions(-)
+
+diff --git a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java
+index f156f3d7c8..c3f3371e64 100644
+--- a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java
++++ b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONManager.java
+@@ -95,7 +95,7 @@ public class JSONManager {
+         if (obj instanceof JSONArray) {
+             return ((JSONArray)obj).toJSONString();
+         }
+-        return obj == null ? "" : obj.toString(); //$NON-NLS-1$
++        return obj == null ? null : obj.toString();
+     }
+ 
+ }
+diff --git a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+index 3e7c5cf8be..a20ea14c66 100644
+--- a/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
++++ b/src/components/src/main/java/org/apache/jmeter/extractor/json/jsonpath/JSONPostProcessor.java
+@@ -81,10 +81,10 @@ public class JSONPostProcessor
+             clearOldRefVars(vars, currentRefName);
+             try {
+                 if (jsonResponses.isEmpty()) {
+-                    handleEmptyResponse(vars, defaultValues, i, currentRefName);
++                    handleEmptyResponse(vars, defaultValues[i], currentRefName);
+                 } else {
+                     List<Object> extractedValues = extractValues(jsonResponses, currentJsonPath);
+-                    handleResult(vars, defaultValues, i, matchNumber, currentRefName, extractedValues);
++                    handleResult(vars, defaultValues[i], matchNumber, currentRefName, extractedValues);
+                 }
+             } catch (Exception e) {
+                 if (log.isDebugEnabled()) {
+@@ -98,13 +98,13 @@ public class JSONPostProcessor
+         }
+     }
+ 
+-    private void handleResult(JMeterVariables vars, String[] defaultValues, int i, int matchNumber,
+-            String currentRefName, List<Object> extractedValues) {
++    private void handleResult(JMeterVariables vars, String defaultValue, int matchNumber, String currentRefName,
++            List<Object> extractedValues) {
+         // if no values extracted, default value added
+         if (extractedValues.isEmpty()) {
+-            handleEmptyResult(vars, defaultValues, i, matchNumber, currentRefName);
++            handleEmptyResult(vars, defaultValue, matchNumber, currentRefName);
+         } else {
+-            handleNonEmptyResult(vars, defaultValues, i, matchNumber, currentRefName, extractedValues);
++            handleNonEmptyResult(vars, defaultValue, matchNumber, currentRefName, extractedValues);
+         }
+     }
+ 
+@@ -116,14 +116,14 @@ public class JSONPostProcessor
+         return extractedValues;
+     }
+ 
+-    private void handleNonEmptyResult(JMeterVariables vars, String[] defaultValues, int i, int matchNumber,
+-            String currentRefName, List<Object> extractedValues) {
++    private void handleNonEmptyResult(JMeterVariables vars, String defaultValue, int matchNumber, String currentRefName,
++            List<Object> extractedValues) {
+         // if more than one value extracted, suffix with "_index"
+         if (extractedValues.size() > 1) {
+-            handleListResult(vars, defaultValues, i, matchNumber, currentRefName, extractedValues);
++            handleListResult(vars, defaultValue, matchNumber, currentRefName, extractedValues);
+         } else {
+             // else just one value extracted
+-            handleSingleResult(vars, matchNumber, currentRefName, extractedValues);
++            handleSingleResult(vars, defaultValue, matchNumber, currentRefName, extractedValues);
+         }
+         if (matchNumber != 0) {
+             vars.put(currentRefName + REF_MATCH_NR, Integer.toString(extractedValues.size()));
+@@ -142,17 +142,17 @@ public class JSONPostProcessor
+         }
+     }
+ 
+-    private void handleSingleResult(JMeterVariables vars, final int matchNumber, String currentRefName,
++    private void handleSingleResult(JMeterVariables vars, String defaultValue,  final int matchNumber, String currentRefName,
+             List<Object> extractedValues) {
+         String suffix = (matchNumber < 0) ? "_1" : "";
+-        placeObjectIntoVars(vars, currentRefName + suffix, extractedValues, 0);
++        placeObjectIntoVars(vars, currentRefName + suffix, extractedValues, 0, defaultValue);
+         if (matchNumber < 0 && getComputeConcatenation()) {
+             vars.put(currentRefName + ALL_SUFFIX, vars.get(currentRefName + suffix));
+         }
+     }
+ 
+-    private void handleListResult(JMeterVariables vars, String[] defaultValues, final int i, final int matchNumber,
+-            String currentRefName, List<Object> extractedValues) {
++    private void handleListResult(JMeterVariables vars, String defaultValue, final int matchNumber, String currentRefName,
++            List<Object> extractedValues) {
+         if (matchNumber < 0) {
+             // Extract all
+             int index = 1;
+@@ -161,7 +161,7 @@ public class JSONPostProcessor
+                             ? extractedValues.size() * 20
+                             : 1);
+             for (Object extractedObject : extractedValues) {
+-                String extractedString = stringify(extractedObject);
++                String extractedString = StringUtils.defaultString(stringify(extractedObject), defaultValue);
+                 vars.put(currentRefName + "_" + index,
+                         extractedString); //$NON-NLS-1$
+                 if (getComputeConcatenation()) {
+@@ -181,7 +181,7 @@ public class JSONPostProcessor
+             int matchSize = extractedValues.size();
+             int matchNr = JMeterUtils.getRandomInt(matchSize);
+             placeObjectIntoVars(vars, currentRefName,
+-                    extractedValues, matchNr);
++                    extractedValues, matchNr, defaultValue);
+             return;
+         }
+         // extract at position
+@@ -191,15 +191,14 @@ public class JSONPostProcessor
+                     "matchNumber({}) exceeds number of items found({}), default value will be used",
+                         matchNumber, extractedValues.size());
+             }
+-            vars.put(currentRefName, defaultValues[i]);
++            vars.put(currentRefName, defaultValue);
+         } else {
+-            placeObjectIntoVars(vars, currentRefName, extractedValues, matchNumber - 1);
++            placeObjectIntoVars(vars, currentRefName, extractedValues, matchNumber - 1, defaultValue);
+         }
+     }
+ 
+-    private void handleEmptyResult(JMeterVariables vars, String[] defaultValues, int i, int matchNumber,
+-            String currentRefName) {
+-        vars.put(currentRefName, defaultValues[i]);
++    private void handleEmptyResult(JMeterVariables vars, String defaultValue, int matchNumber, String currentRefName) {
++        vars.put(currentRefName, defaultValue);
+         vars.put(currentRefName + REF_MATCH_NR, "0"); //$NON-NLS-1$
+         if (matchNumber < 0 && getComputeConcatenation()) {
+             log.debug("No value extracted, storing empty in: {}{}", currentRefName, ALL_SUFFIX);
+@@ -207,11 +206,11 @@ public class JSONPostProcessor
+         }
+     }
+ 
+-    private void handleEmptyResponse(JMeterVariables vars, String[] defaultValues, int i, String currentRefName) {
++    private void handleEmptyResponse(JMeterVariables vars, String defaultValue, String currentRefName) {
+         if(log.isDebugEnabled()) {
+             log.debug("Response or source variable is null or empty for {}", getName());
+         }
+-        vars.put(currentRefName, defaultValues[i]);
++        vars.put(currentRefName, defaultValue);
+     }
+ 
+     private List<String> extractJsonResponse(JMeterContext context, JMeterVariables vars) {
+@@ -245,13 +244,13 @@ public class JSONPostProcessor
+     }
+ 
+     private void placeObjectIntoVars(JMeterVariables vars, String currentRefName,
+-            List<Object> extractedValues, int matchNr) {
++            List<Object> extractedValues, int matchNr, String defaultValue) {
+         vars.put(currentRefName,
+-                stringify(extractedValues.get(matchNr)));
++                StringUtils.defaultString(stringify(extractedValues.get(matchNr)), defaultValue));
+     }
+ 
+     private String stringify(Object obj) {
+-        return obj == null ? "" : obj.toString(); //$NON-NLS-1$
++        return obj == null ? null : obj.toString();
+     }
+ 
+     public String getJsonPathExpressions() {
+diff --git a/src/components/src/test/java/org/apache/jmeter/extractor/TestJSONPostProcessor.java b/src/components/src/test/java/org/apache/jmeter/extractor/TestJSONPostProcessor.java
+index 57362dd4ed..891a849d5c 100644
+--- a/src/components/src/test/java/org/apache/jmeter/extractor/TestJSONPostProcessor.java
++++ b/src/components/src/test/java/org/apache/jmeter/extractor/TestJSONPostProcessor.java
+@@ -212,25 +212,36 @@ class TestJSONPostProcessor {
+         assertThat(vars.get("varname_2"), CoreMatchers.is(CoreMatchers.nullValue()));
+     }
+ 
+-    @Test
+-    void testEmptyInput() throws ParseException {
++    private static Stream<Arguments> provideEmptyOrNullResultArgs() {
++        return Stream.of(
++                Arguments.of("{\"context\": null}", "$.context", "0", null, "NONE"), // bug 65681
++                Arguments.of("[{\"context\": null}, {\"context\": \"\"}]", "$[*].context", "1", "2", "NONE"),
++                Arguments.of("[{\"context\": null}, {\"context\": \"\"}]", "$[*].context", "2", "2", ""),
++                Arguments.of("{\"context\": \"\"}", "$.context", "0", null, ""),
++                Arguments.of("", "$.context", "0", null, "NONE"));
++    }
++
++    @ParameterizedTest
++    @MethodSource("provideEmptyOrNullResultArgs")
++    void testEmptyOrNullResult(String contextValue, String jsonPath, String matchNumber, String expectedMatchNumber,
++            String expectedResult) throws ParseException {
+         JMeterContext context = JMeterContextService.getContext();
+-        JSONPostProcessor processor = setupProcessor(context, "0", false);
++        JSONPostProcessor processor = setupProcessor(context, matchNumber, false);
+ 
+         SampleResult result = new SampleResult();
+-        result.setResponseData("".getBytes(StandardCharsets.UTF_8));
++        result.setResponseData(contextValue.getBytes(StandardCharsets.UTF_8));
+ 
+         JMeterVariables vars = new JMeterVariables();
+         context.setVariables(vars);
+         context.setPreviousResult(result);
+ 
+-        processor.setJsonPathExpressions("$.context");
++        processor.setJsonPathExpressions(jsonPath);
+         processor.setDefaultValues("NONE");
+         processor.setScopeAll();
+         processor.process();
+ 
+-        assertThat(vars.get(VAR_NAME), CoreMatchers.is("NONE"));
+-        assertThat(vars.get(VAR_NAME + "_matchNr"), CoreMatchers.nullValue());
++        assertThat(vars.get(VAR_NAME), CoreMatchers.is(expectedResult));
++        assertThat(vars.get(VAR_NAME + "_matchNr"), CoreMatchers.is(expectedMatchNumber));
+         assertThat(vars.get(VAR_NAME + "_1"), CoreMatchers.is(CoreMatchers.nullValue()));
+     }
+ 
+-- 
+2.25.1
+

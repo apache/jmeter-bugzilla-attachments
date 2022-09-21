@@ -1,0 +1,171 @@
+Index: docs/usermanual/component_reference.html
+===================================================================
+--- docs/usermanual/component_reference.html	(revision 1643619)
++++ docs/usermanual/component_reference.html	(working copy)
+@@ -1988,6 +1988,21 @@
+ No
+ </td>
+ </tr>
++<td>Handle ResultSet</td>
++<td>
++Defines how ResultSet returned from callable statements be handled:
++<ul>
++  <li> Store As String (default) - All variables on Variable Names list are stored as strings, will not iterate through a ResultSets when present on the list.</li>
++  <li> Store As Object - Variables of ResultSet type on Variables Names list will be stored as Object and can be accessed in subsequent tests/scripts and iterated, will not iterate through the ResultSet </li>
++  <li> Count Records - Variables of ResultSet types will be iterated through showing the count of records as result. Variables will be stored as Strings.</li>
++
++</ul>
++</td>
++<td>
++No
++</td>
++</tr>
++
+ </table>
+ </p>
+ <p><b>See Also:</b>
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(revision 1643619)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(working copy)
+@@ -108,6 +108,10 @@
+     static final String AUTOCOMMIT_FALSE = "AutoCommit(false)"; // $NON-NLS-1$
+     static final String AUTOCOMMIT_TRUE  = "AutoCommit(true)"; // $NON-NLS-1$
+ 
++    static final String RS_STORE_AS_STRING = "Store as String"; // $NON-NLS-1$
++    static final String RS_STORE_AS_OBJECT = "Store as Object"; // $NON-NLS-1$
++    static final String RS_COUNT_RECORDS = "Count Records"; // $NON-NLS-1$
++
+     private String query = ""; // $NON-NLS-1$
+ 
+     private String dataSource = ""; // $NON-NLS-1$
+@@ -116,6 +120,7 @@
+     private String queryArguments = ""; // $NON-NLS-1$
+     private String queryArgumentsTypes = ""; // $NON-NLS-1$
+     private String variableNames = ""; // $NON-NLS-1$
++    private String resultSetHandler = RS_STORE_AS_STRING; 
+     private String resultVariable = ""; // $NON-NLS-1$
+     private String queryTimeout = ""; // $NON-NLS-1$
+ 
+@@ -242,6 +247,12 @@
+                     sb.append(i+1);
+                     sb.append("] ");
+                     sb.append(o);
++                    if( o instanceof java.sql.ResultSet && RS_COUNT_RECORDS.equals(resultSetHandler)) {
++                        int j=0;
++                        while(((java.sql.ResultSet)o).next())
++                            j++;
++                        sb.append(" "+j+" rows");
++                    }
+                     sb.append("\n");
+                 }
+             }
+@@ -252,7 +263,15 @@
+                     String name = varnames[i].trim();
+                     if (name.length()>0){ // Save the value in the variable if present
+                         Object o = outputValues.get(i);
+-                        jmvars.put(name, o == null ? null : o.toString());
++                        if( o instanceof java.sql.ResultSet ) 
++                            if(  RS_STORE_AS_OBJECT.equals(resultSetHandler))
++                                jmvars.putObject(name, o);
++                            else if( RS_COUNT_RECORDS.equals(resultSetHandler))
++                                jmvars.put(name,o.toString()+" "+((java.sql.ResultSet)o).getRow()+" rows");
++                            else
++                                jmvars.put(name, o.toString());
++                        else
++                            jmvars.put(name, o == null ? null : o.toString());
+                     }
+                 }
+             }
+@@ -596,6 +615,20 @@
+     }
+ 
+     /**
++     * @return the resultSetHandler
++     */
++    public String getResultSetHandler() {
++        return resultSetHandler;
++    }
++
++    /**
++     * @param resultSetHandler the resultSetHandler to set
++     */
++    public void setResultSetHandler(String resultSetHandler) {
++        this.resultSetHandler = resultSetHandler;
++    }
++
++    /**
+      * @return the resultVariable
+      */
+     public String getResultVariable() {
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/JDBCTestElementBeanInfoSupport.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/JDBCTestElementBeanInfoSupport.java	(revision 1643619)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/JDBCTestElementBeanInfoSupport.java	(working copy)
+@@ -43,7 +43,8 @@
+                 "queryArgumentsTypes", // $NON-NLS-1$
+                 "variableNames", // $NON-NLS-1$
+                 "resultVariable", // $NON-NLS-1$
+-                "queryTimeout" // $NON-NLS-1$
++                "queryTimeout", // $NON-NLS-1$
++                "resultSetHandler" // $NON-NLS-1$
+                 });
+ 
+         PropertyDescriptor p = property("dataSource"); // $NON-NLS-1$
+@@ -62,6 +63,17 @@
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, ""); // $NON-NLS-1$
+ 
++
++        p = property("resultSetHandler"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, AbstractJDBCTestElement.RS_STORE_AS_STRING);
++        p.setValue(NOT_OTHER, Boolean.TRUE);
++        p.setValue(TAGS,new String[]{
++                AbstractJDBCTestElement.RS_STORE_AS_STRING,
++                AbstractJDBCTestElement.RS_STORE_AS_OBJECT,
++                AbstractJDBCTestElement.RS_COUNT_RECORDS
++                });       
++
+         p = property("resultVariable"); // $NON-NLS-1$
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, ""); // $NON-NLS-1$
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/JDBCPostProcessorResources.properties
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/JDBCPostProcessorResources.properties	(revision 1643619)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/JDBCPostProcessorResources.properties	(working copy)
+@@ -28,6 +28,8 @@
+ queryArgumentsTypes.shortDescription=JDBC Type names from java.sql.Types. VARCHAR, INTEGER, etc. (comma separated)
+ variableNames.displayName=Variable names
+ variableNames.shortDescription=Output variable names for each column  (comma separated)
++resultSetHandler.displayName=Handle ResultSet
++resultSetHandler.shortDescription=How should return values of type ResultSet be handled
+ resultVariable.displayName=Result variable name
+ resultVariable.shortDescription=Name of the JMeter variable that stores the result set objects in a list of maps for looking up results by column name.
+ queryTimeout.displayName=Query timeout
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/JDBCPreProcessorResources.properties
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/JDBCPreProcessorResources.properties	(revision 1643619)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/JDBCPreProcessorResources.properties	(working copy)
+@@ -28,6 +28,8 @@
+ queryArgumentsTypes.shortDescription=JDBC Type names from java.sql.Types. VARCHAR, INTEGER, etc. (comma separated)
+ variableNames.displayName=Variable names
+ variableNames.shortDescription=Output variable names for each column  (comma separated)
++resultSetHandler.displayName=Handle ResultSet
++resultSetHandler.shortDescription=How should return values of type ResultSet be handled
+ resultVariable.displayName=Result variable name
+ resultVariable.shortDescription=Name of the JMeter variable that stores the result set objects in a list of maps for looking up results by column name.
+ queryTimeout.displayName=Query timeout
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	(revision 1643619)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	(working copy)
+@@ -28,6 +28,8 @@
+ queryArgumentsTypes.shortDescription=JDBC Type names from java.sql.Types. VARCHAR, INTEGER, etc. (comma separated)
+ variableNames.displayName=Variable names
+ variableNames.shortDescription=Output variable names for each column  (comma separated)
++resultSetHandler.displayName=Handle ResultSet
++resultSetHandler.shortDescription=How should return values of type ResultSet be handled
+ resultVariable.displayName=Result variable name
+ resultVariable.shortDescription=Name of the JMeter variable that stores the result set objects in a list of maps for looking up results by column name.
+ queryTimeout.displayName=Query timeout (s)

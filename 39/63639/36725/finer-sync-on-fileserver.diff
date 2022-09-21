@@ -1,0 +1,396 @@
+diff --git a/src/core/src/main/java/org/apache/jmeter/services/FileServer.java b/src/core/src/main/java/org/apache/jmeter/services/FileServer.java
+index b7517290b5..359bf856c3 100644
+--- a/src/core/src/main/java/org/apache/jmeter/services/FileServer.java
++++ b/src/core/src/main/java/org/apache/jmeter/services/FileServer.java
+@@ -30,9 +30,13 @@ import java.io.InputStreamReader;
+ import java.io.OutputStreamWriter;
+ import java.io.Reader;
+ import java.io.Writer;
+-import java.util.HashMap;
+ import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.ConcurrentMap;
+ import java.util.concurrent.ThreadLocalRandom;
++import java.util.concurrent.atomic.AtomicReference;
++import java.util.concurrent.locks.Lock;
++import java.util.concurrent.locks.ReentrantLock;
+ 
+ import org.apache.commons.collections.ArrayStack;
+ import org.apache.commons.io.input.BOMInputStream;
+@@ -46,7 +50,9 @@ import org.slf4j.LoggerFactory;
+ /**
+  * This class provides thread-safe access to files, and to
+  * provide some simplifying assumptions about where to find files and how to
+- * name them. For instance, putting supporting files in the same directory as
++ * name them.
++ * <p>
++ * For instance, putting supporting files in the same directory as
+  * the saved test plan file allows users to refer to the file with just it's
+  * name - this FileServer class will find the file without a problem.
+  * Eventually, I want all in-test file access to be done through here, with the
+@@ -74,7 +80,8 @@ public class FileServer {
+ 
+     private File base;
+ 
+-    private final Map<String, FileEntry> files = new HashMap<>();
++    private final AtomicReference<ConcurrentMap<String, FileEntry>> files = new AtomicReference<>(
++            new ConcurrentHashMap<>());
+ 
+     private static final FileServer server = new FileServer();
+ 
+@@ -169,7 +176,7 @@ public class FileServer {
+         if (filesOpen()) { // checks for entries in use
+             throw new IllegalStateException("Files are still open, cannot change base directory");
+         }
+-        files.clear(); // tidy up any unused entries
++        files.getAndSet(new ConcurrentHashMap<>()).clear(); // tidy up any unused entries
+     }
+ 
+     public synchronized String getBaseDir() {
+@@ -252,33 +259,32 @@ public class FileServer {
+      * @return the header line; may be null
+      * @throws IllegalArgumentException if header could not be read or filename is null or empty
+      */
+-    public synchronized String reserveFile(String filename, String charsetName, String alias, boolean hasHeader) {
+-        if (filename == null || filename.isEmpty()){
++    public String reserveFile(String filename, String charsetName, String alias, boolean hasHeader) {
++        if (filename == null || filename.isEmpty()) {
+             throw new IllegalArgumentException("Filename must not be null or empty");
+         }
+-        if (alias == null){
++        if (alias == null) {
+             throw new IllegalArgumentException("Alias must not be null");
+         }
+-        FileEntry fileEntry = files.get(alias);
+-        if (fileEntry == null) {
+-            fileEntry = new FileEntry(resolveFileFromPath(filename), null, charsetName);
++        FileEntry fileEntry = files.get().computeIfAbsent(alias, key -> {
++            FileEntry result = new FileEntry(resolveFileFromPath(filename), null, charsetName);
+             if (filename.equals(alias)){
+                 log.info("Stored: {}", filename);
+             } else {
+                 log.info("Stored: {} Alias: {}", filename, alias);
+             }
+-            files.put(alias, fileEntry);
+             if (hasHeader) {
+                 try {
+-                    fileEntry.headerLine = readLine(alias, false);
+-                    if (fileEntry.headerLine == null) {
+-                        fileEntry.exception = new EOFException("File is empty: " + fileEntry.file);
++                    result.headerLine = readLine(alias, result, false, false);
++                    if (result.headerLine == null) {
++                        result.exception = new EOFException("File is empty: " + result.file);
+                     }
+                 } catch (IOException | IllegalArgumentException e) {
+-                    fileEntry.exception = e;
++                    result.exception = e;
+                 }
+             }
+-        }
++            return result;
++        });
+         if (hasHeader && fileEntry.headerLine == null) {
+             throw new IllegalArgumentException("Could not read file header line for file " + filename,
+                     fileEntry.exception);
+@@ -333,31 +339,47 @@ public class FileServer {
+      * @return String containing the next line in the file (null if EOF reached and not recycle)
+      * @throws IOException when reading of the file fails, or the file was not reserved properly
+      */
+-    public synchronized String readLine(String filename, boolean recycle,
++    public String readLine(String filename, boolean recycle,
+             boolean ignoreFirstLine) throws IOException {
+-        FileEntry fileEntry = files.get(filename);
++        FileEntry fileEntry = files.get().get(filename);
++        return readLine(filename, fileEntry, recycle, ignoreFirstLine);
++    }
++
++    private String readLine(String filename, FileEntry fileEntry, boolean recycle, boolean ignoreFirstLine) throws IOException {
+         if (fileEntry != null) {
+-            if (fileEntry.inputOutputObject == null) {
+-                fileEntry.inputOutputObject = createBufferedReader(fileEntry);
+-            } else if (!(fileEntry.inputOutputObject instanceof Reader)) {
+-                throw new IOException("File " + filename + " already in use");
+-            }
+-            BufferedReader reader = (BufferedReader) fileEntry.inputOutputObject;
+-            String line = reader.readLine();
+-            if (line == null && recycle) {
+-                reader.close();
+-                reader = createBufferedReader(fileEntry);
+-                fileEntry.inputOutputObject = reader;
+-                if (ignoreFirstLine) {
+-                    // read first line and forget
+-                    reader.readLine();//NOSONAR
+-                }
+-                line = reader.readLine();
++            fileEntry.callWithLock(() -> {
++                ensureReaderIsAvailable(filename, fileEntry);
++                BufferedReader reader = (BufferedReader) fileEntry.inputOutputObject;
++                String line = readLineAndRecycle(fileEntry, recycle, ignoreFirstLine, reader);
++                log.debug("Read:{}", line);
++                return line;
++            });
++        }
++        throw new IOException("File never reserved: " + filename);
++    }
++
++    private String readLineAndRecycle(FileEntry fileEntry, boolean recycle, boolean ignoreFirstLine, BufferedReader reader)
++            throws IOException {
++        String line = reader.readLine();
++        if (line == null && recycle) {
++            reader.close();
++            reader = createBufferedReader(fileEntry);
++            fileEntry.inputOutputObject = reader;
++            if (ignoreFirstLine) {
++                // read first line and forget
++                reader.readLine();//NOSONAR
+             }
+-            log.debug("Read:{}", line);
+-            return line;
++            line = reader.readLine();
++        }
++        return line;
++    }
++
++    private void ensureReaderIsAvailable(String filename, FileEntry fileEntry) throws IOException {
++        if (fileEntry.inputOutputObject == null) {
++            fileEntry.inputOutputObject = createBufferedReader(fileEntry);
++        } else if (!(fileEntry.inputOutputObject instanceof Reader)) {
++            throw new IOException("File " + filename + " already in use");
+         }
+-        throw new IOException("File never reserved: "+filename);
+     }
+ 
+     /**
+@@ -369,9 +391,12 @@ public class FileServer {
+      * @return the parsed line, will be empty if the file is at EOF
+      * @throws IOException when reading of the aliased file fails, or the file was not reserved properly
+      */
+-    public synchronized String[] getParsedLine(String alias, boolean recycle, boolean ignoreFirstLine, char delim) throws IOException {
+-        BufferedReader reader = getReader(alias, recycle, ignoreFirstLine);
+-        return CSVSaveService.csvReadFile(reader, delim);
++    public String[] getParsedLine(String alias, boolean recycle, boolean ignoreFirstLine, char delim) throws IOException {
++        FileEntry fileEntry = files.get().get(alias);
++        return fileEntry.callWithLock(() -> {
++            BufferedReader reader = getReader(alias, recycle, ignoreFirstLine);
++            return CSVSaveService.csvReadFile(reader, delim);
++        });
+     }
+ 
+     /**
+@@ -384,42 +409,50 @@ public class FileServer {
+      * @return {@link BufferedReader}
+      */
+     private BufferedReader getReader(String alias, boolean recycle, boolean ignoreFirstLine) throws IOException {
+-        FileEntry fileEntry = files.get(alias);
++        FileEntry fileEntry = files.get().get(alias);
+         if (fileEntry != null) {
+-            BufferedReader reader;
+-            if (fileEntry.inputOutputObject == null) {
+-                reader = createBufferedReader(fileEntry);
+-                fileEntry.inputOutputObject = reader;
+-                if (ignoreFirstLine) {
+-                    // read first line and forget
+-                    reader.readLine(); //NOSONAR
+-                }
+-            } else if (!(fileEntry.inputOutputObject instanceof Reader)) {
+-                throw new IOException("File " + alias + " already in use");
+-            } else {
+-                reader = (BufferedReader) fileEntry.inputOutputObject;
+-                if (recycle) { // need to check if we are at EOF already
+-                    reader.mark(1);
+-                    int peek = reader.read();
+-                    if (peek == -1) { // already at EOF
+-                        reader.close();
+-                        reader = createBufferedReader(fileEntry);
+-                        fileEntry.inputOutputObject = reader;
+-                        if (ignoreFirstLine) {
+-                            // read first line and forget
+-                            reader.readLine(); //NOSONAR
+-                        }
+-                    } else { // OK, we still have some data, restore it
+-                        reader.reset();
++            return fileEntry.callWithLock(() -> {
++                if (fileEntry.inputOutputObject == null) {
++                    BufferedReader reader = createBufferedReader(fileEntry);
++                    fileEntry.inputOutputObject = reader;
++                    if (ignoreFirstLine) {
++                        // read first line and forget
++                        reader.readLine(); //NOSONAR
+                     }
++                    return reader;
++                } else if (!(fileEntry.inputOutputObject instanceof Reader)) {
++                    throw new IOException("File " + alias + " already in use");
++                } else {
++                    return checkRecycling(recycle, ignoreFirstLine, fileEntry,
++                            (BufferedReader) fileEntry.inputOutputObject);
+                 }
+-            }
+-            return reader;
++            });
+         } else {
+             throw new IOException("File never reserved: "+alias);
+         }
+     }
+ 
++    private BufferedReader checkRecycling(boolean recycle, boolean ignoreFirstLine, FileEntry fileEntry, BufferedReader reader)
++            throws IOException {
++        if (!recycle) {
++            return reader;
++        }
++        reader.mark(1);
++        int peek = reader.read();
++        if (peek == -1) { // already at EOF
++            reader.close();
++            reader = createBufferedReader(fileEntry);
++            fileEntry.inputOutputObject = reader;
++            if (ignoreFirstLine) {
++                // read first line and forget
++                reader.readLine(); //NOSONAR
++            }
++        } else { // OK, we still have some data, restore it
++            reader.reset();
++        }
++        return reader;
++    }
++
+     private BufferedReader createBufferedReader(FileEntry fileEntry) throws IOException {
+         if (!fileEntry.file.canRead() || !fileEntry.file.isFile()) {
+             throw new IllegalArgumentException("File "+ fileEntry.file.getName()+ " must exist and be readable");
+@@ -438,28 +471,34 @@ public class FileServer {
+         return new BufferedReader(isr);
+     }
+ 
+-    public synchronized void write(String filename, String value) throws IOException {
+-        FileEntry fileEntry = files.get(filename);
++    public void write(String filename, String value) throws IOException {
++        FileEntry fileEntry = files.get().get(filename);
+         if (fileEntry != null) {
+-            if (fileEntry.inputOutputObject == null) {
+-                fileEntry.inputOutputObject = createBufferedWriter(fileEntry);
+-            } else if (!(fileEntry.inputOutputObject instanceof Writer)) {
+-                throw new IOException("File " + filename + " already in use");
+-            }
+-            BufferedWriter writer = (BufferedWriter) fileEntry.inputOutputObject;
+-            log.debug("Write:{}", value);
+-            writer.write(value);
++            fileEntry.runWithLock(() -> {
++                BufferedWriter writer = ensureWriterIsAvailable(filename, fileEntry);
++                log.debug("Write:{}", value);
++                writer.write(value);
++            });
+         } else {
+             throw new IOException("File never reserved: "+filename);
+         }
+     }
+ 
++    private BufferedWriter ensureWriterIsAvailable(String filename, FileEntry fileEntry) throws IOException {
++        if (fileEntry.inputOutputObject == null) {
++            fileEntry.inputOutputObject = createBufferedWriter(fileEntry);
++        } else if (!(fileEntry.inputOutputObject instanceof Writer)) {
++            throw new IOException("File " + filename + " already in use");
++        }
++        return (BufferedWriter) fileEntry.inputOutputObject;
++    }
++
+     private BufferedWriter createBufferedWriter(FileEntry fileEntry) throws IOException {
+         FileOutputStream fos = new FileOutputStream(fileEntry.file);
+         OutputStreamWriter osw;
+         // If file encoding is specified, write using that encoding, otherwise use default platform encoding
+         String charsetName = fileEntry.charSetEncoding;
+-        if(!JOrphanUtils.isBlank(charsetName)) {
++        if (!JOrphanUtils.isBlank(charsetName)) {
+             osw = new OutputStreamWriter(fos, charsetName);
+         } else {
+             osw = new OutputStreamWriter(fos);
+@@ -467,32 +506,35 @@ public class FileServer {
+         return new BufferedWriter(osw);
+     }
+ 
+-    public synchronized void closeFiles() throws IOException {
+-        for (Map.Entry<String, FileEntry> me : files.entrySet()) {
++    public void closeFiles() throws IOException {
++        Map<String, FileEntry> oldFiles = files.getAndSet(new ConcurrentHashMap<>());
++        for (Map.Entry<String, FileEntry> me : oldFiles.entrySet()) {
+             closeFile(me.getKey(),me.getValue() );
+         }
+-        files.clear();
++        oldFiles.clear();
+     }
+ 
+     /**
+      * @param name the name or alias of the file to be closed
+      * @throws IOException when closing of the aliased file fails
+      */
+-    public synchronized void closeFile(String name) throws IOException {
+-        FileEntry fileEntry = files.get(name);
++    public void closeFile(String name) throws IOException {
++        FileEntry fileEntry = files.get().get(name);
+         closeFile(name, fileEntry);
+     }
+ 
+-    private void closeFile(String name, FileEntry fileEntry) throws IOException {
++    private void closeFile(String name, final FileEntry fileEntry) throws IOException {
+         if (fileEntry != null && fileEntry.inputOutputObject != null) {
+-            log.info("Close: {}", name);
+-            fileEntry.inputOutputObject.close();
+-            fileEntry.inputOutputObject = null;
++            fileEntry.runWithLock(() -> {
++                log.info("Close: {}", name);
++                JOrphanUtils.closeQuietly(fileEntry.inputOutputObject);
++                fileEntry.inputOutputObject = null;
++            });
+         }
+     }
+ 
+     boolean filesOpen() { // package access for test code only
+-        return files.values().stream()
++        return files.get().values().stream()
+                 .anyMatch(fileEntry -> fileEntry.inputOutputObject != null);
+     }
+ 
+@@ -531,15 +573,43 @@ public class FileServer {
+      */
+     public File getResolvedFile(String path) {
+         reserveFile(path);
+-        return files.get(path).file;
++        return files.get().get(path).file;
+     }
+ 
+-    private static class FileEntry{
++    private static class FileEntry {
+         private String headerLine;
+         private Throwable exception;
+         private final File file;
+         private Closeable inputOutputObject;
+         private final String charSetEncoding;
++        private final Lock lock = new ReentrantLock();
++
++        @FunctionalInterface
++        interface ThrowingIOException {
++            void run() throws IOException;
++        }
++
++        @FunctionalInterface
++        interface CreatingIOException<T> {
++            T call() throws IOException;
++        }
++        public void runWithLock(ThrowingIOException block) throws IOException {
++            lock.lock();
++            try {
++                block.run();
++            } finally {
++                lock.unlock();
++            }
++        }
++
++        public <T> T callWithLock(CreatingIOException<T> block) throws IOException {
++            lock.lock();
++            try {
++                return block.call();
++            } finally {
++                lock.unlock();
++            }
++        }
+ 
+         FileEntry(File f, Closeable o, String e) {
+             file = f;

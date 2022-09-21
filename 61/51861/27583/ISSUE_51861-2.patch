@@ -1,0 +1,276 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(revision 1174312)
++++ src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(working copy)
+@@ -27,12 +27,15 @@
+ import javax.swing.BoxLayout;
+ import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
++import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+ import javax.swing.JPasswordField;
++import javax.swing.JTabbedPane;
+ import javax.swing.JTextField;
+ import javax.swing.event.ChangeEvent;
+ import javax.swing.event.ChangeListener;
+ 
++import org.apache.commons.lang.StringUtils;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.gui.util.HorizontalPanel;
+@@ -43,9 +46,11 @@
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.gui.JLabeledChoice;
++import org.apache.jorphan.gui.JLabeledTextArea;
+ 
+ /**
+  * Basic URL / HTTP Request configuration:
+@@ -58,6 +63,12 @@
+ 
+     private static final long serialVersionUID = 240L;
+ 
++    private static final int TAB_PARAMETERS = 0;
++    private static final int TAB_RAW_BODY = 1;
++    public static final String POST_BODY_RAW = "HTTPSampler.postBodyRaw"; // TODO - belongs elsewhere 
++
++    private static final boolean POST_BODY_RAW_DEFAULT = false;
++
+     private HTTPArgumentsPanel argsPanel;
+ 
+     private JTextField domain;
+@@ -101,6 +112,14 @@
+     
+     private final boolean showImplementation; // Set false for AJP
+ 
++    // Raw POST Body 
++    private JLabeledTextArea postBodyContent;
++
++    // Tabbed pane that contains parameters and raw body
++    private JTabbedPane postContentTabbedPane;
++
++    private int selectedTPIndex;
++
+     public UrlConfigGui() {
+         this(true);
+     }
+@@ -139,6 +158,9 @@
+         protocol.setText(""); // $NON-NLS-1$
+         contentEncoding.setText(""); // $NON-NLS-1$
+         argsPanel.clear();
++        postBodyContent.setText("");// $NON-NLS-1$
++        this.selectedTPIndex=TAB_PARAMETERS;
++        postContentTabbedPane.setSelectedIndex(selectedTPIndex);
+     }
+ 
+     public TestElement createTestElement() {
+@@ -157,9 +179,18 @@
+      * @param element
+      */
+     public void modifyTestElement(TestElement element) {
+-        Arguments args = (Arguments) argsPanel.createTestElement();
+-
+-        HTTPArgument.convertArgumentsToHTTP(args);
++        boolean useRaw = postContentTabbedPane.getSelectedIndex()==TAB_RAW_BODY;
++        Arguments args;
++        if(useRaw) {
++            args = new Arguments();
++            HTTPArgument arg = new HTTPArgument("", postBodyContent.getText(), true);
++            arg.setAlwaysEncoded(false);
++            args.addArgument(arg);
++        } else {
++            args = (Arguments) argsPanel.createTestElement();
++            HTTPArgument.convertArgumentsToHTTP(args);
++        }
++        element.setProperty(POST_BODY_RAW, useRaw, POST_BODY_RAW_DEFAULT);
+         element.setProperty(new TestElementProperty(HTTPSamplerBase.ARGUMENTS, args));
+         element.setProperty(HTTPSamplerBase.DOMAIN, domain.getText());
+         element.setProperty(HTTPSamplerBase.PORT, port.getText());
+@@ -185,6 +216,24 @@
+         }
+     }
+ 
++    // FIXME FACTOR WITH HTTPHC4Impl, HTTPHC3Impl
++    // Just append all the parameter values, and use that as the post body
++    /**
++     * Compute Post body from arguments
++     * @param arguments {@link Arguments}
++     * @return {@link String}
++     */
++    private static final String computePostBody(Arguments arguments) {
++        StringBuilder postBody = new StringBuilder();
++        PropertyIterator args = arguments.iterator();
++        while (args.hasNext()) {
++            HTTPArgument arg = (HTTPArgument) args.next().getObjectValue();
++            String value = arg.getValue();
++            postBody.append(value);
++        }
++        return postBody.toString();
++    }
++
+     /**
+      * Set the text, etc. in the UI.
+      *
+@@ -193,7 +242,20 @@
+      */
+     public void configure(TestElement el) {
+         setName(el.getName());
+-        argsPanel.configure((TestElement) el.getProperty(HTTPSamplerBase.ARGUMENTS).getObjectValue());
++        Arguments arguments = (Arguments) el.getProperty(HTTPSamplerBase.ARGUMENTS).getObjectValue();
++
++        boolean useRaw = el.getPropertyAsBoolean(POST_BODY_RAW, POST_BODY_RAW_DEFAULT);
++        if(useRaw) {
++            String postBody = computePostBody(arguments);
++            postBodyContent.setText(postBody);   
++            this.selectedTPIndex=TAB_RAW_BODY;
++            postContentTabbedPane.setSelectedIndex(selectedTPIndex);
++        } else {
++            argsPanel.configure(arguments);
++            this.selectedTPIndex=TAB_PARAMETERS;
++            postContentTabbedPane.setSelectedIndex(this.selectedTPIndex);
++        }
++
+         domain.setText(el.getPropertyAsString(HTTPSamplerBase.DOMAIN));
+ 
+         String portString = el.getPropertyAsString(HTTPSamplerBase.PORT);
+@@ -504,10 +566,14 @@
+         return panel;
+     }
+ 
+-    protected JPanel getParameterPanel() {
++    protected JTabbedPane getParameterPanel() {
++        postContentTabbedPane = new JTabbedPane();
+         argsPanel = new HTTPArgumentsPanel();
+-
+-        return argsPanel;
++        postBodyContent = new JLabeledTextArea(JMeterUtils.getResString("post_body_raw"));// $NON-NLS-1$
++        postContentTabbedPane.add(JMeterUtils.getResString("post_as_parameters"), argsPanel);// $NON-NLS-1$
++        postContentTabbedPane.add(JMeterUtils.getResString("post_body"), postBodyContent);// $NON-NLS-1$
++        postContentTabbedPane.addChangeListener(this);
++        return postContentTabbedPane;
+     }
+ 
+     // autoRedirects and followRedirects cannot both be selected
+@@ -522,5 +588,100 @@
+                 autoRedirects.setSelected(false);
+             }
+         }
++        if(e.getSource() == postContentTabbedPane)
++        {
++            if(this.selectedTPIndex != postContentTabbedPane.getSelectedIndex())
++            {
++                if(noData()) {
++                    // If there is no data, then switching between Parameters and Raw should be
++                    // allowed with no further user interaction.
++                    this.selectedTPIndex=postContentTabbedPane.getSelectedIndex();
++                }
++                else {
++                    // If there is data in the Raw panel, then the user should be 
++                    // prevented from switching (that would be easy to track). 
++                    if(this.selectedTPIndex == TAB_RAW_BODY) {
++                        postContentTabbedPane.setSelectedIndex(selectedTPIndex);    
++                    }
++                    else {
++//                        If the Parameter data can be converted (i.e. no names), then I think we still
++//                        need to warn the user that the Parameter data will be lost.
++//                        Perhaps via a modal dialog that warns that the unselected tab will be cleared
++//                        when the test plan is saved or the user switches to a different test element.
++                        if(canConvertParameters()) {
++                            Object[] options = {
++                                    JMeterUtils.getResString("confirm"),
++                                    JMeterUtils.getResString("cancel")};
++                            int n = JOptionPane.showOptionDialog(this,
++                                JMeterUtils.getResString("web_parameters_lost_message"),
++                                JMeterUtils.getResString("warning"),
++                                JOptionPane.YES_NO_CANCEL_OPTION,
++                                JOptionPane.QUESTION_MESSAGE,
++                                null,
++                                options,
++                                options[1]);
++                            if(n == JOptionPane.YES_OPTION) {
++                                convertParametersToRaw();
++                                this.selectedTPIndex=postContentTabbedPane.getSelectedIndex();
++                            }
++                            else{
++                                postContentTabbedPane.setSelectedIndex(selectedTPIndex);                    
++                            }
++                        }
++                        else {
++                            // If the Parameter data cannot be converted to Raw, then the user should be
++                            // prevented from doing so raise an error dialog
++                            JOptionPane.showConfirmDialog(this,
++                                    JMeterUtils.getResString("web_cannot_convert_parameters_to_raw"), // $NON-NLS-1$
++                                    JMeterUtils.getResString("warning"), // $NON-NLS-1$
++                                    JOptionPane.DEFAULT_OPTION, 
++                                    JOptionPane.ERROR_MESSAGE);
++                            postContentTabbedPane.setSelectedIndex(selectedTPIndex);
++                        }
++                        
++                        // FIXME Can you be explain a little more this ?
++                        // In the meantime, the user can flip between tabs to check the conversion was
++                        // what they expected.
++                    }
++                }
++            }
++        }
++    }
++
++    /**
++     * Convert Parameters to Raw Body
++     */
++    private void convertParametersToRaw() {
++        postBodyContent.setText(computePostBody((Arguments)argsPanel.createTestElement()));
++    }
++
++    /**
++     * 
++     * @return true if no argument has a name
++     */
++    private boolean canConvertParameters() {
++        Arguments arguments = (Arguments)argsPanel.createTestElement();
++        for (int i = 0; i < arguments.getArgumentCount(); i++) {
++            if(!StringUtils.isEmpty(arguments.getArgument(i).getName()))
++            {
++                return false;
++            }
++        }
++        return true;
++    }
++
++    /**
++     * @return true if neither Parameters tab nor Raw Body tab contain data
++     */
++    private boolean noData() {
++        if(selectedTPIndex == TAB_RAW_BODY)
++        {
++            return StringUtils.isEmpty(postBodyContent.getText().trim());
++        }
++        else
++        {
++            Arguments element = (Arguments)argsPanel.createTestElement();
++            return element.getArgumentCount()==0;
++        }
+     }
+ }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1173604)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -1030,6 +1030,13 @@
+ web_server_client=Client implementation:
+ web_server_domain=Server Name or IP\:
+ web_server_port=Port Number\:
++web_parameters_lost_message=Switching to RAW Post body will convert parameters to raw body and loose\n parameters table when you select another node or save test plan, do you confirm ?
++web_cannot_convert_parameters_to_raw=Cannot convert parameters to RAW Post body because one of the parameters has a name
++confirm=Confirm
++post_as_parameters=Parameters
++post_as_rawbody=RAW Body
++post_body_raw=Raw Post Body
++post_body=Post Body
+ web_testing2_source_ip=Source IP address:
+ web_testing2_title=HTTP Request HTTPClient
+ web_testing_concurrent_download=Use concurrent pool. Size:

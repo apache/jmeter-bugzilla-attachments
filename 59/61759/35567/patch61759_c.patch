@@ -1,0 +1,129 @@
+Index: src/functions/org/apache/jmeter/functions/ChangeCase.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/ChangeCase.java	(revision 1816676)
++++ src/functions/org/apache/jmeter/functions/ChangeCase.java	(working copy)
+@@ -22,8 +22,6 @@
+ import java.util.EnumSet;
+ import java.util.LinkedList;
+ import java.util.List;
+-import java.util.regex.Pattern;
+-
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -40,7 +38,6 @@
+  * <li>upper case</li>
+  * <li>lower case</li>
+  * <li>capitalize</li>
+- * <li>camel cases</li>
+  * <li></li>
+  * </ul>
+  * 
+@@ -49,8 +46,6 @@
+  */
+ public class ChangeCase extends AbstractFunction {
+ 
+-    private static final Pattern NOT_ALPHANUMERIC_REGEX = 
+-            Pattern.compile("[^a-zA-Z]");
+     private static final Logger LOGGER = LoggerFactory.getLogger(ChangeCase.class);
+     private static final List<String> DESC = new LinkedList<>();
+     private static final String KEY = "__changeCase";
+@@ -96,12 +91,6 @@
+             case CAPITALIZE:
+                 targetString = StringUtils.capitalize(originalString);
+                 break;
+-            case LOWER_CAMEL_CASE:
+-                targetString = camel(originalString, false);
+-                break;
+-            case UPPER_CAMEL_CASE:
+-                targetString = camel(originalString, true);
+-                break;
+             default:
+                 // default not doing nothing to string
+             }
+@@ -126,21 +115,6 @@
+     public List<String> getArgumentDesc() {
+         return DESC;
+     }
+-
+-    private static String camel(String str, boolean isFirstCapitalized) {
+-        StringBuilder builder = new StringBuilder(str.length());
+-        String[] tokens = NOT_ALPHANUMERIC_REGEX.split(str);
+-        for (int i = 0; i < tokens.length; i++) {
+-            String lowerCased = StringUtils.lowerCase(tokens[i]);
+-            if(i == 0) {
+-                builder.append(isFirstCapitalized ? StringUtils.capitalize(lowerCased):
+-                    lowerCased);
+-            } else {
+-                builder.append(StringUtils.capitalize(lowerCased));
+-            }
+-        }
+-        return builder.toString();
+-    }
+     
+     /**
+      * ChangeCase Modes
+@@ -149,8 +123,7 @@
+      *
+      */
+     public enum ChangeCaseMode {
+-        UPPER("UPPER"), LOWER("LOWER"), CAPITALIZE("CAPITALIZE"), 
+-        UPPER_CAMEL_CASE("UPPER_CAMEL_CASE"), LOWER_CAMEL_CASE("LOWER_CAMEL_CASE");
++        UPPER("UPPER"), LOWER("LOWER"), CAPITALIZE("CAPITALIZE");
+         private String mode;
+ 
+         private ChangeCaseMode(String mode) {
+Index: test/src/org/apache/jmeter/functions/TestChangeCase.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestChangeCase.java	(revision 1816676)
++++ test/src/org/apache/jmeter/functions/TestChangeCase.java	(working copy)
+@@ -90,32 +90,11 @@
+     }
+ 
+     @Test
+-    public void testChangeCaseCamelCase() throws Exception {
+-        String returnValue = execute("ab-CD eF", "UPPER_CAMEL_CASE");
+-        assertEquals("AbCdEf", returnValue);
+-    }
+-
+-    @Test
+     public void testChangeCaseCapitalize() throws Exception {
+         String returnValue = execute("ab-CD eF", "CAPITALIZE");
+         assertEquals("Ab-CD eF", returnValue);
+     }
+ 
+-    @Test
+-    public void testChangeCaseCamelCaseFirstLower() throws Exception {
+-        String returnValue = execute("ab-CD eF", "LOWER_CAMEL_CASE");
+-        assertEquals("abCdEf", returnValue);
+-    }
+-
+-    @Test
+-    public void testChangeCaseCamelCaseFirstLowerWithFirstUpperCaseChar() throws Exception {
+-        String returnValue = execute("Ab-CD eF", "lower_CAMEL_CASE");
+-        assertEquals("abCdEf", returnValue);
+-
+-        returnValue = execute(" zadad", "lower_CAMEL_CASE");
+-        assertEquals("Zadad", returnValue);
+-    }
+-
+     @Test(expected = InvalidVariableException.class)
+     public void testChangeCaseError() throws Exception {
+         changeCase.setParameters(new LinkedList<>());
+Index: xdocs/usermanual/functions.xml
+===================================================================
+--- xdocs/usermanual/functions.xml	(revision 1816676)
++++ xdocs/usermanual/functions.xml	(working copy)
+@@ -1649,11 +1649,9 @@
+         <property name="change case mode" required="Yes">
+             The mode to be used to change case, for example for ab-CD eF:
+             <ul>
+-                <li><code>UPPER</code> result as AB-CD EF</li>
++                <li><code>UPPER</code> (default) result as AB-CD EF</li>
+                 <li><code>LOWER</code> result as ab-cd ed</li>
+                 <li><code>CAPITALIZE</code> result as Ab-CD eF</li>
+-                <li><code>UPPER_CAMEL_CASE</code>result as AbCdEf</li>
+-                <li><code>LOWER_CAMEL_CASE</code>result as abCdEf</li>
+             </ul>
+             <note>mode is case insensitive</note>
+         </property>

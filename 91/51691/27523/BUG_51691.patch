@@ -1,0 +1,157 @@
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(revision 1166194)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(working copy)
+@@ -224,6 +224,8 @@
+         updateConfig(USE_TEXT_RSC);
+         iterations.setText("1"); // $NON-NLS-1$
+         useAuth.setSelected(false);
++        jmsUser.setEnabled(false);
++        jmsPwd.setEnabled(false);
+         destSetup.setText(DEST_SETUP_STATIC);
+     }
+ 
+@@ -249,6 +251,8 @@
+         updateConfig(sampler.getConfigChoice());
+         iterations.setText(sampler.getIterations());
+         useAuth.setSelected(sampler.isUseAuth());
++        jmsUser.setEnabled(useAuth.isSelected());
++        jmsPwd.setEnabled(useAuth.isSelected());
+         destSetup.setText(sampler.isDestinationStatic() ? DEST_SETUP_STATIC : DEST_SETUP_DYNAMIC);
+     }
+ 
+@@ -265,8 +269,8 @@
+             jndiICF.setEnabled(!useProperties.isSelected());
+             urlField.setEnabled(!useProperties.isSelected());
+         } else if (event.getSource() == useAuth) {
+-            jmsUser.setEnabled(!useAuth.isSelected());
+-            jmsPwd.setEnabled(!useAuth.isSelected());
++            jmsUser.setEnabled(useAuth.isSelected());
++            jmsPwd.setEnabled(useAuth.isSelected());
+         }
+     }
+ 
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSubscriberGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSubscriberGui.java	(revision 1166194)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSubscriberGui.java	(working copy)
+@@ -203,6 +203,8 @@
+         jmsPwd.setText(sampler.getPassword());
+         iterations.setText(sampler.getIterations());
+         useAuth.setSelected(sampler.isUseAuth());
++        jmsUser.setEnabled(useAuth.isSelected());
++        jmsPwd.setEnabled(useAuth.isSelected());
+         readResponse.setSelected(sampler.getReadResponseAsBoolean());
+         clientChoice.setText(sampler.getClientChoice());
+         stopBetweenSamples.setSelected(sampler.isStopBetweenSamples());
+@@ -224,6 +226,8 @@
+         iterations.setText("1"); // $NON-NLS-1$
+         timeout.setText("");
+         useAuth.setSelected(false);
++        jmsUser.setEnabled(false);
++        jmsPwd.setEnabled(false);
+         readResponse.setSelected(true);
+         clientChoice.setText(RECEIVE_RSC);
+         stopBetweenSamples.setSelected(false);
+@@ -239,8 +243,8 @@
+             jndiICF.setEnabled(!useProperties.isSelected());
+             urlField.setEnabled(!useProperties.isSelected());
+         } else if (event.getSource() == useAuth) {
+-            jmsUser.setEnabled(!useAuth.isSelected());
+-            jmsPwd.setEnabled(!useAuth.isSelected());
++            jmsUser.setEnabled(useAuth.isSelected());
++            jmsPwd.setEnabled(useAuth.isSelected());
+         }
+     }
+     
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/Utils.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/Utils.java	(revision 1166194)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/Utils.java	(working copy)
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.protocol.jms;
+ 
+ import java.util.Enumeration;
++import java.util.Map;
+ 
+ import javax.jms.Connection;
+ import javax.jms.Destination;
+@@ -148,7 +149,15 @@
+             throw new NamingException("Lookup failed: "+e.toString());
+         }
+         if (objfac instanceof javax.jms.ConnectionFactory) {
+-            return ((javax.jms.ConnectionFactory) objfac).createConnection();
++            Map<String, Object> env = (Map<String, Object>)ctx.getEnvironment();
++            if(env.containsKey(Context.SECURITY_PRINCIPAL)) {
++                String username = (String)env.get(Context.SECURITY_PRINCIPAL);
++                String password = (String)env.get(Context.SECURITY_CREDENTIALS);
++                return ((javax.jms.ConnectionFactory) objfac).createConnection(username, password);                
++            }
++            else {
++                return ((javax.jms.ConnectionFactory) objfac).createConnection();
++            }
+         }
+         throw new NamingException("Expected javax.jms.ConnectionFactory, found "+objfac.getClass().getName());
+     }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java	(revision 1166194)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/InitialContextFactory.java	(working copy)
+@@ -26,6 +26,7 @@
+ import javax.naming.InitialContext;
+ import javax.naming.NamingException;
+ 
++import org.apache.commons.lang.StringUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -52,7 +53,8 @@
+      */
+     public static synchronized Context lookupContext(String initialContextFactory, 
+             String providerUrl, boolean useAuth, String securityPrincipal, String securityCredentials) throws NamingException {
+-        Context ctx = MAP.get(initialContextFactory + providerUrl);
++        String cacheKey = createKey(initialContextFactory ,providerUrl, securityPrincipal, securityCredentials);
++        Context ctx = MAP.get(cacheKey);
+         if (ctx == null) {
+             Properties props = new Properties();
+             props.setProperty(Context.INITIAL_CONTEXT_FACTORY, initialContextFactory);
+@@ -70,12 +72,38 @@
+             } catch (Exception e) {
+                 throw new NamingException(e.toString());
+             }
+-            MAP.put(initialContextFactory + providerUrl, ctx);
++            MAP.put(cacheKey, ctx);
+         }
+         return ctx;
+     }
+ 
+     /**
++     * Create cache key
++     * @param initialContextFactory
++     * @param providerUrl
++     * @param securityPrincipal
++     * @param securityCredentials
++     * @return
++     */
++    private static String createKey(String initialContextFactory,
++            String providerUrl, String securityPrincipal,
++            String securityCredentials) {
++       StringBuilder builder = new StringBuilder();
++       builder.append(initialContextFactory);
++       builder.append("#");
++       builder.append(providerUrl);
++       builder.append("#");
++       if(!StringUtils.isEmpty(securityPrincipal)) {
++           builder.append(securityPrincipal);
++           builder.append("#");
++       }
++       if(!StringUtils.isEmpty(securityCredentials)) {
++           builder.append(securityCredentials);
++       }
++       return builder.toString();
++    }
++
++    /**
+      * Initialize the JNDI initial context
+      *
+      * @param useProps if true, create a new InitialContext; otherwise use the other parameters to call

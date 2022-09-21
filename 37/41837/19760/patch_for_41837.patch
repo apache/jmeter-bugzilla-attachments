@@ -1,0 +1,70 @@
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java	(revision 520498)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java	(working copy)
+@@ -124,7 +124,7 @@
+ 				String name = parts[i].substring(index, parts[i].indexOf("\"", index));
+ 				index = parts[i].indexOf("\n", index) + 2;
+ 				String value = parts[i].substring(index).trim();
+-				this.addEncodedArgument(name, value);
++				this.addArgument(name, value);
+ 			}
+ 		}
+ 	}
+Index: C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 520498)
++++ C:/Documents and Settings/alf/workspace/Jmeter/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -80,6 +80,8 @@
+ 
+ 	private HTTPSamplerBase sampler;
+ 
++	private HeaderManager headerManager;
++	
+ 	/*
+ 	 * Optionally number the requests
+ 	 */
+@@ -177,7 +179,7 @@
+ 		return 0;
+ 	}
+ 
+-	public HeaderManager getHeaderManager() {
++	private HeaderManager createHeaderManager() {
+ 		HeaderManager manager = new HeaderManager();
+ 		Iterator keys = headers.keySet().iterator();
+ 		while (keys.hasNext()) {
+@@ -189,9 +191,16 @@
+ 		manager.setName("Browser-derived headers");
+ 		manager.setProperty(TestElement.TEST_CLASS, HeaderManager.class.getName());
+ 		manager.setProperty(TestElement.GUI_CLASS, HeaderPanel.class.getName());
+-		return manager;
++		return manager;		
+ 	}
+ 
++	public HeaderManager getHeaderManager() {
++		if(headerManager == null) {
++			headerManager = createHeaderManager();
++		}
++		return headerManager;
++	}
++
+ 	public HTTPSamplerBase getSampler() throws MalformedURLException, IOException, ProtocolException {
+ 		// Damn! A whole new GUI just to instantiate a test element?
+ 		// Isn't there a beter way?
+@@ -269,6 +278,16 @@
+ 		}
+ 		if ((urlConfig = isMultipart(getContentType())) != null) {
+ 			urlConfig.parseArguments(postData);
++			// If no file is uploaded, then it was really a multipart/form-data
++			// post request. But currently, that is not supported, so we must
++			// change the "Content-Type" header from multipart/form-data to
++			// application/x-www-form-urlencoded, which is the one the HTTP Request
++			// sampler will send
++			if(urlConfig.getFilename() == null) {
++				System.out.println("jada");
++				getHeaderManager().removeHeaderNamed("Content-Type");
++				getHeaderManager().add(new Header("Content-Type", "application/x-www-form-urlencoded"));
++			}
+ 			sampler.setArguments(urlConfig.getArguments());
+ 			sampler.setFileField(urlConfig.getFileFieldName());
+ 			sampler.setFilename(urlConfig.getFilename());

@@ -1,0 +1,196 @@
+diff -ru src/core/org/apache/jmeter/util/JMeterVersion.java ../../jakarta-jmeter-2.3.2/src/core/org/apache/jmeter/util/JMeterVersion.java
+--- src/core/org/apache/jmeter/util/JMeterVersion.java	2008-06-09 19:37:20.000000000 -0500
++++ ../../jakarta-jmeter-2.3.2/src/core/org/apache/jmeter/util/JMeterVersion.java	2009-02-16 17:30:04.000000000 -0600
+@@ -44,7 +44,7 @@
+ 	 * This ensures that JMeterUtils always gets the correct
+ 	 * version, even if JMeterUtils is not re-compiled during the build.
+ 	 */
+-	private static final String VERSION = "2.3.2 r665936";
++	private static final String VERSION = "2.3.2.20090216";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2008 The Apache Software Foundation";
+ 
+diff -ru src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java ../../jakarta-jmeter-2.3.2/src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java	2008-06-09 19:37:24.000000000 -0500
++++ ../../jakarta-jmeter-2.3.2/src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java	2009-02-19 12:16:16.000000000 -0600
+@@ -26,6 +26,8 @@
+ import java.net.URLConnection;
+ import java.util.HashMap;
+ import java.util.Map;
++import java.util.Date;
++import java.text.SimpleDateFormat;
+ 
+ import org.apache.commons.httpclient.Header;
+ import org.apache.commons.httpclient.HttpMethod;
+@@ -48,6 +50,8 @@
+ 
+ 	public static final String CLEAR = "clearEachIteration"; // $NON-NLS-1$
+ 
++	private static final SimpleDateFormat expiresDateFormat = new java.text.SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z");
++	
+ 	private transient ThreadLocal threadCache;
+ 	
+ 	public CacheManager() {
+@@ -61,14 +65,19 @@
+ 	 */
+ 	private static class CacheEntry{
+ 	    private final String lastModified;
++	    private final String expires;
+ 	    private final String etag;
+-	    public CacheEntry(String lastModified, String etag){
++	    public CacheEntry(String lastModified, String expires, String etag){
+ 	       this.lastModified = lastModified;
++	       this.expires = expires;
+ 	       this.etag = etag;
+ 	   }
+         public String getLastModified() {
+             return lastModified;
+         }
++        public String getExpires() {
++            return expires;
++        }
+         public String getEtag() {
+             return etag;
+         }
+@@ -78,7 +87,7 @@
+ 	}
+ 
+ 	/**
+-	 * Save the Last-Modified and Etag headers if the result is cacheable.
++	 * Save the Last-Modified, Etag, and Expires headers if the result is cacheable.
+ 	 * 
+ 	 * @param conn connection
+ 	 * @param res result
+@@ -86,14 +95,15 @@
+ 	public void saveDetails(URLConnection conn, SampleResult res){
+ 	    if (isCacheable(res)){
+ 	        String lastModified = conn.getHeaderField(HTTPConstantsInterface.LAST_MODIFIED);
++	        String expires = conn.getHeaderField(HTTPConstantsInterface.EXPIRES);
+ 	        String etag = conn.getHeaderField(HTTPConstantsInterface.ETAG);
+ 	        String url = conn.getURL().toString();
+-	        setCache(lastModified, etag, url);	        
++	        setCache(lastModified, expires, etag, url);	        
+ 	    }
+ 	}
+ 
+     /**
+-     * Save the Last-Modified and Etag headers if the result is cacheable.
++     * Save the Last-Modified, Etag, and Expires headers if the result is cacheable.
+      * 
+      * @param method
+      * @param res result
+@@ -101,18 +111,19 @@
+     public void saveDetails(HttpMethod method, SampleResult res) throws URIException{
+         if (isCacheable(res)){
+             String lastModified = getHeader(method ,HTTPConstantsInterface.LAST_MODIFIED);
++            String expires = getHeader(method ,HTTPConstantsInterface.EXPIRES);
+             String etag = getHeader(method ,HTTPConstantsInterface.ETAG);
+             String url = method.getURI().toString();
+-            setCache(lastModified, etag, url);
++            setCache(lastModified, expires, etag, url);
+         }
+     }
+ 
+     // helper method to save the cache entry
+-    private void setCache(String lastModified, String etag, String url) {
++    private void setCache(String lastModified, String expires, String etag, String url) {
+         if (log.isDebugEnabled()){
+-            log.debug("SET(both) "+url + " " + lastModified + " " + etag);
++            log.debug("SET(both) "+url + " " + lastModified + " " + " " + expires + " " + etag);
+         }
+-        getCache().put(url, new CacheEntry(lastModified, etag));
++        getCache().put(url, new CacheEntry(lastModified, expires, etag));
+     }
+ 
+     // Helper method to deal with missing headers
+@@ -179,6 +190,36 @@
+         }
+     }
+ 
++    
++    /**
++     * Check the cache, if the entry has an expires header and the entry has not expired, return true<br/>
++     * @param url URL to look up in cache
++     */
++    public boolean inCache(URL url) {
++        CacheEntry entry = (CacheEntry) getCache().get(url.toString());
++        if (log.isDebugEnabled()){
++            log.debug("inCache "+url.toString()+" "+entry);
++        }
++        if (entry != null){
++            final String expires = entry.getExpires();
++            if (expires != null){
++            	java.util.Date expiresDate = null;
++            	try { expiresDate = expiresDateFormat.parse(expires); } catch (Exception e) { }
++            	if (expiresDate != null) {
++	                if (expiresDate.after(new Date())) {
++	                    if (log.isDebugEnabled()){
++	                    	log.debug("Expires= " + expiresDate + " (Valid)");
++	                    }
++	                	return true;
++	                } else if (log.isDebugEnabled()){
++	                   	log.debug("Expires= " + expiresDate + " (Expired)");
++	                }
++            	}
++            }
++        }
++        return false;
++    }
++    
+     private Map getCache(){
+         return (Map) threadCache.get();
+     }
+diff -ru src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java ../../jakarta-jmeter-2.3.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2008-06-09 19:37:26.000000000 -0500
++++ ../../jakarta-jmeter-2.3.2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2009-02-19 12:22:45.000000000 -0600
+@@ -133,6 +133,7 @@
+ 	 *                if an I/O Exception occurs
+ 	 */
+ 	protected HttpURLConnection setupConnection(URL u, String method, HTTPSampleResult res) throws IOException {
++		
+         SSLManager sslmgr = null;
+         if (PROTOCOL_HTTPS.equalsIgnoreCase(u.getProtocol())) {
+             try {
+@@ -419,6 +420,24 @@
+         
+ 		res.setSampleLabel(urlStr);
+ 		res.sampleStart(); // Count the retries as well in the time
++
++        // Check cache for an entry with an Expires header in the future
++        CacheManager cacheManager = getCacheManager();
++        if (cacheManager != null) {
++	        if (cacheManager.inCache(url)) {
++	        	// The below works in my tests to short-circuit running the sample, 
++	        	//   but I don't know if this is the proper way to do that.
++	            log.debug(url.toString() + " In cache, valid");
++				res.sampleEnd();
++			    res.setResponseCode("OK");
++			    res.setSuccessful(true);
++			    res.setResponseMessage("in cache");
++	            return res;
++	        } else {
++	            log.debug(url.toString() + " Not in cache, or expired");
++	        }
++        }
++        
+ 		try {
+ 			// Sampling proper - establish the connection and read the response:
+ 			// Repeatedly try to connect:
+@@ -520,7 +539,6 @@
+ 			saveConnectionCookies(conn, url, getCookieManager());
+ 
+             // Save cache information
+-            final CacheManager cacheManager = getCacheManager();
+             if (cacheManager != null){
+                 cacheManager.saveDetails(conn, res);
+             }
+diff -ru src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java ../../jakarta-jmeter-2.3.2/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	2008-06-09 19:37:26.000000000 -0500
++++ ../../jakarta-jmeter-2.3.2/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java	2009-02-12 14:37:06.000000000 -0600
+@@ -60,5 +60,6 @@
+     public static final String IF_MODIFIED_SINCE = "If-Modified-Since"; // $NON-NLS-1$
+     public static final String ETAG = "Etag"; // $NON-NLS-1$
+     public static final String LAST_MODIFIED = "Last-Modified"; // $NON-NLS-1$
++    public static final String EXPIRES = "Expires"; // $NON-NLS-1$
+ 
+ }

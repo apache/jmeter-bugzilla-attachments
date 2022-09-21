@@ -1,0 +1,2069 @@
+Index: control/TransactionController.java
+===================================================================
+--- control/TransactionController.java	(revision 816394)
++++ control/TransactionController.java	(working copy)
+@@ -56,8 +56,20 @@
+ 
+     private transient int noFailingSamples;
+ 
++    /**
++     * Cumulated pause time to excluse timer and post/pre processor times
++     */
++    private transient long pauseTime;
++    
++    /**
++     * Previous end time
++     */
++    private transient long prevEndTime;
++    
+     private static final String PARENT = "TransactionController.parent";// $NON-NLS-1$
+ 
++    private final static String INCLUDE_TIMERS = "TransactionController.includeTimers";
++
+     /**
+      * Creates a Transaction Controller
+      */
+@@ -152,6 +164,8 @@
+             // Assume success
+             res.setSuccessful(true);
+             res.sampleStart();
++            prevEndTime = res.getStartTime();
++            pauseTime = 0;
+         }
+ 
+         Sampler returnValue = super.next();
+@@ -159,7 +173,8 @@
+         if (returnValue == null) // Must be the end of the controller
+         {
+             if (res != null) {
+-                res.sampleEnd();
++            	res.incIdleTime(pauseTime);
++ 				res.sampleEnd();
+                 res.setResponseMessage("Number of samples in transaction : " + calls + ", number of failing samples : " + noFailingSamples);
+                 if(res.isSuccessful()) {
+                     res.setResponseCodeOK();
+@@ -196,10 +211,16 @@
+                 SampleResult sampleResult = se.getResult();
+                 res.setThreadName(sampleResult.getThreadName());
+                 res.setBytes(res.getBytes() + sampleResult.getBytes());
++                if (!isIncludeTimers()) {
++                	pauseTime += sampleResult.getEndTime() - sampleResult.getTime() - prevEndTime;
++                	prevEndTime = sampleResult.getEndTime();
++                }
+                 if(!sampleResult.isSuccessful()) {
+                     res.setSuccessful(false);
+                     noFailingSamples++;
+                 }
++                // Commented it belongs to another patch
++                //res.setLatency(res.getLatency()+sampleResult.getLatency());
+                 res.setAllThreads(sampleResult.getAllThreads());
+                 res.setGroupThreads(sampleResult.getGroupThreads());
+             }
+@@ -211,4 +232,21 @@
+ 
+     public void sampleStopped(SampleEvent e) {
+     }
++    
++    /**
++     * Include timer and pre/post processor time
++     * @param b
++     */
++    public void setIncludeTimers(boolean b) {
++    	setProperty(new BooleanProperty(INCLUDE_TIMERS, b));
++    }
++
++    /**
++     * Include timer and pre/post processor time
++     * @return boolean (defaults to true for Ascending compatibility)
++     */
++    public boolean isIncludeTimers() {
++    	return getPropertyAsBoolean(INCLUDE_TIMERS, true);
++    }
++
+ }
+Index: control/gui/TransactionControllerGui.java
+===================================================================
+--- control/gui/TransactionControllerGui.java	(revision 816394)
++++ control/gui/TransactionControllerGui.java	(working copy)
+@@ -32,6 +32,8 @@
+ public class TransactionControllerGui extends AbstractControllerGui {
+ 
+     private JCheckBox parent; // If selected, then generate parent sample, otherwise as per original controller
++	
++    private JCheckBox includeTimers; // if selected, add duration of timers to total runtime
+ 
+     /**
+      * Create a new TransactionControllerGui instance.
+@@ -51,12 +53,17 @@
+     public void configure(TestElement el) {
+         super.configure(el);
+         parent.setSelected(((TransactionController) el).isParent());
++		includeTimers.setSelected(((TransactionController) el).isIncludeTimers());
+     }
+ 
+     /* Implements JMeterGUIComponent.modifyTestElement(TestElement) */
+     public void modifyTestElement(TestElement el) {
+         configureTestElement(el);
+         ((TransactionController) el).setParent(parent.isSelected());
++        TransactionController tc = ((TransactionController) el);
++        tc.setParent(parent.isSelected());
++        tc.setIncludeTimers(includeTimers.isSelected());
++
+     }
+ 
+     public String getLabelResource() {
+@@ -72,5 +79,7 @@
+         add(makeTitlePanel());
+         parent = new JCheckBox(JMeterUtils.getResString("transaction_controller_parent")); // $NON-NLS-1$
+         add(parent);
++        includeTimers = new JCheckBox(JMeterUtils.getResString("transaction_controller_include_timers"), true); // $NON-NLS-1$
++        add(includeTimers);
+     }
+ }
+Index: resources/messages.properties
+===================================================================
+--- resources/messages.properties	(revision 817404)
++++ resources/messages.properties	(working copy)
+@@ -280,6 +280,7 @@
+ graph_results_title=Graph Results
+ grouping_add_separators=Add separators between groups
+ grouping_in_controllers=Put each group in a new controller
++grouping_in_transaction_controllers=Put each group in a new transaction controller
+ grouping_mode=Grouping\:
+ grouping_no_groups=Do not group samplers
+ grouping_store_first_only=Store 1st sampler of each group only
+@@ -790,6 +791,7 @@
+ string_from_file_seq_start=Start file sequence number (opt)
+ summariser_title=Generate Summary Results
+ summary_report=Summary Report
++summary_report_include_transactions_only=Include Transactions Controllers only.
+ switch_controller_label=Switch Value
+ switch_controller_title=Switch Controller
+ table_visualizer_bytes=Bytes
+@@ -839,6 +841,7 @@
+ tr=Turkish
+ transaction_controller_parent=Generate parent sample
+ transaction_controller_title=Transaction Controller
++transaction_controller_include_timers=Include timer duration in runtime summary.
+ unbind=Thread Unbind
+ unescape_html_string=String to unescape
+ unescape_string=String containing Java escapes
+Index: resources/messages_fr.properties
+===================================================================
+--- resources/messages_fr.properties	(revision 816394)
++++ resources/messages_fr.properties	(working copy)
+@@ -243,6 +243,7 @@
+ graph_results_title=Graphique de r\u00E9sultats
+ grouping_add_separators=Ajouter des s\u00E9parateurs entre les groupes
+ grouping_in_controllers=Mettre chaque groupe dans un nouveau contr\u00F4leur
++grouping_in_transaction_controllers=Mettre chaque groupe dans un nouveau contr\u00F4leur de transaction
+ grouping_mode=Grouper \:
+ grouping_no_groups=Ne pas grouper les \u00E9chantillons
+ grouping_store_first_only=Stocker le 1er \u00E9chantillon pour chaque groupe uniquement
+@@ -643,6 +644,7 @@
+ string_from_file_seq_start=D\u00E9marer le nombre de s\u00E9quence de fichier
+ summariser_title=G\u00E9n\u00E9rer les resultats consolid\u00E9s
+ summary_report=Rapport consolid\u00E9
++summary_report_include_transactions_only=Inclure uniquement les Transactions Controllers.
+ switch_controller_label=Permuter vers le num\u00E9ro d'\u00E9l\u00E9ment (ou nom) subordonn\u00E9 \:
+ switch_controller_title=Contr\u00F4leur R\u00E9gulateur
+ table_visualizer_bytes=Octets
+@@ -690,6 +692,7 @@
+ tr=Turc
+ transaction_controller_parent=G\u00E9n\u00E9rer en \u00E9chantillon parent
+ transaction_controller_title=Contr\u00F4leur Transaction
++transaction_controller_include_timers=Inclure le temps de timer dans la duree.
+ unbind=D\u00E9lier les unit\u00E9s
+ uniform_timer_delay=D\u00E9lai de d\u00E9calage constant (en millisecondes) \:
+ uniform_timer_memo=Ajoute un d\u00E9lai al\u00E9atoire avec une distribution uniforme
+Index: samplers/SampleResult.java
+===================================================================
+--- samplers/SampleResult.java	(revision 820025)
++++ samplers/SampleResult.java	(working copy)
+@@ -40,912 +40,924 @@
+ /**
+  * This is a nice packaging for the various information returned from taking a
+  * sample of an entry.
+- *
++ * 
+  */
+ public class SampleResult implements Serializable {
+ 
+-    private static final long serialVersionUID = 233L;
+-    
+-    // Needs to be accessible from Test code
+-    static final Logger log = LoggingManager.getLoggerForClass();
++	private static final long serialVersionUID = 233L;
+ 
+-    /**
++	// Needs to be accessible from Test code
++	static final Logger log = LoggingManager.getLoggerForClass();
++
++	/**
+      * The default encoding to be used if not overridden.
+      * The value is ISO-8859-1.
+-     */
+-    public static final String DEFAULT_HTTP_ENCODING = "ISO-8859-1";  // $NON-NLS-1$
++	 */
++	public static final String DEFAULT_HTTP_ENCODING = "ISO-8859-1"; // $NON-NLS-1$
+ 
+-    // Bug 33196 - encoding ISO-8859-1 is only suitable for Western countries
+-    // However the suggested System.getProperty("file.encoding") is Cp1252 on
+-    // Windows
+-    // So use a new property with the original value as default
+-    // needs to be accessible from test code
+-    /**
+-     * The default encoding to be used to decode the responseData byte array.
++	// Bug 33196 - encoding ISO-8859-1 is only suitable for Western countries
++	// However the suggested System.getProperty("file.encoding") is Cp1252 on
++	// Windows
++	// So use a new property with the original value as default
++	// needs to be accessible from test code
++	/**
++	 * The default encoding to be used to decode the responseData byte array.
+      * The value is defined by the property "sampleresult.default.encoding"
+      * with a default of DEFAULT_HTTP_ENCODING if that is not defined.
+-     */
++	 */
+     static final String DEFAULT_ENCODING
+             = JMeterUtils.getPropDefault("sampleresult.default.encoding", // $NON-NLS-1$
+-            DEFAULT_HTTP_ENCODING);
++			DEFAULT_HTTP_ENCODING);
+ 
+-    /**
+-     * Data type value indicating that the response data is text.
+-     *
+-     * @see #getDataType
+-     * @see #setDataType(java.lang.String)
+-     */
+-    public final static String TEXT = "text"; // $NON-NLS-1$
++	/**
++	 * Data type value indicating that the response data is text.
++	 * 
++	 * @see #getDataType
++	 * @see #setDataType(java.lang.String)
++	 */
++	public final static String TEXT = "text"; // $NON-NLS-1$
+ 
+-    /**
+-     * Data type value indicating that the response data is binary.
+-     *
+-     * @see #getDataType
+-     * @see #setDataType(java.lang.String)
+-     */
+-    public final static String BINARY = "bin"; // $NON-NLS-1$
++	/**
++	 * Data type value indicating that the response data is binary.
++	 * 
++	 * @see #getDataType
++	 * @see #setDataType(java.lang.String)
++	 */
++	public final static String BINARY = "bin"; // $NON-NLS-1$
+ 
+-    /* empty arrays which can be returned instead of null */
+-    private static final byte[] EMPTY_BA = new byte[0];
++	/* empty arrays which can be returned instead of null */
++	private static final byte[] EMPTY_BA = new byte[0];
+ 
+-    private static final SampleResult[] EMPTY_SR = new SampleResult[0];
++	private static final SampleResult[] EMPTY_SR = new SampleResult[0];
+ 
+-    private static final AssertionResult[] EMPTY_AR = new AssertionResult[0];
++	private static final AssertionResult[] EMPTY_AR = new AssertionResult[0];
+ 
+-    private SampleSaveConfiguration saveConfig;
++	private SampleSaveConfiguration saveConfig;
+ 
+-    private SampleResult parent = null;
++	private SampleResult parent = null;
+ 
+-    /**
+-     * @param propertiesToSave
+-     *            The propertiesToSave to set.
+-     */
+-    public void setSaveConfig(SampleSaveConfiguration propertiesToSave) {
+-        this.saveConfig = propertiesToSave;
+-    }
++	/**
++	 * @param propertiesToSave
++	 *            The propertiesToSave to set.
++	 */
++	public void setSaveConfig(SampleSaveConfiguration propertiesToSave) {
++		this.saveConfig = propertiesToSave;
++	}
+ 
+-    public SampleSaveConfiguration getSaveConfig() {
+-        return saveConfig;
+-    }
++	public SampleSaveConfiguration getSaveConfig() {
++		return saveConfig;
++	}
+ 
+-    private byte[] responseData = EMPTY_BA;
++	private byte[] responseData = EMPTY_BA;
+ 
+-    private String responseCode = "";// Never return null
++	private String responseCode = "";// Never return null
+ 
+-    private String label = "";// Never return null
++	private String label = "";// Never return null
+ 
+-    private String resultFileName = ""; // Filename used by ResultSaver
++	private String resultFileName = ""; // Filename used by ResultSaver
+ 
+-    private String samplerData; // The data used by the sampler
++	private String samplerData; // The data used by the sampler
+ 
+-    private String threadName = ""; // Never return null
++	private String threadName = ""; // Never return null
+ 
+-    private String responseMessage = "";
++	private String responseMessage = "";
+ 
+-    private String responseHeaders = ""; // Never return null
++	private String responseHeaders = ""; // Never return null
+ 
+-    private String contentType = ""; // e.g. text/html; charset=utf-8
++	private String contentType = ""; // e.g. text/html; charset=utf-8
+ 
+-    private String requestHeaders = "";
++	private String requestHeaders = "";
+ 
+     // TODO timeStamp == 0 means either not yet initialised or no stamp available (e.g. when loading a results file)
+-    private long timeStamp = 0;// the time stamp - can be start or end
++	private long timeStamp = 0;// the time stamp - can be start or end
+ 
+-    private long startTime = 0;
++	private long startTime = 0;
+ 
+-    private long endTime = 0;
++	private long endTime = 0;
+ 
+-    private long idleTime = 0;// Allow for non-sample time
++	private long idleTime = 0;// Allow for non-sample time
+ 
+-    private long pauseTime = 0;// Start of pause (if any)
++	private long pauseTime = 0;// Start of pause (if any)
+ 
+-    private List<AssertionResult> assertionResults;
++	private List<AssertionResult> assertionResults;
+ 
+-    private List<SampleResult> subResults;
++	private List<SampleResult> subResults;
+ 
+-    private String dataType=""; // Don't return null if not set
++	private String dataType = ""; // Don't return null if not set
+ 
+-    private boolean success;
++	private boolean success;
+ 
+-    //@GuardedBy("this"")
+-    private final Set<String> files = new HashSet<String>(); // files that this sample has been saved in
++	// @GuardedBy("this"")
++	private final Set<String> files = new HashSet<String>(); // files that this sample has been saved in
+ 
+-    private String dataEncoding;// (is this really the character set?) e.g.
+-                                // ISO-8895-1, UTF-8
++	private String dataEncoding;// (is this really the character set?) e.g.
++	// ISO-8895-1, UTF-8
+ 
+-    // a reference time from the nanosecond clock
+-    private static final long referenceTimeNsClock = sampleNsClockInMs();
++	// a reference time from the nanosecond clock
++	private static final long referenceTimeNsClock = sampleNsClockInMs();
+ 
+-    // a reference time from the millisecond clock
+-    private static final long referenceTimeMsClock = System.currentTimeMillis();
++	// a reference time from the millisecond clock
++	private static final long referenceTimeMsClock = System.currentTimeMillis();
+ 
+-    private long time = 0; // elapsed time
++	private long time = 0; // elapsed time
+ 
+-    private long latency = 0; // time to first response
++	private long latency = 0; // time to first response
+ 
+-    private boolean stopThread = false; // Should thread terminate?
++	private boolean stopThread = false; // Should thread terminate?
+ 
+-    private boolean stopTest = false; // Should test terminate?
++	private boolean stopTest = false; // Should test terminate?
+ 
+-    private boolean stopTestNow = false; // Should test terminate abruptly?
++	private boolean stopTestNow = false; // Should test terminate abruptly?
+ 
+-    private boolean isMonitor = false;
++	private boolean isMonitor = false;
+ 
+-    private int sampleCount = 1;
++	private int sampleCount = 1;
+ 
+-    private int bytes = 0; // Allows override of sample size in case sampler does not want to store all the data
++	private int bytes = 0; // Allows override of sample size in case sampler does not want to store all the data
+ 
+-    /** Currently active threads in this thread group */
+-    private volatile int groupThreads = 0;
++	/** Currently active threads in this thread group */
++	private volatile int groupThreads = 0;
+ 
+-    /** Currently active threads in all thread groups */
+-    private volatile int allThreads = 0;
++	/** Currently active threads in all thread groups */
++	private volatile int allThreads = 0;
+ 
+     // TODO do contentType and/or dataEncoding belong in HTTPSampleResult instead?
+ 
+-    private final static String TOTAL_TIME = "totalTime"; // $NON-NLS-1$
++	private final static String TOTAL_TIME = "totalTime"; // $NON-NLS-1$
+ 
+     private static final boolean startTimeStamp
+         = JMeterUtils.getPropDefault("sampleresult.timestamp.start", false);  // $NON-NLS-1$
+ 
+-    static {
+-        if (startTimeStamp) {
+-            log.info("Note: Sample TimeStamps are START times");
+-        } else {
+-            log.info("Note: Sample TimeStamps are END times");
+-        }
+-        log.info("sampleresult.default.encoding is set to " + DEFAULT_ENCODING);
+-    }
++	static {
++		if (startTimeStamp) {
++			log.info("Note: Sample TimeStamps are START times");
++		} else {
++			log.info("Note: Sample TimeStamps are END times");
++		}
++		log.info("sampleresult.default.encoding is set to " + DEFAULT_ENCODING);
++	}
+ 
+-    public SampleResult() {
+-        time = 0;
+-    }
++	public SampleResult() {
++		time = 0;
++	}
+ 
+-    /**
+-     * Construct a 'parent' result for an already-existing result, essentially
+-     * cloning it
+-     *
+-     * @param res
+-     *            existing sample result
+-     */
+-    public SampleResult(SampleResult res) {
++	/**
++	 * Construct a 'parent' result for an already-existing result, essentially
++	 * cloning it
++	 * 
++	 * @param res
++	 *            existing sample result
++	 */
++	public SampleResult(SampleResult res) {
+         //TODO - why not just copy all the fields? Do we need the calculations that some of the set() methods perform?
+-        //TODO - why are the following not copied:
++		// TODO - why are the following not copied:
+         // assertionResults, bytes, idleTime, latency, parent,pauseTime,resultFileName,sampleCount,samplerData,saveConfig
+-        // stopTest, stopThread, subResults,threadName
+-        setStartTime(res.getStartTime());
+-        setEndTime(res.getStartTime());
+-        // was setElapsed(0) which is the same as setStartTime=setEndTime=now
++		// stopTest, stopThread, subResults,threadName
++		setStartTime(res.getStartTime());
++		setEndTime(res.getStartTime());
++		// was setElapsed(0) which is the same as setStartTime=setEndTime=now
+ 
+-        setSampleLabel(res.getSampleLabel());
+-        setRequestHeaders(res.getRequestHeaders());
+-        setResponseData(res.getResponseData());
+-        setResponseCode(res.getResponseCode());
+-        setSuccessful(res.isSuccessful());
+-        setResponseMessage(res.getResponseMessage());
+-        setDataType(res.getDataType());
+-        setResponseHeaders(res.getResponseHeaders());
+-        setContentType(res.getContentType());
+-        setDataEncoding(res.getDataEncodingNoDefault());
+-        setURL(res.getURL());
++		setSampleLabel(res.getSampleLabel());
++		setRequestHeaders(res.getRequestHeaders());
++		setResponseData(res.getResponseData());
++		setResponseCode(res.getResponseCode());
++		setSuccessful(res.isSuccessful());
++		setResponseMessage(res.getResponseMessage());
++		setDataType(res.getDataType());
++		setResponseHeaders(res.getResponseHeaders());
++		setContentType(res.getContentType());
++		setDataEncoding(res.getDataEncodingNoDefault());
++		setURL(res.getURL());
+ 
+-        setGroupThreads(res.getGroupThreads());
+-        setAllThreads(res.getAllThreads());
++		setGroupThreads(res.getGroupThreads());
++		setAllThreads(res.getAllThreads());
+ 
+-        addSubResult(res); // this will add res.getTime() to getTime().
+-    }
++		addSubResult(res); // this will add res.getTime() to getTime().
++	}
+ 
+-    public boolean isStampedAtStart() {
+-        return startTimeStamp;
+-    }
++	public boolean isStampedAtStart() {
++		return startTimeStamp;
++	}
+ 
+-    /**
+-     * Create a sample with a specific elapsed time but don't allow the times to
+-     * be changed later
+-     *
+-     * (only used by HTTPSampleResult)
+-     *
+-     * @param elapsed
+-     *            time
+-     * @param atend
+-     *            create the sample finishing now, else starting now
+-     */
+-    protected SampleResult(long elapsed, boolean atend) {
+-        long now = currentTimeInMs();
+-        if (atend) {
+-            setTimes(now - elapsed, now);
+-        } else {
+-            setTimes(now, now + elapsed);
+-        }
+-    }
++	/**
++	 * Create a sample with a specific elapsed time but don't allow the times to
++	 * be changed later
++	 * 
++	 * (only used by HTTPSampleResult)
++	 * 
++	 * @param elapsed
++	 *            time
++	 * @param atend
++	 *            create the sample finishing now, else starting now
++	 */
++	protected SampleResult(long elapsed, boolean atend) {
++		long now = currentTimeInMs();
++		if (atend) {
++			setTimes(now - elapsed, now);
++		} else {
++			setTimes(now, now + elapsed);
++		}
++	}
+ 
+-    /**
+-     * Create a sample with specific start and end times for test purposes, but
+-     * don't allow the times to be changed later
+-     *
+-     * (used by StatVisualizerModel.Test)
+-     *
+-     * @param start
+-     *            start time
+-     * @param end
+-     *            end time
+-     */
+-    public static SampleResult createTestSample(long start, long end) {
+-        SampleResult res = new SampleResult();
+-        res.setStartTime(start);
+-        res.setEndTime(end);
+-        return res;
+-    }
++	/**
++	 * Create a sample with specific start and end times for test purposes, but
++	 * don't allow the times to be changed later
++	 * 
++	 * (used by StatVisualizerModel.Test)
++	 * 
++	 * @param start
++	 *            start time
++	 * @param end
++	 *            end time
++	 */
++	public static SampleResult createTestSample(long start, long end) {
++		SampleResult res = new SampleResult();
++		res.setStartTime(start);
++		res.setEndTime(end);
++		return res;
++	}
+ 
+-    /**
+-     * Create a sample with a specific elapsed time for test purposes, but don't
+-     * allow the times to be changed later
+-     *
++	/**
++	 * Create a sample with a specific elapsed time for test purposes, but don't
++	 * allow the times to be changed later
++	 * 
+      * @param elapsed -
+      *            desired elapsed time
+-     */
+-    public static SampleResult createTestSample(long elapsed) {
+-        long now = currentTimeInMs();
+-        return createTestSample(now, now + elapsed);
+-    }
++	 */
++	public static SampleResult createTestSample(long elapsed) {
++		long now = currentTimeInMs();
++		return createTestSample(now, now + elapsed);
++	}
+ 
+-    /**
+-     * Allow users to create a sample with specific timestamp and elapsed times
+-     * for cloning purposes, but don't allow the times to be changed later
+-     *
++	/**
++	 * Allow users to create a sample with specific timestamp and elapsed times
++	 * for cloning purposes, but don't allow the times to be changed later
++	 * 
+      * Currently used by OldSaveService, CSVSaveService and StatisticalSampleResult
+-     *
++	 * 
+      * @param stamp -
+      *            this may be a start time or an end time
+-     * @param elapsed
+-     */
+-    public SampleResult(long stamp, long elapsed) {
+-        stampAndTime(stamp, elapsed);
+-    }
++	 * @param elapsed
++	 */
++	public SampleResult(long stamp, long elapsed) {
++		stampAndTime(stamp, elapsed);
++	}
+ 
+-    private static long sampleNsClockInMs() {
+-        return System.nanoTime() / 1000000;
+-    }
++	private static long sampleNsClockInMs() {
++		return System.nanoTime() / 1000000;
++	}
+ 
+-    // Helper method to get 1 ms resolution timing.
+-    public static long currentTimeInMs() {
+-        long elapsedInMs = sampleNsClockInMs() - referenceTimeNsClock;
+-        return referenceTimeMsClock + elapsedInMs;
+-    }
++	// Helper method to get 1 ms resolution timing.
++	public static long currentTimeInMs() {
++		long elapsedInMs = sampleNsClockInMs() - referenceTimeNsClock;
++		return referenceTimeMsClock + elapsedInMs;
++	}
+ 
+-    // Helper method to maintain timestamp relationships
+-    private void stampAndTime(long stamp, long elapsed) {
+-        if (startTimeStamp) {
+-            startTime = stamp;
+-            endTime = stamp + elapsed;
+-        } else {
+-            startTime = stamp - elapsed;
+-            endTime = stamp;
+-        }
+-        timeStamp = stamp;
+-        time = elapsed;
+-    }
++	// Helper method to maintain timestamp relationships
++	private void stampAndTime(long stamp, long elapsed) {
++		if (startTimeStamp) {
++			startTime = stamp;
++			endTime = stamp + elapsed;
++		} else {
++			startTime = stamp - elapsed;
++			endTime = stamp;
++		}
++		timeStamp = stamp;
++		time = elapsed;
++	}
+ 
+-    /*
+-     * For use by SaveService only.
+-     *
++	/*
++	 * For use by SaveService only.
++	 * 
+      * @param stamp -
+      *            this may be a start time or an end time
+-     * @param elapsed
+-     */
+-    public void setStampAndTime(long stamp, long elapsed) {
+-        if (startTime != 0 || endTime != 0){
++	 * @param elapsed
++	 */
++	public void setStampAndTime(long stamp, long elapsed) {
++		if (startTime != 0 || endTime != 0) {
+             throw new RuntimeException("Calling setStampAndTime() after start/end times have been set");
+-        }
+-        stampAndTime(stamp, elapsed);
+-    }
++		}
++		stampAndTime(stamp, elapsed);
++	}
+ 
+-    /**
++	/**
+      * Set the "marked" flag to show that the result has been written to the file.
+-     * 
+-     * @param filename
+-     * @return true if the result was previously marked
+-     */
+-    public synchronized boolean markFile(String filename) {
+-        return !files.add(filename);
+-    }
++	 * 
++	 * @param filename
++	 * @return true if the result was previously marked
++	 */
++	public synchronized boolean markFile(String filename) {
++		return !files.add(filename);
++	}
+ 
+-    public String getResponseCode() {
+-        return responseCode;
+-    }
++	public String getResponseCode() {
++		return responseCode;
++	}
+ 
+     private static final String OK = Integer.toString(HttpURLConnection.HTTP_OK);
+ 
+-    /**
+-     * Set response code to OK, i.e. "200"
+-     *
+-     */
+-    public void setResponseCodeOK(){
+-        responseCode=OK;
+-    }
++	/**
++	 * Set response code to OK, i.e. "200"
++	 * 
++	 */
++	public void setResponseCodeOK() {
++		responseCode = OK;
++	}
+ 
+-    public void setResponseCode(String code) {
+-        responseCode = code;
+-    }
++	public void setResponseCode(String code) {
++		responseCode = code;
++	}
+ 
+-    public boolean isResponseCodeOK(){
+-        return responseCode.equals(OK);
+-    }
+-    public String getResponseMessage() {
+-        return responseMessage;
+-    }
++	public boolean isResponseCodeOK() {
++		return responseCode.equals(OK);
++	}
+ 
+-    public void setResponseMessage(String msg) {
+-        responseMessage = msg;
+-    }
++	public String getResponseMessage() {
++		return responseMessage;
++	}
+ 
+-    public void setResponseMessageOK() {
+-        responseMessage = "OK"; // $NON-NLS-1$
+-    }
++	public void setResponseMessage(String msg) {
++		responseMessage = msg;
++	}
+ 
+-    public String getThreadName() {
+-        return threadName;
+-    }
++	public void setResponseMessageOK() {
++		responseMessage = "OK"; // $NON-NLS-1$
++	}
+ 
+-    public void setThreadName(String threadName) {
+-        this.threadName = threadName;
+-    }
++	public String getThreadName() {
++		return threadName;
++	}
+ 
+-    /**
+-     * Get the sample timestamp, which may be either the start time or the end time.
+-     *
+-     * @see #getStartTime()
+-     * @see #getEndTime()
+-     *
+-     * @return timeStamp in milliseconds
+-     */
+-    public long getTimeStamp() {
+-        return timeStamp;
+-    }
++	public void setThreadName(String threadName) {
++		this.threadName = threadName;
++	}
+ 
+-    public String getSampleLabel() {
+-        return label;
+-    }
++	/**
++	 * Get the sample timestamp, which may be either the start time or the end time.
++	 * 
++	 * @see #getStartTime()
++	 * @see #getEndTime()
++	 * 
++	 * @return timeStamp in milliseconds
++	 */
++	public long getTimeStamp() {
++		return timeStamp;
++	}
+ 
+-    /**
+-     * Get the sample label for use in summary reports etc.
+-     *
+-     * @param includeGroup whether to include the thread group name
+-     * @return the label
+-     */
+-    public String getSampleLabel(boolean includeGroup) {
+-        if (includeGroup) {
+-            StringBuffer sb = new StringBuffer(threadName.substring(0,threadName.lastIndexOf(" "))); //$NON-NLS-1$
+-            return sb.append(":").append(label).toString(); //$NON-NLS-1$
+-        }
+-        return label;
+-    }
++	public String getSampleLabel() {
++		return label;
++	}
+ 
+-    public void setSampleLabel(String label) {
+-        this.label = label;
+-    }
++	/**
++	 * Get the sample label for use in summary reports etc.
++	 * 
++	 * @param includeGroup whether to include the thread group name
++	 * @return the label
++	 */
++	public String getSampleLabel(boolean includeGroup) {
++		if (includeGroup) {
++			StringBuffer sb = new StringBuffer(threadName.substring(0,threadName.lastIndexOf(" "))); //$NON-NLS-1$
++			return sb.append(":").append(label).toString(); //$NON-NLS-1$
++		}
++		return label;
++	}
+ 
+-    public void addAssertionResult(AssertionResult assertResult) {
+-        if (assertionResults == null) {
+-            assertionResults = new ArrayList<AssertionResult>();
+-        }
+-        assertionResults.add(assertResult);
+-    }
++	public void setSampleLabel(String label) {
++		this.label = label;
++	}
+ 
+-    /**
+-     * Gets the assertion results associated with this sample.
+-     *
+-     * @return an array containing the assertion results for this sample.
+-     *         Returns empty array if there are no assertion results.
+-     */
+-    public AssertionResult[] getAssertionResults() {
+-        if (assertionResults == null) {
+-            return EMPTY_AR;
+-        }
+-        return assertionResults.toArray(new AssertionResult[0]);
+-    }
++	public void addAssertionResult(AssertionResult assertResult) {
++		if (assertionResults == null) {
++			assertionResults = new ArrayList<AssertionResult>();
++		}
++		assertionResults.add(assertResult);
++	}
+ 
+-    public void addSubResult(SampleResult subResult) {
+-        String tn = getThreadName();
+-        if (tn.length()==0) {
+-            tn=Thread.currentThread().getName();//TODO do this more efficiently
+-            this.setThreadName(tn);
+-        }
+-        subResult.setThreadName(tn);
+-        if (subResults == null) {
+-            subResults = new ArrayList<SampleResult>();
+-        }
+-        subResults.add(subResult);
+-        // Extend the time to the end of the added sample
+-        setEndTime(Math.max(getEndTime(), subResult.getEndTime()));
+-        // Include the byte count for the added sample
+-        setBytes(getBytes() + subResult.getBytes());
+-        subResult.setParent(this);
+-    }
++	/**
++	 * Gets the assertion results associated with this sample.
++	 * 
++	 * @return an array containing the assertion results for this sample.
++	 *         Returns empty array if there are no assertion results.
++	 */
++	public AssertionResult[] getAssertionResults() {
++		if (assertionResults == null) {
++			return EMPTY_AR;
++		}
++		return assertionResults.toArray(new AssertionResult[0]);
++	}
+ 
+-    /**
+-     * Add a subresult read from a results file.
+-     *
+-     * As for addSubResult(), except that the fields don't need to be accumulated
+-     *
+-     * @param subResult
+-     */
+-    public void storeSubResult(SampleResult subResult) {
+-        if (subResults == null) {
+-            subResults = new ArrayList<SampleResult>();
+-        }
+-        subResults.add(subResult);
+-        subResult.setParent(this);
+-    }
++	public void addSubResult(SampleResult subResult) {
++		String tn = getThreadName();
++		if (tn.length() == 0) {
++			tn = Thread.currentThread().getName();// TODO do this more efficiently
++			this.setThreadName(tn);
++		}
++		subResult.setThreadName(tn);
++		if (subResults == null) {
++			subResults = new ArrayList<SampleResult>();
++		}
++		subResults.add(subResult);
++		// Extend the time to the end of the added sample
++		setEndTime(Math.max(getEndTime(), subResult.getEndTime()));
++		// Include the byte count for the added sample
++		setBytes(getBytes() + subResult.getBytes());
++		subResult.setParent(this);
++	}
+ 
+-    /**
+-     * Gets the subresults associated with this sample.
+-     *
+-     * @return an array containing the subresults for this sample. Returns an
+-     *         empty array if there are no subresults.
+-     */
+-    public SampleResult[] getSubResults() {
+-        if (subResults == null) {
+-            return EMPTY_SR;
+-        }
+-        return subResults.toArray(new SampleResult[0]);
+-    }
++	/**
++	 * Add a subresult read from a results file.
++	 * 
++	 * As for addSubResult(), except that the fields don't need to be accumulated
++	 * 
++	 * @param subResult
++	 */
++	public void storeSubResult(SampleResult subResult) {
++		if (subResults == null) {
++			subResults = new ArrayList<SampleResult>();
++		}
++		subResults.add(subResult);
++		subResult.setParent(this);
++	}
+ 
+-    public void configure(Configuration info) {
+-        time = info.getAttributeAsLong(TOTAL_TIME, 0L);
+-    }
++	/**
++	 * Gets the subresults associated with this sample.
++	 * 
++	 * @return an array containing the subresults for this sample. Returns an
++	 *         empty array if there are no subresults.
++	 */
++	public SampleResult[] getSubResults() {
++		if (subResults == null) {
++			return EMPTY_SR;
++		}
++		return subResults.toArray(new SampleResult[0]);
++	}
+ 
+-    /**
+-     * Sets the responseData attribute of the SampleResult object.
+-     *
++	public void configure(Configuration info) {
++		time = info.getAttributeAsLong(TOTAL_TIME, 0L);
++	}
++
++	/**
++	 * Sets the responseData attribute of the SampleResult object.
++	 * 
+      * If the parameter is null, then the responseData is set to an empty byte array.
+      * This ensures that getResponseData() can never be null.
+-     *
+-     * @param response
+-     *            the new responseData value
+-     */
+-    public void setResponseData(byte[] response) {
+-        responseData = response == null ? EMPTY_BA : response;
+-    }
++	 * 
++	 * @param response
++	 *            the new responseData value
++	 */
++	public void setResponseData(byte[] response) {
++		responseData = response == null ? EMPTY_BA : response;
++	}
+ 
+-    /**
++	/**
+      * Sets the responseData attribute of the SampleResult object.
+      * Should only be called after setting the dataEncoding (if necessary)
+-     *
+-     * @param response
+-     *            the new responseData value (String)
+-     *
+-     * @deprecated - only intended for use from BeanShell code
+-     */
+-    @Deprecated
+-    public void setResponseData(String response) {
+-        try {
+-            responseData = response.getBytes(getDataEncodingWithDefault());
+-        } catch (UnsupportedEncodingException e) {
++	 * 
++	 * @param response
++	 *            the new responseData value (String)
++	 * 
++	 * @deprecated - only intended for use from BeanShell code
++	 */
++	@Deprecated
++	public void setResponseData(String response) {
++		try {
++			responseData = response.getBytes(getDataEncodingWithDefault());
++		} catch (UnsupportedEncodingException e) {
+             log.warn("Could not convert string, using default encoding. "+e.getLocalizedMessage());
+-            responseData = response.getBytes();
+-        }
+-    }
++			responseData = response.getBytes();
++		}
++	}
+ 
+-    /**
+-     * Sets the encoding and responseData attributes of the SampleResult object.
+-     *
++	/**
++	 * Sets the encoding and responseData attributes of the SampleResult object.
++	 * 
+      * @param response the new responseData value (String)
+      * @param encoding the encoding to set and then use (if null, use platform default)
+-     *
+-     */
+-    public void setResponseData(final String response, final String encoding) {
+-        String defaultEncodingName = Charset.defaultCharset().name();
+-        String encodeUsing = encoding != null? encoding : defaultEncodingName; 
+-        try {
+-            responseData = response.getBytes(encodeUsing);
+-            setDataEncoding(encodeUsing);
+-        } catch (UnsupportedEncodingException e) {
++	 * 
++	 */
++	public void setResponseData(final String response, final String encoding) {
++		String defaultEncodingName = Charset.defaultCharset().name();
++		String encodeUsing = encoding != null ? encoding : defaultEncodingName;
++		try {
++			responseData = response.getBytes(encodeUsing);
++			setDataEncoding(encodeUsing);
++		} catch (UnsupportedEncodingException e) {
+             log.warn("Could not convert string using "+encodeUsing+
+                     ", using default encoding: "+defaultEncodingName+" "+e.getLocalizedMessage());
+-            responseData = response.getBytes();
+-            setDataEncoding(defaultEncodingName);
+-        }
+-    }
++			responseData = response.getBytes();
++			setDataEncoding(defaultEncodingName);
++		}
++	}
+ 
+-    /**
+-     * Gets the responseData attribute of the SampleResult object.
+-     * <p>
+-     * Note that some samplers may not store all the data, in which case
+-     * getResponseData().length will be incorrect.
+-     *
++	/**
++	 * Gets the responseData attribute of the SampleResult object.
++	 * <p>
++	 * Note that some samplers may not store all the data, in which case
++	 * getResponseData().length will be incorrect.
++	 * 
+      * Instead, always use {@link #getBytes()} to obtain the sample result byte count.
+-     * </p>
+-     * @return the responseData value (cannot be null)
+-     */
+-    public byte[] getResponseData() {
+-        return responseData;
+-    }
++	 * </p>
++	 * @return the responseData value (cannot be null)
++	 */
++	public byte[] getResponseData() {
++		return responseData;
++	}
+ 
+-    /**
+-     * Gets the responseData of the SampleResult object as a String
+-     *
++	/**
++	 * Gets the responseData of the SampleResult object as a String
++	 * 
+      * @return the responseData value as a String, converted according to the encoding
+-     */
+-    public String getResponseDataAsString() {
+-        try {
+-            return new String(responseData,getDataEncodingWithDefault());
+-        } catch (UnsupportedEncodingException e) {
++	 */
++	public String getResponseDataAsString() {
++		try {
++			return new String(responseData, getDataEncodingWithDefault());
++		} catch (UnsupportedEncodingException e) {
+             log.warn("Using platform default as "+getDataEncodingWithDefault()+" caused "+e);
+-            return new String(responseData);
+-        }
+-    }
++			return new String(responseData);
++		}
++	}
+ 
+-    public void setSamplerData(String s) {
+-        samplerData = s;
+-    }
++	public void setSamplerData(String s) {
++		samplerData = s;
++	}
+ 
+-    public String getSamplerData() {
+-        return samplerData;
+-    }
++	public String getSamplerData() {
++		return samplerData;
++	}
+ 
+-    /**
+-     * Get the time it took this sample to occur.
+-     *
+-     * @return elapsed time in milliseonds
+-     *
+-     */
+-    public long getTime() {
+-        return time;
+-    }
++	/**
++	 * Get the time it took this sample to occur.
++	 * 
++	 * @return elapsed time in milliseonds
++	 * 
++	 */
++	public long getTime() {
++		return time;
++	}
+ 
+-    public boolean isSuccessful() {
+-        return success;
+-    }
++	public boolean isSuccessful() {
++		return success;
++	}
+ 
+-    public void setDataType(String dataType) {
+-        this.dataType = dataType;
+-    }
++	public void setDataType(String dataType) {
++		this.dataType = dataType;
++	}
+ 
+-    public String getDataType() {
+-        return dataType;
+-    }
+-    /**
++	public String getDataType() {
++		return dataType;
++	}
++
++	/**
+      * Extract and save the DataEncoding and DataType from the parameter provided.
+      * Does not save the full content Type.
+      * @see #setContentType(String) which should be used to save the full content-type string
+-     * 
++	 * 
+      * @param ct - content type (may be null)
+-     */
+-    public void setEncodingAndType(String ct){
+-        if (ct != null) {
+-            // Extract charset and store as DataEncoding
+-            // N.B. The meta tag:
++	 */
++	public void setEncodingAndType(String ct) {
++		if (ct != null) {
++			// Extract charset and store as DataEncoding
++			// N.B. The meta tag:
+             // <META http-equiv="content-type" content="text/html; charset=foobar">
+-            // is now processed by HTTPSampleResult#getDataEncodingWithDefault
+-            final String CS_PFX = "charset="; // $NON-NLS-1$
+-            int cset = ct.toLowerCase(java.util.Locale.ENGLISH).indexOf(CS_PFX);
+-            if (cset >= 0) {
+-                // TODO - assumes charset is not followed by anything else
+-                String charSet = ct.substring(cset + CS_PFX.length());
+-                // Check for quoted string
+-                if (charSet.startsWith("\"")){ // $NON-NLS-1$
++			// is now processed by HTTPSampleResult#getDataEncodingWithDefault
++			final String CS_PFX = "charset="; // $NON-NLS-1$
++			int cset = ct.toLowerCase(java.util.Locale.ENGLISH).indexOf(CS_PFX);
++			if (cset >= 0) {
++				// TODO - assumes charset is not followed by anything else
++				String charSet = ct.substring(cset + CS_PFX.length());
++				// Check for quoted string
++				if (charSet.startsWith("\"")) { // $NON-NLS-1$
+                     setDataEncoding(charSet.substring(1, charSet.length()-1)); // remove quotes
+-                } else {
+-                    setDataEncoding(charSet);
+-                }
+-            }
+-            if (isBinaryType(ct)) {
+-                setDataType(BINARY);
+-            } else {
+-                setDataType(TEXT);
+-            }
+-        }
+-    }
++				} else {
++					setDataEncoding(charSet);
++				}
++			}
++			if (isBinaryType(ct)) {
++				setDataType(BINARY);
++			} else {
++				setDataType(TEXT);
++			}
++		}
++	}
+ 
+-    // List of types that are known to be binary
++	// List of types that are known to be binary
+     private static final String[] BINARY_TYPES = {
+         "image/",       //$NON-NLS-1$
+-        "audio/",       //$NON-NLS-1$
+-        "video/",       //$NON-NLS-1$
+-        };
++			"audio/", //$NON-NLS-1$
++			"video/", //$NON-NLS-1$
++	};
+ 
+-    /*
++	/*
+      * Determine if content-type is known to be binary, i.e. not displayable as text.
+-     *
+-     * @param ct content type
+-     * @return true if content-type is of type binary.
+-     */
+-    private static boolean isBinaryType(String ct){
+-        for (int i = 0; i < BINARY_TYPES.length; i++){
+-            if (ct.startsWith(BINARY_TYPES[i])){
+-                return true;
+-            }
+-        }
+-        return false;
+-    }
++	 * 
++	 * @param ct content type
++	 * @return true if content-type is of type binary.
++	 */
++	private static boolean isBinaryType(String ct) {
++		for (int i = 0; i < BINARY_TYPES.length; i++) {
++			if (ct.startsWith(BINARY_TYPES[i])) {
++				return true;
++			}
++		}
++		return false;
++	}
+ 
+-    /**
+-     * Sets the successful attribute of the SampleResult object.
+-     *
+-     * @param success
+-     *            the new successful value
+-     */
+-    public void setSuccessful(boolean success) {
+-        this.success = success;
+-    }
++	/**
++	 * Sets the successful attribute of the SampleResult object.
++	 * 
++	 * @param success
++	 *            the new successful value
++	 */
++	public void setSuccessful(boolean success) {
++		this.success = success;
++	}
+ 
+-    /**
+-     * Returns the display name.
+-     *
+-     * @return display name of this sample result
+-     */
+-    @Override
+-    public String toString() {
+-        return getSampleLabel();
+-    }
++	/**
++	 * Returns the display name.
++	 * 
++	 * @return display name of this sample result
++	 */
++	@Override
++	public String toString() {
++		return getSampleLabel();
++	}
+ 
+-    /**
+-     * Returns the dataEncoding or the default if no dataEncoding was provided
+-     * @return the value of the dataEncoding or DEFAULT_ENCODING 
+-     */
+-    public String getDataEncodingWithDefault() {
+-        if (dataEncoding != null && dataEncoding.length() > 0) {
+-            return dataEncoding;
+-        }
+-        return DEFAULT_ENCODING;
+-    }
++	/**
++	 * Returns the dataEncoding or the default if no dataEncoding was provided
++	 * @return the value of the dataEncoding or DEFAULT_ENCODING
++	 */
++	public String getDataEncodingWithDefault() {
++		if (dataEncoding != null && dataEncoding.length() > 0) {
++			return dataEncoding;
++		}
++		return DEFAULT_ENCODING;
++	}
+ 
+-    /**
+-     * Returns the dataEncoding. May be null or the empty String.
+-     * @return the value of the dataEncoding
+-     */
+-    public String getDataEncodingNoDefault() {
+-        return dataEncoding;
+-    }
++	/**
++	 * Returns the dataEncoding. May be null or the empty String.
++	 * @return the value of the dataEncoding
++	 */
++	public String getDataEncodingNoDefault() {
++		return dataEncoding;
++	}
+ 
+-    /**
+-     * Sets the dataEncoding.
+-     *
+-     * @param dataEncoding
+-     *            the dataEncoding to set, e.g. ISO-8895-1, UTF-8
+-     */
+-    public void setDataEncoding(String dataEncoding) {
+-        this.dataEncoding = dataEncoding;
+-    }
++	/**
++	 * Sets the dataEncoding.
++	 * 
++	 * @param dataEncoding
++	 *            the dataEncoding to set, e.g. ISO-8895-1, UTF-8
++	 */
++	public void setDataEncoding(String dataEncoding) {
++		this.dataEncoding = dataEncoding;
++	}
+ 
+-    /**
+-     * @return whether to stop the test
+-     */
+-    public boolean isStopTest() {
+-        return stopTest;
+-    }
++	/**
++	 * @return whether to stop the test
++	 */
++	public boolean isStopTest() {
++		return stopTest;
++	}
+ 
+-    /**
+-     * @return whether to stop the test now
+-     */
+-    public boolean isStopTestNow() {
+-        return stopTestNow;
+-    }
++	/**
++	 * @return whether to stop the test now
++	 */
++	public boolean isStopTestNow() {
++		return stopTestNow;
++	}
+ 
+-    /**
+-     * @return whether to stop this thread
+-     */
+-    public boolean isStopThread() {
+-        return stopThread;
+-    }
++	/**
++	 * @return whether to stop this thread
++	 */
++	public boolean isStopThread() {
++		return stopThread;
++	}
+ 
+-    public void setStopTest(boolean b) {
+-        stopTest = b;
+-    }
++	public void setStopTest(boolean b) {
++		stopTest = b;
++	}
+ 
+-    public void setStopTestNow(boolean b) {
+-        stopTestNow = b;
+-    }
++	public void setStopTestNow(boolean b) {
++		stopTestNow = b;
++	}
+ 
+-    public void setStopThread(boolean b) {
+-        stopThread = b;
+-    }
++	public void setStopThread(boolean b) {
++		stopThread = b;
++	}
+ 
+-    /**
+-     * @return the request headers
+-     */
+-    public String getRequestHeaders() {
+-        return requestHeaders;
+-    }
++	/**
++	 * @return the request headers
++	 */
++	public String getRequestHeaders() {
++		return requestHeaders;
++	}
+ 
+-    /**
+-     * @return the response headers
+-     */
+-    public String getResponseHeaders() {
+-        return responseHeaders;
+-    }
++	/**
++	 * @return the response headers
++	 */
++	public String getResponseHeaders() {
++		return responseHeaders;
++	}
+ 
+-    /**
++	/**
+      * @param string -
+      *            request headers
+-     */
+-    public void setRequestHeaders(String string) {
+-        requestHeaders = string;
+-    }
++	 */
++	public void setRequestHeaders(String string) {
++		requestHeaders = string;
++	}
+ 
+-    /**
++	/**
+      * @param string -
+      *            response headers
+-     */
+-    public void setResponseHeaders(String string) {
+-        responseHeaders = string;
+-    }
++	 */
++	public void setResponseHeaders(String string) {
++		responseHeaders = string;
++	}
+ 
+-    /**
+-     * @return the full content type - e.g. text/html [;charset=utf-8 ]
+-     */
+-    public String getContentType() {
+-        return contentType;
+-    }
++	/**
++	 * @return the full content type - e.g. text/html [;charset=utf-8 ]
++	 */
++	public String getContentType() {
++		return contentType;
++	}
+ 
+-    /**
+-     * Get the media type from the Content Type
+-     * @return the media type - e.g. text/html (without charset, if any)
+-     */
+-    public String getMediaType() {
++	/**
++	 * Get the media type from the Content Type
++	 * @return the media type - e.g. text/html (without charset, if any)
++	 */
++	public String getMediaType() {
+         return JOrphanUtils.trim(contentType," ;").toLowerCase(java.util.Locale.ENGLISH);
+-    }
++	}
+ 
+-    /**
+-     * Stores the content-type string, e.g. "text/xml; charset=utf-8"
++	/**
++	 * Stores the content-type string, e.g. "text/xml; charset=utf-8"
+      * @see #setEncodingAndType(String) which can be used to extract the charset.
+-     * 
+-     * @param string
+-     */
+-    public void setContentType(String string) {
+-        contentType = string;
+-    }
++	 * 
++	 * @param string
++	 */
++	public void setContentType(String string) {
++		contentType = string;
++	}
+ 
+-    /**
+-     * @return idleTime
+-     */
+-    public long getIdleTime() {
+-        return idleTime;
+-    }
++	/**
++	 * @return idleTime
++	 */
++	public long getIdleTime() {
++		return idleTime;
++	}
+ 
+-    /**
+-     * @return the end time
+-     */
+-    public long getEndTime() {
+-        return endTime;
+-    }
++	/**
++	 * @return the end time
++	 */
++	public long getEndTime() {
++		return endTime;
++	}
+ 
+-    /**
+-     * @return the start time
+-     */
+-    public long getStartTime() {
+-        return startTime;
+-    }
++	/**
++	 * @return the start time
++	 */
++	public long getStartTime() {
++		return startTime;
++	}
+ 
+-    /*
+-     * Helper methods N.B. setStartTime must be called before setEndTime
+-     *
+-     * setStartTime is used by HTTPSampleResult to clone the parent sampler and
+-     * allow the original start time to be kept
+-     */
+-    protected final void setStartTime(long start) {
+-        startTime = start;
+-        if (startTimeStamp) {
+-            timeStamp = startTime;
+-        }
+-    }
++	/*
++	 * Helper methods N.B. setStartTime must be called before setEndTime
++	 * 
++	 * setStartTime is used by HTTPSampleResult to clone the parent sampler and
++	 * allow the original start time to be kept
++	 */
++	protected final void setStartTime(long start) {
++		startTime = start;
++		if (startTimeStamp) {
++			timeStamp = startTime;
++		}
++	}
+ 
+-    protected void setEndTime(long end) {
+-        endTime = end;
+-        if (!startTimeStamp) {
+-            timeStamp = endTime;
+-        }
+-        if (startTime == 0) {
++	protected void setEndTime(long end) {
++		endTime = end;
++		if (!startTimeStamp) {
++			timeStamp = endTime;
++		}
++		if (startTime == 0) {
+             log.error("setEndTime must be called after setStartTime", new Throwable("Invalid call sequence"));
+-            // TODO should this throw an error?
+-        } else {
++			// TODO should this throw an error?
++		} else {
+             time = endTime - startTime - idleTime;
+-        }
+-    }
++		}
++	}
++	
++	/**
++	 * Add to idle time pause
++	 * @param pause long
++	 */
++	public void incIdleTime(long pause) {
++		idleTime += pause;
++	}
+ 
+-    private void setTimes(long start, long end) {
+-        setStartTime(start);
+-        setEndTime(end);
+-    }
+ 
+-    /**
+-     * Record the start time of a sample
+-     *
+-     */
+-    public void sampleStart() {
+-        if (startTime == 0) {
+-            setStartTime(currentTimeInMs());
+-        } else {
++	private void setTimes(long start, long end) {
++		setStartTime(start);
++		setEndTime(end);
++	}
++
++	/**
++	 * Record the start time of a sample
++	 * 
++	 */
++	public void sampleStart() {
++		if (startTime == 0) {
++			setStartTime(currentTimeInMs());
++		} else {
+             log.error("sampleStart called twice", new Throwable("Invalid call sequence"));
+-        }
+-    }
++		}
++	}
+ 
+-    /**
+-     * Record the end time of a sample and calculate the elapsed time
+-     *
+-     */
+-    public void sampleEnd() {
+-        if (endTime == 0) {
+-            setEndTime(currentTimeInMs());
+-        } else {
++	/**
++	 * Record the end time of a sample and calculate the elapsed time
++	 * 
++	 */
++	public void sampleEnd() {
++		if (endTime == 0) {
++			setEndTime(currentTimeInMs());
++		} else {
+             log.error("sampleEnd called twice", new Throwable("Invalid call sequence"));
+-        }
+-    }
++		}
++	}
+ 
+-    /**
+-     * Pause a sample
+-     *
+-     */
+-    public void samplePause() {
+-        if (pauseTime != 0) {
++	/**
++	 * Pause a sample
++	 * 
++	 */
++	public void samplePause() {
++		if (pauseTime != 0) {
+             log.error("samplePause called twice", new Throwable("Invalid call sequence"));
+-        }
+-        pauseTime = currentTimeInMs();
+-    }
++		}
++		pauseTime = currentTimeInMs();
++	}
+ 
+-    /**
+-     * Resume a sample
+-     *
+-     */
+-    public void sampleResume() {
+-        if (pauseTime == 0) {
++	/**
++	 * Resume a sample
++	 * 
++	 */
++	public void sampleResume() {
++		if (pauseTime == 0) {
+             log.error("sampleResume without samplePause", new Throwable("Invalid call sequence"));
+-        }
+-        idleTime += currentTimeInMs() - pauseTime;
+-        pauseTime = 0;
+-    }
++		}
++		idleTime += currentTimeInMs() - pauseTime;
++		pauseTime = 0;
++	}
+ 
+-    /**
+-     * When a Sampler is working as a monitor
+-     *
+-     * @param monitor
+-     */
+-    public void setMonitor(boolean monitor) {
+-        isMonitor = monitor;
+-    }
++	/**
++	 * When a Sampler is working as a monitor
++	 * 
++	 * @param monitor
++	 */
++	public void setMonitor(boolean monitor) {
++		isMonitor = monitor;
++	}
+ 
+-    /**
+-     * If the sampler is a monitor, method will return true.
+-     *
+-     * @return true if the sampler is a monitor
+-     */
+-    public boolean isMonitor() {
+-        return isMonitor;
+-    }
++	/**
++	 * If the sampler is a monitor, method will return true.
++	 * 
++	 * @return true if the sampler is a monitor
++	 */
++	public boolean isMonitor() {
++		return isMonitor;
++	}
+ 
+-    /**
+-     * For the JMS sampler, it can perform multiple samples for greater degree
+-     * of accuracy.
+-     *
+-     * @param count
+-     */
+-    public void setSampleCount(int count) {
+-        sampleCount = count;
+-    }
++	/**
++	 * For the JMS sampler, it can perform multiple samples for greater degree
++	 * of accuracy.
++	 * 
++	 * @param count
++	 */
++	public void setSampleCount(int count) {
++		sampleCount = count;
++	}
+ 
+-    /**
+-     * return the sample count. by default, the value is 1.
+-     *
+-     * @return the sample count
+-     */
+-    public int getSampleCount() {
+-        return sampleCount;
+-    }
++	/**
++	 * return the sample count. by default, the value is 1.
++	 * 
++	 * @return the sample count
++	 */
++	public int getSampleCount() {
++		return sampleCount;
++	}
+ 
+-    /**
+-     * Returns the count of errors.
+-     *
+-     * @return 0 - or 1 if the sample failed
+-     */
+-    public int getErrorCount(){
+-        return success ? 0 : 1;
+-    }
++	/**
++	 * Returns the count of errors.
++	 * 
++	 * @return 0 - or 1 if the sample failed
++	 */
++	public int getErrorCount() {
++		return success ? 0 : 1;
++	}
+ 
+-    public void setErrorCount(int i){// for reading from CSV files
+-        // ignored currently
+-    }
+-    /*
++	public void setErrorCount(int i) {// for reading from CSV files
++		// ignored currently
++	}
++
++	/*
+      * TODO: error counting needs to be sorted out after 2.3 final.
+      * At present the Statistical Sampler tracks errors separately
+      * It would make sense to move the error count here, but this would
+@@ -960,132 +972,132 @@
+      * The purpose of this work-round is to allow at least minimal support for
+      * errors in remote statistical batch mode.
+      *
+-     */
+-    /**
+-     * In the event the sampler does want to pass back the actual contents, we
+-     * still want to calculate the throughput. The bytes is the bytes of the
+-     * response data.
+-     *
+-     * @param length
+-     */
+-    public void setBytes(int length) {
+-        bytes = length;
+-    }
++	 */
++	/**
++	 * In the event the sampler does want to pass back the actual contents, we
++	 * still want to calculate the throughput. The bytes is the bytes of the
++	 * response data.
++	 * 
++	 * @param length
++	 */
++	public void setBytes(int length) {
++		bytes = length;
++	}
+ 
+-    /**
+-     * return the bytes returned by the response.
+-     *
+-     * @return byte count
+-     */
+-    public int getBytes() {
+-        return bytes == 0 ? responseData.length : bytes;
+-    }
++	/**
++	 * return the bytes returned by the response.
++	 * 
++	 * @return byte count
++	 */
++	public int getBytes() {
++		return bytes == 0 ? responseData.length : bytes;
++	}
+ 
+-    /**
+-     * @return Returns the latency.
+-     */
+-    public long getLatency() {
+-        return latency;
+-    }
++	/**
++	 * @return Returns the latency.
++	 */
++	public long getLatency() {
++		return latency;
++	}
+ 
+-    /**
+-     * Set the time to the first response
+-     *
+-     */
+-    public void latencyEnd() {
+-        latency = currentTimeInMs() - startTime - idleTime;
+-    }
++	/**
++	 * Set the time to the first response
++	 * 
++	 */
++	public void latencyEnd() {
++		latency = currentTimeInMs() - startTime - idleTime;
++	}
+ 
+-    /**
+-     * This is only intended for use by SampleResultConverter!
+-     *
+-     * @param latency
+-     *            The latency to set.
+-     */
+-    public void setLatency(long latency) {
+-        this.latency = latency;
+-    }
++	/**
++	 * This is only intended for use by SampleResultConverter!
++	 * 
++	 * @param latency
++	 *            The latency to set.
++	 */
++	public void setLatency(long latency) {
++		this.latency = latency;
++	}
+ 
+-    /**
+-     * This is only intended for use by SampleResultConverter!
+-     *
+-     * @param timeStamp
+-     *            The timeStamp to set.
+-     */
+-    public void setTimeStamp(long timeStamp) {
+-        this.timeStamp = timeStamp;
+-    }
++	/**
++	 * This is only intended for use by SampleResultConverter!
++	 * 
++	 * @param timeStamp
++	 *            The timeStamp to set.
++	 */
++	public void setTimeStamp(long timeStamp) {
++		this.timeStamp = timeStamp;
++	}
+ 
+-    private URL location;
++	private URL location;
+ 
+-    public void setURL(URL location) {
+-        this.location = location;
+-    }
++	public void setURL(URL location) {
++		this.location = location;
++	}
+ 
+-    public URL getURL() {
+-        return location;
+-    }
++	public URL getURL() {
++		return location;
++	}
+ 
+-    /**
+-     * Get a String representation of the URL (if defined).
+-     *
+-     * @return ExternalForm of URL, or empty string if url is null
+-     */
+-    public String getUrlAsString() {
+-        return location == null ? "" : location.toExternalForm();
+-    }
++	/**
++	 * Get a String representation of the URL (if defined).
++	 * 
++	 * @return ExternalForm of URL, or empty string if url is null
++	 */
++	public String getUrlAsString() {
++		return location == null ? "" : location.toExternalForm();
++	}
+ 
+-    /**
+-     * @return Returns the parent.
+-     */
+-    public SampleResult getParent() {
+-        return parent;
+-    }
++	/**
++	 * @return Returns the parent.
++	 */
++	public SampleResult getParent() {
++		return parent;
++	}
+ 
+-    /**
+-     * @param parent
+-     *            The parent to set.
+-     */
+-    public void setParent(SampleResult parent) {
+-        this.parent = parent;
+-    }
++	/**
++	 * @param parent
++	 *            The parent to set.
++	 */
++	public void setParent(SampleResult parent) {
++		this.parent = parent;
++	}
+ 
+-    public String getResultFileName() {
+-        return resultFileName;
+-    }
++	public String getResultFileName() {
++		return resultFileName;
++	}
+ 
+-    public void setResultFileName(String resultFileName) {
+-        this.resultFileName = resultFileName;
+-    }
++	public void setResultFileName(String resultFileName) {
++		this.resultFileName = resultFileName;
++	}
+ 
+-    public int getGroupThreads() {
+-        return groupThreads;
+-    }
++	public int getGroupThreads() {
++		return groupThreads;
++	}
+ 
+-    public void setGroupThreads(int n) {
+-        this.groupThreads = n;
+-    }
++	public void setGroupThreads(int n) {
++		this.groupThreads = n;
++	}
+ 
+-    public int getAllThreads() {
+-        return allThreads;
+-    }
++	public int getAllThreads() {
++		return allThreads;
++	}
+ 
+-    public void setAllThreads(int n) {
+-        this.allThreads = n;
+-    }
++	public void setAllThreads(int n) {
++		this.allThreads = n;
++	}
+ 
+-    // Bug 47394
+-    /**
+-     * Allow custom SampleSenders to drop unwanted assertionResults 
+-     */
+-    public void removeAssertionResults() {
+-        this.assertionResults = null;
+-    }
+-    
+-    /**
+-     * Allow custom SampleSenders to drop unwanted subResults 
+-     */
+-    public void removeSubResults() {
+-        this.subResults = null;
+-    }
++	// Bug 47394
++	/**
++	 * Allow custom SampleSenders to drop unwanted assertionResults
++	 */
++	public void removeAssertionResults() {
++		this.assertionResults = null;
++	}
++
++	/**
++	 * Allow custom SampleSenders to drop unwanted subResults
++	 */
++	public void removeSubResults() {
++		this.subResults = null;
++	}
+ }

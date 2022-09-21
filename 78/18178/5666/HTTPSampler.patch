@@ -1,0 +1,42 @@
+Index: HTTPSampler.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java,v
+retrieving revision 1.26
+diff -u -r1.26 HTTPSampler.java
+--- HTTPSampler.java	14 Mar 2003 21:15:36 -0000	1.26
++++ HTTPSampler.java	6 Apr 2003 22:33:13 -0000
+@@ -995,8 +995,12 @@
+                 // indicates we're through with it.  The JVM should close it when
+                 // necessary.
+                 String connection = conn.getHeaderField("Connection");
+-                if (connection == null || connection.equalsIgnoreCase("close"))
+-                    conn.disconnect();
++				boolean http11 = conn.getHeaderField(0).startsWith("HTTP/1.1");
++				if ( (connection == null && !http11) 
++				   ||(connection != null && connection.equalsIgnoreCase("close"))
++				) {
++					conn.disconnect();
++				}
+             }
+             catch (Exception e)
+             {}
+Index: HTTPSamplerFull.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerFull.java,v
+retrieving revision 1.8
+diff -u -r1.8 HTTPSamplerFull.java
+--- HTTPSamplerFull.java	14 Jan 2003 01:14:07 -0000	1.8
++++ HTTPSamplerFull.java	6 Apr 2003 22:33:16 -0000
+@@ -436,8 +436,10 @@
+                 // Otherwise, let the server disconnect the connection
+                 // when its timeout period is reached.
+                 String connection  = conn.getHeaderField("Connection");
+-                if (connection == null || connection.equalsIgnoreCase("close"))
+-                {
++				boolean http11 = conn.getHeaderField(0).startsWith("HTTP/1.1");
++                if ( (connection == null && !http11) 
++                   ||(connection != null && connection.equalsIgnoreCase("close"))
++                ) {
+                     conn.disconnect();
+                 }
+             }

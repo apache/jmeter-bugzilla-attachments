@@ -1,0 +1,88 @@
+From 55a0349cf415787647d867df3c3bde2dc64c1738 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Fri, 3 Oct 2014 13:17:09 +0200
+Subject: [PATCH 3/3] Try matchers sorted by length and name
+
+---
+ .../engine/util/ReplaceFunctionsWithStrings.java   | 32 ++++++++++++++++++++--
+ xdocs/usermanual/component_reference.xml           |  5 +---
+ 2 files changed, 31 insertions(+), 6 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java b/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java
+index e2abffb..729460d 100644
+--- a/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java
++++ b/src/core/org/apache/jmeter/engine/util/ReplaceFunctionsWithStrings.java
+@@ -21,8 +21,12 @@
+  */
+ package org.apache.jmeter.engine.util;
+ 
++import java.io.Serializable;
++import java.util.Comparator;
+ import java.util.Map;
+ import java.util.Map.Entry;
++import java.util.Set;
++import java.util.TreeSet;
+ 
+ import org.apache.jmeter.functions.InvalidVariableException;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+@@ -74,7 +78,11 @@ public class ReplaceFunctionsWithStrings extends AbstractTransformer {
+         if(input == null) {
+             return prop;
+         }
+-        for(Entry<String, String> entry : getVariables().entrySet()){
++
++        Set<Entry<String, String>> sortedVariables = new TreeSet<Entry<String, String>>(
++                new CompareByLengthOfValue());
++        sortedVariables.addAll(getVariables().entrySet());
++        for (Entry<String, String> entry : sortedVariables) {
+             String key = entry.getKey();
+             String value = entry.getValue();
+             if (regexMatch) {
+@@ -97,7 +105,27 @@ public class ReplaceFunctionsWithStrings extends AbstractTransformer {
+         if (value.startsWith("(") && value.endsWith(")")) {
+             return value;
+         }
+-	return "\\b(" + value + ")\\b";
++        return "\\b(" + value + ")\\b";
++    }
++
++    /**
++     * Comparator which sorts entries first by the length of their value and
++     * after that by their key
++     */
++    private final static class CompareByLengthOfValue implements
++            Comparator<Entry<String, String>>, Serializable {
++        private static final long serialVersionUID = 1L;
++
++        @Override
++        public int compare(Entry<String, String> o1, Entry<String, String> o2) {
++            if (o1.getValue().length() > o2.getValue().length()) {
++                return -1;
++            }
++            if (o1.getValue().length() < o2.getValue().length()) {
++                return 1;
++            }
++            return o1.getKey().compareTo(o2.getKey());
++        }
+     }
+ 
+ }
+diff --git a/xdocs/usermanual/component_reference.xml b/xdocs/usermanual/component_reference.xml
+index 4a41248..9ca3a31 100644
+--- a/xdocs/usermanual/component_reference.xml
++++ b/xdocs/usermanual/component_reference.xml
+@@ -6178,10 +6178,7 @@ of <code>You can call me 'name'</code>.</note>
+ regex within parens, e.g <code>('.*?')</code> to match <code>'name'</code> out of <code>You can call me 'name'</code>.</p>
+ 
+ <note>
+-The variables will be checked in random order. So ensure, that the potential matches don't overlap.
+-Overlapping matchers would be <code>.*</code> (which matches anything) and <code>www</code> (which
+-matches <code>www</code> only). Non-overlapping matchers would be <code>a+</code> (matches a sequence
+-of <cod>a</cod>'s) and <code>b+</code> (matches a sequence of <code>b</code>'s).
++The variables will be checked ordered by the length of the matcher first and then by the name of the key.
+ </note>
+ 
+ <p>If you want to match a whole string only, enclose it in <code>(^</code> and <code>$)</code>, e.g. <code>(^thus$)</code>.
+-- 
+1.9.1
+

@@ -1,0 +1,53 @@
+Index: src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+===================================================================
+--- src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(revision 439180)
++++ src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java	(working copy)
+@@ -511,7 +511,7 @@
+ 			if ("add".equals(item.getOpcode())) { // $NON-NLS-1$
+ 				mods[count] = new ModificationItem(DirContext.ADD_ATTRIBUTE, attr);
+ 			} else {
+-				if ("delete".equals(item.getOpcode())) { // $NON-NLS-1$
++				if ("delete".equals(item.getOpcode()) || "remove".equals(item.getOpcode())) { // $NON-NLS-1$
+ 					mods[count] = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, attr);
+ 				} else {
+ 					mods[count] = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, attr);
+@@ -761,7 +761,10 @@
+ 				responseData = responseData + "<newdn>" + getPropertyAsString(NEWDN) + "</newdn></operation>";
+ 				renameTest(temp_client, dirContext, res);
+ 			} else if (getPropertyAsString(TEST).equals(SEARCHBASE)) {
+-				res.setSamplerData("Search with filter " + getPropertyAsString(SEARCHFILTER));
++                final String            scopeStr = getPropertyAsString(SCOPE);
++                final int               scope;
++
++                res.setSamplerData("Search with filter " + getPropertyAsString(SEARCHFILTER));
+ 				responseData = responseData + "<operation><opertype>search</opertype>";
+ 				responseData = responseData + "<searchfilter>" + getPropertyAsString(SEARCHFILTER) + "</searchfilter>";
+ 				responseData = responseData + "<searchbase>" + getPropertyAsString(SEARCHBASE) + ","
+@@ -771,8 +774,19 @@
+ 				responseData = responseData + "<timelimit>" + getPropertyAsString(TIMELIM) + "</timelimit>";
+ 				responseData = responseData + "</operation><searchresult>";
+                 res.sampleStart();
++
++                if ("object".equals(scopeStr))
++                    scope = SearchControls.OBJECT_SCOPE;
++                else if ("onelevel".equals(scopeStr))
++                    scope = SearchControls.ONELEVEL_SCOPE;
++                else if ("subtree".equals(scopeStr))
++                    scope = SearchControls.SUBTREE_SCOPE;
++                else
++                        // for backwards compatibility
++                    scope = getPropertyAsInt(SCOPE);
++
+                 NamingEnumeration srch = temp_client.searchTest(dirContext, getPropertyAsString(SEARCHBASE), getPropertyAsString(SEARCHFILTER),
+-                        getPropertyAsInt(SCOPE), getPropertyAsLong(COUNTLIM), getPropertyAsInt(TIMELIM),
++                        scope, getPropertyAsLong(COUNTLIM), getPropertyAsInt(TIMELIM),
+                         getRequestAttributes(getPropertyAsString(ATTRIBS)), getPropertyAsBoolean(RETOBJ),
+                         getPropertyAsBoolean(DEREF));
+                 res.sampleEnd();
+@@ -852,4 +866,4 @@
+ 	public void testIterationStart(LoopIterationEvent event) {
+ 		// ignored
+ 	}
+-}
+\ No newline at end of file
++}

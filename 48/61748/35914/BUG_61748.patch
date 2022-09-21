@@ -1,0 +1,72 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1831018)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -42,6 +42,7 @@
+ import java.util.function.Predicate;
+ import java.util.regex.Pattern;
+ import java.util.zip.GZIPInputStream;
++import java.util.zip.GZIPOutputStream;
+ 
+ import javax.security.auth.Subject;
+ 
+@@ -51,6 +52,7 @@
+ import org.apache.http.HttpClientConnection;
+ import org.apache.http.HttpConnectionMetrics;
+ import org.apache.http.HttpEntity;
++import org.apache.http.HttpEntityEnclosingRequest;
+ import org.apache.http.HttpException;
+ import org.apache.http.HttpHost;
+ import org.apache.http.HttpRequest;
+@@ -95,6 +97,7 @@
+ import org.apache.http.conn.socket.ConnectionSocketFactory;
+ import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+ import org.apache.http.cookie.CookieSpecProvider;
++import org.apache.http.entity.ByteArrayEntity;
+ import org.apache.http.entity.ContentType;
+ import org.apache.http.entity.FileEntity;
+ import org.apache.http.entity.StringEntity;
+@@ -213,8 +216,25 @@
+         }
+     };
+ 
++    private static final class GzipHttpRequestInterceptor implements HttpRequestInterceptor {
++        @Override
++        public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
++            if(request instanceof HttpEntityEnclosingRequest) {
++                Header header = request.getFirstHeader("Content-Encoding");
++                if(header != null && "gzip".equals(header.getValue())) {
++                    HttpEntityEnclosingRequest enclosingRequest = (HttpEntityEnclosingRequest) request;
++                    HttpEntity entity = enclosingRequest.getEntity();
++                    ByteArrayOutputStream out = new ByteArrayOutputStream();
++                    try (GZIPOutputStream gzipOS = new GZIPOutputStream(out)) {
++                        entity.writeTo(gzipOS);
++                    }
++                    enclosingRequest.setEntity(new ByteArrayEntity(out.toByteArray()));
++                }
++            }
++        }
++    }
+     private static final class PreemptiveAuthRequestInterceptor implements HttpRequestInterceptor {
+-        //@Override
++        @Override
+         public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
+             HttpClientContext localContext = HttpClientContext.adapt(context);
+             AuthManager authManager = (AuthManager) localContext.getAttribute(CONTEXT_ATTRIBUTE_AUTH_MANAGER);
+@@ -375,7 +395,7 @@
+ 
+     private static final String DIGEST_PARAMETERS = DigestParameters.VARIABLE_NAME;
+ 
+-    
++    private static final HttpRequestInterceptor GZIP_REQUEST_INTERCEPTOR = new GzipHttpRequestInterceptor();
+     private static final HttpRequestInterceptor PREEMPTIVE_AUTH_INTERCEPTOR = new PreemptiveAuthRequestInterceptor();
+ 
+     // see  https://stackoverflow.com/questions/26166469/measure-bandwidth-usage-with-apache-httpcomponents-httpclient
+@@ -1051,6 +1071,7 @@
+                 }
+                 builder.setDefaultCredentialsProvider(credsProvider);
+             }
++            builder.addInterceptorFirst(GZIP_REQUEST_INTERCEPTOR);
+             builder.disableContentCompression().addInterceptorLast(RESPONSE_CONTENT_ENCODING);
+             if(BASIC_AUTH_PREEMPTIVE) {
+                 builder.addInterceptorFirst(PREEMPTIVE_AUTH_INTERCEPTOR);

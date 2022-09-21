@@ -1,0 +1,206 @@
+Index: src/components/org/apache/jmeter/config/CSVDataSet.java
+===================================================================
+--- src/components/org/apache/jmeter/config/CSVDataSet.java	(revision 406446)
++++ src/components/org/apache/jmeter/config/CSVDataSet.java	(working copy)
+@@ -19,7 +19,6 @@
+ 
+ import java.io.IOException;
+ 
+-import org.apache.jmeter.config.ConfigTestElement;
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.engine.event.LoopIterationListener;
+ import org.apache.jmeter.services.FileServer;
+@@ -33,7 +32,7 @@
+  * @author mstover
+  * 
+  */
+-public class CSVDataSet extends ConfigTestElement implements TestBean, LoopIterationListener {
++public class CSVDataSet extends org.apache.jmeter.config.ConfigTestElement implements TestBean, LoopIterationListener {
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+ 	private static final long serialVersionUID = 1;
+@@ -44,8 +43,10 @@
+ 
+     private transient String delimiter;
+ 
+-	transient private String[] vars;
++    private transient boolean recycle;
+ 
++  transient private String[] vars;
++
+ 	/*
+ 	 * (non-Javadoc)
+ 	 * 
+@@ -61,12 +62,19 @@
+ 			String delim = getDelimiter();
+ 			if (delim.equals("\\t")) // $NON-NLS-1$
+ 				delim = "\t";// Make it easier to enter a Tab // $NON-NLS-1$
+-			String[] lineValues = JOrphanUtils.split(server.readLine(getFilename()), delim,false);
+-			JMeterVariables threadVars = this.getThreadContext().getVariables();
+-			for (int a = 0; a < vars.length && a < lineValues.length; a++) {
+-				threadVars.put(vars[a], lineValues[a]);
+-			}
+-		} catch (IOException e) {
++      String line = server.readLine(getFilename(), (recycle));
++      JMeterVariables threadVars = this.getThreadContext().getVariables();
++      if(line != null) {
++        String[] lineValues = JOrphanUtils.split(line, delim,false);
++        for (int a = 0; a < vars.length && a < lineValues.length; a++) {
++          threadVars.put(vars[a], lineValues[a]);
++        }
++      } else {
++        for (int a = 0; a < vars.length; a++) {
++          threadVars.put(vars[a], null);
++        }
++      }
++    } catch (IOException e) {
+ 			log.error(e.toString());
+ 		}
+ 	}
+@@ -101,12 +109,19 @@
+ 		this.variableNames = variableNames;
+ 	}
+ 
+-	public String getDelimiter() {
+-		return delimiter;
+-	}
++  public String getDelimiter() {
++    return delimiter;
++  }
+ 
+-	public void setDelimiter(String delimiter) {
+-		this.delimiter = delimiter;
+-	}
++  public void setDelimiter(String delimiter) {
++    this.delimiter = delimiter;
++  }
+ 
++  public boolean getRecycle() {
++    return recycle;
++  }
++
++  public void setRecycle(boolean recycle) {
++    this.recycle = recycle;
++  }
+ }
+Index: src/components/org/apache/jmeter/config/CSVDataSetResources_zh_TW.properties
+===================================================================
+--- src/components/org/apache/jmeter/config/CSVDataSetResources_zh_TW.properties	(revision 406446)
++++ src/components/org/apache/jmeter/config/CSVDataSetResources_zh_TW.properties	(working copy)
+@@ -5,3 +5,5 @@
+ filename.shortDescription=\u5DF2\u63D0\u4F9B\u8DEF\u5F91\u4E2D CVS \u6A94\u540D
+ variableNames.displayName=\u8B8A\u6578\u540D\u7A31(\u4EE5\u9017\u865F\u5206\u9694)
+ variableNames.shortDescription=\u8207CSV\u6A94\u6848\u8CC7\u6599\u76F8\u5C0D\u61C9\u7684\u8B8A\u6578\u540D\u7A31, \u4EE5\u9017\u865F\u5206\u9694
++recycle.displayName=Recycle values
++recycle.shortDescription=Recycle values on restart
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java
+===================================================================
+--- src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java	(revision 406446)
++++ src/components/org/apache/jmeter/config/CSVDataSetBeanInfo.java	(working copy)
+@@ -33,8 +33,8 @@
+ 	 * @param beanClass
+ 	 */
+ 	public CSVDataSetBeanInfo() {
+-		super(CSVDataSet.class);
+-		createPropertyGroup("csv_data", new String[] { "filename", "variableNames", "delimiter" });
++		super(org.apache.jmeter.config.CSVDataSet.class);
++		createPropertyGroup("csv_data", new String[] { "filename", "variableNames", "delimiter", "recycle" });
+ 		PropertyDescriptor p = property("filename");
+ 		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+ 		p.setValue(DEFAULT, "");
+@@ -44,8 +44,13 @@
+ 		p.setValue(DEFAULT, "");
+ 		p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+ 		p = property("delimiter");
+-		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+-		p.setValue(DEFAULT, ",");
+-		p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++    p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++    p.setValue(DEFAULT, ",");
++    p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++    p = property("recycle");
++    p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++    p.setValue(DEFAULT, new Boolean(true));
++    p.setValue(NOT_OTHER, Boolean.TRUE);
++    p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+ 	}
+ }
+Index: src/components/org/apache/jmeter/config/CSVDataSetResources.properties
+===================================================================
+--- src/components/org/apache/jmeter/config/CSVDataSetResources.properties	(revision 406446)
++++ src/components/org/apache/jmeter/config/CSVDataSetResources.properties	(working copy)
+@@ -5,4 +5,6 @@
+ variableNames.displayName=Variable Names (comma-delimited)
+ variableNames.shortDescription=List your variable names in order to match the order of columns in your csv data.  Separate by commas.
+ delimiter.displayName=Delimiter (use '\\t' for tab)
+-delimiter.shortDescription=Enter the delimiter ('\\t' for tab)
+\ No newline at end of file
++delimiter.shortDescription=Enter the delimiter ('\\t' for tab)
++recycle.displayName=Recycle values
++recycle.shortDescription=Recycle values on restart
+\ No newline at end of file
+Index: src/components/org/apache/jmeter/config/CSVDataSetResources_es.properties
+===================================================================
+--- src/components/org/apache/jmeter/config/CSVDataSetResources_es.properties	(revision 406446)
++++ src/components/org/apache/jmeter/config/CSVDataSetResources_es.properties	(working copy)
+@@ -7,3 +7,5 @@
+ filename.shortDescription=Nombre del archivo (dentro de su directorio de archivos)  que mantiene los datos CVS
+ variableNames.displayName=Nombres de Variable (delimitados por coma)
+ variableNames.shortDescription=Lista sus nombres de variable para ordenar las columnas en sus datos CSV.\nSeparados por comas.
++recycle.displayName=Recycle values
++recycle.shortDescription=Recycle values on restart
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/services/FileServer.java
+===================================================================
+--- src/core/org/apache/jmeter/services/FileServer.java	(revision 406446)
++++ src/core/org/apache/jmeter/services/FileServer.java	(working copy)
+@@ -112,14 +112,26 @@
+ 		}
+ 	}
+ 
+-	/**
++  /**
++	 * Get the next line of the named file, recycle by default.
++	 *
++   * @param filename
++	 * @return
++	 * @throws IOException
++	 */
++  public synchronized String readLine(String filename) throws IOException {
++    return readLine(filename, true);
++  }
++
++  /**
+ 	 * Get the next line of the named file.
+ 	 * 
+-	 * @param filename
++   * @param filename
++   * @param recycle
+ 	 * @return
+ 	 * @throws IOException
+ 	 */
+-	public synchronized String readLine(String filename) throws IOException {
++	public synchronized String readLine(String filename, boolean recycle) throws IOException {
+ 		FileEntry fileEntry = (FileEntry) files.get(filename);
+ 		if (fileEntry != null) {
+ 			if (fileEntry.inputOutputObject == null) {
+@@ -131,11 +143,13 @@
+ 			BufferedReader reader = (BufferedReader) fileEntry.inputOutputObject;
+ 			String line = reader.readLine();
+ 			if (line == null) {
+-				reader.close();
+-				reader = new BufferedReader(new FileReader(fileEntry.file));
+-				fileEntry.inputOutputObject = reader;
+-				line = reader.readLine();
+-			}
++        if(recycle) {
++          reader.close();
++          reader = new BufferedReader(new FileReader(fileEntry.file));
++          fileEntry.inputOutputObject = reader;
++          line = reader.readLine();
++        }
++      }
+             if (log.isDebugEnabled()) log.debug("Read:"+line);
+ 			return line;
+ 		}

@@ -1,0 +1,38 @@
+Index: HTTPSampler.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java,v
+retrieving revision 1.31
+diff -u -r1.31 HTTPSampler.java
+--- HTTPSampler.java	9 Apr 2003 15:19:07 -0000	1.31
++++ HTTPSampler.java	15 Apr 2003 23:10:38 -0000
+@@ -82,6 +82,7 @@
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.util.SSLManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Hierarchy;
+@@ -151,6 +152,10 @@
+     private static Substitution spaceSub = new StringSubstitution("%20");
+ 
+     private int connectionTries = 0;
++    
++    private static boolean doOwnRedirects =
++    	JMeterUtils.getJMeterProperties().
++    	getProperty("HTTPSampler.doOwnRedirects","true").equalsIgnoreCase("true") ;
+     public void setFileField(String value)
+     {
+         setProperty(FILE_FIELD, value);
+@@ -566,7 +571,10 @@
+         // it doesn't seem like they're working on this.
+         // My longer term plan is to use Apache's home grown HTTP Client, or
+         // maybe even HTTPUnit's classes.  I'm sure both would be better than Sun's
+-        HttpURLConnection.setFollowRedirects(false);
++        
++        if (doOwnRedirects) {
++        	HttpURLConnection.setFollowRedirects(false);
++        }
+         conn = (HttpURLConnection) u.openConnection();
+         // delegate SSL specific stuff to SSLManager so that compilation still works otherwise.
+         if ("https".equals(u.getProtocol()))

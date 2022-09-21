@@ -1,0 +1,1027 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 910417)
++++ src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -59,7 +59,7 @@
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.testelement.property.StringProperty;
+-import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jmeter.timers.Timer;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -638,7 +638,7 @@
+      * <ul>
+      * <li>The controller specified by the <code>target</code> property.
+      * <li>If none was specified, the first RecordingController in the tree.
+-     * <li>If none is found, the first ThreadGroup in the tree.
++     * <li>If none is found, the first AbstractThreadGroup in the tree.
+      * <li>If none is found, the Workspace.
+      * </ul>
+      *
+@@ -654,7 +654,7 @@
+         if (myTarget != null) {
+             return myTarget;
+         }
+-        myTarget = findFirstNodeOfType(ThreadGroup.class);
++        myTarget = findFirstNodeOfType(AbstractThreadGroup.class);
+         if (myTarget != null) {
+             return myTarget;
+         }
+Index: src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java	(revision 910417)
++++ src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java	(working copy)
+@@ -38,7 +38,7 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
+ import org.apache.jmeter.testelement.WorkBench;
+-import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.gui.layout.VerticalLayout;
+ 
+@@ -205,7 +205,7 @@
+                 StringBuilder name = new StringBuilder();
+                 JMeterTreeNode cur = (JMeterTreeNode) node.getChildAt(i);
+                 TestElement te = cur.getTestElement();
+-                if (te instanceof ThreadGroup) {
++                if (te instanceof AbstractThreadGroup) {
+                     name.append(parent_name);
+                     name.append(cur.getName());
+                     name.append(seperator);
+Index: src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java
+===================================================================
+--- src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java	(revision 910417)
++++ src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java	(working copy)
+@@ -26,7 +26,7 @@
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.threads.JMeterContextService;
+-import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -70,9 +70,9 @@
+     //For calculating throughput across all threads
+     private final static ThroughputInfo allThreadsInfo = new ThroughputInfo();
+ 
+-    //For holding the ThrougputInfo objects for all ThreadGroups. Keyed by ThreadGroup objects
+-    private final static Map<ThreadGroup, ThroughputInfo> threadGroupsInfoMap =
+-        new ConcurrentHashMap<ThreadGroup, ThroughputInfo>();
++    //For holding the ThrougputInfo objects for all ThreadGroups. Keyed by AbstractThreadGroup objects
++    private final static Map<AbstractThreadGroup, ThroughputInfo> threadGroupsInfoMap =
++        new ConcurrentHashMap<AbstractThreadGroup, ThroughputInfo>();
+ 
+ 
+     /**
+@@ -165,7 +165,7 @@
+             break;
+ 
+         case 4: //All threads in this group - alternate calculation
+-            final org.apache.jmeter.threads.ThreadGroup group =
++            final org.apache.jmeter.threads.AbstractThreadGroup group =
+                 JMeterContextService.getContext().getThreadGroup();
+             ThroughputInfo groupInfo;
+             synchronized (threadGroupsInfoMap) {
+Index: src/core/org/apache/jmeter/control/gui/TestPlanGui.java
+===================================================================
+--- src/core/org/apache/jmeter/control/gui/TestPlanGui.java	(revision 910417)
++++ src/core/org/apache/jmeter/control/gui/TestPlanGui.java	(working copy)
+@@ -36,7 +36,6 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+-import org.apache.jmeter.threads.gui.ThreadGroupGui;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+@@ -87,8 +86,7 @@
+     public JPopupMenu createPopupMenu() {
+         JPopupMenu pop = new JPopupMenu();
+         JMenu addMenu = new JMenu(JMeterUtils.getResString("add")); // $NON-NLS-1$
+-        addMenu.add(MenuFactory.makeMenuItem(new ThreadGroupGui().getStaticLabel(), ThreadGroupGui.class.getName(),
+-                ActionNames.ADD));
++        addMenu.add(MenuFactory.makeMenu(MenuFactory.THREADS, ActionNames.ADD));
+         addMenu.add(MenuFactory.makeMenu(MenuFactory.CONFIG_ELEMENTS, ActionNames.ADD));
+         addMenu.add(MenuFactory.makeMenu(MenuFactory.TIMERS, ActionNames.ADD));
+         addMenu.add(MenuFactory.makeMenu(MenuFactory.PRE_PROCESSORS, ActionNames.ADD));
+Index: src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 910417)
++++ src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -64,6 +64,8 @@
+      *  These are used as menu categories in the menuMap Hashmap,
+      *  and also for resource lookup in messages.properties
+     */
++    public static final String THREADS = "menu_threads"; //$NON-NLS-1$
++
+     public static final String TIMERS = "menu_timer"; //$NON-NLS-1$
+ 
+     public static final String CONTROLLERS = "menu_logic_controller"; //$NON-NLS-1$
+@@ -90,6 +92,7 @@
+     // MENU_ADD_xxx - controls which items are in the ADD menu
+     // MENU_PARENT_xxx - controls which items are in the Insert Parent menu
+     private static final String[] MENU_ADD_CONTROLLER = new String[] {
++        MenuFactory.THREADS,
+         MenuFactory.CONTROLLERS,
+         MenuFactory.CONFIG_ELEMENTS,
+         MenuFactory.TIMERS,
+@@ -115,11 +118,12 @@
+     private static final String[] MENU_PARENT_SAMPLER = new String[] {
+         MenuFactory.CONTROLLERS };
+ 
+-    private static final List<MenuInfo> timers, controllers, samplers, configElements,
+-        assertions, listeners, nonTestElements,
++    private static final List<MenuInfo> timers, controllers, samplers, threads,
++        configElements, assertions, listeners, nonTestElements,
+         postProcessors, preProcessors;
+ 
+     static {
++        threads = new LinkedList<MenuInfo>();
+         timers = new LinkedList<MenuInfo>();
+         controllers = new LinkedList<MenuInfo>();
+         samplers = new LinkedList<MenuInfo>();
+@@ -129,6 +133,7 @@
+         postProcessors = new LinkedList<MenuInfo>();
+         preProcessors = new LinkedList<MenuInfo>();
+         nonTestElements = new LinkedList<MenuInfo>();
++        menuMap.put(THREADS, threads);
+         menuMap.put(TIMERS, timers);
+         menuMap.put(ASSERTIONS, assertions);
+         menuMap.put(CONFIG_ELEMENTS, configElements);
+@@ -455,6 +460,9 @@
+                     log.debug(name + " participates in no menus.");
+                     continue;
+                 }
++                if (categories.contains(THREADS)) {
++                    threads.add(new MenuInfo(item, name));
++                }
+                 if (categories.contains(TIMERS)) {
+                     timers.add(new MenuInfo(item, name));
+                 }
+@@ -545,14 +553,14 @@
+         if (parent instanceof TestPlan) {
+             if (foundClass(nodes,
+                      new Class[]{Sampler.class, Controller.class}, // Samplers and Controllers need not apply ...
+-                     org.apache.jmeter.threads.ThreadGroup.class)  // but ThreadGroup (Controller) is OK
++                     org.apache.jmeter.threads.AbstractThreadGroup.class)  // but AbstractThreadGroup (Controller) is OK
+                 ){
+                 return false;
+             }
+             return true;
+         }
+-        // ThreadGroup is only allowed under a TestPlan
+-        if (foundClass(nodes, new Class[]{org.apache.jmeter.threads.ThreadGroup.class})){
++        // AbstractThreadGroup is only allowed under a TestPlan
++        if (foundClass(nodes, new Class[]{org.apache.jmeter.threads.AbstractThreadGroup.class})){
+             return false;
+         }
+         if (parent instanceof Controller) {// Includes thread group; anything goes
+Index: src/core/org/apache/jmeter/testelement/TestPlan.java
+===================================================================
+--- src/core/org/apache/jmeter/testelement/TestPlan.java	(revision 910417)
++++ src/core/org/apache/jmeter/testelement/TestPlan.java	(working copy)
+@@ -31,7 +31,7 @@
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
+-import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+@@ -55,7 +55,7 @@
+ 
+     private final static String BASEDIR = "basedir";
+ 
+-    private transient List<ThreadGroup> threadGroups = new LinkedList<ThreadGroup>();
++    private transient List<AbstractThreadGroup> threadGroups = new LinkedList<AbstractThreadGroup>();
+ 
+     // Does not appear to be needed
+ //  private transient List configs = new LinkedList();
+@@ -71,7 +71,7 @@
+ 
+     static {
+         // WARNING! This String value must be identical to the String value
+-        // returned in org.apache.jmeter.threads.ThreadGroup.getClassLabel()
++        // returned in org.apache.jmeter.threads.AbstractThreadGroup.getClassLabel()
+         // method. If it's not you will not be able to add a Thread Group
+         // element to a Test Plan.
+ 
+@@ -96,7 +96,7 @@
+ 
+     // create transient item
+     private Object readResolve(){
+-        threadGroups = new LinkedList<ThreadGroup>();
++        threadGroups = new LinkedList<AbstractThreadGroup>();
+         return this;
+     }
+ 
+@@ -228,15 +228,15 @@
+     @Override
+     public void addTestElement(TestElement tg) {
+         super.addTestElement(tg);
+-        if (tg instanceof ThreadGroup && !isRunningVersion()) {
+-            addThreadGroup((ThreadGroup) tg);
++        if (tg instanceof AbstractThreadGroup && !isRunningVersion()) {
++            addThreadGroup((AbstractThreadGroup) tg);
+         }
+     }
+ 
+ //    // Does not appear to be needed
+ //  public void addJMeterComponent(TestElement child) {
+-//      if (child instanceof ThreadGroup) {
+-//          addThreadGroup((ThreadGroup) child);
++//      if (child instanceof AbstractThreadGroup) {
++//          addThreadGroup((AbstractThreadGroup) child);
+ //      }
+ //  }
+ 
+@@ -262,12 +262,12 @@
+ //  }
+ 
+     /**
+-     * Adds a feature to the ThreadGroup attribute of the TestPlan object.
++     * Adds a feature to the AbstractThreadGroup attribute of the TestPlan object.
+      *
+      * @param group
+-     *            the feature to be added to the ThreadGroup attribute
++     *            the feature to be added to the AbstractThreadGroup attribute
+      */
+-    public void addThreadGroup(ThreadGroup group) {
++    public void addThreadGroup(AbstractThreadGroup group) {
+         threadGroups.add(group);
+     }
+ 
+Index: src/core/org/apache/jmeter/threads/gui/ThreadGroupGui.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/gui/ThreadGroupGui.java	(revision 910417)
++++ src/core/org/apache/jmeter/threads/gui/ThreadGroupGui.java	(working copy)
+@@ -19,39 +19,27 @@
+ package org.apache.jmeter.threads.gui;
+ 
+ import java.awt.BorderLayout;
+-import java.awt.Dimension;
+ import java.awt.event.ItemEvent;
+-import java.awt.event.ItemListener;
+-import java.util.Collection;
+ import java.util.Date;
+ 
+ import javax.swing.BorderFactory;
+-import javax.swing.Box;
+-import javax.swing.ButtonGroup;
+ import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
+ import javax.swing.JPanel;
+-import javax.swing.JPopupMenu;
+-import javax.swing.JRadioButton;
+ import javax.swing.JTextField;
+ 
+ import org.apache.jmeter.control.LoopController;
+ import org.apache.jmeter.control.gui.LoopControlPanel;
+-import org.apache.jmeter.gui.AbstractJMeterGuiComponent;
+-import org.apache.jmeter.gui.action.ActionNames;
+-import org.apache.jmeter.gui.tree.JMeterTreeNode;
+ import org.apache.jmeter.gui.util.FocusRequester;
+ import org.apache.jmeter.gui.util.JDateField;
+-import org.apache.jmeter.gui.util.MenuFactory;
+ import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.LongProperty;
+-import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.threads.ThreadGroup;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+-public class ThreadGroupGui extends AbstractJMeterGuiComponent implements ItemListener {
++public class ThreadGroupGui extends AbstractThreadGroupGui {
+     private static final long serialVersionUID = 240L;
+ 
+     private LoopControlPanel loopPanel;
+@@ -76,25 +64,12 @@
+ 
+     private JTextField delay; // Relative start-up time
+ 
+-    // Sampler error action buttons
+-    private JRadioButton continueBox;
+-
+-    private JRadioButton stopThrdBox;
+-
+-    private JRadioButton stopTestBox;
+-
+-    private JRadioButton stopTestNowBox;
+-    
+     public ThreadGroupGui() {
+         super();
+         init();
+         initGui();
+     }
+ 
+-    public Collection<String> getMenuCategories() {
+-        return null;
+-    }
+-
+     public TestElement createTestElement() {
+         ThreadGroup tg = new ThreadGroup();
+         modifyTestElement(tg);
+@@ -117,38 +92,10 @@
+         tg.setProperty(new LongProperty(ThreadGroup.START_TIME, start.getDate().getTime()));
+         tg.setProperty(new LongProperty(ThreadGroup.END_TIME, end.getDate().getTime()));
+         tg.setProperty(new BooleanProperty(ThreadGroup.SCHEDULER, scheduler.isSelected()));
+-        tg.setProperty(new StringProperty(ThreadGroup.ON_SAMPLE_ERROR, onSampleError()));
+         tg.setProperty(ThreadGroup.DURATION, duration.getText());
+         tg.setProperty(ThreadGroup.DELAY, delay.getText());
+     }
+ 
+-    private void setSampleErrorBoxes(ThreadGroup te) {
+-        if (te.getOnErrorStopTest()) {
+-            stopTestBox.setSelected(true);
+-        } else if (te.getOnErrorStopTestNow()) {
+-            stopTestNowBox.setSelected(true);
+-        } else if (te.getOnErrorStopThread()) {
+-            stopThrdBox.setSelected(true);
+-        } else {
+-            continueBox.setSelected(true);
+-        }
+-    }
+-
+-    private String onSampleError() {
+-        if (stopTestBox.isSelected()) {
+-            return ThreadGroup.ON_SAMPLE_ERROR_STOPTEST;
+-        }
+-        if (stopTestNowBox.isSelected()) {
+-            return ThreadGroup.ON_SAMPLE_ERROR_STOPTEST_NOW;
+-        }
+-        if (stopThrdBox.isSelected()) {
+-            return ThreadGroup.ON_SAMPLE_ERROR_STOPTHREAD;
+-        }
+-
+-        // Defaults to continue
+-        return ThreadGroup.ON_SAMPLE_ERROR_CONTINUE;
+-    }
+-
+     @Override
+     public void configure(TestElement tg) {
+         super.configure(tg);
+@@ -174,8 +121,6 @@
+         }
+         duration.setText(tg.getPropertyAsString(ThreadGroup.DURATION));
+         delay.setText(tg.getPropertyAsString(ThreadGroup.DELAY));
+-
+-        setSampleErrorBoxes((ThreadGroup) tg);
+     }
+ 
+     public void itemStateChanged(ItemEvent ie) {
+@@ -188,25 +133,6 @@
+         }
+     }
+ 
+-    public JPopupMenu createPopupMenu() {
+-        JPopupMenu pop = new JPopupMenu();
+-        pop.add(MenuFactory.makeMenus(new String[] {
+-                MenuFactory.CONTROLLERS,
+-                MenuFactory.CONFIG_ELEMENTS,
+-                MenuFactory.TIMERS,
+-                MenuFactory.PRE_PROCESSORS,
+-                MenuFactory.SAMPLERS,
+-                MenuFactory.POST_PROCESSORS,
+-                MenuFactory.ASSERTIONS,
+-                MenuFactory.LISTENERS,
+-                },
+-                JMeterUtils.getResString("add"), // $NON-NLS-1$
+-                ActionNames.ADD));
+-        MenuFactory.addEditMenu(pop, true);
+-        MenuFactory.addFileMenu(pop);
+-        return pop;
+-    }
+-
+     private JPanel createControllerPanel() {
+         loopPanel = new LoopControlPanel(false);
+         LoopController looper = (LoopController) loopPanel.createTestElement();
+@@ -276,31 +202,6 @@
+         return "threadgroup"; // $NON-NLS-1$
+     }
+ 
+-    private JPanel createOnErrorPanel() {
+-        JPanel panel = new JPanel();
+-        panel.setBorder(BorderFactory.createTitledBorder(JMeterUtils.getResString("sampler_on_error_action"))); // $NON-NLS-1$
+-
+-        ButtonGroup group = new ButtonGroup();
+-
+-        continueBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_continue")); // $NON-NLS-1$
+-        group.add(continueBox);
+-        panel.add(continueBox);
+-
+-        stopThrdBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_stop_thread")); // $NON-NLS-1$
+-        group.add(stopThrdBox);
+-        panel.add(stopThrdBox);
+-
+-        stopTestBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_stop_test")); // $NON-NLS-1$
+-        group.add(stopTestBox);
+-        panel.add(stopTestBox);
+-
+-        stopTestNowBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_stop_test_now")); // $NON-NLS-1$
+-        group.add(stopTestNowBox);
+-        panel.add(stopTestNowBox);
+-
+-        return panel;
+-    }
+-
+     @Override
+     public void clearGui(){
+         super.clearGui();
+@@ -311,7 +212,6 @@
+     private void initGui(){
+         threadInput.setText("1"); // $NON-NLS-1$
+         rampInput.setText("1"); // $NON-NLS-1$
+-        continueBox.setSelected(true);
+         loopPanel.clearGui();
+         scheduler.setSelected(false);
+         Date today = new Date();
+@@ -321,17 +221,10 @@
+         duration.setText(""); // $NON-NLS-1$
+     }
+ 
+-    private void init() {
+-        setLayout(new BorderLayout(0, 5));
+-        setBorder(makeBorder());
++   @Override
++   protected void init() {
++        super.init();
+ 
+-        Box box = Box.createVerticalBox();
+-        box.add(makeTitlePanel());
+-        box.add(createOnErrorPanel());
+-        add(box, BorderLayout.NORTH);
+-
+-        // JPanel mainPanel = new JPanel(new BorderLayout());
+-
+         // THREAD PROPERTIES
+         VerticalPanel threadPropsPanel = new VerticalPanel();
+         threadPropsPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
+@@ -385,13 +278,4 @@
+         intgrationPanel.add(mainPanel);
+         add(intgrationPanel, BorderLayout.CENTER);
+     }
+-
+-    public void setNode(JMeterTreeNode node) {
+-        getNamePanel().setNode(node);
+-    }
+-
+-    @Override
+-    public Dimension getPreferredSize() {
+-        return getMinimumSize();
+-    }
+ }
+Index: src/core/org/apache/jmeter/threads/ThreadGroup.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/ThreadGroup.java	(revision 910417)
++++ src/core/org/apache/jmeter/threads/ThreadGroup.java	(working copy)
+@@ -18,37 +18,25 @@
+ 
+ package org.apache.jmeter.threads;
+ 
+-import java.io.Serializable;
+-
+-import org.apache.jmeter.control.Controller;
+-import org.apache.jmeter.control.LoopController;
+-import org.apache.jmeter.engine.event.LoopIterationListener;
+-import org.apache.jmeter.samplers.Sampler;
+-import org.apache.jmeter.testelement.AbstractTestElement;
+-import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.IntegerProperty;
+-import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.LongProperty;
+-import org.apache.jmeter.testelement.property.TestElementProperty;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ /**
+  * ThreadGroup holds the settings for a JMeter thread group.
+  * 
+  * This class is intended to be ThreadSafe.
+  */
+-public class ThreadGroup extends AbstractTestElement implements Serializable, Controller {
++public class ThreadGroup extends AbstractThreadGroup {
++    private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     private static final long serialVersionUID = 233L;
+ 
+-    /** Number of threads in the thread group */
+-    public final static String NUM_THREADS = "ThreadGroup.num_threads";
+-
+     /** Ramp-up time */
+     public final static String RAMP_TIME = "ThreadGroup.ramp_time";
+ 
+-    public final static String MAIN_CONTROLLER = "ThreadGroup.main_controller";
+-
+     /** Whether scheduler is being used */
+     public final static String SCHEDULER = "ThreadGroup.scheduler";
+ 
+@@ -64,72 +52,14 @@
+     /** Scheduler start delay, overrides start time */
+     public final static String DELAY = "ThreadGroup.delay";
+ 
+-    /** Action to be taken when a Sampler error occurs */
+-    public final static String ON_SAMPLE_ERROR = "ThreadGroup.on_sample_error"; // int
+-
+-    /** Continue, i.e. ignore sampler errors */
+-    public final static String ON_SAMPLE_ERROR_CONTINUE = "continue";
+-
+-    /** Stop current thread if sampler error occurs */
+-    public final static String ON_SAMPLE_ERROR_STOPTHREAD = "stopthread";
+-
+-    /** Stop test (all threads) if sampler error occurs */
+-    public final static String ON_SAMPLE_ERROR_STOPTEST = "stoptest";
+-
+-    /** Stop test NOW (all threads) if sampler error occurs */
+-    public final static String ON_SAMPLE_ERROR_STOPTEST_NOW = "stoptestnow";
+-
+-    // @GuardedBy("this")
+-    private int numberOfThreads = 0; // Number of active threads in this group
+-
+     /**
+      * No-arg constructor.
+      */
+     public ThreadGroup() {
+     }
+ 
+-    /**
+-     * Set the total number of threads to start
+-     *
+-     * @param numThreads
+-     *            the number of threads.
+-     */
+-    public void setNumThreads(int numThreads) {
+-        setProperty(new IntegerProperty(NUM_THREADS, numThreads));
+-    }
+ 
+     /**
+-     * Increment the number of active threads
+-     */
+-    synchronized void incrNumberOfThreads() {
+-        numberOfThreads++;
+-    }
+-
+-    /**
+-     * Decrement the number of active threads
+-     */
+-    synchronized void decrNumberOfThreads() {
+-        numberOfThreads--;
+-    }
+-
+-    /**
+-     * Get the number of active threads
+-     */
+-    public synchronized int getNumberOfThreads() {
+-        return numberOfThreads;
+-    }
+-
+-    /** {@inheritDoc} */
+-    public boolean isDone() {
+-        return getSamplerController().isDone();
+-    }
+-
+-    /** {@inheritDoc} */
+-    public Sampler next() {
+-        return getSamplerController().next();
+-    }
+-
+-    /**
+      * Set whether scheduler is being used
+      *
+      * @param Scheduler true is scheduler is to be used
+@@ -242,86 +172,64 @@
+         return getPropertyAsInt(ThreadGroup.RAMP_TIME);
+     }
+ 
+-    /**
+-     * Get the sampler controller.
+-     *
+-     * @return the sampler controller.
+-     */
+-    public Controller getSamplerController() {
+-        Controller c = (Controller) getProperty(MAIN_CONTROLLER).getObjectValue();
+-        return c;
+-    }
++   @Override
++   public void scheduleThread(JMeterThread thread)
++   {
++       int rampUp = getRampUp();
++       float perThreadDelay = ((float) (rampUp * 1000) / (float) getNumThreads());
++       thread.setInitialDelay((int) (perThreadDelay * thread.getThreadNum()));
+ 
+-    /**
+-     * Set the sampler controller.
+-     *
+-     * @param c
+-     *            the sampler controller.
+-     */
+-    public void setSamplerController(LoopController c) {
+-        c.setContinueForever(false);
+-        setProperty(new TestElementProperty(MAIN_CONTROLLER, c));
+-    }
++       scheduleThread(thread, this);
+ 
+-    /**
+-     * Get the number of threads.
+-     *
+-     * @return the number of threads.
+-     */
+-    public int getNumThreads() {
+-        return this.getPropertyAsInt(ThreadGroup.NUM_THREADS);
+-    }
++       // Set up variables for stop handling
++       boolean onErrorStopTest = this.getOnErrorStopTest();
++       boolean onErrorStopTestNow = this.getOnErrorStopTestNow();
++       boolean onErrorStopThread = this.getOnErrorStopThread();
++       thread.setOnErrorStopTest(onErrorStopTest);
++       thread.setOnErrorStopTestNow(onErrorStopTestNow);
++       thread.setOnErrorStopThread(onErrorStopThread);
++      if (onErrorStopTest) {
++          log.info("Test will stop on error");
++      } else if (onErrorStopTestNow) {
++          log.info("Test will stop abruptly on error");
++      } else if (onErrorStopThread) {
++          log.info("Thread will stop on error");
++      } else {
++          log.info("Thread will continue on error");
++      }
+ 
+-    /**
+-     * Add a test element.
+-     *
+-     * @param child
+-     *            the test element to add.
+-     */
+-    @Override
+-    public void addTestElement(TestElement child) {
+-        getSamplerController().addTestElement(child);
+-    }
++   }
+ 
+-    /** {@inheritDoc} */
+-    public void addIterationListener(LoopIterationListener lis) {
+-        getSamplerController().addIterationListener(lis);
+-    }
+-
+-    /** {@inheritDoc} */
+-    public void initialize() {
+-        Controller c = getSamplerController();
+-        JMeterProperty property = c.getProperty(TestElement.NAME);
+-        property.setObjectValue(getName()); // Copy our name into that of the controller
+-        property.setRunningVersion(property.isRunningVersion());// otherwise name reverts
+-        c.initialize();
+-    }
+-
+     /**
+-     * Check if a sampler error should cause thread to stop.
++     * This will schedule the time for the JMeterThread.
+      *
+-     * @return true if thread should stop
++     * @param thread
++     * @param group
+      */
+-    public boolean getOnErrorStopThread() {
+-        return getPropertyAsString(ThreadGroup.ON_SAMPLE_ERROR).equalsIgnoreCase(ON_SAMPLE_ERROR_STOPTHREAD);
+-    }
++    private void scheduleThread(JMeterThread thread, ThreadGroup group) {
++        // if true the Scheduler is enabled
++        if (group.getScheduler()) {
++            long now = System.currentTimeMillis();
++            // set the start time for the Thread
++            if (group.getDelay() > 0) {// Duration is in seconds
++                thread.setStartTime(group.getDelay() * 1000 + now);
++            } else {
++                long start = group.getStartTime();
++                if (start < now) {
++                    start = now; // Force a sensible start time
++                }
++                thread.setStartTime(start);
++            }
+ 
+-    /**
+-     * Check if a sampler error should cause test to stop.
+-     *
+-     * @return true if test (all threads) should stop
+-     */
+-    public boolean getOnErrorStopTest() {
+-        return getPropertyAsString(ThreadGroup.ON_SAMPLE_ERROR).equalsIgnoreCase(ON_SAMPLE_ERROR_STOPTEST);
+-    }
++            // set the endtime for the Thread
++            if (group.getDuration() > 0) {// Duration is in seconds
++                thread.setEndTime(group.getDuration() * 1000 + (thread.getStartTime()));
++            } else {
++                thread.setEndTime(group.getEndTime());
++            }
+ 
+-    /**
+-     * Check if a sampler error should cause test to stop now.
+-     *
+-     * @return true if test (all threads) should stop immediately
+-     */
+-    public boolean getOnErrorStopTestNow() {
+-        return getPropertyAsString(ThreadGroup.ON_SAMPLE_ERROR).equalsIgnoreCase(ON_SAMPLE_ERROR_STOPTEST_NOW);
++            // Enables the scheduler
++            thread.setScheduled(true);
++        }
+     }
+-
+ }
+Index: src/core/org/apache/jmeter/threads/JMeterContext.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterContext.java	(revision 910417)
++++ src/core/org/apache/jmeter/threads/JMeterContext.java	(working copy)
+@@ -43,7 +43,7 @@
+ 
+     private JMeterThread thread;
+ 
+-    private ThreadGroup threadGroup;
++    private AbstractThreadGroup threadGroup;
+ 
+     private int threadNum;
+ 
+@@ -145,11 +145,11 @@
+         this.thread = thread;
+     }
+ 
+-    public ThreadGroup getThreadGroup() {
++    public AbstractThreadGroup getThreadGroup() {
+         return this.threadGroup;
+     }
+ 
+-    public void setThreadGroup(ThreadGroup threadgrp) {
++    public void setThreadGroup(AbstractThreadGroup threadgrp) {
+         this.threadGroup = threadgrp;
+     }
+ 
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 910417)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -102,7 +102,7 @@
+     // based on this scheduler is enabled or disabled
+ 
+     // Gives access to parent thread threadGroup
+-    private ThreadGroup threadGroup;
++    private AbstractThreadGroup threadGroup;
+ 
+     private StandardJMeterEngine engine = null; // For access to stop methods.
+ 
+@@ -764,7 +764,7 @@
+         onErrorStopThread = b;
+     }
+ 
+-    public void setThreadGroup(ThreadGroup group) {
++    public void setThreadGroup(AbstractThreadGroup group) {
+         this.threadGroup = group;
+     }
+ 
+Index: src/core/org/apache/jmeter/engine/ConvertListeners.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/ConvertListeners.java	(revision 910417)
++++ src/core/org/apache/jmeter/engine/ConvertListeners.java	(working copy)
+@@ -30,7 +30,7 @@
+ import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.ThreadListener;
+-import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.collections.HashTreeTraverser;
+ import org.apache.jorphan.logging.LoggingManager;
+@@ -53,8 +53,8 @@
+         Iterator<?> iter = subTree.list().iterator();
+         while (iter.hasNext()) {
+             Object item = iter.next();
+-            if (item instanceof ThreadGroup) {
+-                log.info("num threads = " + ((ThreadGroup) item).getNumThreads());
++            if (item instanceof AbstractThreadGroup) {
++                log.info("num threads = " + ((AbstractThreadGroup) item).getNumThreads());
+             }
+             if (item instanceof Remoteable) {
+                 if (item instanceof ThreadListener){
+Index: src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 910417)
++++ src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -44,7 +44,7 @@
+ import org.apache.jmeter.threads.JMeterThreadMonitor;
+ import org.apache.jmeter.threads.ListenerNotifier;
+ import org.apache.jmeter.threads.TestCompiler;
+-import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.collections.ListedHashTree;
+@@ -257,7 +257,7 @@
+         Iterator<?> iter = elements.iterator();
+         while (iter.hasNext()) {
+             Object item = iter.next();
+-            if (item instanceof ThreadGroup) {
++            if (item instanceof AbstractThreadGroup) {
+                 iter.remove();
+             } else if (!(item instanceof TestElement)) {
+                 iter.remove();
+@@ -420,13 +420,13 @@
+ 
+         List<?> testLevelElements = new LinkedList<Object>(test.list(test.getArray()[0]));
+         removeThreadGroups(testLevelElements);
+-        SearchByClass<ThreadGroup> searcher = new SearchByClass<ThreadGroup>(ThreadGroup.class);
++        SearchByClass<AbstractThreadGroup> searcher = new SearchByClass<AbstractThreadGroup>(AbstractThreadGroup.class);
+         test.traverse(searcher);
+         TestCompiler.initialize();
+         // for each thread group, generate threads
+         // hand each thread the sampler controller
+         // and the listeners, and the timer
+-        Iterator<ThreadGroup> iter = searcher.getSearchResults().iterator();
++        Iterator<AbstractThreadGroup> iter = searcher.getSearchResults().iterator();
+ 
+         /*
+          * Here's where the test really starts. Run a Full GC now: it's no harm
+@@ -443,27 +443,12 @@
+         startingGroups = true;
+         while (running && iter.hasNext()) {// for each thread group
+             groupCount++;
+-            ThreadGroup group = iter.next();
++            AbstractThreadGroup group = iter.next();
+             int numThreads = group.getNumThreads();
+             JMeterContextService.addTotalThreads(numThreads);
+-            boolean onErrorStopTest = group.getOnErrorStopTest();
+-            boolean onErrorStopTestNow = group.getOnErrorStopTestNow();
+-            boolean onErrorStopThread = group.getOnErrorStopThread();
+             String groupName = group.getName();
+-            int rampUp = group.getRampUp();
+-            float perThreadDelay = ((float) (rampUp * 1000) / (float) numThreads);
+-            log.info("Starting " + numThreads + " threads for group " + groupName + ". Ramp up = " + rampUp + ".");
++            log.info("Starting " + numThreads + " threads for group " + groupName + ".");
+ 
+-            if (onErrorStopTest) {
+-                log.info("Test will stop on error");
+-            } else if (onErrorStopTestNow) {
+-                log.info("Test will stop abruptly on error");
+-            } else if (onErrorStopThread) {
+-                log.info("Thread will stop on error");
+-            } else {
+-                log.info("Thread will continue on error");
+-            }
+-
+             ListedHashTree threadGroupTree = (ListedHashTree) searcher.getSubTree(group);
+             threadGroupTree.add(group, testLevelElements);
+             for (int i = 0; running && i < numThreads; i++) {
+@@ -471,18 +456,12 @@
+                 jmeterThread.setThreadNum(i);
+                 jmeterThread.setThreadGroup(group);
+                 jmeterThread.setInitialContext(JMeterContextService.getContext());
+-                jmeterThread.setInitialDelay((int) (perThreadDelay * i));
+                 final String threadName = groupName + " " + (groupCount) + "-" + (i + 1);
+                 jmeterThread.setThreadName(threadName);
+-
+-                scheduleThread(jmeterThread, group);
+-
+-                // Set up variables for stop handling
+                 jmeterThread.setEngine(this);
+-                jmeterThread.setOnErrorStopTest(onErrorStopTest);
+-                jmeterThread.setOnErrorStopTestNow(onErrorStopTestNow);
+-                jmeterThread.setOnErrorStopThread(onErrorStopThread);
+ 
++                group.scheduleThread(jmeterThread);
++
+                 Thread newThread = new Thread(jmeterThread);
+                 newThread.setName(threadName);
+                 allThreads.put(jmeterThread, newThread);
+@@ -503,39 +482,6 @@
+         startingGroups = false;
+     }
+ 
+-    /**
+-     * This will schedule the time for the JMeterThread.
+-     *
+-     * @param thread
+-     * @param group
+-     */
+-    private void scheduleThread(JMeterThread thread, ThreadGroup group) {
+-        // if true the Scheduler is enabled
+-        if (group.getScheduler()) {
+-            long now = System.currentTimeMillis();
+-            // set the start time for the Thread
+-            if (group.getDelay() > 0) {// Duration is in seconds
+-                thread.setStartTime(group.getDelay() * 1000 + now);
+-            } else {
+-                long start = group.getStartTime();
+-                if (start < now) {
+-                    start = now; // Force a sensible start time
+-                }
+-                thread.setStartTime(start);
+-            }
+-
+-            // set the endtime for the Thread
+-            if (group.getDuration() > 0) {// Duration is in seconds
+-                thread.setEndTime(group.getDuration() * 1000 + (thread.getStartTime()));
+-            } else {
+-                thread.setEndTime(group.getEndTime());
+-            }
+-
+-            // Enables the scheduler
+-            thread.setScheduled(true);
+-        }
+-    }
+-
+     private boolean verifyThreadsStopped() {
+         boolean stoppedAll = true;
+         List<Thread> threadsToCheck = new ArrayList<Thread>(allThreads.size());
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 910417)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -488,6 +488,7 @@
+ menu_edit=Edit
+ menu_expand_all=Expand All
+ menu_generative_controller=Sampler
++menu_threads=Threads (Users)
+ menu_listener=Listener
+ menu_logic_controller=Logic Controller
+ menu_merge=Merge
+Index: src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterVersion.java	(revision 910417)
++++ src/core/org/apache/jmeter/util/JMeterVersion.java	(working copy)
+@@ -44,7 +44,7 @@
+      * This ensures that JMeterUtils always gets the correct
+      * version, even if JMeterUtils is not re-compiled during the build.
+      */
+-    private static final String VERSION = "2.4";
++    private static final String VERSION = "2.4.20100216";
+ 
+     static final String COPYRIGHT = "Copyright (c) 1998-2009 The Apache Software Foundation";
+ 
+Index: src/reports/org/apache/jmeter/testelement/ReportPlan.java
+===================================================================
+--- src/reports/org/apache/jmeter/testelement/ReportPlan.java	(revision 910417)
++++ src/reports/org/apache/jmeter/testelement/ReportPlan.java	(working copy)
+@@ -32,7 +32,7 @@
+ import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.testelement.property.TestElementProperty;
+-import org.apache.jmeter.threads.ThreadGroup;
++import org.apache.jmeter.threads.AbstractThreadGroup;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -50,7 +50,7 @@
+ 
+     public static final String BASEDIR = "ReportPlan.basedir";
+ 
+-    private transient List<ThreadGroup> reportPages = new LinkedList<ThreadGroup>();
++    private transient List<AbstractThreadGroup> reportPages = new LinkedList<AbstractThreadGroup>();
+ 
+     private transient List<ConfigElement> configs = new LinkedList<ConfigElement>();
+ 
+@@ -128,14 +128,14 @@
+     @Override
+     public void addTestElement(TestElement tg) {
+         super.addTestElement(tg);
+-        if (tg instanceof ThreadGroup && !isRunningVersion()) {
+-            addReportPage((ThreadGroup) tg);
++        if (tg instanceof AbstractThreadGroup && !isRunningVersion()) {
++            addReportPage((AbstractThreadGroup) tg);
+         }
+     }
+ 
+     public void addJMeterComponent(TestElement child) {
+-        if (child instanceof ThreadGroup) {
+-            addReportPage((ThreadGroup) child);
++        if (child instanceof AbstractThreadGroup) {
++            addReportPage((AbstractThreadGroup) child);
+         }
+     }
+ 
+@@ -144,7 +144,7 @@
+      *
+      * @return the ThreadGroups value
+      */
+-    public Collection<ThreadGroup> getReportPages() {
++    public Collection<AbstractThreadGroup> getReportPages() {
+         return reportPages;
+     }
+ 
+@@ -159,12 +159,12 @@
+     }
+ 
+     /**
+-     * Adds a feature to the ThreadGroup attribute of the TestPlan object.
++     * Adds a feature to the AbstractThreadGroup attribute of the TestPlan object.
+      *
+      * @param group
+-     *            the feature to be added to the ThreadGroup attribute
++     *            the feature to be added to the AbstractThreadGroup attribute
+      */
+-    public void addReportPage(ThreadGroup group) {
++    public void addReportPage(AbstractThreadGroup group) {
+         reportPages.add(group);
+     }
+ 

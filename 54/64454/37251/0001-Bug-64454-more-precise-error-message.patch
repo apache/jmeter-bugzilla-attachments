@@ -1,0 +1,59 @@
+From dedaae2b9ca1e2b379c092e56d11ab17ea23c36e Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Tue, 19 May 2020 17:22:38 +0200
+Subject: [PATCH] Bug 64454 more precise error message
+
+---
+ .../apache/jmeter/protocol/jdbc/config/DataSourceElement.java | 4 ++--
+ .../jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java | 4 ++--
+ .../org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java  | 4 ++--
+ 3 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/config/DataSourceElement.java b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/config/DataSourceElement.java
+index 0c0f91233f..50f4535faf 100644
+--- a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/config/DataSourceElement.java
++++ b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/config/DataSourceElement.java
+@@ -114,8 +114,8 @@ public class DataSourceElement extends AbstractTestElement
+         TestBeanHelper.prepare(this);
+         JMeterVariables variables = getThreadContext().getVariables();
+         String poolName = getDataSource();
+-        if(JOrphanUtils.isBlank(poolName)) {
+-            throw new IllegalArgumentException("Variable Name must not be empty for element:"+getName());
++        if (JOrphanUtils.isBlank(poolName)) {
++            throw new IllegalArgumentException("Name for DataSoure must not be empty in " + getName());
+         } else if (variables.getObject(poolName) != null) {
+             log.error("JDBC data source already defined for: {}", poolName);
+         } else {
+diff --git a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java
+index abb941d74d..ba019a5ee0 100644
+--- a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java
++++ b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java
+@@ -40,8 +40,8 @@ public abstract class AbstractJDBCProcessor extends AbstractJDBCTestElement {
+      * Calls the JDBC code to be executed.
+      */
+     protected void process() {
+-        if(JOrphanUtils.isBlank(getDataSource())) {
+-            throw new IllegalArgumentException("Variable Name must not be null in "+getName());
++        if (JOrphanUtils.isBlank(getDataSource())) {
++            throw new IllegalArgumentException("Name for DataSoure must not be empty in " + getName());
+         }
+         try (Connection conn = DataSourceElement.getConnection(getDataSource())){
+             execute(conn);
+diff --git a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
+index 22cf01c476..7b00779ed9 100644
+--- a/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
++++ b/src/protocol/jdbc/src/main/java/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
+@@ -72,8 +72,8 @@ public class JDBCSampler extends AbstractJDBCTestElement implements Sampler, Tes
+         Connection conn = null;
+ 
+         try {
+-            if(JOrphanUtils.isBlank(getDataSource())) {
+-                throw new IllegalArgumentException("Variable Name must not be null in "+getName());
++            if (JOrphanUtils.isBlank(getDataSource())) {
++                throw new IllegalArgumentException("Name for DataSoure must not be empty in " + getName());
+             }
+ 
+             try {
+-- 
+2.25.1
+

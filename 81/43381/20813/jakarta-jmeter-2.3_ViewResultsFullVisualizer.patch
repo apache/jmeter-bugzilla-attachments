@@ -1,0 +1,203 @@
+Index: jakarta-jmeter-2.3/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- jakarta-jmeter-2.3/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 1)
++++ jakarta-jmeter-2.3/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -34,6 +34,7 @@
+ import java.util.Date;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
++import java.util.HashMap;
+ 
+ import javax.swing.BorderFactory;
+ import javax.swing.ButtonGroup;
+@@ -194,6 +195,9 @@
+ 
+ 	private JTree jTree;
+ 
++	// Display Threads in Tree fashion
++	private HashMap threads = new HashMap();
++
+ 	private JTabbedPane rightSide;
+ 	
+ 	private static final ImageIcon imageSuccess = JMeterUtils.getImage(
+@@ -229,8 +233,13 @@
+ 		}
+ 		// Add sample
+ 		DefaultMutableTreeNode currNode = new DefaultMutableTreeNode(res);
+-		treeModel.insertNodeInto(currNode, root, root.getChildCount());
++		ThreadNode parent = getParent(res.getThreadName());
++		if (!res.isSuccessful()) {
++			parent.setError(true);	
++		}	
++		treeModel.insertNodeInto(currNode, parent, parent.getChildCount());
+ 		addSubResults(currNode, res);
++		
+ 		// Add any assertion that failed as children of the sample node
+ 		AssertionResult assertionResults[] = res.getAssertionResults();
+ 		int assertionIndex = currNode.getChildCount();
+@@ -249,6 +258,24 @@
+ 		log.debug("End : updateGui1");
+ 	}
+ 
++	/**
++	 * @param threadName
++	 * @return
++	 */
++	private ThreadNode getParent(String threadName) {
++		log.debug("Getting node " + threadName);
++		Object p = threads.get(threadName);
++		if (p == null) {
++			log.debug("Creating node " + threadName);
++			ThreadNode parent = new ThreadNode(threadName);
++			treeModel.insertNodeInto(parent, root, root.getChildCount());
++			threads.put(threadName, parent);
++			return parent;
++ 		}
++		log.debug("Found node " + threadName);
++		return (ThreadNode) p;
++ 	}
++
+ 	private void addSubResults(DefaultMutableTreeNode currNode, SampleResult res) {
+ 		SampleResult[] subResults = res.getSubResults();
+ 
+@@ -292,7 +319,8 @@
+ 			// removed the nth node will become (n-1)th
+ 			treeModel.removeNodeFromParent((DefaultMutableTreeNode) root.getChildAt(0));
+ 		}
+-
++		threads.clear();
++		
+ 		results.setText("");// Response Data // $NON-NLS-1$
+ 		sampleDataField.setText("");// Request Data // $NON-NLS-1$
+ 		log.debug("End : clear1");
+@@ -328,7 +356,7 @@
+ 			statsDoc.remove(0, statsDoc.getLength());
+ 			sampleDataField.setText(""); // $NON-NLS-1$
+ 			results.setText(""); // $NON-NLS-1$
+-			if (node != null) {
++			if (node != null && node.getUserObject() instanceof SampleResult) {
+ 				Object userObject = node.getUserObject();
+ 				if(userObject instanceof SampleResult) {					
+ 					SampleResult res = (SampleResult) userObject;
+@@ -344,17 +372,18 @@
+ 						// load time label
+ 
+ 						log.debug("valueChanged1 : load time - " + res.getTime());
+-						String sd = res.getSamplerData();
+-						if (sd != null) {
++						if (res != null && res.getSamplerData() != null) {
++							String sd;
+ 							String rh = res.getRequestHeaders();
+-							if (rh != null) {
+-								StringBuffer sb = new StringBuffer(sd.length() + rh.length()+20);
+-								sb.append(sd);
+-								sb.append("\nRequest Headers:\n");
+-								sb.append(rh);
+-								sd = sb.toString();
++							if (rh == null) {
++								sd = res.getSamplerData().trim();
++							} else {
++								sd = res.getSamplerData().trim() + "\n" + rh;
+ 							}
+ 							sampleDataField.setText(sd);
++	                    } else if 	(res != null && res.getRequestHeaders() != null) {
++							// Set the request headers in the request tab
++							sampleDataField.setText(res.getRequestHeaders());
+ 						}
+ 
+ 						StringBuffer statsBuff = new StringBuffer(200);
+@@ -451,7 +480,9 @@
+ 		} catch (BadLocationException exc) {
+ 			log.error("Error setting statistics text", exc);
+ 			stats.setText("");
+-		}
++		} catch (Exception ex) {
++			log.error("Change selection", ex);
++ 		}
+ 		log.debug("End : valueChanged1");
+ 	}
+ 
+@@ -814,17 +845,14 @@
+ 	}
+ 
+ 	private Component createLeftPanel() {
+-		SampleResult rootSampleResult = new SampleResult();
+-		rootSampleResult.setSampleLabel("Root");
+-		rootSampleResult.setSuccessful(true);
+-		root = new DefaultMutableTreeNode(rootSampleResult);
++		root = new DefaultMutableTreeNode("Root");
+ 
+ 		treeModel = new DefaultTreeModel(root);
+ 		jTree = new JTree(treeModel);
+ 		jTree.setCellRenderer(new ResultsNodeRenderer());
+ 		jTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+-		jTree.addTreeSelectionListener(this);
+-		jTree.setRootVisible(false);
++		jTree.addTreeSelectionListener(this);	
++		jTree.setRootVisible(false);	
+ 		jTree.setShowsRootHandles(true);
+ 
+ 		JScrollPane treePane = new JScrollPane(jTree);
+@@ -883,7 +911,12 @@
+ 		public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded,
+ 				boolean leaf, int row, boolean focus) {
+ 			super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, focus);
+-			boolean failure = true;
++			boolean failure = true;			
++			if (value instanceof ThreadNode) {
++	            if (!((ThreadNode) value).isError()) {
++	            	failure = false;	
++	            }            
++	        }			
+ 			Object userObject = ((DefaultMutableTreeNode) value).getUserObject();
+ 			if(userObject instanceof SampleResult) {
+ 				failure = !(((SampleResult) userObject).isSuccessful());
+@@ -891,15 +924,14 @@
+ 			else if(userObject instanceof AssertionResult) {
+ 				AssertionResult assertion = (AssertionResult) userObject;
+ 				failure =  assertion.isError() || assertion.isFailure();
+-			}
+-			
++			}			
+ 			// Set the status for the node
+ 			if (failure) {
+ 				this.setForeground(Color.red);
+ 				this.setIcon(imageFailure);
+ 			} else {
+ 				this.setIcon(imageSuccess);
+-			}
++			}			
+ 			return this;
+ 		}
+ 	}
+@@ -1125,4 +1157,30 @@
+ 		}
+ 	}
+ 
++	class ThreadNode extends DefaultMutableTreeNode {
++			private static final long serialVersionUID = -5925831347967191019L;
++			boolean isError;
++			boolean isRunning = true;
++	 
++			public ThreadNode(String name) {
++				setUserObject(name);
++			}
++	
++			public void setError(boolean error) {
++				isError = error;
++			}
++	
++			public boolean isError() {
++				return isError;
++			}
++	
++			public void setRunning(boolean running) {
++				isRunning = running;
++			}
++	
++			public boolean isRunning() {
++				return isRunning;
++			}
++	}	 
++
+ }

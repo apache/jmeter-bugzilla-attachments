@@ -1,0 +1,82 @@
+--- jakarta-jmeter-2.1.1/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	2005-07-12 13:50:45.000000000 -0700
++++ ../src/jakarta-jmeter-2.1.1/src/protocol/http/org/apache/jmeter/protocol/http/control/gui/SoapSamplerGui.java	2006-03-08 13:17:08.000000000 -0800
+@@ -20,7 +20,12 @@
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Dimension;
++import java.awt.GridBagLayout;
++import java.awt.GridBagConstraints;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
+ 
++import javax.swing.JCheckBox;
+ import javax.swing.JPanel;
+ 
+ import org.apache.jmeter.protocol.http.sampler.SoapSampler;
+@@ -35,7 +40,8 @@
+  */
+ public class SoapSamplerGui extends AbstractSamplerGui {
+ 	private JLabeledTextField urlField;
+-
++	private JLabeledTextField soapAction;
++  private JCheckBox sendSoapAction;
+ 	private JLabeledTextArea soapXml;
+ 
+ 	public SoapSamplerGui() {
+@@ -68,6 +74,8 @@
+ 			SoapSampler sampler = (SoapSampler) s;
+ 			sampler.setURLData(urlField.getText());
+ 			sampler.setXmlData(soapXml.getText());
++			sampler.setSOAPAction(soapAction.getText());
++			sampler.setSendSOAPAction(sendSoapAction.isSelected());
+ 		}
+ 	}
+ 
+@@ -79,11 +87,37 @@
+ 
+ 		urlField = new JLabeledTextField(JMeterUtils.getResString("url"), 10);
+ 		soapXml = new JLabeledTextArea(JMeterUtils.getResString("soap_data_title"), null);
++		soapAction = new JLabeledTextField("", 10);
++		sendSoapAction = new JCheckBox("Send SOAPAction: ", true);
+ 
+ 		JPanel mainPanel = new JPanel(new BorderLayout());
+-		mainPanel.add(urlField, BorderLayout.NORTH);
++    JPanel stuff = new JPanel();
++    stuff.setLayout(new GridBagLayout());
++    GridBagConstraints c = new GridBagConstraints();
++    c.fill = GridBagConstraints.HORIZONTAL;
++    c.gridwidth = 2;
++    c.gridx = 0;
++    c.gridy = 0;
++    c.weightx = 1;
++    stuff.add(urlField, c);
++    c.fill = GridBagConstraints.NONE;
++    c.gridwidth = 1;
++    c.gridy = 1;
++    c.weightx = 0;
++		stuff.add(sendSoapAction, c);
++    c.gridx = 1;
++    c.fill = GridBagConstraints.HORIZONTAL;
++    c.weightx = 1;
++		stuff.add(soapAction, c);
++		mainPanel.add(stuff, BorderLayout.NORTH);
+ 		mainPanel.add(soapXml, BorderLayout.CENTER);
+ 
++    sendSoapAction.addActionListener(new ActionListener() {
++      public void actionPerformed(ActionEvent e) {
++        soapAction.setEnabled(sendSoapAction.isSelected());
++      }
++    });
++
+ 		add(mainPanel, BorderLayout.CENTER);
+ 	}
+ 
+@@ -91,6 +125,8 @@
+ 		super.configure(el);
+ 		SoapSampler sampler = (SoapSampler) el;
+ 		urlField.setText(sampler.getURLData());
++		sendSoapAction.setSelected(sampler.getSendSOAPAction());
++		soapAction.setText(sampler.getSOAPAction());
+ 		soapXml.setText(sampler.getXmlData());
+ 	}
+ 

@@ -1,0 +1,209 @@
+Index: src/components/org/apache/jmeter/assertions/ResponseAssertion.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/assertions/ResponseAssertion.java,v
+retrieving revision 1.1
+diff -u -r1.1 ResponseAssertion.java
+--- src/components/org/apache/jmeter/assertions/ResponseAssertion.java	11 Aug 2002 19:24:39 -0000	1.1
++++ src/components/org/apache/jmeter/assertions/ResponseAssertion.java	19 Dec 2002 23:28:49 -0000
+@@ -1,3 +1,5 @@
++package org.apache.jmeter.assertions;
++
+ /*
+  * ====================================================================
+  * The Apache Software License, Version 1.1
+@@ -52,7 +54,6 @@
+  * information on the Apache Software Foundation, please see
+  * <http://www.apache.org/>.
+  */
+-package org.apache.jmeter.assertions;
+ 
+ import java.util.*;
+ import java.io.Serializable;
+@@ -66,35 +67,95 @@
+  *  Title: Jakarta-JMeter Description: Copyright: Copyright (c) 2001 Company:
+  *  Apache
+  *
+- *@author     Michael Stover
+- *@created    $Date: 2002/08/11 19:24:39 $
+- *@version    1.0
++ * @author     Michael Stover
++ * @author     <a href="mailto:jacarlco@katun.com">Jonathan Carlson</a>
++ * @created    $Date: 2002/08/11 19:24:39 $
++ * @version    1.0
+  ***********************************************************/
+ 
+ public class ResponseAssertion extends AbstractTestElement implements Serializable, Assertion
+ {
+-
+ 	public final static String TEST_FIELD = "Assertion.test_field";
+ 	public final static String TEST_TYPE = "Assertion.test_type";
+-	public final static String TEST_STRINGS = "Asserion.test_strings";
++	public final static String TEST_STRINGS = "Assertion.test_strings";
++	public final static String TEST_PATTERNS = "Assertion.test_patterns";
+ 	public final static String SAMPLE_LABEL = "Assertion.sample_label";
+ 	public final static String RESPONSE_DATA = "Assertion.response_data";
+ 
+-
+ 	private String notMessage = "";
+ 	private String failMessage = "to contain: ";
+ 	public final static int MATCH = 1 << 0;
+ 	public final static int CONTAINS = 1 << 1;
+ 	public final static int NOT = 1 << 2;
+-	private transient static Perl5Compiler compiler = new Perl5Compiler();
+-	private transient static Perl5Matcher matcher = new Perl5Matcher();
+ 
+-	/************************************************************
+-	 *  !ToDo (Constructor description)
+-	 ***********************************************************/
++	private transient static ThreadLocal compiler =
++		new ThreadLocal()
++		{
++			protected Object initialValue()
++			{
++				return new Perl5Compiler();
++			}
++		};
++
++	private transient static ThreadLocal matcher =
++		new ThreadLocal()
++		{
++			protected Object initialValue()
++			{
++				return new Perl5Matcher();
++			}
++		};
++
++	/**
++	 *  Constructs a ResponseAssertion instance.
++	 */
+ 	public ResponseAssertion()
+ 	{
+-		setProperty(TEST_STRINGS,new ArrayList());
++		setProperty(TEST_STRINGS, new ArrayList());
++
++		// This ThreadLocal inner class assumes that all test strings will be
++		// set before it is accessed the first time.  It should be a safe
++		// assumption since it is only accessed from the #evaluateResponse
++		// method.  If a test string cannot be compiled, this will add the
++		// MalformedPatternException instead of the compiled pattern.
++		ThreadLocal testPatterns =
++			new ThreadLocal()
++			{
++				protected Object initialValue()
++				{
++					List compiledPatternList = new ArrayList();
++					Iterator iterator = getTestStrings().iterator();
++					Perl5Compiler localCompiler = (Perl5Compiler) compiler.get();
++					while (iterator.hasNext())
++					{
++						String stringPattern = (String)iterator.next();
++						try
++						{
++							compiledPatternList.add(localCompiler.compile(stringPattern));
++						}
++						catch (MalformedPatternException e)
++						{
++							compiledPatternList.add(e);
++						}
++					}
++					return compiledPatternList;
++				}
++			};
++		setProperty(TEST_PATTERNS, testPatterns);
++	}
++
++	/**
++	 * Returns a list of compiled regex patterns.  If a test string is not
++	 * compilable into a pattern, then a MalformedPatternException will be in
++	 * the list in place of the compiled pattern.
++	 *
++	 * @return a list of compiled regex patterns and MalformedPatternExceptions
++	 */
++	private List getTestPatterns()
++	{
++		ThreadLocal testPatterns = (ThreadLocal) getProperty(TEST_PATTERNS);
++		List patternList = (List) testPatterns.get();
++		return patternList;
+ 	}
+ 
+ 	/************************************************************
+@@ -278,6 +339,12 @@
+ 		setTestType(getTestType() & (NOT ^ (CONTAINS | MATCH | NOT)));
+ 	}
+ 
++	/**
++	 * Make sure the response satisfied the specified assertion requirements.
++	 *
++	 * @param response an instance of SampleResult
++	 * @return an instance of AssertionResult
++	 */
+ 	private AssertionResult evaluateResponse(SampleResult response)
+ 	{
+ 		boolean pass = true;
+@@ -285,43 +352,52 @@
+ 		AssertionResult result = new AssertionResult();
+ 		try
+ 		{
+-			Iterator iter = getTestStrings().iterator();
++			String responseString = new String(response.getResponseData());
++			// Get the matcher for this thread
++			Perl5Matcher localMatcher = (Perl5Matcher) this.matcher.get();
++			Iterator iter = getTestPatterns().iterator();
+ 			while (iter.hasNext())
+ 			{
+-				String pattern = (String)iter.next();
++				Object element = iter.next();
++				// I know this is strange looking but ThreadLocal#initialValue()
++				// won't let you throw an exception
++				if (element instanceof MalformedPatternException)
++				{
++					throw (MalformedPatternException) element;
++				}
++				Pattern pattern = (Pattern) element;
++				boolean found;
+ 				if ((CONTAINS & getTestType()) > 0)
+ 				{
+-					pass = pass && (not ? !matcher.contains(new String(response.getResponseData()),
+-							compiler.compile(pattern)) :
+-							matcher.contains(new String(response.getResponseData()),
+-							compiler.compile(pattern)));
++					found = localMatcher.contains(responseString, pattern);
+ 				}
+ 				else
+ 				{
+-					pass = pass && (not ? !matcher.matches(new String(response.getResponseData()),
+-							compiler.compile(pattern)) :
+-							matcher.matches(new String(response.getResponseData()),
+-							compiler.compile(pattern)));
++					found = localMatcher.matches(responseString, pattern);
+ 				}
++				pass = not ? !found : found;
++
+ 				if (!pass)
+ 				{
+ 					result.setFailure(true);
+-					result.setFailureMessage("Test Failed, expected " + notMessage + failMessage + pattern);
++					result.setFailureMessage("Test Failed, expected "
++							+ notMessage + failMessage + pattern.getPattern());
+ 					break;
+ 				}
+ 			}
+-			if(pass)
++			if (pass)
+ 			{
+ 				result.setFailure(false);
+ 			}
+ 			result.setError(false);
+ 		}
+-		catch(MalformedPatternException e)
++		catch (MalformedPatternException e)
+ 		{
+ 			result.setError(true);
+ 			result.setFailure(false);
+-			result.setFailureMessage("Bad test configuration"+e);
++			result.setFailureMessage("Bad test configuration" + e);
+ 		}
+ 		return result;
+ 	}
++
+ }

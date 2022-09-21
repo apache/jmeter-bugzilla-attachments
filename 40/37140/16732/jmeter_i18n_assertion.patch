@@ -1,0 +1,74 @@
+diff -ur jakarta-jmeter-2.0.3-orig/src/components/org/apache/jmeter/assertions/ResponseAssertion.java jakarta-jmeter-2.0.3-src/src/components/org/apache/jmeter/assertions/ResponseAssertion.java
+--- jakarta-jmeter-2.0.3-orig/src/components/org/apache/jmeter/assertions/ResponseAssertion.java	2004-06-11 13:04:46.000000000 +0200
++++ jakarta-jmeter-2.0.3-src/src/components/org/apache/jmeter/assertions/ResponseAssertion.java	2005-10-18 11:25:34.000000000 +0200
+@@ -18,6 +18,7 @@
+ 
+ package org.apache.jmeter.assertions;
+ import java.io.Serializable;
++import java.io.UnsupportedEncodingException;
+ import java.util.ArrayList;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -34,6 +35,8 @@
+ import org.apache.oro.text.regex.Pattern;
+ import org.apache.oro.text.regex.Perl5Compiler;
+ import org.apache.oro.text.regex.Perl5Matcher;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger; 
+ 
+ /**
+  *
+@@ -43,6 +46,8 @@
+    extends AbstractTestElement
+    implements Serializable, Assertion
+ {
++   transient private static Logger log = LoggingManager.getLoggerForClass();
++ 
+    public final static String TEST_FIELD = "Assertion.test_field";
+    // Values for TEST_FIELD
+    public final static String SAMPLE_LABEL = "Assertion.sample_label";
+@@ -263,7 +268,29 @@
+       // What are we testing against?
+       if (ResponseAssertion.RESPONSE_DATA.equals(getTestField()))
+       {
+-		toCheck = new StringBuffer(response.getResponseHeaders()).append(new String(response.responseDataAsBA())).toString();
++           String responseData = null;
++	   if ( response.getContentType()!=null 
++			   && response.getContentType().startsWith("text/") ){
++		   if ( log.isDebugEnabled()){
++			   log.debug("attempting to use charset '"+response.getDataEncoding()+"' for contentType '"+response.getContentType()+"' of "+response.getURL());
++		   }
++		   try{
++		      // use supplied encoding from ContentType
++		      responseData = new String(response.responseDataAsBA(),response.getDataEncoding());
++		   }catch(UnsupportedEncodingException ex){
++			   if ( log.isErrorEnabled){
++				   log.error("Error "+ex.getMessage()+" while converting charset '"+response.getDataEncoding()+"' for contentType '"+response.getContentType()+"' of "+response.getURL()+". Falling back to system encoding.");
++			   }
++		   }
++	   }
++
++	   
++	   if (responseData == null) {
++		   // fallback to old behaviour
++		   responseData = new String(response.responseDataAsBA());
++	   }
++
++		toCheck = new StringBuffer(response.getResponseHeaders()).append(responseData).toString();
+       }
+       else if (ResponseAssertion.RESPONSE_CODE.equals(getTestField()))
+       {
+Only in jakarta-jmeter-2.0.3-src/src/core/org/apache/jmeter/util: catalog
+diff -ur jakarta-jmeter-2.0.3-orig/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java jakarta-jmeter-2.0.3-src/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+--- jakarta-jmeter-2.0.3-orig/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2004-10-03 16:23:30.000000000 +0200
++++ jakarta-jmeter-2.0.3-src/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	2005-10-18 11:31:12.000000000 +0200
+@@ -675,6 +675,9 @@
+         totalRes.setResponseMessage(lastRes.getResponseMessage());
+         totalRes.setDataType(lastRes.getDataType());
+         totalRes.setResponseHeaders(lastRes.getResponseHeaders());
++        totalRes.setContentType(lastRes.getContentType());
++        totalRes.setDataEncoding(lastRes.getDataEncoding());
++
+         return totalRes;
+     }
+ 

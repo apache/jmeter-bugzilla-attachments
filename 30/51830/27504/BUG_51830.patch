@@ -1,0 +1,79 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(revision 1169479)
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/gui/WebServiceSamplerGui.java	(working copy)
+@@ -264,7 +264,7 @@
+         wsdlField.setText(sampler.getWsdlURL());
+         final String wsdlText = wsdlField.getText();
+         if (wsdlText != null && wsdlText.length() > 0) {
+-            fillWsdlMethods(wsdlField.getText());
++            fillWsdlMethods(wsdlField.getText(), true);
+         }
+         protocol.setText(sampler.getProtocol());
+         domain.setText(sampler.getDomain());
+@@ -318,9 +318,10 @@
+      * easily replace it with a different WSDL driver later on.
+      *
+      * @param url
++     * @param silent 
+      * @return array of web methods
+      */
+-    public String[] browseWSDL(String url) {
++    public String[] browseWSDL(String url, boolean silent) {
+         try {
+             // We get the AuthManager and pass it to the WSDLHelper
+             // once the sampler is updated to Axis, all of this stuff
+@@ -332,11 +333,14 @@
+             HELPER.parse();
+             return HELPER.getWebMethods();
+         } catch (Exception exception) {
+-            JOptionPane.showConfirmDialog(this,
+-                    JMeterUtils.getResString("wsdl_helper_error") // $NON-NLS-1$
+-                    +"\n"+exception, // $NON-NLS-1$
+-                    "Warning",
+-                    JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE);
++            if(!silent)
++            {
++                JOptionPane.showConfirmDialog(this,
++                        JMeterUtils.getResString("wsdl_helper_error") // $NON-NLS-1$
++                        +"\n"+exception, // $NON-NLS-1$
++                        "Warning",
++                        JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE);
++            }
+             return ArrayUtils.EMPTY_STRING_ARRAY;
+         }
+     }
+@@ -365,7 +369,7 @@
+         } else if (eventSource == wsdlButton){
+             final String wsdlText = wsdlField.getText();
+             if (wsdlText != null && wsdlText.length() > 0) {
+-                fillWsdlMethods(wsdlText);
++                fillWsdlMethods(wsdlText, false);
+             } else {
+                 JOptionPane.showConfirmDialog(this,
+                         JMeterUtils.getResString("wsdl_url_error"), // $NON-NLS-1$
+@@ -378,8 +382,8 @@
+     /**
+      * @param wsdlText
+      */
+-    private void fillWsdlMethods(final String wsdlText) {
+-        String[] wsdlData = browseWSDL(wsdlText);
++    private void fillWsdlMethods(final String wsdlText, boolean silent) {
++        String[] wsdlData = browseWSDL(wsdlText, silent);
+         if (wsdlData != null) {
+             wsdlMethods.setValues(wsdlData);
+             wsdlMethods.repaint();
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java	(revision 1166194)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java	(working copy)
+@@ -180,6 +180,9 @@
+             if (CONN instanceof HttpURLConnection && this.AUTH != null && this.AUTH.getAuthHeaderForURL(this.WSDLURL) != null) {
+                 CONN.setRequestProperty("Authorization", this.AUTH.getAuthHeaderForURL(this.WSDLURL));
+             }
++            // TODO Maybe create a property for this
++            CONN.setConnectTimeout(5000);
++            CONN.setReadTimeout(5000);
+         } catch (IOException exception) {
+             throw exception;
+         }

@@ -1,0 +1,43 @@
+diff -Naur apache-jmeter-2.13/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java apache-jmeter-2.13_new/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+--- apache-jmeter-2.13/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	2015-03-08 12:13:37.000000000 +0200
++++ apache-jmeter-2.13_new/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	2016-01-15 08:23:20.000000000 +0200
+@@ -47,7 +47,9 @@
+ import org.apache.commons.lang3.time.DateUtils;
+ import org.apache.http.conn.ssl.AbstractVerifier;
+ import org.apache.jmeter.assertions.ResponseAssertion;
++import org.apache.jmeter.assertions.SizeAssertion;
+ import org.apache.jmeter.assertions.gui.AssertionGui;
++import org.apache.jmeter.assertions.gui.SizeAssertionGui;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.config.ConfigElement;
+ import org.apache.jmeter.config.ConfigTestElement;
+@@ -72,6 +74,8 @@
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
+ import org.apache.jmeter.protocol.http.util.HTTPConstants;
++import org.apache.jmeter.reporters.ResultSaver;
++import org.apache.jmeter.reporters.gui.ResultSaverGui;
+ import org.apache.jmeter.samplers.SampleEvent;
+ import org.apache.jmeter.samplers.SampleListener;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -1162,7 +1166,20 @@
+                                 final TestElement headerManager = subConfigs[i];
+                                 headerManager.setProperty(TestElement.GUI_CLASS, HEADER_PANEL);
+                                 treeModel.addComponent(headerManager, newNode);
++                            }else  if (subConfigs[i] instanceof ResponseAssertion) {
++                                final TestElement res = subConfigs[i];
++                                res.setProperty(TestElement.GUI_CLASS, ASSERTION_GUI);
++                                treeModel.addComponent(res, newNode);
++                            }else  if (subConfigs[i] instanceof ResultSaver) {
++                                final TestElement res = subConfigs[i];
++                                res.setProperty(TestElement.GUI_CLASS, ResultSaverGui.class.getName());
++                                treeModel.addComponent(res, newNode);
++                            }else  if (subConfigs[i] instanceof SizeAssertion) {
++                                final TestElement res = subConfigs[i];
++                                res.setProperty(TestElement.GUI_CLASS, SizeAssertionGui.class.getName());
++                                treeModel.addComponent(res, newNode);
+                             }
++
+                         }
+                     } catch (IllegalUserActionException e) {
+                         JMeterUtils.reportErrorToUser(e.getMessage());

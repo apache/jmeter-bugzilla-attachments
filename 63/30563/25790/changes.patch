@@ -1,0 +1,249 @@
+*** core/org/apache/jmeter/engine/StandardJMeterEngine.java   2009-06-17 16:09:28.000000000 -0300
+--- core/org/apache/jmeter/engine/StandardJMeterEngine.java  2010-07-08 15:55:45.000000000 -0300
+***************
+*** 442,448 ****
+              JMeterContextService.addTotalThreads(numThreads);
+              boolean onErrorStopTest = group.getOnErrorStopTest();
+              boolean onErrorStopTestNow = group.getOnErrorStopTestNow();
+!             boolean onErrorStopThread = group.getOnErrorStopThread();
+              String groupName = group.getName();
+              int rampUp = group.getRampUp();
+              float perThreadDelay = ((float) (rampUp * 1000) / (float) numThreads);
+--- 442,449 ----
+              JMeterContextService.addTotalThreads(numThreads);
+              boolean onErrorStopTest = group.getOnErrorStopTest();
+              boolean onErrorStopTestNow = group.getOnErrorStopTestNow();
+!             boolean onErrorStopThread = group.getOnErrorStopThread();
+!             boolean onErrorRestartThread = group.getOnErrorRestartThread();      
+              String groupName = group.getName();
+              int rampUp = group.getRampUp();
+              float perThreadDelay = ((float) (rampUp * 1000) / (float) numThreads);
+***************
+*** 454,459 ****
+--- 455,462 ----
+                  log.info("Test will stop abruptly on error");
+              } else if (onErrorStopThread) {
+                  log.info("Thread will stop on error");
++             } else if (onErrorRestartThread) {
++                 log.info("Thread will restart on error");
+              } else {
+                  log.info("Thread will continue on error");
+              }
+***************
+*** 476,481 ****
+--- 479,485 ----
+                  jmeterThread.setOnErrorStopTest(onErrorStopTest);
+                  jmeterThread.setOnErrorStopTestNow(onErrorStopTestNow);
+                  jmeterThread.setOnErrorStopThread(onErrorStopThread);
++               jmeterThread.setOnErrorRestartThread(onErrorRestartThread);
+  
+                  Thread newThread = new Thread(jmeterThread);
+                  newThread.setName(threadName);
+
+
+*** core/org/apache/jmeter/resources/messages.properties      2009-06-17 16:09:38.000000000 -0300
+--- core/org/apache/jmeter/resources/messages.properties     2010-07-08 13:25:40.000000000 -0300
+***************
+*** 674,680 ****
+  sample_result_save_configuration=Sample Result Save Configuration
+  sampler_label=Label
+  sampler_on_error_action=Action to be taken after a Sampler error
+! sampler_on_error_continue=Continue
+  sampler_on_error_stop_test=Stop Test
+  sampler_on_error_stop_test_now=Stop Test Now
+  sampler_on_error_stop_thread=Stop Thread
+--- 674,681 ----
+  sample_result_save_configuration=Sample Result Save Configuration
+  sampler_label=Label
+  sampler_on_error_action=Action to be taken after a Sampler error
+! sampler_on_error_continue=Continue
+! sampler_on_error_restart_thread=Restart Thread
+  sampler_on_error_stop_test=Stop Test
+  sampler_on_error_stop_test_now=Stop Test Now
+  sampler_on_error_stop_thread=Stop Thread
+
+
+*** core/org/apache/jmeter/threads/JMeterThread.java  2009-06-17 16:08:52.000000000 -0300
+--- core/org/apache/jmeter/threads/JMeterThread.java 2010-07-08 16:01:27.000000000 -0300
+***************
+*** 49,60 ****
+--- 49,63 ----
+  import org.apache.jmeter.util.JMeterUtils;
+  import org.apache.jorphan.collections.HashTree;
+  import org.apache.jorphan.collections.HashTreeTraverser;
++ import org.apache.jorphan.collections.ListedHashTree;
+  import org.apache.jorphan.collections.SearchByClass;
+  import org.apache.jorphan.logging.LoggingManager;
+  import org.apache.jorphan.util.JMeterStopTestException;
+  import org.apache.jorphan.util.JMeterStopTestNowException;
+  import org.apache.jorphan.util.JMeterStopThreadException;
+  import org.apache.log.Logger;
++ import org.apache.jmeter.samplers.AbstractSampler;
++ 
+  
+  /**
+   * The JMeter interface to the sampling process, allowing JMeter to see the
+***************
+*** 117,122 ****
+--- 120,127 ----
+  
+      private volatile boolean onErrorStopThread;
+  
++     private volatile boolean onErrorRestartThread;
++     
+      private volatile Sampler currentSampler;
+  
+      public JMeterThread(HashTree test, JMeterThreadMonitor monitor, ListenerNotifier note) {
+***************
+*** 235,246 ****
+      public void run() {
+          // threadContext is not thread-safe, so keep within thread
+          JMeterContext threadContext = JMeterContextService.getContext();
+          try {
+              initRun(threadContext);
+              while (running) {
+!                 Sampler sam;
+!                 while (running && (sam = controller.next()) != null) {
+                      process_sampler(sam, null, threadContext);
+                  }
+                  if (controller.isDone()) {
+                      running = false;
+--- 240,272 ----
+      public void run() {
+          // threadContext is not thread-safe, so keep within thread
+          JMeterContext threadContext = JMeterContextService.getContext();
++ 
+          try {
+            initRun(threadContext);
++ 
+            while (running) {
+!               Sampler firstSampler = controller.next();
+!                 Sampler sam = firstSampler;
+!                 while (running && sam != null) {
+!                   if (onErrorRestartThread){ // if the threadGroup option is to restart the thread when it fails
+! 
+!                       if (sam.equals(firstSampler)) { // if it's the start of an iteration
+!                           threadContext.getVariables().put(LAST_SAMPLE_OK, "true");
+!                       }
+!                       if (threadContext.getVariables().get(LAST_SAMPLE_OK) == "true") {
+!                           process_sampler(sam, null, threadContext);
+!                           sam = controller.next();
+!                       }
+!                       else {
+!                           while (!sam.equals(firstSampler)) { // while the thread is NOT on the begining of the tree
+!                               sam = controller.next();
+!                           }
+!                       }
+!                   }
+!                   else {
+                        process_sampler(sam, null, threadContext);
++                       sam = controller.next();
++                   }  
+                }
+                  if (controller.isDone()) {
+                      running = false;
+***************
+*** 760,765 ****
+--- 786,801 ----
+          onErrorStopThread = b;
+      }
+  
++     /**
++      * Should Thread restart on Sampler error?
++      *
++      * @param b -
++      *            true or false
++      */
++     public void setOnErrorRestartThread(boolean b) {
++         onErrorRestartThread = b;
++     }
++ 
+      public void setThreadGroup(ThreadGroup group) {
+          this.threadGroup = group;
+      }
+
+
+
+*** core/org/apache/jmeter/threads/ThreadGroup.java   2009-06-17 16:08:52.000000000 -0300
+--- core/org/apache/jmeter/threads/ThreadGroup.java  2010-07-08 13:10:41.000000000 -0300
+***************
+*** 70,75 ****
+--- 70,78 ----
+      /** Continue, i.e. ignore sampler errors */
+      public final static String ON_SAMPLE_ERROR_CONTINUE = "continue";
+  
++     /** Restart current thread if sampler error occurs */
++     public final static String ON_SAMPLE_ERROR_RESTARTTHREAD = "restartthread";
++ 
+      /** Stop current thread if sampler error occurs */
+      public final static String ON_SAMPLE_ERROR_STOPTHREAD = "stopthread";
+  
+***************
+*** 297,302 ****
+--- 300,314 ----
+      }
+  
+      /**
++      * Check if a sampler error should cause thread to restart.
++      *
++      * @return true if thread should restart
++      */
++     public boolean getOnErrorRestartThread() {
++       return getPropertyAsString(ThreadGroup.ON_SAMPLE_ERROR).equalsIgnoreCase(ON_SAMPLE_ERROR_RESTARTTHREAD);
++     }
++ 
++     /**
+       * Check if a sampler error should cause thread to stop.
+       *
+       * @return true if thread should stop
+
+
+*** core/org/apache/jmeter/threads/gui/ThreadGroupGui.java    2009-06-17 16:08:50.000000000 -0300
+--- core/org/apache/jmeter/threads/gui/ThreadGroupGui.java   2010-07-08 13:17:08.000000000 -0300
+***************
+*** 77,82 ****
+--- 77,84 ----
+      // Sampler error action buttons
+      private JRadioButton continueBox;
+  
++     private JRadioButton restartThrdBox;
++ 
+      private JRadioButton stopThrdBox;
+  
+      private JRadioButton stopTestBox;
+***************
+*** 127,132 ****
+--- 129,136 ----
+              stopTestNowBox.setSelected(true);
+          } else if (te.getOnErrorStopThread()) {
+              stopThrdBox.setSelected(true);
++       } else if (te.getOnErrorRestartThread()) {
++           restartThrdBox.setSelected(true);
+          } else {
+              continueBox.setSelected(true);
+          }
+***************
+*** 142,147 ****
+--- 146,154 ----
+          if (stopThrdBox.isSelected()) {
+              return ThreadGroup.ON_SAMPLE_ERROR_STOPTHREAD;
+          }
++       if (restartThrdBox.isSelected()) {
++             return ThreadGroup.ON_SAMPLE_ERROR_RESTARTTHREAD;
++         }
+  
+          // Defaults to continue
+          return ThreadGroup.ON_SAMPLE_ERROR_CONTINUE;
+***************
+*** 283,288 ****
+--- 290,299 ----
+          group.add(continueBox);
+          panel.add(continueBox);
+  
++       restartThrdBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_restart_thread")); // $NON-NLS-1$
++         group.add(restartThrdBox);
++         panel.add(restartThrdBox);
++ 
+          stopThrdBox = new JRadioButton(JMeterUtils.getResString("sampler_on_error_stop_thread")); // $NON-NLS-1$
+          group.add(stopThrdBox);
+          panel.add(stopThrdBox);

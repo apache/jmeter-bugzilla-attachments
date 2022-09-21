@@ -1,0 +1,31 @@
+Here's a comment that may or may not be useful when this bug is being fixed:
+
+Locally, I had a go at fixing this by changing the implementation of ModuleController.getSelectedNode() to the following:
+
+    public JMeterTreeNode getSelectedNode()
+    {
+    	if (selectedNode == null)
+    	{
+    		restoreSelected();
+    	}
+        return selectedNode;
+    }
+
+
+Although I believe that means the node being referenced must come before the ModuleController referencing it, this seemed to do the trick.
+
+I subsequently came across another problem:
+
+If the Node (Module) being referenced has a sub Node (A HTTPSampler say) with the same name e.g.
+
+Test Plan
+ |--- Modules
+ |     |--- Hit Search Page
+ |           |--- Hit Search Page
+ |--- Thread Group
+ |     |--- Module Controller (Points to Modules -> Hit Search Page)
+
+Then the traverse method will fall over resulting in the user being given a "0 >= 0" dialog box (exception has no stack either).
+
+Im afraid I have no real solution to suggest (apart from maybe giving each node an id that isn't the name), but the work around is to ensure that Sub components/nodes of a referenced module do not share that module's name.
+

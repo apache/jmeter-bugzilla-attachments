@@ -1,0 +1,211 @@
+diff --git a/src/core/org/apache/jmeter/util/SSLManager.java b/src/core/org/apache/jmeter/util/SSLManager.java
+index f2cde2e..cbc5ed4 100644
+--- a/src/core/org/apache/jmeter/util/SSLManager.java
++++ b/src/core/org/apache/jmeter/util/SSLManager.java
+@@ -26,9 +26,11 @@ import java.net.HttpURLConnection;
+ import java.security.KeyStore;
+ import java.security.Provider;
+ import java.security.Security;
++import java.util.Arrays;
+ import java.util.Locale;
+ 
+ import javax.swing.JOptionPane;
++import javax.swing.JPasswordField;
+ 
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.util.keystore.JmeterKeyStore;
+@@ -122,32 +124,42 @@ public abstract class SSLManager {
+                 this.keyStore = null;
+                 throw new IllegalArgumentException("Could not create keystore: "+e.getMessage(), e);
+             }
+-
+-            try {
+-                File initStore = new File(fileName);
+-
+-                if (fileName.length() >0 && initStore.exists()) {
++            
++           try {
++              
++              //The string 'NONE' is used for the keystore location when using PKCS11
++              //https://docs.oracle.com/javase/8/docs/technotes/guides/security/p11guide.html#JSSE
++              if ("NONE".equalsIgnoreCase(fileName)) {
++                 String password = getPassword();
++                 if(password == null) {
++                    throw new IllegalArgumentException("Password should not be null");
++                 }
++                 this.keyStore.load(null, getPassword());
++              } else {
++                 File initStore = new File(fileName);
++                 if (fileName.length() > 0 && initStore.exists()) {
+                     try (InputStream fis = new FileInputStream(initStore);
+                             InputStream fileInputStream = new BufferedInputStream(fis)) {
+-                        this.keyStore.load(fileInputStream, getPassword());
+-                        if (log.isInfoEnabled()) {
+-                            log.info(
+-                                    "Total of {} aliases loaded OK from keystore",
+-                                    keyStore.getAliasCount());
+-                        }
++                       this.keyStore.load(fileInputStream, getPassword());
++                       if (log.isInfoEnabled()) {
++                          log.info(
++                                  "Total of {} aliases loaded OK from keystore",
++                                  keyStore.getAliasCount());
++                       }
+                     }
+-                } else {
++                 } else {
+                     log.warn("Keystore file not found, loading empty keystore");
+                     this.defaultpw = ""; // Ensure not null
+                     this.keyStore.load(null, "");
+-                }
+-            } catch (Exception e) {
+-                log.error("Problem loading keystore: {}", e.getMessage(), e);
+-            }
+-
+-            if (log.isDebugEnabled()) {
+-                log.debug("JmeterKeyStore type: {}", this.keyStore.getClass());
+-            }
++                 }
++              }
++           } catch (Exception e) {
++              log.error("Problem loading keystore: {}", e.getMessage(), e);
++           }
++
++           if (log.isDebugEnabled()) {
++              log.debug("JmeterKeyStore type: {}", this.keyStore.getClass());
++           }
+         }
+ 
+         return this.keyStore;
+@@ -157,7 +169,6 @@ public abstract class SSLManager {
+      * The password can be defined as a property; this dialogue is provided to allow it
+      * to be entered at run-time.
+      *
+-     * However, this does not gain much, as the dialogue does not (yet) support hidden input ...
+      *
+     */
+     private String getPassword() {
+@@ -166,16 +177,24 @@ public abstract class SSLManager {
+             final GuiPackage guiInstance = GuiPackage.getInstance();
+             if (guiInstance != null) {
+                 synchronized (this) { // TODO is sync really needed?
+-                    this.defaultpw = JOptionPane.showInputDialog(
+-                            guiInstance.getMainFrame(),
+-                            JMeterUtils.getResString("ssl_pass_prompt"),  // $NON-NLS-1$
+-                            JMeterUtils.getResString("ssl_pass_title"),  // $NON-NLS-1$
+-                            JOptionPane.QUESTION_MESSAGE);
+-                    System.setProperty(KEY_STORE_PASSWORD, this.defaultpw);
+-                    password = this.defaultpw;
+-                }
++                  JPasswordField pwf = new JPasswordField(64);
++                  pwf.setEchoChar('*');
++                  int choice = JOptionPane.showConfirmDialog(
++                          guiInstance.getMainFrame(),
++                          pwf,
++                          JMeterUtils.getResString("ssl_pass_prompt"),
++                          JOptionPane.OK_CANCEL_OPTION,
++                          JOptionPane.PLAIN_MESSAGE);
++                  if (choice == JOptionPane.OK_OPTION) {
++                     char[] pwchars = pwf.getPassword();
++                     this.defaultpw = new String(pwchars);
++                     Arrays.fill(pwchars, '*');
++                  }
++                  System.setProperty(KEY_STORE_PASSWORD, this.defaultpw);
++                  password = this.defaultpw;
++               }
+             } else {
+-                log.warn("No password provided, and no GUI present so cannot prompt");
++               log.warn("No password provided, and no GUI present so cannot prompt");
+             }
+         }
+         return password;
+diff --git a/src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java b/src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java
+index 27fb69f..a248589 100644
+--- a/src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java
++++ b/src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java
+@@ -115,49 +115,47 @@ public final class JmeterKeyStore {
+             throws NoSuchAlgorithmException, CertificateException, IOException, KeyStoreException, UnrecoverableKeyException {
+         char[] pw = pword==null ? null : pword.toCharArray();
+         store.load(is, pw);
+-    
++
+         List<String> aliasesList = new ArrayList<>();
+         this.privateKeyByAlias = new HashMap<>();
+         this.certsByAlias = new HashMap<>();
+ 
+-        if (null != is){ // No point checking an empty keystore
+-            PrivateKey privateKey = null;
+-            int index = 0;
+-            Enumeration<String> aliases = store.aliases();
+-            while (aliases.hasMoreElements()) {
+-                String alias = aliases.nextElement();
+-                if (store.isKeyEntry(alias)) {
+-                    if (index >= startIndex && (endIndex== -1 || index <= endIndex)) {
+-                        privateKey = (PrivateKey) store.getKey(alias, pw);
+-                        if (null == privateKey) {
+-                            throw new IOException("No key found for alias: " + alias); // Should not happen
+-                        }
+-                        Certificate[] chain = store.getCertificateChain(alias);
+-                        if (null == chain) {
+-                            throw new IOException("No certificate chain found for alias: " + alias);
+-                        }
+-                        aliasesList.add(alias);
+-                        X509Certificate[] x509certs = new X509Certificate[chain.length];
+-                        for (int i = 0; i < x509certs.length; i++) {
+-                            x509certs[i] = (X509Certificate)chain[i];
+-                        }
+-
+-                        privateKeyByAlias.put(alias, privateKey);
+-                        certsByAlias.put(alias, x509certs);
+-                    }
+-                    index++;
++       PrivateKey privateKey = null;
++       int index = 0;
++       Enumeration<String> aliases = store.aliases();
++       while (aliases.hasMoreElements()) {
++          String alias = aliases.nextElement();
++          if (store.isKeyEntry(alias)) {
++             if (index >= startIndex && (endIndex == -1 || index <= endIndex)) {
++                privateKey = (PrivateKey) store.getKey(alias, pw);
++                if (null == privateKey) {
++                   throw new IOException("No key found for alias: " + alias); // Should not happen
+                 }
+-            }
+-    
+-            if (null == privateKey) {
+-                throw new IOException("No key(s) found");
+-            }
+-            if (endIndex != -1 && index <= endIndex-startIndex && log.isWarnEnabled()) {
+-                log.warn("Did not find as much aliases as configured in indexes Start={}, end={}, found={}",
+-                        startIndex, endIndex, certsByAlias.size());
+-            }
+-        }
+-    
++                Certificate[] chain = store.getCertificateChain(alias);
++                if (null == chain) {
++                   throw new IOException("No certificate chain found for alias: " + alias);
++                }
++                aliasesList.add(alias);
++                X509Certificate[] x509certs = new X509Certificate[chain.length];
++                for (int i = 0; i < x509certs.length; i++) {
++                   x509certs[i] = (X509Certificate) chain[i];
++                }
++
++                privateKeyByAlias.put(alias, privateKey);
++                certsByAlias.put(alias, x509certs);
++             }
++             index++;
++          }
++       }
++
++       if (null == privateKey) {
++          throw new IOException("No key(s) found");
++       }
++       if (endIndex != -1 && index <= endIndex - startIndex && log.isWarnEnabled()) {
++          log.warn("Did not find as much aliases as configured in indexes Start={}, end={}, found={}",
++                  startIndex, endIndex, certsByAlias.size());
++       }
++
+         /*
+          * Note: if is == null, the arrays will be empty
+          */

@@ -1,0 +1,884 @@
+Index: /src/components/org/apache/jmeter/assertions/CompareAssertion.java
+===================================================================
+--- /src/components/org/apache/jmeter/assertions/CompareAssertion.java	(revision 818668)
++++ /src/components/org/apache/jmeter/assertions/CompareAssertion.java	(working copy)
+@@ -20,9 +20,7 @@
+ 
+ import java.io.Serializable;
+ import java.util.Collection;
+-import java.util.Iterator;
+ import java.util.LinkedList;
+-import java.util.List;
+ 
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.engine.event.LoopIterationListener;
+@@ -34,98 +32,120 @@
+ import org.apache.oro.text.regex.Util;
+ 
+ public class CompareAssertion extends AbstractTestElement implements Assertion, TestBean, Serializable,
+-		LoopIterationListener {
++        LoopIterationListener {
+ 
+     private static final long serialVersionUID = 240L;
+     
+-	private transient List<SampleResult> responses;
++    private static final String NL = "\n"; // $NON-NLS-1$
++    
++    private static final String NL2 = "\n\n"; // $NON-NLS-1$
+ 
+-	private transient final StringSubstitution emptySub = new StringSubstitution("");
++    private transient LinkedList<SampleResult> responses;
+ 
+-	private boolean compareContent = true;
++    private transient final StringSubstitution emptySub = new StringSubstitution("");
+ 
+-	private long compareTime = -1;
++    private boolean compareContent = true;
+ 
+-	private Collection<SubstitutionElement> stringsToSkip;
++    private long compareTime = -1;
+ 
+-	public CompareAssertion() {
+-		super();
+-	}
++    private Collection<SubstitutionElement> stringsToSkip;
+ 
+-	public AssertionResult getResult(SampleResult response) {
+-		responses.add(response);
+-		if (responses.size() > 1) {
+-			CompareAssertionResult result = new CompareAssertionResult(getName());
+-			compareContent(result);
+-			compareTime(result);
+-			return result;
+-		} else
+-			return new AssertionResult(getName());
+-	}
++    public CompareAssertion() {
++        super();
++    }
+ 
+-	private void compareTime(CompareAssertionResult result) {
+-		if (compareTime >= 0) {
+-			Iterator<SampleResult> iter = responses.iterator();
+-			long prevTime = -1;
+-			SampleResult prevResult = null;
+-			boolean success = true;
+-			while (iter.hasNext()) {
+-				SampleResult sResult = iter.next();
+-				long currentTime = sResult.getTime();
+-				if (prevTime != -1) {
+-					success = Math.abs(prevTime - currentTime) <= compareTime;
+-					prevResult = sResult;
+-				}
+-				if (!success) {
+-					result.setFailure(true);
+-                    StringBuffer buf = new StringBuffer();
+-                    appendResultDetails(buf, prevResult);
+-                    buf.append("Response Time: ").append(prevTime);
+-					result.addToBaseResult(buf.toString());
+-					buf = new StringBuffer();
+-                    appendResultDetails(buf, sResult);
+-					buf.append("Response Time: ").append(currentTime);
+-					result.addToSecondaryResult(buf.toString());
+-					result.setFailureMessage("Responses differ in response time by more than "+compareTime+" ms");
+-					break;
+-				}
+-				prevResult = sResult;
+-				prevTime = currentTime;
+-			}
+-		}
+-	}
++    public AssertionResult getResult(SampleResult response) {
++        responses.addLast(response);
++        if (responses.size() > 1) {
++            CompareAssertionResult result = new CompareAssertionResult(getName());
++            if (compareTime >= 0) {
++                compareTime(result);
++            }
++            if (compareContent) {
++                compareContent(result);
++            }
++            return result;
++        } else {
++            CompareAssertionResult assRes = new CompareAssertionResult(getName());
++            assRes.setFailure(false);
++            assRes.addToBaseResult("No previous");
++
++            SampleResult firstResult = responses.getFirst();
++            long prevTime = responses.getFirst().getTime();
++            StringBuffer buf = new StringBuffer();
++            appendResultDetails(buf, firstResult);
++            buf.append("Response Time (ms): ").append(prevTime + NL2);
++            buf.append(filterString(firstResult.getResponseDataAsString()));
++            assRes.addToSecondaryResult(buf.toString());
++
++            return assRes;
++        }
++    }
++
++    private void compareTime(CompareAssertionResult result) {
++        SampleResult prevResult = responses.getFirst();
++        long prevTime = prevResult.getTime();
++        StringBuffer buf = new StringBuffer();
++        appendResultDetails(buf, prevResult);
++        buf.append("Response Time (ms): ").append(prevTime);
++        result.addToBaseResult(buf.toString());
++        
++        boolean success = true;
++        SampleResult sResult = responses.getLast();
++        if (sResult != null) {
++            long currentTime = sResult.getTime();
++            success = Math.abs(prevTime - currentTime) <= compareTime;
++            if (!success) {
++                result.setFailure(true);
++                buf = new StringBuffer();
++                appendResultDetails(buf, sResult);
++                buf.append("Response Time (ms): ").append(currentTime);
++                result.addToSecondaryResult(buf.toString());
++                result.setFailureMessage("Responses differ in response time by more than "
++                                + compareTime + " ms");
++            } else {
++                buf = new StringBuffer();
++                buf.append("Compare time less than " + compareTime + " ms" + NL);
++                buf.append(NL2 + "Response Time (ms): ").append(currentTime);
++                result.addToSecondaryResult(buf.toString());
++            }
++        }
++    }
+ 
+     private void compareContent(CompareAssertionResult result) {
+-		if (compareContent) {
+-			Iterator<SampleResult> iter = responses.iterator();
+-			String prevContent = null;
+-			SampleResult prevResult = null;
+-			boolean success = true;
+-			while (iter.hasNext()) {
+-				SampleResult sResult = iter.next();
+-				String currentContent = sResult.getResponseDataAsString();
+-				currentContent = filterString(currentContent);
+-				if (prevContent != null) {
+-					success = prevContent.equals(currentContent);
+-				}
+-				if (!success) {
+-					result.setFailure(true);
+-                    StringBuffer buf = new StringBuffer();
+-                    appendResultDetails(buf, prevResult);
+-					buf.append(prevContent);
+-					result.addToBaseResult(buf.toString());
+-					buf = new StringBuffer();
+-					appendResultDetails(buf, sResult);
+-					buf.append(currentContent);
+-					result.addToSecondaryResult(buf.toString());
+-					result.setFailureMessage("Responses differ in content");
+-					break;
+-				}
+-				prevResult = sResult;
+-				prevContent = currentContent;
+-			}
+-		}
+-	}
++        SampleResult prevResult = responses.getFirst();
++        String prevContent = filterString(prevResult.getResponseDataAsString());
++        StringBuffer buf = new StringBuffer();
++        // no append if compare time already pass
++        if (compareTime < 0) {
++            appendResultDetails(buf, prevResult);
++        } else {
++            buf.append(NL2);
++        }
++        buf.append(prevContent);
++        result.addToBaseResult(buf.toString());
++        
++        SampleResult sResult = responses.getLast();
++        if (sResult != null) {
++            String currentContent = sResult.getResponseDataAsString();
++            currentContent = filterString(currentContent);
++            if (!prevContent.equals(currentContent)) {
++                result.setFailure(true);
++                buf = new StringBuffer();
++                // no append if compare time already pass
++                if (compareTime < 0) {
++                    appendResultDetails(buf, sResult);
++                } else {
++                    buf.append(NL2);
++                }
++                buf.append(currentContent);
++                result.addToSecondaryResult(buf.toString());
++                result.setFailureMessage("Responses differ in content");
++            } else {
++                result.addToSecondaryResult("Same content");
++            }
++        }
++    }
+ 
+     private void appendResultDetails(StringBuffer buf, SampleResult result) {
+         final String samplerData = result.getSamplerData();
+@@ -132,7 +152,7 @@
+         if (samplerData != null){
+             buf.append(samplerData.trim());
+         }
+-        buf.append("\n");
++        buf.append(NL);
+         final String requestHeaders = result.getRequestHeaders();
+         if (requestHeaders != null){
+             buf.append(requestHeaders);
+@@ -137,73 +157,73 @@
+         if (requestHeaders != null){
+             buf.append(requestHeaders);
+         }
+-        buf.append("\n\n");        
++        buf.append(NL2);
+     }
+ 
+-	private String filterString(String content) {
+-		if (stringsToSkip == null || stringsToSkip.size() == 0) {
+-			return content;
+-		} else {
+-			for (SubstitutionElement regex : stringsToSkip) {
+-				emptySub.setSubstitution(regex.getSubstitute());
+-				content = Util.substitute(JMeterUtils.getMatcher(), JMeterUtils.getPatternCache().getPattern(regex.getRegex()),
+-						emptySub, content, Util.SUBSTITUTE_ALL);
+-			}
+-		}
+-		return content;
+-	}
++    private String filterString(String content) {
++        if (stringsToSkip == null || stringsToSkip.size() == 0) {
++            return content;
++        } else {
++            for (SubstitutionElement regex : stringsToSkip) {
++                emptySub.setSubstitution(regex.getSubstitute());
++                content = Util.substitute(JMeterUtils.getMatcher(), JMeterUtils.getPatternCache().getPattern(regex.getRegex()),
++                        emptySub, content, Util.SUBSTITUTE_ALL);
++            }
++        }
++        return content;
++    }
+ 
+-	public void iterationStart(LoopIterationEvent iterEvent) {
+-		responses = new LinkedList<SampleResult>();
+-	}
++    public void iterationStart(LoopIterationEvent iterEvent) {
++        responses = new LinkedList<SampleResult>();
++    }
+ 
+-	public void iterationEnd(LoopIterationEvent iterEvent) {
+-		responses = null;
+-	}
++    public void iterationEnd(LoopIterationEvent iterEvent) {
++        responses = null;
++    }
+ 
+-	/**
+-	 * @return Returns the compareContent.
+-	 */
+-	public boolean isCompareContent() {
+-		return compareContent;
+-	}
++    /**
++     * @return Returns the compareContent.
++     */
++    public boolean isCompareContent() {
++        return compareContent;
++    }
+ 
+-	/**
+-	 * @param compareContent
+-	 *            The compareContent to set.
+-	 */
+-	public void setCompareContent(boolean compareContent) {
+-		this.compareContent = compareContent;
+-	}
++    /**
++     * @param compareContent
++     *            The compareContent to set.
++     */
++    public void setCompareContent(boolean compareContent) {
++        this.compareContent = compareContent;
++    }
+ 
+-	/**
+-	 * @return Returns the compareTime.
+-	 */
+-	public long getCompareTime() {
+-		return compareTime;
+-	}
++    /**
++     * @return Returns the compareTime.
++     */
++    public long getCompareTime() {
++        return compareTime;
++    }
+ 
+-	/**
+-	 * @param compareTime
+-	 *            The compareTime to set.
+-	 */
+-	public void setCompareTime(long compareTime) {
+-		this.compareTime = compareTime;
+-	}
++    /**
++     * @param compareTime
++     *            The compareTime to set.
++     */
++    public void setCompareTime(long compareTime) {
++        this.compareTime = compareTime;
++    }
+ 
+-	/**
+-	 * @return Returns the stringsToSkip.
+-	 */
+-	public Collection<SubstitutionElement> getStringsToSkip() {
+-		return stringsToSkip;
+-	}
++    /**
++     * @return Returns the stringsToSkip.
++     */
++    public Collection<SubstitutionElement> getStringsToSkip() {
++        return stringsToSkip;
++    }
+ 
+-	/**
+-	 * @param stringsToSkip
+-	 *            The stringsToSkip to set.
+-	 */
+-	public void setStringsToSkip(Collection<SubstitutionElement> stringsToSkip) {
+-		this.stringsToSkip = stringsToSkip;
+-	}
++    /**
++     * @param stringsToSkip
++     *            The stringsToSkip to set.
++     */
++    public void setStringsToSkip(Collection<SubstitutionElement> stringsToSkip) {
++        this.stringsToSkip = stringsToSkip;
++    }
+ 
+ }
+Index: /src/components/org/apache/jmeter/assertions/CompareAssertionBeanInfo.java
+===================================================================
+--- /src/components/org/apache/jmeter/assertions/CompareAssertionBeanInfo.java	(revision 818668)
++++ /src/components/org/apache/jmeter/assertions/CompareAssertionBeanInfo.java	(working copy)
+@@ -26,28 +26,28 @@
+ 
+ public class CompareAssertionBeanInfo extends BeanInfoSupport {
+ 
+-	public CompareAssertionBeanInfo() {
+-		super(CompareAssertion.class);
+-		createPropertyGroup("compareChoices", new String[] { "compareContent", "compareTime" });
+-		createPropertyGroup("comparison_filters", new String[]{"stringsToSkip"});
+-		PropertyDescriptor p = property("compareContent");
+-		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+-		p.setValue(DEFAULT, Boolean.TRUE);
+-		p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+-		p = property("compareTime");
+-		p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+-		p.setValue(DEFAULT, new Long(-1));
+-		p.setValue(NOT_EXPRESSION, Boolean.FALSE);	
+-		p = property("stringsToSkip");
+-		p.setPropertyEditorClass(TableEditor.class);
+-		p.setValue(TableEditor.CLASSNAME,SubstitutionElement.class.getName());
+-		p.setValue(TableEditor.HEADERS,new String[]{"Regex String","Substitution"}); // TODO I18n
+-		p.setValue(TableEditor.OBJECT_PROPERTIES, // These are the names of the get/set methods
+-		        new String[]{SubstitutionElement.REGEX, SubstitutionElement.SUBSTITUTE});
+-		p.setValue(NOT_UNDEFINED,Boolean.TRUE);
+-		p.setValue(DEFAULT,new ArrayList<Object>());
+-		p.setValue(MULTILINE,Boolean.TRUE);
+-		
+-	}
++    public CompareAssertionBeanInfo() {
++        super(CompareAssertion.class);
++        createPropertyGroup("compareChoices", new String[] { "compareContent", "compareTime" });
++        createPropertyGroup("comparison_filters", new String[]{"stringsToSkip"});
++        PropertyDescriptor p = property("compareContent");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, Boolean.TRUE);
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p = property("compareTime");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, new Long(-1));
++        p.setValue(NOT_EXPRESSION, Boolean.FALSE);    
++        p = property("stringsToSkip");
++        p.setPropertyEditorClass(TableEditor.class);
++        p.setValue(TableEditor.CLASSNAME,SubstitutionElement.class.getName());
++        p.setValue(TableEditor.HEADERS,new String[]{"Regex String","Substitution"}); // TODO I18n
++        p.setValue(TableEditor.OBJECT_PROPERTIES, // These are the names of the get/set methods
++                new String[]{SubstitutionElement.REGEX, SubstitutionElement.SUBSTITUTE});
++        p.setValue(NOT_UNDEFINED,Boolean.TRUE);
++        p.setValue(DEFAULT,new ArrayList<Object>());
++        p.setValue(MULTILINE,Boolean.TRUE);
++        
++    }
+ 
+ }
+
+Index: /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java
+===================================================================
+--- /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(revision 818668)
++++ /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(working copy)
+@@ -40,124 +40,132 @@
+ import org.apache.jmeter.samplers.Clearable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ public class ComparisonVisualizer extends AbstractVisualizer implements Clearable {
+-	private JTree resultsTree;
++    
++    private static final long serialVersionUID = 240L;
+ 
+-	private DefaultTreeModel treeModel;
++    private JTree resultsTree;
+ 
+-	private DefaultMutableTreeNode root;
++    private DefaultTreeModel treeModel;
+ 
+-	private JTextPane base, secondary;
++    private DefaultMutableTreeNode root;
+ 
+-	public ComparisonVisualizer() {
+-		super();
+-		init();
+-	}
++    private JTextPane base, secondary;
+ 
+-	public void add(SampleResult sample) {
++    public ComparisonVisualizer() {
++        super();
++        init();
++    }
+ 
+-		DefaultMutableTreeNode currNode = new DefaultMutableTreeNode(sample);
+-		treeModel.insertNodeInto(currNode, root, root.getChildCount());
+-		if (root.getChildCount() == 1) {
+-			resultsTree.expandPath(new TreePath(root));
+-		}
+-	}
++    public void add(SampleResult sample) {
+ 
+-	public String getLabelResource() {
+-		return "comparison_visualizer_title";
+-	}
++        DefaultMutableTreeNode currNode = new DefaultMutableTreeNode(sample);
++        treeModel.insertNodeInto(currNode, root, root.getChildCount());
++        if (root.getChildCount() == 1) {
++            resultsTree.expandPath(new TreePath(root));
++        }
++    }
+ 
+-	private void init() {
+-		setLayout(new BorderLayout());
+-		setBorder(makeBorder());
+-		add(makeTitlePanel(), BorderLayout.NORTH);
+-		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+-		split.add(getTreePanel());
+-		split.add(getSideBySidePanel());
+-		add(split, BorderLayout.CENTER);
+-	}
++    public String getLabelResource() {
++        return "comparison_visualizer_title"; // $NON-NLS-1$
++    }
+ 
+-	private JComponent getSideBySidePanel() {
+-		JPanel main = new JPanel(new GridLayout(1, 2));
+-		JScrollPane base = new JScrollPane(getBaseTextPane());
+-		base.setPreferredSize(base.getMinimumSize());
+-		JScrollPane secondary = new JScrollPane(getSecondaryTextPane());
+-		secondary.setPreferredSize(secondary.getMinimumSize());
+-		main.add(base);
+-		main.add(secondary);
+-		main.setPreferredSize(main.getMinimumSize());
+-		return main;
+-	}
++    private void init() {
++        setLayout(new BorderLayout());
++        setBorder(makeBorder());
++        add(makeTitlePanel(), BorderLayout.NORTH);
++        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
++        split.add(getTreePanel());
++        split.add(getSideBySidePanel());
++        add(split, BorderLayout.CENTER);
++    }
+ 
+-	private JTextPane getBaseTextPane() {
+-		base = new JTextPane();
+-		return base;
+-	}
++    private JComponent getSideBySidePanel() {
++        JPanel main = new JPanel(new GridLayout(1, 2));
++        JScrollPane base = new JScrollPane(getBaseTextPane());
++        base.setPreferredSize(base.getMinimumSize());
++        JScrollPane secondary = new JScrollPane(getSecondaryTextPane());
++        secondary.setPreferredSize(secondary.getMinimumSize());
++        main.add(base);
++        main.add(secondary);
++        main.setPreferredSize(main.getMinimumSize());
++        return main;
++    }
+ 
+-	private JTextPane getSecondaryTextPane() {
+-		secondary = new JTextPane();
+-		return secondary;
+-	}
++    private JTextPane getBaseTextPane() {
++        base = new JTextPane();
++        base.setEditable(false);
++        base.setBackground(getBackground());
++        return base;
++    }
+ 
+-	private JComponent getTreePanel() {
+-		root = new DefaultMutableTreeNode("Root");
+-		treeModel = new DefaultTreeModel(root);
+-		resultsTree = new JTree(treeModel);
+-		resultsTree.setCellRenderer(new TreeNodeRenderer());
+-		resultsTree.setCellRenderer(new TreeNodeRenderer());
+-		resultsTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+-		resultsTree.addTreeSelectionListener(new Selector());
+-		resultsTree.setRootVisible(false);
+-		resultsTree.setShowsRootHandles(true);
++    private JTextPane getSecondaryTextPane() {
++        secondary = new JTextPane();
++        secondary.setEditable(false);
++        return secondary;
++    }
+ 
+-		JScrollPane treePane = new JScrollPane(resultsTree);
+-		treePane.setPreferredSize(new Dimension(150, 50));
+-		JPanel panel = new JPanel(new GridLayout(1, 1));
+-		panel.add(treePane);
+-		return panel;
+-	}
++    private JComponent getTreePanel() {
++        root = new DefaultMutableTreeNode("Root"); // $NON-NLS-1$
++        treeModel = new DefaultTreeModel(root);
++        resultsTree = new JTree(treeModel);
++        resultsTree.setCellRenderer(new TreeNodeRenderer());
++        resultsTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
++        resultsTree.addTreeSelectionListener(new Selector());
++        resultsTree.setRootVisible(false);
++        resultsTree.setShowsRootHandles(true);
+ 
+-	private class Selector implements TreeSelectionListener {
+-		/*
+-		 * (non-Javadoc)
+-		 * 
+-		 * @see javax.swing.event.TreeSelectionListener#valueChanged(javax.swing.event.TreeSelectionEvent)
+-		 */
+-		public void valueChanged(TreeSelectionEvent e) {
+-			try {
+-				DefaultMutableTreeNode node = (DefaultMutableTreeNode) resultsTree.getLastSelectedPathComponent();
+-				SampleResult sr = (SampleResult) node.getUserObject();
+-				AssertionResult[] results = sr.getAssertionResults();
+-				CompareAssertionResult result = null;
+-				for (AssertionResult r : results) {
+-					if (r instanceof CompareAssertionResult) {
+-						result = (CompareAssertionResult) r;
+-						break;
+-					}
+-				}
+-				if (result == null)
+-					result = new CompareAssertionResult();
+-				base.setText(result.getBaseResult());
+-				secondary.setText(result.getSecondaryResult());
+-			} catch (Exception err) {
+-				base.setText("Invalid Node " + err);
+-				secondary.setText("Invalid Node " + err);
+-			}
+-			base.setCaretPosition(0);
+-			secondary.setCaretPosition(0);
+-		}
++        JScrollPane treePane = new JScrollPane(resultsTree);
++        treePane.setPreferredSize(new Dimension(150, 50));
++        JPanel panel = new JPanel(new GridLayout(1, 1));
++        panel.add(treePane);
++        return panel;
++    }
+ 
+-	}
++    private class Selector implements TreeSelectionListener {
++        /*
++         * (non-Javadoc)
++         * 
++         * @see javax.swing.event.TreeSelectionListener#valueChanged(javax.swing.event.TreeSelectionEvent)
++         */
++        public void valueChanged(TreeSelectionEvent e) {
++            try {
++                DefaultMutableTreeNode node = (DefaultMutableTreeNode) resultsTree.getLastSelectedPathComponent();
++                SampleResult sr = (SampleResult) node.getUserObject();
++                AssertionResult[] results = sr.getAssertionResults();
++                CompareAssertionResult result = null;
++                for (AssertionResult assRes : results) {
++                    if (assRes instanceof CompareAssertionResult) {
++                        result = (CompareAssertionResult) assRes;
++                        break;
++                    }
++                }
++                if (result == null) {
++                    result = new CompareAssertionResult();
++                }
++                base.setText(result.getBaseResult());
++                secondary.setText(result.getSecondaryResult());
++            } catch (Exception err) {
++                base.setText("Invalid Node " + err);
++                secondary.setText("Invalid Node " + err);
++            }
++            base.setCaretPosition(0);
++            secondary.setCaretPosition(0);
++        }
+ 
+-	public void clearData() {
+-		while (root.getChildCount() > 0) {
+-			// the child to be removed will always be 0 'cos as the nodes are
+-			// removed the nth node will become (n-1)th
+-			treeModel.removeNodeFromParent((DefaultMutableTreeNode) root.getChildAt(0));
+-			base.setText("");
+-			secondary.setText("");
+-		}
+-	}
++    }
++
++    public void clearData() {
++        while (root.getChildCount() > 0) {
++            // the child to be removed will always be 0 'cos as the nodes are
++            // removed the nth node will become (n-1)th
++            treeModel.removeNodeFromParent((DefaultMutableTreeNode) root.getChildAt(0));
++            base.setText(""); // $NON-NLS-1$
++            secondary.setText(""); // $NON-NLS-1$
++        }
++    }
+ 
+ }
+Index: /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java
+===================================================================
+--- /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java	(revision 818668)
++++ /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java	(working copy)
+@@ -21,6 +21,7 @@
+ import java.awt.Color;
+ import java.awt.Component;
+ 
++import javax.swing.ImageIcon;
+ import javax.swing.JTree;
+ import javax.swing.tree.DefaultMutableTreeNode;
+ import javax.swing.tree.DefaultTreeCellRenderer;
+@@ -26,6 +27,7 @@
+ import javax.swing.tree.DefaultTreeCellRenderer;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  * Tree cell renderer used by ComparisonVisualizer.
+@@ -32,22 +34,35 @@
+  */
+ public class TreeNodeRenderer extends DefaultTreeCellRenderer {
+ 
+-	public TreeNodeRenderer() {
+-		super();
+-	}
+-	
+-	@Override
++    private static final long serialVersionUID = 240L;
++
++    // Same ViewResultsTree
++    private static final ImageIcon imageSuccess = JMeterUtils.getImage(
++            JMeterUtils.getPropDefault("viewResultsTree.success",  //$NON-NLS-1$
++                    "icon_success_sml.gif")); //$NON-NLS-1$
++
++    private static final ImageIcon imageFailure = JMeterUtils.getImage(
++            JMeterUtils.getPropDefault("viewResultsTree.failure",  //$NON-NLS-1$
++                    "icon_warning_sml.gif")); //$NON-NLS-1$
++
++    public TreeNodeRenderer() {
++        super();
++    }
++    
++    @Override
+     public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded,
+-			boolean leaf, int row, boolean focus) {
+-		super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, focus);
+-		Object obj = ((DefaultMutableTreeNode) value).getUserObject();
+-		if(obj instanceof SampleResult)
+-		{
+-			if (!((SampleResult) obj).isSuccessful()) {
+-				this.setForeground(Color.red);
+-			}
+-		}
+-		return this;
+-	}
++            boolean leaf, int row, boolean focus) {
++        super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, focus);
++        Object obj = ((DefaultMutableTreeNode) value).getUserObject();
++        if (obj instanceof SampleResult) {
++            if (!((SampleResult) obj).isSuccessful()) {
++                this.setForeground(Color.red);
++                this.setIcon(imageFailure);
++            } else {
++                this.setIcon(imageSuccess);
++            }
++        }
++        return this;
++    }
+ 
+ }
+Index: /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java
+===================================================================
+--- /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java	(revision 818668)
++++ /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java	(working copy)
+@@ -13,7 +13,7 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- * 
++ *
+  */
+ 
+ package org.apache.jmeter.assertions;
+@@ -18,77 +18,62 @@
+ 
+ package org.apache.jmeter.assertions;
+ 
++public class CompareAssertionResult extends AssertionResult {
++    private static final long serialVersionUID = 1;
+ 
+-public class CompareAssertionResult extends AssertionResult {
+-	private static final long serialVersionUID = 1;
+-	
+-	private transient final ResultHolder comparedResults = new ResultHolder();
++    private transient final ResultHolder comparedResults = new ResultHolder();
+ 
+-	/**
+-	 * For testing only
+-	 * @deprecated Use the other ctor
+-	 */
+-	@Deprecated
++    /**
++     * For testing only
++     * 
++     * @deprecated Use the other ctor
++     */
++    @Deprecated
+     public CompareAssertionResult() { // needs to be public for testing
+-		super();
+-	}
++        super();
++    }
++
++    public CompareAssertionResult(String name) {
++        super(name);
++    }
++
++    public void addToBaseResult(String resultData) {
++        comparedResults.addToBaseResult(resultData);
++    }
++
++    public void addToSecondaryResult(String resultData) {
++        comparedResults.addToSecondaryResult(resultData);
++    }
+ 
+-	public CompareAssertionResult(String name) {
+-		super(name);
+-	}
+-	
+-	public void addToBaseResult(String resultData)
+-	{
+-		comparedResults.addToBaseResult(resultData);
+-	}
+-	
+-	public void addToSecondaryResult(String resultData)
+-	{
+-		comparedResults.addToSecondaryResult(resultData);
+-	}
+-	
+-	public String getBaseResult()
+-	{
+-		return comparedResults.baseResult;
+-	}
+-	
+-	public String getSecondaryResult()
+-	{
+-		return comparedResults.secondaryResult;
+-	}
++    public String getBaseResult() {
++        return comparedResults.baseResult;
++    }
+ 
+-	private static class ResultHolder
+-	{
+-		private String baseResult;
+-		private String secondaryResult;
+-		
+-		public ResultHolder()
+-		{
+-			
+-		}
+-		
+-		public void addToBaseResult(String r)
+-		{
+-			if(baseResult == null)
+-			{
+-				baseResult = r;
+-			}
+-			else
+-			{
+-				baseResult = baseResult + "\n\n" + r;
+-			}
+-		}
+-		
+-		public void addToSecondaryResult(String r)
+-		{
+-			if(secondaryResult == null)
+-			{
+-				secondaryResult = r;
+-			}
+-			else
+-			{
+-				secondaryResult = secondaryResult + "\n\n" + r;
+-			}
+-		}
+-	}
++    public String getSecondaryResult() {
++        return comparedResults.secondaryResult;
++    }
++
++    private static class ResultHolder {
++        private String baseResult;
++        private String secondaryResult;
++
++        public ResultHolder() {
++        }
++
++        public void addToBaseResult(String r) {
++            if (baseResult == null) {
++                baseResult = r;
++            } else {
++                baseResult = baseResult + "\n\n" + r; // $NON-NLS-1$
++            }
++        }
++
++        public void addToSecondaryResult(String r) {
++            if (secondaryResult == null) {
++                secondaryResult = r;
++            } else {
++                secondaryResult = secondaryResult + "\n\n" + r; // $NON-NLS-1$
++            }
++        }
++    }
+ }
+
+Index: /xdocs/usermanual/component_reference.xml
+===================================================================
+--- /xdocs/usermanual/component_reference.xml	(revision 818668)
++++ /xdocs/usermanual/component_reference.xml	(working copy)
+@@ -3413,8 +3413,8 @@
+ <properties>
+     <property name="Name" required="No">Descriptive name for this element that is shown in the tree.</property>
+     <property name="Compare Content" required="Yes">Whether or not to compare the content (response data)</property>
+-    <property name="Compare Time" required="Yes">If the value is >=0, then check if the time difference is no greater than the value. 
+-    I.e. if the value is 0, then the times must be exactly equal.</property>
++    <property name="Compare Time" required="Yes">If the value is >=0, then check if the response time difference is no greater than the value. 
++    I.e. if the value is 0, then the response times must be exactly equal.</property>
+     <property name="Comparison Filters" required="No">Filters can be used to remove strings from the content comparison.
+     For example, if the page has a time-stamp, it might be matched with: "Time: \d\d:\d\d:\d\d" and replaced with a dummy fixed time "Time: HH:MM:SS".
+     </property>
+

@@ -1,0 +1,173 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1172489)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -390,6 +390,7 @@
+ junit_success_msg=Message de succ\u00E8s
+ junit_test_config=Param\u00E8tres Test JUnit
+ junit_test_method=M\u00E9thode de test
++junit_create_new_instance=Cr\u00E9er une nouvelle instance \u00E0 chaque it\u00E9ration
+ ldap_argument_list=Liste d'arguments LDAP
+ ldap_connto=D\u00E9lai d'attente de connexion (millisecondes)
+ ldap_parse_results=Examiner les r\u00E9sultats de recherche ?
+Index: src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java	(revision 1172489)
++++ src/junit/org/apache/jmeter/protocol/java/sampler/JUnitSampler.java	(working copy)
+@@ -30,9 +30,11 @@
+ import junit.framework.TestFailure;
+ import junit.framework.TestResult;
+ 
++import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.samplers.AbstractSampler;
+ import org.apache.jmeter.samplers.Entry;
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.TestListener;
+ import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -48,7 +50,7 @@
+  * constructor first. If the test class does not declare a string
+  * constructor, the sampler will try empty constructor.
+  */
+-public class JUnitSampler extends AbstractSampler implements ThreadListener {
++public class JUnitSampler extends AbstractSampler implements ThreadListener, TestListener {
+ 
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+@@ -69,6 +71,7 @@
+     private static final String APPEND_ERROR = "junitsampler.append.error";
+     private static final String APPEND_EXCEPTION = "junitsampler.append.exception";
+     private static final String JUNIT4 = "junitsampler.junit4";
++    private static final String CREATENEWINSTANCEFOREACHCALL="junitsampler.createnewinstanceforeachcall";
+     //-- JMX file attributes - do not change
+ 
+     private static final String SETUP = "setUp";
+@@ -94,6 +97,7 @@
+     private transient Protectable protectable;
+ 
+     public JUnitSampler(){
++        super();
+     }
+ 
+     /**
+@@ -673,4 +677,62 @@
+             }
+         }
+     }
+-}
++
++    /**
++     * 
++     * @param createNewInstanceForEachCall
++     */
++    public void setCreateNewInstanceForEachCall(boolean createNewInstanceForEachCall) {
++        this.setProperty(CREATENEWINSTANCEFOREACHCALL, createNewInstanceForEachCall);
++    }
++
++    /**
++     * 
++     * @return boolean create New Instance For Each Call
++     */
++    public boolean getCreateNewInstanceForEachCall() {
++        return getPropertyAsBoolean(CREATENEWINSTANCEFOREACHCALL);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testEnded() {
++        // NOOP
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testEnded(String host) {
++        // NOOP
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testIterationStart(LoopIterationEvent event) {
++        if(getCreateNewInstanceForEachCall())
++        {
++            String rlabel = getConstructorString();
++            if (rlabel.length()== 0) {
++                rlabel = JUnitSampler.class.getName();
++            }
++            this.testObject = getClassInstance(className, rlabel);
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    public void testStarted() {
++        // NOOP
++    }
++
++    /**
++     * {@inheritDoc}
++     */    
++    public void testStarted(String host) {
++        // NOOP
++    }
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1172489)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -425,6 +425,7 @@
+ junit_success_msg=Success Message
+ junit_test_config=JUnit Test Parameters
+ junit_test_method=Test Method
++junit_create_new_instance=Create New Instance At Each Iteration
+ ldap_argument_list=LDAPArgument List
+ ldap_connto=Connection timeout (in milliseconds)
+ ldap_parse_results=Parse the search results ?
+Index: src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java
+===================================================================
+--- src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(revision 1172489)
++++ src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java	(working copy)
+@@ -131,6 +131,7 @@
+     private JCheckBox appendError = new JCheckBox(JMeterUtils.getResString("junit_append_error")); //$NON-NLS-1$
+     private JCheckBox appendExc = new JCheckBox(JMeterUtils.getResString("junit_append_exception")); //$NON-NLS-1$
+     private JCheckBox junit4 = new JCheckBox(JMeterUtils.getResString("junit_junit4")); //$NON-NLS-1$
++    private JCheckBox createNewInstanceForEachCall = new JCheckBox(JMeterUtils.getResString("junit_create_new_instance")); //$NON-NLS-1$
+ 
+     /** A combo box allowing the user to choose a test class. */
+     private JComboBox classnameCombo;
+@@ -234,12 +235,14 @@
+         panel.add(doSetup);
+         panel.add(appendError);
+         panel.add(appendExc);
++        panel.add(createNewInstanceForEachCall);
+         return panel;
+     }
+ 
+     private void initGui(){
+         appendError.setSelected(false);
+         appendExc.setSelected(false);
++        createNewInstanceForEachCall.setSelected(false);
+         doSetup.setSelected(false);
+         junit4.setSelected(false);
+         filterpkg.setText(""); //$NON-NLS-1$
+@@ -295,6 +298,7 @@
+         sampler.setDoNotSetUpTearDown(doSetup.isSelected());
+         sampler.setAppendError(appendError.isSelected());
+         sampler.setAppendException(appendExc.isSelected());
++        sampler.setCreateNewInstanceForEachCall(createNewInstanceForEachCall.isSelected());
+         sampler.setJunit4(junit4.isSelected());
+     }
+ 
+@@ -343,6 +347,7 @@
+         doSetup.setSelected(sampler.getDoNotSetUpTearDown());
+         appendError.setSelected(sampler.getAppendError());
+         appendExc.setSelected(sampler.getAppendException());
++        createNewInstanceForEachCall.setSelected(sampler.getCreateNewInstanceForEachCall());
+     }
+ 
+     private void setupMethods(){

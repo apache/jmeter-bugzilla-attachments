@@ -1,0 +1,812 @@
+From 9998ab2f393b41f947264a2839a3a817410984fd Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Mon, 24 Aug 2015 21:16:56 +0100
+Subject: [PATCH] Replace old style for loops with forEach part 3
+
+---
+ .../java/control/gui/JUnitTestSamplerGui.java      | 27 +++++-----
+ .../protocol/http/config/MultipartUrlConfig.java   | 23 ++++----
+ .../apache/jmeter/protocol/http/proxy/Proxy.java   |  5 +-
+ .../jmeter/protocol/http/proxy/ProxyControl.java   | 24 ++++-----
+ .../protocol/http/proxy/gui/ProxyControlGui.java   |  6 +--
+ .../jmeter/protocol/http/sampler/HTTPHC3Impl.java  | 25 +++++----
+ .../jmeter/protocol/http/sampler/HTTPHC4Impl.java  | 14 ++---
+ .../protocol/http/sampler/HTTPSampleResult.java    |  6 +--
+ .../protocol/http/sampler/HTTPSamplerBase.java     | 62 ++++++++++------------
+ .../jmeter/protocol/http/util/WSDLHelper.java      | 14 ++---
+ .../protocol/http/util/accesslog/LogFilter.java    | 24 ++++-----
+ .../http/util/accesslog/StandardGenerator.java     |  4 +-
+ .../protocol/http/visualizers/RequestViewHTTP.java |  5 +-
+ .../protocol/ldap/sampler/LDAPExtSampler.java      | 62 ++++++++++------------
+ .../protocol/smtp/sampler/gui/SmtpPanel.java       |  3 +-
+ .../protocol/http/parser/TestHTMLParser.java       | 10 ++--
+ .../http/util/accesslog/TestLogFilter.java         | 20 +++----
+ test/src/org/apache/jorphan/test/AllTests.java     |  6 +--
+ 18 files changed, 156 insertions(+), 184 deletions(-)
+
+diff --git a/src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java b/src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java
+index 2b1931e..fb5480e 100644
+--- a/src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java
++++ b/src/junit/org/apache/jmeter/protocol/java/control/gui/JUnitTestSamplerGui.java
+@@ -185,8 +185,8 @@ implements ChangeListener, ActionListener, ItemListener
+             filter.setPackges(JOrphanUtils.split(filterpkg.getText(),",")); //$NON-NLS-1$
+             // change the classname drop down
+             String[] clist = filter.filterArray(classList);
+-            for (int idx=0; idx < clist.length; idx++) {
+-                classnameCombo.addItem(clist[idx]);
++            for (String classStr : clist) {
++                classnameCombo.addItem(classStr);
+             }
+         }
+         catch (IOException e)
+@@ -360,8 +360,8 @@ implements ChangeListener, ActionListener, ItemListener
+                 // Don't instantiate class
+                 Class<?> testClass = Class.forName(className, false, contextClassLoader);
+                 String [] names = getMethodNames(testClass);
+-                for (int idx=0; idx < names.length; idx++){
+-                    methodName.addItem(names[idx]);
++                for (String name : names) {
++                    methodName.addItem(name);
+                 }
+                 methodName.repaint();
+             } catch (ClassNotFoundException e) {
+@@ -373,21 +373,20 @@ implements ChangeListener, ActionListener, ItemListener
+     {
+         Method[] meths = clazz.getMethods();
+         List<String> list = new ArrayList<>();
+-        for (int idx=0; idx < meths.length; idx++){
+-            final Method method = meths[idx];
++        for (final Method method : meths) {
+             final String name = method.getName();
+-            if (junit4.isSelected()){
++            if (junit4.isSelected()) {
+                 if (method.isAnnotationPresent(Test.class) ||
+-                    method.isAnnotationPresent(BeforeClass.class) ||
+-                    method.isAnnotationPresent(AfterClass.class)) {
+-                        list.add(name);
++                        method.isAnnotationPresent(BeforeClass.class) ||
++                        method.isAnnotationPresent(AfterClass.class)) {
++                    list.add(name);
+                 }
+             } else {
+                 if (name.startsWith(TESTMETHOD_PREFIX) ||
+-                    name.equals(ONETIMESETUP) ||
+-                    name.equals(ONETIMETEARDOWN) ||
+-                    name.equals(SUITE)) {
+-                        list.add(name);
++                        name.equals(ONETIMESETUP) ||
++                        name.equals(ONETIMETEARDOWN) ||
++                        name.equals(SUITE)) {
++                    list.add(name);
+                 }
+             }
+         }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java b/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
+index 8eb13a7..5649baf 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
+@@ -122,9 +122,9 @@ public class MultipartUrlConfig implements Serializable {
+      */
+     public void parseArguments(String queryString) {
+         String[] parts = JOrphanUtils.split(queryString, "--" + getBoundary()); //$NON-NLS-1$
+-        for (int i = 0; i < parts.length; i++) {
+-            String contentDisposition = getHeaderValue("Content-disposition", parts[i]); //$NON-NLS-1$
+-            String contentType = getHeaderValue("Content-type", parts[i]); //$NON-NLS-1$
++        for (String part : parts) {
++            String contentDisposition = getHeaderValue("Content-disposition", part); //$NON-NLS-1$
++            String contentType = getHeaderValue("Content-type", part); //$NON-NLS-1$
+             // Check if it is form data
+             if (contentDisposition != null && contentDisposition.indexOf("form-data") > -1) { //$NON-NLS-1$
+                 // Get the form field name
+@@ -138,12 +138,11 @@ public class MultipartUrlConfig implements Serializable {
+                     // Get the filename
+                     index = contentDisposition.indexOf(filenamePrefix) + filenamePrefix.length();
+                     String path = contentDisposition.substring(index, contentDisposition.indexOf('\"', index)); //$NON-NLS-1$
+-                    if(path != null && path.length() > 0) {
++                    if (path != null && path.length() > 0) {
+                         // Set the values retrieved for the file upload
+                         files.addHTTPFileArg(path, name, contentType);
+                     }
+-                }
+-                else {
++                } else {
+                     // Find the first empty line of the multipart, it signals end of headers for multipart
+                     // Agents are supposed to terminate lines in CRLF:
+                     final String CRLF = "\r\n";
+@@ -151,13 +150,13 @@ public class MultipartUrlConfig implements Serializable {
+                     // Code also allows for LF only (not sure why - perhaps because the test code uses it?)
+                     final String LF = "\n";
+                     final String LFLF = "\n\n";
+-                    int indexEmptyCrLfCrLfLinePos = parts[i].indexOf(CRLFCRLF); //$NON-NLS-1$
+-                    int indexEmptyLfLfLinePos = parts[i].indexOf(LFLF); //$NON-NLS-1$
++                    int indexEmptyCrLfCrLfLinePos = part.indexOf(CRLFCRLF); //$NON-NLS-1$
++                    int indexEmptyLfLfLinePos = part.indexOf(LFLF); //$NON-NLS-1$
+                     String value = null;
+-                    if(indexEmptyCrLfCrLfLinePos > -1) {// CRLF blank line found
+-                        value = parts[i].substring(indexEmptyCrLfCrLfLinePos+CRLFCRLF.length(),parts[i].lastIndexOf(CRLF));
+-                    } else if(indexEmptyLfLfLinePos > -1) { // LF blank line found
+-                        value = parts[i].substring(indexEmptyLfLfLinePos+LFLF.length(),parts[i].lastIndexOf(LF));
++                    if (indexEmptyCrLfCrLfLinePos > -1) {// CRLF blank line found
++                        value = part.substring(indexEmptyCrLfCrLfLinePos + CRLFCRLF.length(), part.lastIndexOf(CRLF));
++                    } else if (indexEmptyLfLfLinePos > -1) { // LF blank line found
++                        value = part.substring(indexEmptyLfLfLinePos + LFLF.length(), part.lastIndexOf(LF));
+                     }
+                     this.addNonEncodedArgument(name, value);
+                 }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+index bd8a902..331f09f 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+@@ -549,9 +549,8 @@ public class Proxy extends Thread {
+             headerLines[contentLengthIndex]=HTTPConstants.HEADER_CONTENT_LENGTH+": "+res.getResponseData().length;
+         }
+         StringBuilder sb = new StringBuilder(headers.length());
+-        for (int i=0;i<headerLines.length;i++){
+-            String line=headerLines[i];
+-            if (line != null){
++        for (String line : headerLines) {
++            if (line != null) {
+                 sb.append(line).append(CRLF_STRING);
+             }
+         }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+index 02f687d..369fc99 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+@@ -1196,9 +1196,7 @@ public class ProxyControl extends GenericController {
+                 continue; // go on with next property.
+             }
+ 
+-            for (Iterator<ConfigTestElement> configs = configurations.iterator(); configs.hasNext();) {
+-                ConfigTestElement config = configs.next();
+-
++            for (ConfigTestElement config : configurations) {
+                 String configValue = config.getPropertyAsString(name);
+ 
+                 if (configValue != null && configValue.length() > 0) {
+@@ -1258,13 +1256,13 @@ public class ProxyControl extends GenericController {
+     private void replaceValues(TestElement sampler, TestElement[] configs, Collection<Arguments> variables) {
+         // Build the replacer from all the variables in the collection:
+         ValueReplacer replacer = new ValueReplacer();
+-        for (Iterator<Arguments> vars = variables.iterator(); vars.hasNext();) {
+-            final Map<String, String> map = vars.next().getArgumentsAsMap();
+-            for (Iterator<String> vals = map.values().iterator(); vals.hasNext();){
+-               final Object next = vals.next();
+-               if ("".equals(next)) {// Drop any empty values (Bug 45199)
+-                   vals.remove();
+-               }
++        for (Arguments variable : variables) {
++            final Map<String, String> map = variable.getArgumentsAsMap();
++            for (Iterator<String> vals = map.values().iterator(); vals.hasNext(); ) {
++                final Object next = vals.next();
++                if ("".equals(next)) {// Drop any empty values (Bug 45199)
++                    vals.remove();
++                }
+             }
+             replacer.addVariables(map);
+         }
+@@ -1272,9 +1270,9 @@ public class ProxyControl extends GenericController {
+         try {
+             boolean cachedRegexpMatch = regexMatch;
+             replacer.reverseReplace(sampler, cachedRegexpMatch);
+-            for (int i = 0; i < configs.length; i++) {
+-                if (configs[i] != null) {
+-                    replacer.reverseReplace(configs[i], cachedRegexpMatch);
++            for (TestElement config : configs) {
++                if (config != null) {
++                    replacer.reverseReplace(config, cachedRegexpMatch);
+                 }
+             }
+         } catch (InvalidVariableException e) {
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+index 598be28..e4f7909 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+@@ -288,11 +288,7 @@ public class ProxyControlGui extends LogicControllerGui implements JMeterGUIComp
+ 
+     private List<String> getDataList(PowerTableModel p_model, String colName) {
+         String[] dataArray = p_model.getData().getColumn(colName);
+-        List<String> list = new LinkedList<>();
+-        for (int i = 0; i < dataArray.length; i++) {
+-            list.add(dataArray[i]);
+-        }
+-        return list;
++        return new LinkedList<>(Arrays.asList(dataArray));
+     }
+ 
+     /** {@inheritDoc} */
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+index d1d822f..6d8c5fa 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC3Impl.java
+@@ -385,8 +385,8 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+     private static int calculateHeadersSize(HttpMethodBase httpMethod) {
+         int headerSize = httpMethod.getStatusLine().toString().length()+2; // add a \r\n
+         Header[] rh = httpMethod.getResponseHeaders();
+-        for (int i = 0; i < rh.length; i++) {
+-            headerSize += rh[i].toString().length(); // already include the \r\n
++        for (Header responseHeader : rh) {
++            headerSize += responseHeader.toString().length(); // already include the \r\n
+         }
+         headerSize += 2; // last \r\n before response data
+         return headerSize;
+@@ -574,11 +574,11 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         headerBuf.append(method.getStatusLine());// header[0] is not the status line...
+         headerBuf.append("\n"); // $NON-NLS-1$
+ 
+-        for (int i = 0; i < rh.length; i++) {
+-            String key = rh[i].getName();
++        for (Header responseHeader : rh) {
++            String key = responseHeader.getName();
+             headerBuf.append(key);
+             headerBuf.append(": "); // $NON-NLS-1$
+-            headerBuf.append(rh[i].getValue());
++            headerBuf.append(responseHeader.getValue());
+             headerBuf.append("\n"); // $NON-NLS-1$
+         }
+         return headerBuf.toString();
+@@ -660,12 +660,12 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+         // Get all the request headers
+         StringBuilder hdrs = new StringBuilder(100);
+         Header[] requestHeaders = method.getRequestHeaders();
+-        for(int i = 0; i < requestHeaders.length; i++) {
++        for (Header requestHeader : requestHeaders) {
+             // Exclude the COOKIE header, since cookie is reported separately in the sample
+-            if(!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(requestHeaders[i].getName())) {
+-                hdrs.append(requestHeaders[i].getName());
++            if (!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(requestHeader.getName())) {
++                hdrs.append(requestHeader.getName());
+                 hdrs.append(": "); // $NON-NLS-1$
+-                hdrs.append(requestHeaders[i].getValue());
++                hdrs.append(requestHeader.getValue());
+                 hdrs.append("\n"); // $NON-NLS-1$
+             }
+         }
+@@ -770,8 +770,7 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+             }
+ 
+             // Add any files
+-            for (int i=0; i < files.length; i++) {
+-                HTTPFileArg file = files[i];
++            for (HTTPFileArg file : files) {
+                 File inputFile = FileServer.getFileServer().getResolvedFile(file.getPath());
+                 // We do not know the char set of the file to be uploaded, so we set it to null
+                 ViewableFilePart filePart = new ViewableFilePart(file.getParamName(), inputFile, file.getMimeType(), null);
+@@ -1102,8 +1101,8 @@ public class HTTPHC3Impl extends HTTPHCAbstractImpl {
+     protected void saveConnectionCookies(HttpMethod method, URL u, CookieManager cookieManager) {
+         if (cookieManager != null) {
+             Header hdr[] = method.getResponseHeaders(HTTPConstants.HEADER_SET_COOKIE);
+-            for (int i = 0; i < hdr.length; i++) {
+-                cookieManager.addCookieFromHeader(hdr[i].getValue(),u);
++            for (Header responseHeader : hdr) {
++                cookieManager.addCookieFromHeader(responseHeader.getValue(), u);
+             }
+         }
+     }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+index e5a958f..ed1be95 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+@@ -824,10 +824,10 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+         headerBuf.append(response.getStatusLine());// header[0] is not the status line...
+         headerBuf.append("\n"); // $NON-NLS-1$
+ 
+-        for (int i = 0; i < rh.length; i++) {
+-            headerBuf.append(rh[i].getName());
++        for (Header responseHeader : rh) {
++            headerBuf.append(responseHeader.getName());
+             headerBuf.append(": "); // $NON-NLS-1$
+-            headerBuf.append(rh[i].getValue());
++            headerBuf.append(responseHeader.getValue());
+             headerBuf.append("\n"); // $NON-NLS-1$
+         }
+         return headerBuf.toString();
+@@ -936,12 +936,12 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+             // Get all the request headers
+             StringBuilder hdrs = new StringBuilder(100);
+             Header[] requestHeaders = method.getAllHeaders();
+-            for(int i = 0; i < requestHeaders.length; i++) {
++            for (Header requestHeader : requestHeaders) {
+                 // Exclude the COOKIE header, since cookie is reported separately in the sample
+-                if(!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(requestHeaders[i].getName())) {
+-                    hdrs.append(requestHeaders[i].getName());
++                if (!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(requestHeader.getName())) {
++                    hdrs.append(requestHeader.getName());
+                     hdrs.append(": "); // $NON-NLS-1$
+-                    hdrs.append(requestHeaders[i].getValue());
++                    hdrs.append(requestHeader.getValue());
+                     hdrs.append("\n"); // $NON-NLS-1$
+                 }
+             }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java
+index f21a6b0..dc73a69 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampleResult.java
+@@ -102,10 +102,10 @@ public class HTTPSampleResult extends SampleResult {
+          * 305 = Use Proxy
+          * 306 = (Unused)
+          */
+-        final String[] REDIRECT_CODES = { "301", "302", "303" };
++        final String[] redirectCodes = { "301", "302", "303" };
+         String code = getResponseCode();
+-        for (int i = 0; i < REDIRECT_CODES.length; i++) {
+-            if (REDIRECT_CODES[i].equals(code)) {
++        for (String redirectCode : redirectCodes) {
++            if (redirectCode.equals(code)) {
+                 return true;
+             }
+         }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+index 922a556..1a64b3f 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+@@ -307,23 +307,21 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+ 
+     static{
+         String []parsers = JOrphanUtils.split(RESPONSE_PARSERS, " " , true);// returns empty array for null
+-        for (int i=0;i<parsers.length;i++){
+-            final String parser = parsers[i];
+-            String classname=JMeterUtils.getProperty(parser+".className");//$NON-NLS-1$
+-            if (classname == null){
+-                log.info("Cannot find .className property for "+parser+", using default");
+-                classname="";
++        for (final String parser : parsers) {
++            String classname = JMeterUtils.getProperty(parser + ".className");//$NON-NLS-1$
++            if (classname == null) {
++                log.info("Cannot find .className property for " + parser + ", using default");
++                classname = "";
+             }
+-            String typelist=JMeterUtils.getProperty(parser+".types");//$NON-NLS-1$
+-            if (typelist != null){
+-                String []types=JOrphanUtils.split(typelist, " " , true);
+-                for (int j=0;j<types.length;j++){
+-                    final String type = types[j];
+-                    log.info("Parser for "+type+" is "+classname);
+-                    parsersForType.put(type,classname);
++            String typelist = JMeterUtils.getProperty(parser + ".types");//$NON-NLS-1$
++            if (typelist != null) {
++                String[] types = JOrphanUtils.split(typelist, " ", true);
++                for (final String type : types) {
++                    log.info("Parser for " + type + " is " + classname);
++                    parsersForType.put(type, classname);
+                 }
+             } else {
+-                log.warn("Cannot find .types property for "+parser);
++                log.warn("Cannot find .types property for " + parser);
+             }
+         }
+         if (parsers.length==0){ // revert to previous behaviour
+@@ -1060,9 +1058,9 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+     public void parseArguments(String queryString, String contentEncoding) {
+         String[] args = JOrphanUtils.split(queryString, QRY_SEP);
+         final boolean isDebug = log.isDebugEnabled();
+-        for (int i = 0; i < args.length; i++) {
++        for (String arg : args) {
+             if (isDebug) {
+-                log.debug("Arg: " + args[i]);
++                log.debug("Arg: " + arg);
+             }
+             // need to handle four cases:
+             // - string contains name=value
+@@ -1073,28 +1071,27 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+             String metaData; // records the existance of an equal sign
+             String name;
+             String value;
+-            int length = args[i].length();
+-            int endOfNameIndex = args[i].indexOf(ARG_VAL_SEP);
++            int length = arg.length();
++            int endOfNameIndex = arg.indexOf(ARG_VAL_SEP);
+             if (endOfNameIndex != -1) {// is there a separator?
+                 // case of name=value, name=
+                 metaData = ARG_VAL_SEP;
+-                name = args[i].substring(0, endOfNameIndex);
+-                value = args[i].substring(endOfNameIndex + 1, length);
++                name = arg.substring(0, endOfNameIndex);
++                value = arg.substring(endOfNameIndex + 1, length);
+             } else {
+                 metaData = "";
+-                name=args[i];
+-                value="";
++                name = arg;
++                value = "";
+             }
+             if (name.length() > 0) {
+                 if (isDebug) {
+-                    log.debug("Name: " + name+ " Value: " + value+ " Metadata: " + metaData);
++                    log.debug("Name: " + name + " Value: " + value + " Metadata: " + metaData);
+                 }
+                 // If we know the encoding, we can decode the argument value,
+                 // to make it easier to read for the user
+-                if(!StringUtils.isEmpty(contentEncoding)) {
++                if (!StringUtils.isEmpty(contentEncoding)) {
+                     addEncodedArgument(name, value, metaData, contentEncoding);
+-                }
+-                else {
++                } else {
+                     // If we do not know the encoding, we just use the encoded value
+                     // The browser has already done the encoding, so save the values as is
+                     addNonEncodedArgument(name, value, metaData);
+@@ -1533,8 +1530,8 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+             }
+             if (lastRes.getSubResults() != null && lastRes.getSubResults().length > 0) {
+                 SampleResult[] subs = lastRes.getSubResults();
+-                for (int i = 0; i < subs.length; i++) {
+-                    totalRes.addSubResult(subs[i]);
++                for (SampleResult sub : subs) {
++                    totalRes.addSubResult(sub);
+                 }
+             } else {
+                 // Only add sample if it is a sample of valid url redirect, i.e. that
+@@ -1695,9 +1692,8 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+         HTTPFileArgs fileArgs = new HTTPFileArgs();
+         // Weed out the empty files
+         if (files.length > 0) {
+-            for(int i=0; i < files.length; i++){
+-                HTTPFileArg file = files[i];
+-                if (file.isNotEmpty()){
++            for (HTTPFileArg file : files) {
++                if (file.isNotEmpty()) {
+                     fileArgs.addHTTPFileArg(file);
+                 }
+             }
+@@ -1834,8 +1830,8 @@ public abstract class HTTPSamplerBase extends AbstractSampler
+             // Now deal with any additional file arguments
+             if(fileArgs != null) {
+                 HTTPFileArg[] infiles = fileArgs.asArray();
+-                for (int i = 0; i < infiles.length; i++){
+-                    allFileArgs.addHTTPFileArg(infiles[i]);
++                for (HTTPFileArg infile : infiles) {
++                    allFileArgs.addHTTPFileArg(infile);
+                 }
+             }
+         } else {
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java
+index 80c294d..9dddd85 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/WSDLHelper.java
+@@ -267,9 +267,9 @@ public class WSDLHelper {
+      * @return list of web methods
+      */
+     public String[] getWebMethods() {
+-        for (int idx = 0; idx < SOAPOPS.length; idx++) {
++        for (Object soapOp : SOAPOPS) {
+             // get the node
+-            Node act = (Node) SOAPOPS[idx];
++            Node act = (Node) soapOp;
+             // get the soap:operation
+             NodeList opers = ((Element) act).getElementsByTagNameNS(SOAP11_BINDING_NAMESPACE, "operation");
+             if (opers.getLength() == 0) {
+@@ -360,8 +360,8 @@ public class WSDLHelper {
+         Object[] res = this.getSOAPBindings();
+         List<Element> ops = new ArrayList<>();
+         // first we iterate through the bindings
+-        for (int idx = 0; idx < res.length; idx++) {
+-            Element one = (Element) res[idx];
++        for (Object r : res) {
++            Element one = (Element) r;
+             NodeList opnodes = one.getElementsByTagNameNS(WSDL_NAMESPACE, "operation");
+             // now we iterate through the operations
+             for (int idz = 0; idz < opnodes.getLength(); idz++) {
+@@ -370,7 +370,7 @@ public class WSDLHelper {
+                 Element child = (Element) opnodes.item(idz);
+                 int numberOfSoapOperationNodes = child.getElementsByTagNameNS(SOAP11_BINDING_NAMESPACE, "operation").getLength()
+                         + child.getElementsByTagNameNS(SOAP12_BINDING_NAMESPACE, "operation").getLength();
+-                if (numberOfSoapOperationNodes>0) {
++                if (numberOfSoapOperationNodes > 0) {
+                     ops.add(child);
+                 }
+             }
+@@ -411,8 +411,8 @@ public class WSDLHelper {
+             help.parse();
+             String[] methods = help.getWebMethods();
+             System.out.println("el: " + (System.currentTimeMillis() - start));
+-            for (int idx = 0; idx < methods.length; idx++) {
+-                System.out.println("method name: " + methods[idx]);
++            for (String method : methods) {
++                System.out.println("method name: " + method);
+             }
+             System.out.println("service url: " + help.getBinding());
+             System.out.println("protocol: " + help.getProtocol());
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java
+index f7a3899..6aaffb4 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/LogFilter.java
+@@ -178,8 +178,8 @@ public class LogFilter implements Filter, Serializable {
+             this.PTRNFILTER = true;
+             // now we create the compiled pattern and
+             // add it to the arraylist
+-            for (int idx = 0; idx < INCPTRN.length; idx++) {
+-                this.INCPATTERNS.add(this.createPattern(INCPTRN[idx]));
++            for (String includePattern : INCPTRN) {
++                this.INCPATTERNS.add(this.createPattern(includePattern));
+             }
+         }
+     }
+@@ -201,8 +201,8 @@ public class LogFilter implements Filter, Serializable {
+             this.PTRNFILTER = true;
+             // now we create the compiled pattern and
+             // add it to the arraylist
+-            for (int idx = 0; idx < EXCPTRN.length; idx++) {
+-                this.EXCPATTERNS.add(this.createPattern(EXCPTRN[idx]));
++            for (String excludePattern : EXCPTRN) {
++                this.EXCPATTERNS.add(this.createPattern(excludePattern));
+             }
+         }
+     }
+@@ -270,8 +270,8 @@ public class LogFilter implements Filter, Serializable {
+         // usefile is set to false unless it
+         // matches.
+         this.USEFILE = false;
+-        for (int idx = 0; idx < this.INCFILE.length; idx++) {
+-            if (text.indexOf(this.INCFILE[idx]) > -1) {
++        for (String includeFile : this.INCFILE) {
++            if (text.contains(includeFile)) {
+                 this.USEFILE = true;
+                 break;
+             }
+@@ -295,8 +295,8 @@ public class LogFilter implements Filter, Serializable {
+         // it matches.
+         this.USEFILE = true;
+         boolean exc = false;
+-        for (int idx = 0; idx < this.EXCFILE.length; idx++) {
+-            if (text.indexOf(this.EXCFILE[idx]) > -1) {
++        for (String excludeFile : this.EXCFILE) {
++            if (text.contains(excludeFile)) {
+                 exc = true;
+                 this.USEFILE = false;
+                 break;
+@@ -332,8 +332,8 @@ public class LogFilter implements Filter, Serializable {
+      */
+     protected boolean incPattern(String text) {
+         this.USEFILE = false;
+-        for (int idx = 0; idx < this.INCPATTERNS.size(); idx++) {
+-            if (JMeterUtils.getMatcher().contains(text, this.INCPATTERNS.get(idx))) {
++        for (Pattern includePattern : this.INCPATTERNS) {
++            if (JMeterUtils.getMatcher().contains(text, includePattern)) {
+                 this.USEFILE = true;
+                 break;
+             }
+@@ -351,8 +351,8 @@ public class LogFilter implements Filter, Serializable {
+     protected boolean excPattern(String text) {
+         this.USEFILE = true;
+         boolean exc = false;
+-        for (int idx = 0; idx < this.EXCPATTERNS.size(); idx++) {
+-            if (JMeterUtils.getMatcher().contains(text, this.EXCPATTERNS.get(idx))) {
++        for (Pattern excludePattern : this.EXCPATTERNS) {
++            if (JMeterUtils.getMatcher().contains(text, excludePattern)) {
+                 exc = true;
+                 this.USEFILE = false;
+                 break;
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/StandardGenerator.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/StandardGenerator.java
+index 5028735..05e513c 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/StandardGenerator.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/StandardGenerator.java
+@@ -152,8 +152,8 @@ public class StandardGenerator implements Generator, Serializable {
+      */
+     @Override
+     public void setParams(NVPair[] params) {
+-        for (int idx = 0; idx < params.length; idx++) {
+-            SAMPLE.addArgument(params[idx].getName(), params[idx].getValue());
++        for (NVPair param : params) {
++            SAMPLE.addArgument(param.getName(), param.getValue());
+         }
+     }
+ 
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java b/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java
+index 621f58d..e0c611e 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/visualizers/RequestViewHTTP.java
+@@ -209,9 +209,8 @@ public class RequestViewHTTP implements RequestView {
+             }
+             // Parsed request headers
+             LinkedHashMap<String, String> lhm = JMeterUtils.parseHeaders(sampleResult.getRequestHeaders());
+-            for (Iterator<Map.Entry<String, String>> iterator = lhm.entrySet().iterator(); iterator.hasNext();) {
+-                Map.Entry<String, String> entry = iterator.next();
+-                headersModel.addRow(new RowResult(entry.getKey(), entry.getValue()));   
++            for (Entry<String, String> entry : lhm.entrySet()) {
++                headersModel.addRow(new RowResult(entry.getKey(), entry.getValue()));
+             }
+ 
+         } else {
+diff --git a/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java b/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+index 86de354..1204a14 100644
+--- a/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
++++ b/src/protocol/ldap/org/apache/jmeter/protocol/ldap/sampler/LDAPExtSampler.java
+@@ -899,9 +899,7 @@ public class LDAPExtSampler extends AbstractSampler implements TestStateListener
+ 
+             sortResults(sortedResults);
+ 
+-            for (Iterator<SearchResult> it = sortedResults.iterator(); it.hasNext();)
+-            {
+-                final SearchResult  sr = it.next();
++            for (final SearchResult sr : sortedResults) {
+                 writeSearchResult(sr, xmlb);
+             }
+         }
+@@ -934,38 +932,32 @@ public class LDAPExtSampler extends AbstractSampler implements TestStateListener
+                 sortedAttrs.add(attr);
+             }
+             sortAttributes(sortedAttrs);
+-            for (Iterator<Attribute> ait = sortedAttrs.iterator(); ait.hasNext();)
+-            {
+-                final Attribute     attr = ait.next();
+-
+-                StringBuilder sb = new StringBuilder();
+-                if (attr.size() == 1) {
+-                    sb.append(getWriteValue(attr.get()));
+-                } else {
+-                    final ArrayList<String>     sortedVals = new ArrayList<>(attr.size());
+-                    boolean             first = true;
+-
+-                    for (NamingEnumeration<?> ven = attr.getAll(); ven.hasMore(); )
+-                    {
+-                        final Object    value = getWriteValue(ven.next());
+-                        sortedVals.add(value.toString());
+-                    }
+-
+-                    Collections.sort(sortedVals);
+-
+-                    for (Iterator<String> vit = sortedVals.iterator(); vit.hasNext();)
+-                    {
+-                        final String    value = vit.next();
+-                        if (first) {
+-                            first = false;
+-                        } else {
+-                            sb.append(", "); // $NON-NLS-1$
+-                        }
+-                        sb.append(value);
+-                    }
+-                }
+-                xmlb.tag(attr.getID(),sb);
+-            }
++             for (final Attribute attr : sortedAttrs) {
++                 StringBuilder sb = new StringBuilder();
++                 if (attr.size() == 1) {
++                     sb.append(getWriteValue(attr.get()));
++                 } else {
++                     final ArrayList<String> sortedVals = new ArrayList<>(attr.size());
++                     boolean first = true;
++
++                     for (NamingEnumeration<?> ven = attr.getAll(); ven.hasMore(); ) {
++                         final Object value = getWriteValue(ven.next());
++                         sortedVals.add(value.toString());
++                     }
++
++                     Collections.sort(sortedVals);
++
++                     for (final String value : sortedVals) {
++                         if (first) {
++                             first = false;
++                         } else {
++                             sb.append(", "); // $NON-NLS-1$
++                         }
++                         sb.append(value);
++                     }
++                 }
++                 xmlb.tag(attr.getID(), sb);
++             }
+         } finally {
+              xmlb.closeTag("attributes"); // $NON-NLS-1$
+             xmlb.closeTag("searchresult"); // $NON-NLS-1$
+diff --git a/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java b/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java
+index a783a37..762ec3b 100644
+--- a/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java
++++ b/src/protocol/mail/org/apache/jmeter/protocol/smtp/sampler/gui/SmtpPanel.java
+@@ -498,8 +498,7 @@ public class SmtpPanel extends JPanel {
+     public CollectionProperty getHeaderFields() {
+         CollectionProperty result = new CollectionProperty();
+         result.setName(SmtpSampler.HEADER_FIELDS);
+-        for (Iterator<JTextField> iterator = headerFields.keySet().iterator(); iterator.hasNext();) {
+-            JTextField headerName = iterator.next();
++        for (JTextField headerName : headerFields.keySet()) {
+             String name = headerName.getText();
+             String value = headerFields.get(headerName).getText();
+             Argument argument = new Argument(name, value);
+diff --git a/test/src/org/apache/jmeter/protocol/http/parser/TestHTMLParser.java b/test/src/org/apache/jmeter/protocol/http/parser/TestHTMLParser.java
+index de20d9e..70a31a9 100644
+--- a/test/src/org/apache/jmeter/protocol/http/parser/TestHTMLParser.java
++++ b/test/src/org/apache/jmeter/protocol/http/parser/TestHTMLParser.java
+@@ -259,13 +259,13 @@ public class TestHTMLParser extends JMeterTestCase {
+             suite.addTest(new TestHTMLParser("testNotParser"));
+             suite.addTest(new TestHTMLParser("testNotCreatable"));
+             suite.addTest(new TestHTMLParser("testNotCreatableStatic"));
+-            for (int i = 0; i < PARSERS.length; i++) {
+-                TestSuite ps = new TestSuite(PARSERS[i]);// Identify subtests
+-                ps.addTest(new TestHTMLParser("testParserProperty", PARSERS[i], 0));
++            for (String parser : PARSERS) {
++                TestSuite ps = new TestSuite(parser);// Identify subtests
++                ps.addTest(new TestHTMLParser("testParserProperty", parser, 0));
+                 for (int j = 0; j < TESTS.length; j++) {
+                     TestSuite ts = new TestSuite(TESTS[j].fileName);
+-                    ts.addTest(new TestHTMLParser("testParserSet", PARSERS[i], j));
+-                    ts.addTest(new TestHTMLParser("testParserList", PARSERS[i], j));
++                    ts.addTest(new TestHTMLParser("testParserSet", parser, j));
++                    ts.addTest(new TestHTMLParser("testParserList", parser, j));
+                     ps.addTest(ts);
+                 }
+                 suite.addTest(ps);
+diff --git a/test/src/org/apache/jmeter/protocol/http/util/accesslog/TestLogFilter.java b/test/src/org/apache/jmeter/protocol/http/util/accesslog/TestLogFilter.java
+index ab48bf1..aa783b5 100644
+--- a/test/src/org/apache/jmeter/protocol/http/util/accesslog/TestLogFilter.java
++++ b/test/src/org/apache/jmeter/protocol/http/util/accesslog/TestLogFilter.java
+@@ -89,12 +89,11 @@ public class TestLogFilter extends JMeterTestCase {
+ 
+         public void testExcludeFiles() {
+             testf.excludeFiles(INCL);
+-            for (int idx = 0; idx < TESTDATA.length; idx++) {
+-                TestData td = TESTDATA[idx];
++            for (TestData td : TESTDATA) {
+                 String theFile = td.file;
+                 boolean expect = td.exclfile;
+ 
+-                testf.isFiltered(theFile,null);
++                testf.isFiltered(theFile, null);
+                 String line = testf.filter(theFile);
+                 if (line != null) {
+                     assertTrue("Expect to accept " + theFile, expect);
+@@ -106,12 +105,11 @@ public class TestLogFilter extends JMeterTestCase {
+ 
+         public void testIncludeFiles() {
+             testf.includeFiles(INCL);
+-            for (int idx = 0; idx < TESTDATA.length; idx++) {
+-                TestData td = TESTDATA[idx];
++            for (TestData td : TESTDATA) {
+                 String theFile = td.file;
+                 boolean expect = td.inclfile;
+ 
+-                testf.isFiltered(theFile,null);
++                testf.isFiltered(theFile, null);
+                 String line = testf.filter(theFile);
+                 if (line != null) {
+                     assertTrue("Expect to accept " + theFile, expect);
+@@ -124,12 +122,11 @@ public class TestLogFilter extends JMeterTestCase {
+ 
+         public void testExcludePattern() {
+             testf.excludePattern(PATTERNS);
+-            for (int idx = 0; idx < TESTDATA.length; idx++) {
+-                TestData td = TESTDATA[idx];
++            for (TestData td : TESTDATA) {
+                 String theFile = td.file;
+                 boolean expect = td.exclpatt;
+ 
+-                assertEquals(!expect, testf.isFiltered(theFile,null));
++                assertEquals(!expect, testf.isFiltered(theFile, null));
+                 String line = testf.filter(theFile);
+                 if (line != null) {
+                     assertTrue("Expect to accept " + theFile, expect);
+@@ -141,12 +138,11 @@ public class TestLogFilter extends JMeterTestCase {
+ 
+         public void testIncludePattern() {
+             testf.includePattern(PATTERNS);
+-            for (int idx = 0; idx < TESTDATA.length; idx++) {
+-                TestData td = TESTDATA[idx];
++            for (TestData td : TESTDATA) {
+                 String theFile = td.file;
+                 boolean expect = td.inclpatt;
+ 
+-                assertEquals(!expect, testf.isFiltered(theFile,null));
++                assertEquals(!expect, testf.isFiltered(theFile, null));
+                 String line = testf.filter(theFile);
+                 if (line != null) {
+                     assertTrue("Expect to accept " + theFile, expect);
+diff --git a/test/src/org/apache/jorphan/test/AllTests.java b/test/src/org/apache/jorphan/test/AllTests.java
+index ebcaaed..4807474 100644
+--- a/test/src/org/apache/jorphan/test/AllTests.java
++++ b/test/src/org/apache/jorphan/test/AllTests.java
+@@ -170,10 +170,10 @@ public final class AllTests {
+         String cpe[] = JOrphanUtils.split(cp, java.io.File.pathSeparator);
+         StringBuilder sb = new StringBuilder(3000);
+         sb.append("java.class.path=");
+-        for (int i = 0; i < cpe.length; i++) {
++        for (String path : cpe) {
+             sb.append("\n");
+-            sb.append(cpe[i]);
+-            if (new java.io.File(cpe[i]).exists()) {
++            sb.append(path);
++            if (new File(path).exists()) {
+                 sb.append(" - OK");
+             } else {
+                 sb.append(" - ??");
+-- 
+1.9.1
+

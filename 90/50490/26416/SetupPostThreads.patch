@@ -1,0 +1,231 @@
+Index: bin/saveservice.properties
+===================================================================
+--- bin/saveservice.properties	(revision 1049987)
++++ bin/saveservice.properties	(working copy)
+@@ -260,6 +260,10 @@
+ TestPlanGui=org.apache.jmeter.control.gui.TestPlanGui
+ ThreadGroup=org.apache.jmeter.threads.ThreadGroup
+ ThreadGroupGui=org.apache.jmeter.threads.gui.ThreadGroupGui
++PostThreadGroup=org.apache.jmeter.threads.PostThreadGroup
++PostThreadGroupGui=org.apache.jmeter.threads.gui.PostThreadGroupGui
++SetupThreadGroup=org.apache.jmeter.threads.SetupThreadGroup
++SetupThreadGroupGui=org.apache.jmeter.threads.gui.SetupThreadGroupGui
+ ThroughputController=org.apache.jmeter.control.ThroughputController
+ ThroughputControllerGui=org.apache.jmeter.control.gui.ThroughputControllerGui
+ TransactionController=org.apache.jmeter.control.TransactionController
+@@ -336,4 +340,4 @@
+ _org.apache.jmeter.save.ScriptWrapperConverter=mapping
+ #
+ #	Remember to update the _version entry
+-#
+\ No newline at end of file
++#
+Index: src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 1049987)
++++ src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -25,6 +25,7 @@
+ import java.net.InetAddress;
+ import java.util.ArrayList;
+ import java.util.Date;
++import java.util.HashSet;
+ import java.util.Iterator;
+ import java.util.LinkedList;
+ import java.util.List;
+@@ -45,6 +46,8 @@
+ import org.apache.jmeter.threads.ListenerNotifier;
+ import org.apache.jmeter.threads.TestCompiler;
+ import org.apache.jmeter.threads.AbstractThreadGroup;
++import org.apache.jmeter.threads.SetupThreadGroup;
++import org.apache.jmeter.threads.PostThreadGroup;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.collections.ListedHashTree;
+@@ -411,14 +414,50 @@
+ 
+         List<?> testLevelElements = new LinkedList<Object>(test.list(test.getArray()[0]));
+         removeThreadGroups(testLevelElements);
++
++        SearchByClass<SetupThreadGroup> setupSearcher = new SearchByClass<SetupThreadGroup>(SetupThreadGroup.class);
+         SearchByClass<AbstractThreadGroup> searcher = new SearchByClass<AbstractThreadGroup>(AbstractThreadGroup.class);
++        SearchByClass<PostThreadGroup> postSearcher = new SearchByClass<PostThreadGroup>(PostThreadGroup.class);
++
++        test.traverse(setupSearcher);
+         test.traverse(searcher);
++        test.traverse(postSearcher);
++        
+         TestCompiler.initialize();
+         // for each thread group, generate threads
+         // hand each thread the sampler controller
+         // and the listeners, and the timer
++        Iterator<SetupThreadGroup> setupIter = setupSearcher.getSearchResults().iterator();
+         Iterator<AbstractThreadGroup> iter = searcher.getSearchResults().iterator();
++        Iterator<PostThreadGroup> postIter = postSearcher.getSearchResults().iterator();
+ 
++        ListenerNotifier notifier = new ListenerNotifier();
++
++        int groupCount = 0;
++        JMeterContextService.clearTotalThreads();
++        log.info("Starting setup thread groups");
++        while (running && setupIter.hasNext()) {//for each setup thread group
++            AbstractThreadGroup group = (AbstractThreadGroup)setupIter.next();
++            groupCount++;
++            log.info("Starting Setup Thread: " + groupCount);
++            String groupName = startThreadGroup(group, groupCount, setupSearcher, testLevelElements, notifier);
++            if (serialized && setupIter.hasNext()) {
++                log.info("Waiting for setup thread group: "+groupName+" to finish before starting next group");
++                while (running && allThreads.size() > 0) {
++                    pause(1000);
++                }
++            }
++        }
++
++        log.info("Waiting for all setup thread groups To Exit");
++        //wait for all Setup Threads To Exit
++        while (running && allThreads.size() > 0) {
++            pause(1000);
++        }
++        log.info("All Setup Threads have ended");
++
++        groupCount=0;
++
+         /*
+          * Here's where the test really starts. Run a Full GC now: it's no harm
+          * at all (just delays test start by a tiny amount) and hitting one too
+@@ -426,15 +465,61 @@
+          */
+         System.gc();
+ 
+-        ListenerNotifier notifier = new ListenerNotifier();
+-
+         JMeterContextService.getContext().setSamplingStarted(true);
+-        int groupCount = 0;
+-        JMeterContextService.clearTotalThreads();
+         startingGroups = true;
+         while (running && iter.hasNext()) {// for each thread group
++            AbstractThreadGroup group = iter.next();
++            //ignore Setup and Post here.  We could of filtered the searcher. but then
++            //future Thread Group objects wouldn't execute.
++            if (group instanceof SetupThreadGroup)
++                continue;
++            if (group instanceof PostThreadGroup)
++                continue;
+             groupCount++;
+-            AbstractThreadGroup group = iter.next();
++            String groupName=startThreadGroup(group, groupCount, searcher, testLevelElements, notifier);
++            if (serialized && iter.hasNext()) {
++                log.info("Waiting for thread group: "+groupName+" to finish before starting next group");
++                while (running && allThreads.size() > 0) {
++                    pause(1000);
++                }
++            }
++        } // end of thread groups
++        startingGroups = false;
++        if (groupCount == 0){ // No TGs found
++            log.info("No enabled thread groups found");
++            notifyTestListenersOfEnd(testListenersSave);
++        } else {
++            if (running) {
++                log.info("All threads have been started");
++            } else {
++                log.info("Test stopped - no more threads will be started");
++            }
++        }
++
++        //wait for all Test Threads To Exit
++        while (running && allThreads.size() > 0) {
++            pause(1000);
++        }
++
++        groupCount = 0;
++        JMeterContextService.clearTotalThreads();
++        log.info("Starting post thread groups");
++        while (running && postIter.hasNext()) {//for each setup thread group
++            AbstractThreadGroup group = (AbstractThreadGroup)postIter.next();
++            groupCount++;
++            log.info("Starting Post Thread: " + groupCount);
++            String groupName = startThreadGroup(group, groupCount, postSearcher, testLevelElements, notifier);
++            if (serialized && postIter.hasNext()) {
++                log.info("Waiting for post thread group: "+groupName+" to finish before starting next group");
++                while (running && allThreads.size() > 0) {
++                    pause(1000);
++                }
++            }
++        }
++    }
++
++    private String startThreadGroup(AbstractThreadGroup group, int groupCount, SearchByClass searcher, List<?> testLevelElements, ListenerNotifier notifier)
++    {
+             int numThreads = group.getNumThreads();
+             JMeterContextService.addTotalThreads(numThreads);
+             boolean onErrorStopTest = group.getOnErrorStopTest();
+@@ -477,24 +562,7 @@
+                 allThreads.put(jmeterThread, newThread);
+                 newThread.start();
+             } // end of thread startup for this thread group
+-            if (serialized && iter.hasNext()) {
+-                log.info("Waiting for thread group: "+groupName+" to finish before starting next group");
+-                while (running && allThreads.size() > 0) {
+-                    pause(1000);
+-                }
+-            }
+-        } // end of thread groups
+-        startingGroups = false;
+-        if (groupCount == 0){ // No TGs found
+-            log.info("No enabled thread groups found");
+-            notifyTestListenersOfEnd(testListenersSave);
+-        } else {
+-            if (running) {
+-                log.info("All threads have been started");
+-            } else {
+-                log.info("Test stopped - no more threads will be started");
+-            }
+-        }
++            return groupName;
+     }
+ 
+     private boolean verifyThreadsStopped() {
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1049987)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -5103,6 +5103,39 @@
+ <a href="#">^</a>
+ 
+ </section>
++<section name="&sect-num;.11 Thread Groups" anchor="thread_groups">
++<description>
++Thread group elements are the beginning points of any test plan.
++All controllers and samplers must be under a thread group.
++Other elements, e.g. Listeners, may be placed directly under the test plan,
++in which case they will apply to all the thread groups.
++</description>
++<component name="Thread Group" index="&sect-num;.11.1" width="499" height="292" screenshot="threadgroup.png">
++<description>
++	<p>
++    The main Thread Group element that is the actual test.  In depth information on usage can be found in the <a href="test_plan.html#thread_group">Test Plan</a> section
++    </p>
++</description>
++</component>
++<component name="Setup Thread Group" index="&sect-num;.11.2" width="499" height="292" screenshot="setup_thread_group.png">
++<description>
++	<p>
++    A special type of ThreadGroup that can be utilized to perform Pre-Test Actions.  The behavior of these threads
++    is exactly like a normal Thread Group element.  The difference is that these type of threads are batched 
++    together and execute before the test proceeds to the executing of regular Thread Groups.
++    </p>
++</description>
++</component>
++<component name="Post Thread Group" index="&sect-num;.11.3" width="499" height="292" screenshot="post_thread_group.png">
++<description>
++	<p>
++    A special type of ThreadGroup that can be utilized to perform Post-Test Actions.  The behavior of these threads
++    is exactly like a normal Thread Group element.  The difference is that these type of threads are batched 
++    together and execute after the test has finished executing its regular Thread Groups.
++    </p>
++</description>
++</component>
++</section>
+ 
+ </body>
+ </document>

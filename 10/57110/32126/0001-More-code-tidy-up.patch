@@ -1,0 +1,639 @@
+From fdf8ac31d69bbf6d3dfed93359f2deed4e765e4f Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Sun, 19 Oct 2014 11:47:29 +0100
+Subject: [PATCH] More code tidy-up.
+
+---
+ .../control/gui/ThroughputControllerGui.java       | 33 ++++++-----
+ .../apache/jmeter/visualizers/StatVisualizer.java  |  2 +-
+ .../org/apache/jmeter/gui/JMeterGUIComponent.java  |  2 +-
+ .../org/apache/jmeter/save/CSVSaveService.java     | 13 ++---
+ .../apache/jmeter/testbeans/gui/TestBeanGUI.java   | 26 ++++-----
+ src/core/org/apache/jmeter/util/JMeterUtils.java   | 25 +++-----
+ src/jorphan/org/apache/jorphan/gui/GuiUtils.java   | 20 +++----
+ .../org/apache/jmeter/gui/ReportGuiPackage.java    | 18 ++----
+ .../jmeter/report/gui/tree/ReportTreeListener.java | 67 ++++------------------
+ 9 files changed, 69 insertions(+), 137 deletions(-)
+
+diff --git a/src/components/org/apache/jmeter/control/gui/ThroughputControllerGui.java b/src/components/org/apache/jmeter/control/gui/ThroughputControllerGui.java
+index 8cd2eca..59d827d 100644
+--- a/src/components/org/apache/jmeter/control/gui/ThroughputControllerGui.java
++++ b/src/components/org/apache/jmeter/control/gui/ThroughputControllerGui.java
+@@ -38,7 +38,7 @@ import org.apache.jorphan.gui.layout.VerticalLayout;
+ public class ThroughputControllerGui extends AbstractControllerGui {
+     private static final long serialVersionUID = 240L;
+ 
+-    private JComboBox styleBox;
++    private JComboBox<String> styleBox;
+ 
+     private int style;
+ 
+@@ -74,22 +74,24 @@ public class ThroughputControllerGui extends AbstractControllerGui {
+      * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
+      */
+     @Override
+-    public void modifyTestElement(TestElement tc) {
+-        configureTestElement(tc);
+-        ((ThroughputController) tc).setStyle(style);
+-        ((ThroughputController) tc).setPerThread(isPerThread);
++    public void modifyTestElement(TestElement te) {
++        configureTestElement(te);
++        ThroughputController tc = (ThroughputController) te;
++        tc.setStyle(style);
++        tc.setPerThread(isPerThread);
++        String throughputText = throughput.getText().trim();
+         if (style == ThroughputController.BYNUMBER) {
+             try {
+-                ((ThroughputController) tc).setMaxThroughput(Integer.parseInt(throughput.getText().trim()));
++                tc.setMaxThroughput(Integer.parseInt(throughputText));
+             } catch (NumberFormatException e) {
+                 // In case we are converting back from floating point, drop the decimal fraction
+-                ((ThroughputController) tc).setMaxThroughput(throughput.getText().trim().split("\\.")[0]); // $NON-NLS-1$
++                tc.setMaxThroughput(throughputText.split("\\.")[0]); // $NON-NLS-1$
+             }
+         } else {
+             try {
+-                ((ThroughputController) tc).setPercentThroughput(Float.parseFloat(throughput.getText().trim()));
++                tc.setPercentThroughput(Float.parseFloat(throughputText));
+             } catch (NumberFormatException e) {
+-                ((ThroughputController) tc).setPercentThroughput(throughput.getText());
++                tc.setPercentThroughput(throughputText);
+             }
+         }
+     }
+@@ -108,14 +110,15 @@ public class ThroughputControllerGui extends AbstractControllerGui {
+     @Override
+     public void configure(TestElement el) {
+         super.configure(el);
+-        if (((ThroughputController) el).getStyle() == ThroughputController.BYNUMBER) {
++        ThroughputController tc = (ThroughputController) el;
++        if (tc.getStyle() == ThroughputController.BYNUMBER) {
+             styleBox.getModel().setSelectedItem(BYNUMBER_LABEL);
+-            throughput.setText(((ThroughputController) el).getMaxThroughput());
++            throughput.setText(tc.getMaxThroughput());
+         } else {
+             styleBox.setSelectedItem(BYPERCENT_LABEL);
+-            throughput.setText(((ThroughputController) el).getPercentThroughput());
++            throughput.setText(tc.getPercentThroughput());
+         }
+-        perthread.setSelected(((ThroughputController) el).isPerThread());
++        perthread.setSelected(tc.isPerThread());
+     }
+ 
+     @Override
+@@ -128,10 +131,10 @@ public class ThroughputControllerGui extends AbstractControllerGui {
+         setBorder(makeBorder());
+         add(makeTitlePanel());
+ 
+-        DefaultComboBoxModel styleModel = new DefaultComboBoxModel();
++        DefaultComboBoxModel<String> styleModel = new DefaultComboBoxModel<String>();
+         styleModel.addElement(BYNUMBER_LABEL);
+         styleModel.addElement(BYPERCENT_LABEL);
+-        styleBox = new JComboBox(styleModel);
++        styleBox = new JComboBox<String>(styleModel);
+         styleBox.addActionListener(new ActionListener() {
+             @Override
+             public void actionPerformed(ActionEvent e) {
+diff --git a/src/components/org/apache/jmeter/visualizers/StatVisualizer.java b/src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+index 9b2bd08..2dfe21d 100644
+--- a/src/components/org/apache/jmeter/visualizers/StatVisualizer.java
++++ b/src/components/org/apache/jmeter/visualizers/StatVisualizer.java
+@@ -55,7 +55,7 @@ import org.apache.jorphan.reflect.Functor;
+ import org.apache.jorphan.util.JOrphanUtils;
+ 
+ /**
+- * Aggregrate Table-Based Reporting Visualizer for JMeter. Props to the people
++ * Aggregate Table-Based Reporting Visualizer for JMeter. Props to the people
+  * who've done the other visualizers ahead of me (Stefano Mazzocchi), who I
+  * borrowed code from to start me off (and much code may still exist). Thank
+  * you!
+diff --git a/src/core/org/apache/jmeter/gui/JMeterGUIComponent.java b/src/core/org/apache/jmeter/gui/JMeterGUIComponent.java
+index 17dce63..789cd76 100644
+--- a/src/core/org/apache/jmeter/gui/JMeterGUIComponent.java
++++ b/src/core/org/apache/jmeter/gui/JMeterGUIComponent.java
+@@ -84,7 +84,7 @@ public interface JMeterGUIComponent extends ClearGui {
+      * the component's label in the local language. The resource name is fixed,
+      * and does not vary with the selected language.
+      *
+-     * Normally this method should be overriden in preference to overriding
++     * Normally this method should be overridden in preference to overriding
+      * getStaticLabel(). However where the resource name is not available or required,
+      * getStaticLabel() may be overridden instead.
+      *
+diff --git a/src/core/org/apache/jmeter/save/CSVSaveService.java b/src/core/org/apache/jmeter/save/CSVSaveService.java
+index d1d5224..c2b2150 100644
+--- a/src/core/org/apache/jmeter/save/CSVSaveService.java
++++ b/src/core/org/apache/jmeter/save/CSVSaveService.java
+@@ -570,8 +570,7 @@ public final class CSVSaveService {
+                             Perl5Compiler.READ_ONLY_MASK);
+             if (matcher.matches(input, pattern)) {
+                 delim = matcher.getMatch().group(2);
+-                parts = splitHeader(headerLine, delim);// now validate the
+-                                                       // result
++                parts = splitHeader(headerLine, delim);// now validate the result
+             }
+         }
+ 
+@@ -793,11 +792,9 @@ public final class CSVSaveService {
+             }
+         }
+ 
+-        // These methods handle parameters that could contain delimiters or
+-        // quotes:
++        // These handle parameters that could contain delimiters or quotes
+         public void append(String s) {
+             addDelim();
+-            // if (s == null) return;
+             sb.append(quoteDelimiters(s, specials));
+         }
+ 
+@@ -805,8 +802,7 @@ public final class CSVSaveService {
+             append(String.valueOf(obj));
+         }
+ 
+-        // These methods handle parameters that cannot contain delimiters or
+-        // quotes
++        // These handle parameters that cannot contain delimiters or quotes
+         public void append(int i) {
+             addDelim();
+             sb.append(i);
+@@ -900,8 +896,7 @@ public final class CSVSaveService {
+             if (message != null) {
+                 text.append(message);
+             } else {
+-                text.append(""); // Need to append something so delimiter is
+-                                 // added
++                text.append(""); // Need to append something so delimiter is added
+             }
+         }
+ 
+diff --git a/src/core/org/apache/jmeter/testbeans/gui/TestBeanGUI.java b/src/core/org/apache/jmeter/testbeans/gui/TestBeanGUI.java
+index f73410c..60beb3c 100644
+--- a/src/core/org/apache/jmeter/testbeans/gui/TestBeanGUI.java
++++ b/src/core/org/apache/jmeter/testbeans/gui/TestBeanGUI.java
+@@ -168,18 +168,14 @@ public class TestBeanGUI extends AbstractJMeterGuiComponent implements JMeterGUI
+             beanInfo = Introspector.getBeanInfo(testBeanClass);
+         } catch (IntrospectionException e) {
+             log.error("Can't get beanInfo for " + testBeanClass.getName(), e);
+-            throw new Error(e.toString()); // Programming error. Don't
+-                                            // continue.
++            throw new Error(e.toString()); // Programming error. Don't continue.
+         }
+ 
+         customizerClass = beanInfo.getBeanDescriptor().getCustomizerClass();
+ 
+         // Creation of the customizer and GUI initialization is delayed until
+-        // the
+-        // first
+-        // configure call. We don't need all that just to find out the static
+-        // label, menu
+-        // categories, etc!
++        // the first configure call. We don't need all that just to find out
++        // the static label, menu categories, etc!
+         initialized = false;
+         JMeterUtils.addLocaleChangeListener(this);
+     }
+@@ -215,7 +211,7 @@ public TestElement createTestElement() {
+         try {
+             TestElement element = (TestElement) testBeanClass.newInstance();
+             // In other GUI component, clearGUI resets the value to defaults one as there is one GUI per Element
+-            // With TestBeanGUI as it's shared, its default values are only known here, we must call setValues with 
++            // With TestBeanGUI as it's shared, its default values are only known here, we must call setValues with
+             // element (as it holds default values)
+             // otherwise we will get values as computed by customizer reset and not default ones
+             if(initialized) {
+@@ -228,12 +224,10 @@ public TestElement createTestElement() {
+             return element;
+         } catch (InstantiationException e) {
+             log.error("Can't create test element", e);
+-            throw new Error(e.toString()); // Programming error. Don't
+-                                            // continue.
++            throw new Error(e.toString()); // Programming error. Don't continue.
+         } catch (IllegalAccessException e) {
+             log.error("Can't create test element", e);
+-            throw new Error(e.toString()); // Programming error. Don't
+-                                            // continue.
++            throw new Error(e.toString()); // Programming error. Don't continue.
+         }
+     }
+ 
+@@ -332,9 +326,9 @@ public TestElement createTestElement() {
+ 
+         initialized = true;
+     }
+-    
++
+     /**
+-     * Get values from element to fill propertyMap and setup customizer 
++     * Get values from element to fill propertyMap and setup customizer
+      * @param element TestElement
+      */
+     private void setValues(TestElement element) {
+@@ -343,7 +337,7 @@ public TestElement createTestElement() {
+             JMeterProperty jprop = jprops.next();
+             propertyMap.put(jprop.getName(), jprop.getObjectValue());
+         }
+-        
++
+         if (customizer != null) {
+             customizer.setObject(propertyMap);
+         } else {
+@@ -389,7 +383,7 @@ public TestElement createTestElement() {
+     public int setupGuiClasses() {
+         return setupGuiClasses(new ArrayList<String>());
+     }
+-    
++
+     /**
+      * Setup GUI class
+      * @param menuCategories List<String> menu categories
+diff --git a/src/core/org/apache/jmeter/util/JMeterUtils.java b/src/core/org/apache/jmeter/util/JMeterUtils.java
+index 4137746..3ddee52 100644
+--- a/src/core/org/apache/jmeter/util/JMeterUtils.java
++++ b/src/core/org/apache/jmeter/util/JMeterUtils.java
+@@ -73,7 +73,7 @@ public class JMeterUtils implements UnitTestManager {
+     // have been defined (Bug 52783)
+     private static class LazyPatternCacheHolder {
+         public static final PatternCacheLRU INSTANCE = new PatternCacheLRU(
+-                getPropDefault("oro.patterncache.size",1000), // $NON-NLS-1$
++                getPropDefault("oro.patterncache.size", 1000), // $NON-NLS-1$
+                 new Perl5Compiler());
+     }
+ 
+@@ -91,11 +91,8 @@ public class JMeterUtils implements UnitTestManager {
+ 
+     // What host am I running on?
+ 
+-    //@GuardedBy("this")
+     private static String localHostIP = null;
+-    //@GuardedBy("this")
+     private static String localHostName = null;
+-    //@GuardedBy("this")
+     private static String localHostFullName = null;
+ 
+     private static volatile boolean ignoreResorces = false; // Special flag for use in debugging resources
+@@ -184,10 +181,9 @@ public class JMeterUtils implements UnitTestManager {
+             p.load(is);
+         } catch (IOException e) {
+             try {
+-                is =
+-                    ClassLoader.getSystemResourceAsStream("org/apache/jmeter/jmeter.properties"); // $NON-NLS-1$
++                is = ClassLoader.getSystemResourceAsStream("org/apache/jmeter/jmeter.properties"); // $NON-NLS-1$
+                 if (is == null) {
+-                    throw new RuntimeException("Could not read JMeter properties file:"+file);
++                    throw new RuntimeException("Could not read JMeter properties file:" + file);
+                 }
+                 p.load(is);
+             } catch (IOException ex) {
+@@ -381,9 +377,8 @@ public class JMeterUtils implements UnitTestManager {
+             }
+         }
+         notifyLocaleChangeListeners();
+-        /*
+-         * Reset Locale if necessary so other locales are properly handled
+-         */
++        
++        // Reset Locale if necessary so other locales are properly handled
+         if (def != null) {
+             Locale.setDefault(def);
+         }
+@@ -413,8 +408,7 @@ public class JMeterUtils implements UnitTestManager {
+     private static void notifyLocaleChangeListeners() {
+         LocaleChangeEvent event = new LocaleChangeEvent(JMeterUtils.class, locale);
+         @SuppressWarnings("unchecked") // clone will produce correct type
+-        // TODO but why do we need to clone the list?
+-        // ANS: to avoid possible ConcurrentUpdateException when unsubscribing
++        // cloning the list to avoid possible ConcurrentUpdateException when unsubscribing
+         // Could perhaps avoid need to clone by using a modern concurrent list
+         Vector<LocaleChangeListener> listeners = (Vector<LocaleChangeListener>) localeChangeListeners.clone();
+         for (LocaleChangeListener listener : listeners) {
+@@ -898,7 +892,7 @@ public class JMeterUtils implements UnitTestManager {
+     }
+ 
+     /**
+-     * Instatiate an object and guarantee its class.
++     * Instantiate an object and guarantee its class.
+      *
+      * @param className
+      *            The name of the class to instantiate.
+@@ -1107,8 +1101,6 @@ public class JMeterUtils implements UnitTestManager {
+         return retVal.toString();
+     }
+ 
+-    // End Method
+-
+     /**
+      * Takes an array of strings and a tokenizer character, and returns a string
+      * of all the strings concatenated with the tokenizer string in between each
+@@ -1166,7 +1158,6 @@ public class JMeterUtils implements UnitTestManager {
+     private static String jmDir; // JMeter Home directory (excludes trailing separator)
+     private static String jmBin; // JMeter bin directory (excludes trailing separator)
+ 
+-
+     /**
+      * Gets the JMeter Version.
+      *
+@@ -1318,7 +1309,7 @@ public class JMeterUtils implements UnitTestManager {
+      */
+     public static final void clearMatcherMemory(Perl5Matcher matcher, Pattern pattern) {
+         try {
+-            if(pattern != null) {
++            if (pattern != null) {
+                 matcher.matches("", pattern); // $NON-NLS-1$
+             }
+         } catch (Exception e) {
+diff --git a/src/jorphan/org/apache/jorphan/gui/GuiUtils.java b/src/jorphan/org/apache/jorphan/gui/GuiUtils.java
+index 851d341..30dbd3b 100644
+--- a/src/jorphan/org/apache/jorphan/gui/GuiUtils.java
++++ b/src/jorphan/org/apache/jorphan/gui/GuiUtils.java
+@@ -13,7 +13,7 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- * 
++ *
+  */
+ 
+ package org.apache.jorphan.gui;
+@@ -65,7 +65,7 @@ public final class GuiUtils {
+ 
+     /**
+      * Fix the size of a column according to the header text.
+-     * 
++     *
+      * @param column to be resized
+      * @param table containing the column
+      */
+@@ -80,9 +80,9 @@ public final class GuiUtils {
+         int width = c.getPreferredSize().width+10;
+         column.setMaxWidth(width);
+         column.setPreferredWidth(width);
+-        column.setResizable(false);        
++        column.setResizable(false);
+     }
+-    
++
+     /**
+      * Create a GUI component JLabel + JComboBox with a left and right margin (5px)
+      * @param label
+@@ -109,7 +109,7 @@ public final class GuiUtils {
+             cellEditor.stopCellEditing();
+         }
+     }
+-    
++
+     /**
+      * Get pasted text from clipboard
+      * @return String Pasted text
+@@ -132,12 +132,12 @@ public final class GuiUtils {
+      * Make menu scrollable
+      * @param menu {@link JMenu}
+      */
+-    public static void makeScrollableMenu(JMenu menu) { 
++    public static void makeScrollableMenu(JMenu menu) {
+         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+-        if(menu.getItemCount()>0) {
+-            // We use 80% of height
+-            int maxItems = (int)Math.round(
+-                    screenSize.getHeight()*0.8/menu.getMenuComponent(0).getPreferredSize().getHeight());
++        if (menu.getItemCount() > 0) {
++            double componentHeight = menu.getMenuComponent(0).getPreferredSize().getHeight();
++            double screenHeight = screenSize.getHeight() * 0.8; // We use 80%
++            int maxItems = (int) Math.round(screenHeight / componentHeight);
+             MenuScroller.setScrollerFor(menu, maxItems, 200);
+         }
+     }
+diff --git a/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java b/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java
+index e2c4d26..4350243 100644
+--- a/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java
++++ b/src/reports/org/apache/jmeter/gui/ReportGuiPackage.java
+@@ -48,7 +48,6 @@ import org.apache.log.Logger;
+  * the reporting tool. Because of how the gui components work, it
+  * was safer to just make a new class, rather than braking existing
+  * JMeter gui code.
+- *
+  */
+ public final class ReportGuiPackage implements LocaleChangeListener {
+     /** Logging. */
+@@ -111,7 +110,7 @@ public final class ReportGuiPackage implements LocaleChangeListener {
+      * @return the GuiPackage instance
+      */
+     public static ReportGuiPackage getInstance() {
+-        if (guiPack == null){
++        if (guiPack == null) {
+             log.error("ReportGuiPackage is null");
+         }
+         return guiPack;
+@@ -131,7 +130,7 @@ public final class ReportGuiPackage implements LocaleChangeListener {
+     public static ReportGuiPackage getInstance(ReportTreeListener listener, ReportTreeModel treeModel) {
+         if (guiPack == null) {
+             synchronized (LOCK) {
+-                if(guiPack== null) {
++                if (guiPack == null) {
+                     guiPack = new ReportGuiPackage();
+                     guiPack.setTreeListener(listener);
+                     guiPack.setTreeModel(treeModel);
+@@ -303,20 +302,16 @@ public final class ReportGuiPackage implements LocaleChangeListener {
+             return node;
+         } catch (NoClassDefFoundError e) {
+             log.error("Problem retrieving gui for " + objClass, e);
+-            throw new RuntimeException(e.toString(), e); // Probably a missing
+-                                                        // jar
++            throw new RuntimeException(e.toString(), e); // Probably a missing jar
+         } catch (ClassNotFoundException e) {
+             log.error("Problem retrieving gui for " + objClass, e);
+-            throw new RuntimeException(e.toString(), e); // Programming error:
+-                                                        // bail out.
++            throw new RuntimeException(e.toString(), e); // Programming error: bail out.
+         } catch (InstantiationException e) {
+             log.error("Problem retrieving gui for " + objClass, e);
+-            throw new RuntimeException(e.toString(), e); // Programming error:
+-                                                        // bail out.
++            throw new RuntimeException(e.toString(), e); // Programming error: bail out.
+         } catch (IllegalAccessException e) {
+             log.error("Problem retrieving gui for " + objClass, e);
+-            throw new RuntimeException(e.toString(), e); // Programming error:
+-                                                        // bail out.
++            throw new RuntimeException(e.toString(), e); // Programming error: bail out.
+         }
+     }
+ 
+@@ -367,7 +362,6 @@ public final class ReportGuiPackage implements LocaleChangeListener {
+     /**
+      * Update the GUI for the currently selected node. The GUI component is
+      * configured to reflect the settings in the current tree node.
+-     *
+      */
+     public void updateCurrentGui() {
+         updateCurrentNode();
+diff --git a/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeListener.java b/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeListener.java
+index 6bcc79e..79a808e 100644
+--- a/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeListener.java
++++ b/src/reports/org/apache/jmeter/report/gui/tree/ReportTreeListener.java
+@@ -18,7 +18,6 @@
+ 
+ package org.apache.jmeter.report.gui.tree;
+ 
+-import java.awt.Container;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.awt.event.InputEvent;
+@@ -48,8 +47,6 @@ import org.apache.log.Logger;
+ public class ReportTreeListener implements TreeSelectionListener, MouseListener, KeyListener, MouseMotionListener {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    // Container endWindow;
+-    // JPopupMenu pop;
+     private TreePath currentPath;
+ 
+     private ActionListener actionHandler;
+@@ -64,9 +61,6 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+ 
+     private JLabel dragIcon = new JLabel(JMeterUtils.getImage("leafnode.gif"));
+ 
+-    /**
+-     * Constructor for the JMeterTreeListener object.
+-     */
+     public ReportTreeListener(ReportTreeModel model) {
+         this.model = model;
+         dragIcon.validate();
+@@ -82,47 +76,20 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+         model = m;
+     }
+ 
+-    /**
+-     * Sets the ActionHandler attribute of the JMeterTreeListener object.
+-     *
+-     * @param ah
+-     *            the new ActionHandler value
+-     */
+     public void setActionHandler(ActionListener ah) {
+         actionHandler = ah;
+     }
+ 
+-    /**
+-     * Sets the JTree attribute of the JMeterTreeListener object.
+-     *
+-     * @param tree
+-     *            the new JTree value
+-     */
+     public void setJTree(JTree tree) {
+         this.tree = tree;
+     }
+ 
+-    /**
+-     * Sets the EndWindow attribute of the JMeterTreeListener object.
+-     *
+-     * @param window
+-     *            the new EndWindow value
+-     */
+-    public void setEndWindow(Container window) {
+-        // endWindow = window;
+-    }
+-
+-    /**
+-     * Gets the JTree attribute of the JMeterTreeListener object.
+-     *
+-     * @return tree the current JTree value.
+-     */
+     public JTree getJTree() {
+         return tree;
+     }
+ 
+     /**
+-     * Gets the CurrentNode attribute of the JMeterTreeListener object.
++     * Gets the CurrentNode attribute of the ReportTreeNode.
+      *
+      * @return the CurrentNode value
+      */
+@@ -164,7 +131,7 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+     }
+ 
+     @Override
+-    public void mouseClicked(MouseEvent ev) {
++    public void mouseClicked(MouseEvent e) {
+     }
+ 
+     @Override
+@@ -198,15 +165,12 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+         return draggedNodes;
+     }
+ 
+-    /**
+-     * Tests if the node is being dragged into one of it's own sub-nodes, or
+-     * into itself.
+-     */
+     private boolean isValidDragAction(ReportTreeNode[] source, ReportTreeNode dest) {
+         boolean isValid = true;
+         TreeNode[] path = dest.getPath();
+-        for (int i = 0; i < path.length; i++) {
+-            if (contains(source, path[i])) {
++        for (TreeNode node : path) {
++            // Tests if the node is being dragged into itself or own sub-nodes.
++            if (contains(source, node)) {
+                 isValid = false;
+                 break;
+             }
+@@ -231,8 +195,8 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+     }
+ 
+     private boolean contains(Object[] container, Object item) {
+-        for (int i = 0; i < container.length; i++) {
+-            if (container[i] == item) {
++        for (Object c : container) {
++            if (c == item) {
+                 return true;
+             }
+         }
+@@ -251,8 +215,6 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+             currentPath = tree.getPathForLocation(e.getX(), e.getY());
+         }
+         if (selRow != -1) {
+-            // updateMainMenu(((JMeterGUIComponent)
+-            // getCurrentNode().getUserObject()).createPopupMenu());
+             if (isRightClick(e)) {
+                 if (tree.getSelectionCount() < 2) {
+                     tree.setSelectionPath(currentPath);
+@@ -273,7 +235,6 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+             if (draggedNodes[0].getUserObject() instanceof ReportGui) {
+                 dragging = false;
+             }
+-
+         }
+         changeSelectionIfDragging(e);
+     }
+@@ -283,7 +244,7 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+     }
+ 
+     @Override
+-    public void mouseExited(MouseEvent ev) {
++    public void mouseExited(MouseEvent e) {
+     }
+ 
+     @Override
+@@ -299,19 +260,13 @@ public class ReportTreeListener implements TreeSelectionListener, MouseListener,
+     }
+ 
+     private boolean isRightClick(MouseEvent e) {
+-        return e.isPopupTrigger() || (InputEvent.BUTTON2_MASK & e.getModifiers()) > 0 || (InputEvent.BUTTON3_MASK == e.getModifiers());
++        return e.isPopupTrigger() || (InputEvent.BUTTON2_MASK & e.getModifiers()) > 0
++                || (InputEvent.BUTTON3_MASK == e.getModifiers());
+     }
+ 
+-    /*
+-     * NOTUSED private void updateMainMenu(JPopupMenu menu) { try { MainFrame
+-     * mainFrame = GuiPackage.getInstance().getMainFrame();
+-     * mainFrame.setEditMenu(menu); } catch (NullPointerException e) {
+-     * log.error("Null pointer: JMeterTreeListener.updateMenuItem()", e);
+-     * log.error("", e); } }
+-     */
+-
+     private void displayPopUp(MouseEvent e) {
+         JPopupMenu pop = getCurrentNode().createPopupMenu();
++        // Should this just be GuiPackage - duplicate code in displayPopUp?
+         ReportGuiPackage.getInstance().displayPopUp(e, pop);
+     }
+ 
+-- 
+1.9.1
+

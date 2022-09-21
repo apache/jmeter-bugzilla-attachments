@@ -1,0 +1,586 @@
+Index: /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/AMF3Data.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/AMF3Data.java	(revision 0)
++++ /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/AMF3Data.java	(revision 0)
+@@ -0,0 +1,116 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ *
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.visualizers;
++
++import java.lang.reflect.InvocationTargetException;
++import java.lang.reflect.Method;
++import java.util.HashMap;
++import java.util.StringTokenizer;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class AMF3Data {
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private String field;
++
++    private String type;
++
++    private String value;
++
++    private static String OBJ_TYPE(Object o) {
++        if (o == null)
++            return "Null";// $NON-NLS-1$
++        String s = o.getClass().getName();
++        StringTokenizer token = new StringTokenizer(s, ".");
++        while (token.hasMoreElements())
++            s = (String) token.nextElement();
++        return s;
++    }
++
++    private static String OBJ_VALUE(Object o) {
++        if (o == null)
++            return "";// $NON-NLS-1$
++        return o.toString();
++    }
++
++    private static Class OBJ_CLASS(Object o) {
++        if (o == null)
++            return null;
++        return o.getClass();
++    }
++
++    public AMF3Data(String field, String type, String value) {
++        this.field = field;
++        this.type = type;
++        this.value = value;
++    }
++
++    public AMF3Data(String field, Object object) {
++        try {
++            this.field = field;
++            // Call appropriate get method
++            Object value;
++            if (object instanceof HashMap) {
++                value = ((HashMap) object).get(field);
++            } else {
++                Method m = object.getClass().getMethod("get" + field, null);// $NON-NLS-1$
++                value = m.invoke(object, null);
++            }
++            this.type = OBJ_TYPE(value);
++            this.value = OBJ_VALUE(value);
++        } catch (NoSuchMethodException nsme) {
++            log.error("AMF Data - Error in call method", nsme);// $NON-NLS-1$
++        } catch (InvocationTargetException ite) {
++            log.error("AMF data - Error in invocation method", ite);// $NON-NLS-1$
++        } catch (IllegalAccessException iae) {
++            log.error("AMF data - Illegal access method", iae);// $NON-NLS-1$
++        }
++    }
++
++    public String getField() {
++        return field;
++    }
++
++    public String getType() {
++        return type;
++    }
++
++    public String getValue() {
++        return value;
++    }
++
++    public String toString() {
++        StringBuffer sb = new StringBuffer();
++        if (field != null && field.length() > 0) {
++            sb.append(field + " ");// $NON-NLS-1$
++        }
++        if (type != null && type.length() > 0) {
++            sb.append("(" + type + ")");// $NON-NLS-1$ $NON-NLS-2$
++        }
++        if (value != null && value.length() > 0) {
++            sb.append(" [" + value + "]");// $NON-NLS-1$ $NON-NLS-2$
++        }
++        return sb.toString();
++    }
++
++}
+Index: /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/AMF3TreePanel.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/AMF3TreePanel.java	(revision 0)
++++ /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/AMF3TreePanel.java	(revision 0)
+@@ -0,0 +1,182 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ *
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++/**
++ *
++ */
++package org.apache.jmeter.visualizers;
++
++import java.awt.GridLayout;
++import java.lang.reflect.Method;
++import java.util.HashMap;
++import java.util.Iterator;
++import java.util.List;
++
++import javax.swing.JPanel;
++import javax.swing.JScrollPane;
++import javax.swing.JTree;
++import javax.swing.tree.DefaultMutableTreeNode;
++import javax.swing.tree.TreeSelectionModel;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++import flex.messaging.io.amf.ASObject;
++import flex.messaging.io.amf.ActionMessage;
++
++/**
++ * Class to render AMF response in tree view
++ *
++ */
++public class AMF3TreePanel extends JPanel {
++
++    private static final long serialVersionUID = 2150717552615708251L;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private JTree amf3JTree;
++
++    private ActionMessage message;
++
++    /**
++     * Transform to display a message AMF to TreePanel
++     * @param actionMessage ActionMessage to transform in TreePanel
++     */
++    public AMF3TreePanel(ActionMessage actionMessage) {
++        super(new GridLayout(1, 0));
++
++        this.message = actionMessage;
++
++        DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode(
++                new AMF3Data("Message", "", ""));
++
++        DefaultMutableTreeNode headersNode = new DefaultMutableTreeNode(
++                new AMF3Data("Headers", "", ""));
++        rootNode.add(headersNode);
++
++        for (int i = 0; i < message.getHeaderCount(); i++) {
++            log.debug("Reading header: " + i);
++
++            DefaultMutableTreeNode headerNode = new DefaultMutableTreeNode(
++                    new AMF3Data("[" + i + "]", "Header Part", ""));
++            headersNode.add(headerNode);
++
++            addObject(headerNode, message.getHeader(i));
++        }
++
++        DefaultMutableTreeNode bodiesNode = new DefaultMutableTreeNode(
++                new AMF3Data("Bodies", "", ""));
++        rootNode.add(bodiesNode);
++
++        for (int i = 0; i < message.getBodyCount(); i++) {
++            log.debug("Reading body: " + i);
++
++            DefaultMutableTreeNode bodyNode = new DefaultMutableTreeNode(
++                    new AMF3Data("[" + i + "]", "Body Part", ""));
++            bodiesNode.add(bodyNode);
++
++            addObject(bodyNode, message.getBody(i));
++        }
++        amf3JTree = new JTree(rootNode);
++
++        amf3JTree.getSelectionModel().setSelectionMode(
++                TreeSelectionModel.SINGLE_TREE_SELECTION);
++        amf3JTree.setShowsRootHandles(true);
++        amf3JTree.setAutoscrolls(true);
++        JScrollPane amf3JScrollPane = new JScrollPane(amf3JTree);
++        this.add(amf3JScrollPane);
++    }
++
++    /**
++     * Recursive method to add object in tree
++     * @param node the attach node
++     * @param object the object to attach
++     */
++    private void addObject(DefaultMutableTreeNode node, Object object) {
++        try {
++            if (object instanceof ASObject) {
++                ASObject aso = (ASObject) object;
++                DefaultMutableTreeNode asObjectNode = new DefaultMutableTreeNode(
++                        new AMF3Data("ASObject", aso.getType(), aso.toString())); //$NON-NLS-1$
++                node.add(asObjectNode);
++            } else if (object instanceof Object[]) {
++                DefaultMutableTreeNode objectsNode = new DefaultMutableTreeNode(
++                        new AMF3Data("", "Array", "")); //$NON-NLS-1$
++                // $NON-NLS-2$
++                // $NON-NLS-3$
++                node.add(objectsNode);
++
++                Object[] array = (Object[]) object;
++                for (int i = 0; i < array.length; i++)
++                    addObject(objectsNode, array[i]);
++            } else if (object instanceof HashMap) {
++                DefaultMutableTreeNode hashNode = new DefaultMutableTreeNode(
++                        new AMF3Data("", "HashMap", "")); //$NON-NLS-1$
++                                                          // $NON-NLS-2$
++                                                          // $NON-NLS-3$
++                node.add(hashNode);
++
++                HashMap map = (HashMap) object;
++                for (Iterator it = map.keySet().iterator(); it.hasNext();) {
++                    String key = (String) it.next();
++
++                    DefaultMutableTreeNode dataNode = new DefaultMutableTreeNode(
++                            new AMF3Data(key, map));
++                    hashNode.add(dataNode);
++                }
++            } else {
++                Method[] methods = object.getClass().getMethods();
++                for (int i = 0; i < methods.length; i++) {
++                    Method m = methods[i];
++                    String name = m.getName();
++                    Class[] paramTypes = m.getParameterTypes();
++                    if (name.startsWith("get") && !name.equals("getClass") //$NON-NLS-1$
++                                                                           // $NON-NLS-2$
++                            && paramTypes.length == 0) {
++                        Object val = m.invoke(object, null);
++                        if (isComplex(val))
++                            addObject(node, val);
++                        else {
++                            String getter = name.substring(3);
++                            AMF3Data data = new AMF3Data(getter, object);
++                            DefaultMutableTreeNode objectNode = new DefaultMutableTreeNode(
++                                    data);
++                            node.add(objectNode);
++                        }
++                    }
++                }
++            }
++        } catch (Exception e) {
++            log.error("Error to create AMF tree", e); //$NON-NLS-1$
++        }
++    }
++
++    /**
++     * Test if a object is complex (i.e. Object[], HashMap, List or flex.messaging.messages.*)
++     * @param object the object to verify
++     * @return true if is a complex object
++     */
++    private static boolean isComplex(Object object) {
++        return (object instanceof Object[])
++                || (object instanceof HashMap)
++                || (object instanceof List)
++                || (object != null && object.getClass().getPackage().toString()
++                        .contains("flex.messaging.messages")); //$NON-NLS-1$
++    }
++}
+Index: /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 772805)
++++ /Workspaces-JMeter/Jmeter-Amf/src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -71,6 +71,7 @@
+ import javax.swing.tree.TreeSelectionModel;
+ 
+ import org.apache.jmeter.assertions.AssertionResult;
++import org.apache.jmeter.functions.AMF3Function;
+ import org.apache.jmeter.samplers.Clearable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -84,6 +85,8 @@
+ import org.w3c.tidy.Tidy;
+ import org.xml.sax.SAXException;
+ 
++import flex.messaging.io.amf.ActionMessage;
++
+ /**
+  * Allows the tester to view the textual response from sampling an Entry. This
+  * also allows to "single step through" the sampling process via a nice
+@@ -126,6 +129,8 @@
+ 
+     private static final String TEXT_COMMAND = "text"; // $NON-NLS-1$
+ 
++    private static final String AMF3_COMMAND = "amf3"; // $NON-NLS-1$
++
+     private static final String STYLE_SERVER_ERROR = "ServerError"; // $NON-NLS-1$
+ 
+     private static final String STYLE_CLIENT_ERROR = "ClientError"; // $NON-NLS-1$
+@@ -181,6 +186,8 @@
+ 
+     private JRadioButton xmlButton;
+ 
++    private JRadioButton amf3Button;
++
+     private JCheckBox downloadAll;
+ 
+     private JTree jTree;
+@@ -420,6 +427,8 @@
+                             showRenderJSONResponse(response);
+                         } else if (command.equals(XML_COMMAND)) {
+                             showRenderXMLResponse(res);
++                        } else if (command.equals(AMF3_COMMAND)) {
++                            showRenderAMF3Response(res);
+                         }
+                     } else {
+                         byte[] responseBytes = res.getResponseData();
+@@ -539,6 +548,7 @@
+         htmlButton.setEnabled(true);
+         jsonButton.setEnabled(true);
+         xmlButton.setEnabled(true);
++        amf3Button.setEnabled(true);
+     }
+ 
+     private void showRenderXMLResponse(SampleResult res) {
+@@ -574,8 +584,29 @@
+         htmlButton.setEnabled(true);
+         jsonButton.setEnabled(true);
+         xmlButton.setEnabled(true);
++        amf3Button.setEnabled(true);
+     }
+ 
++    private void showRenderAMF3Response(SampleResult res) {
++
++        results.setContentType("application/x-amf"); // $NON-NLS-1$
++        results.setCaretPosition(0);
++        Component view = results;
++
++        // Parse response data (deserialization AMF)
++        ActionMessage actionMessage = AMF3Function.parseAMF3Message(res.getResponseData());
++        // Convert ActionMessage to TreeNode
++        JPanel amf3TreePanel = new AMF3TreePanel(actionMessage);
++
++        view = amf3TreePanel;
++        resultsScrollPane.setViewportView(view);
++        textButton.setEnabled(true);
++        htmlButton.setEnabled(true);
++        jsonButton.setEnabled(true);
++        xmlButton.setEnabled(true);
++        amf3Button.setEnabled(true);
++    }
++
+     private static String getResponseAsString(SampleResult res) {
+ 
+         String response = null;
+@@ -611,8 +642,11 @@
+         command = e.getActionCommand();
+ 
+         if (command != null
+-                && (command.equals(TEXT_COMMAND) || command.equals(HTML_COMMAND)
+-                 || command.equals(JSON_COMMAND) || command.equals(XML_COMMAND))) {
++                && (command.equals(TEXT_COMMAND)
++                        || command.equals(HTML_COMMAND)
++                        || command.equals(JSON_COMMAND)
++                        || command.equals(XML_COMMAND)
++                        || command.equals(AMF3_COMMAND))) {
+ 
+             textMode = command.equals(TEXT_COMMAND);
+ 
+@@ -634,6 +668,8 @@
+                 showRenderJSONResponse(response);
+             } else if (command.equals(XML_COMMAND)) {
+                 showRenderXMLResponse(res);
++            } else if (command.equals(AMF3_COMMAND)) {
++                showRenderAMF3Response(res);
+             }
+         }
+     }
+@@ -691,9 +727,16 @@
+         htmlButton.setEnabled(true);
+         jsonButton.setEnabled(true);
+         xmlButton.setEnabled(true);
++        amf3Button.setEnabled(true);
+     }
+ 
+     private Component createHtmlOrTextPane() {
++
++        JPanel renderPanel = new JPanel();
++        renderPanel.setLayout(new BorderLayout());
++        renderPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("view_results_render_title"))); // $NON-NLS-1$
++
+         ButtonGroup group = new ButtonGroup();
+ 
+         textButton = new JRadioButton(JMeterUtils.getResString("view_results_render_text")); // $NON-NLS-1$
+@@ -720,6 +763,13 @@
+         xmlButton.setSelected(!textMode);
+         group.add(xmlButton);
+ 
++        amf3Button = new JRadioButton(JMeterUtils
++                .getResString("view_results_render_amf3")); // $NON-NLS-1$
++        amf3Button.setActionCommand(AMF3_COMMAND);
++        amf3Button.addActionListener(this);
++        amf3Button.setSelected(!textMode);
++        group.add(amf3Button);
++
+         downloadAll = new JCheckBox(JMeterUtils.getResString("view_results_render_embedded")); // $NON-NLS-1$
+ 
+         JPanel pane = new JPanel();
+@@ -727,8 +777,10 @@
+         pane.add(htmlButton);
+         pane.add(xmlButton);
+         pane.add(jsonButton);
++        pane.add(amf3Button);
+         pane.add(downloadAll);
+-        return pane;
++        renderPanel.add(pane, BorderLayout.WEST);
++        return renderPanel;
+     }
+ 
+     /**
+Index: /Workspaces-JMeter/Jmeter-Amf/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- /Workspaces-JMeter/Jmeter-Amf/src/core/org/apache/jmeter/resources/messages.properties	(revision 772805)
++++ /Workspaces-JMeter/Jmeter-Amf/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -872,10 +872,12 @@
+ view_results_latency=Latency: 
+ view_results_load_time=Load time: 
+ view_results_render_embedded=Download embedded resources
+-view_results_render_html=Render HTML
+-view_results_render_json=Render JSON
+-view_results_render_text=Show Text
+-view_results_render_xml=Render XML
++view_results_render_amf3=AMF3
++view_results_render_html=HTML
++view_results_render_json=JSON
++view_results_render_text=Text
++view_results_render_title=Render
++view_results_render_xml=XML
+ view_results_request_headers=Request Headers:
+ view_results_response_code=Response code: 
+ view_results_response_headers=Response headers:
+Index: /Workspaces-JMeter/Jmeter-Amf/src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- /Workspaces-JMeter/Jmeter-Amf/src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 772805)
++++ /Workspaces-JMeter/Jmeter-Amf/src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -713,10 +713,12 @@
+ view_results_latency=Latence \: 
+ view_results_load_time=Temps de r\u00E9ponse \: 
+ view_results_render_embedded=T\u00E9l\u00E9charger les ressources incluses
+-view_results_render_html=Afficher en HTML
+-view_results_render_json=Afficher en JSON
+-view_results_render_text=Afficher en texte brut
+-view_results_render_xml=Afficher en XML
++view_results_render_amf3=AMF3
++view_results_render_html=HTML
++view_results_render_json=JSON
++view_results_render_text=Texte brut
++view_results_render_title=Afficher en
++view_results_render_xml=XML
+ view_results_request_headers=Ent\u00EAtes de requ\u00EAte \:
+ view_results_response_code=Code HTTP de r\u00E9ponse \: 
+ view_results_response_headers=Ent\u00EAtes de r\u00E9ponse \:
+Index: /Workspaces-JMeter/Jmeter-Amf/src/functions/org/apache/jmeter/functions/AMF3Function.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter-Amf/src/functions/org/apache/jmeter/functions/AMF3Function.java	(revision 0)
++++ /Workspaces-JMeter/Jmeter-Amf/src/functions/org/apache/jmeter/functions/AMF3Function.java	(revision 0)
+@@ -0,0 +1,78 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ *
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.functions;
++
++import java.io.ByteArrayInputStream;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++import flex.messaging.io.SerializationContext;
++import flex.messaging.io.amf.ActionContext;
++import flex.messaging.io.amf.ActionMessage;
++import flex.messaging.io.amf.AmfMessageDeserializer;
++import flex.messaging.io.amf.AmfTrace;
++
++public class AMF3Function {
++
++    public static boolean DEBUG = false;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    /**
++     * Parse a AMF (Action Message Format)
++     * @param messageBytes the binary AMF
++     * @return action message
++     */
++    public static ActionMessage parseAMF3Message(byte[] messageBytes) {
++
++        ActionMessage message = null;
++
++        ActionContext messageContext;
++
++        SerializationContext serialContext;
++
++        try {
++            serialContext = SerializationContext.getSerializationContext();
++            serialContext.instantiateTypes = false;
++
++            AmfTrace trace = null;
++            if (DEBUG) {
++                trace = new AmfTrace();
++            }
++
++            AmfMessageDeserializer amfder = new AmfMessageDeserializer();
++            amfder.initialize(serialContext, new ByteArrayInputStream(
++                    messageBytes), trace);
++
++            message = new ActionMessage();
++            messageContext = new ActionContext();
++            amfder.readMessage(message, messageContext);
++
++            if (DEBUG) {
++                System.err.println(trace);
++            }
++        } catch (Exception x) {
++            log.error("Error in AMF parsing message", x); // $NON-NLS-1$
++        }
++        return message;
++    }
++
++}
+

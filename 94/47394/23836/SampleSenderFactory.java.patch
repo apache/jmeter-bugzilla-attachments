@@ -1,0 +1,48 @@
+Index: src/core/org/apache/jmeter/samplers/SampleSenderFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleSenderFactory.java	(revision 780105)
++++ src/core/org/apache/jmeter/samplers/SampleSenderFactory.java	(working copy)
+@@ -18,10 +18,16 @@
+ 
+ package org.apache.jmeter.samplers;
+ 
++import java.lang.reflect.Constructor;
++
+ import org.apache.jmeter.util.JMeterUtils;
+-import org.apache.jmeter.samplers.StatisticalSampleSender;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ public class SampleSenderFactory {
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    
+     /**
+      * Checks for the Jmeter property mode and returns the required class.
+      *
+@@ -45,9 +51,24 @@
+         } else if (type.equalsIgnoreCase("Statistical")) {
+             StatisticalSampleSender s = new StatisticalSampleSender(listener);
+             return s;
+-        } else {
++        } else if (type.equalsIgnoreCase("Standard")) {
+             StandardSampleSender s = new StandardSampleSender(listener);
+             return s;
++        } else {
++            // should be a user provided class name
++            SampleSender s = null;
++            try {
++                Class clazz = Class.forName(type);
++                Constructor cons = clazz.getConstructor(new Class[] {RemoteSampleListener.class});
++                s = (SampleSender) cons.newInstance(new Object [] {listener});
++            } catch (Exception e) {
++                // houston we have a problem !!
++                log.error("Unable to create a sample sender from class "+type, e);
++                throw new IllegalArgumentException(e.getMessage());
++            }
++
++            return s;
+         }
++
+     }
+ }

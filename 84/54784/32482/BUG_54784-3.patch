@@ -1,0 +1,331 @@
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1656228)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.gui;
+ 
+ import java.awt.Component;
++import java.awt.Point;
+ import java.awt.event.MouseEvent;
+ import java.beans.Introspector;
+ import java.util.ArrayList;
+@@ -151,7 +152,7 @@
+     public static GuiPackage getInstance() {
+         return guiPack;
+     }
+-    
++
+     /**
+      * Register as listener of:
+      * - UndoHistory
+@@ -607,7 +608,9 @@
+      *            the popup menu to display
+      */
+     public void displayPopUp(MouseEvent e, JPopupMenu popup) {
+-        displayPopUp((Component) e.getSource(), e, popup);
++        final Point point = new Point(e.getX(), e.getY());
++        Component invoker = (Component) e.getSource();
++        displayPopUp(invoker, point, popup);
+     }
+ 
+     /**
+@@ -616,17 +619,17 @@
+      *
+      * @param invoker
+      *            the source component
+-     * @param e
+-     *            the mouse event causing this popup to be displayed
++     * @param p
++     *            the point at which to display the popup
+      * @param popup
+      *            the popup menu to display
+      */
+-    public void displayPopUp(Component invoker, MouseEvent e, JPopupMenu popup) {
++    public void displayPopUp(Component invoker, Point p, JPopupMenu popup) {
+         if (popup != null) {
+-            log.debug("Showing pop up for " + invoker + " at x,y = " + e.getX() + "," + e.getY());
++            log.debug("Showing pop up for " + invoker + " at x,y = " + p.x + "," + p.y);
+ 
+             popup.pack();
+-            popup.show(invoker, e.getX(), e.getY());
++            popup.show(invoker, p.x, p.y);
+             popup.setVisible(true);
+             popup.requestFocusInWindow();
+         }
+@@ -759,7 +762,7 @@
+ 
+     /**
+      * Register process to stop on reload
+-     * 
++     *
+      * @param stoppable
+      *            The {@link Stoppable} to be registered
+      */
+Index: src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/KeyStrokes.java	(revision 1656228)
++++ src/core/org/apache/jmeter/gui/action/KeyStrokes.java	(working copy)
+@@ -57,6 +57,7 @@
+     public static final KeyStroke SAVE              = KeyStroke.getKeyStroke(KeyEvent.VK_S, CONTROL_MASK);
+     public static final KeyStroke SAVE_ALL_AS       = KeyStroke.getKeyStroke(KeyEvent.VK_S, CONTROL_MASK | InputEvent.SHIFT_DOWN_MASK);
+     public static final KeyStroke SEARCH_TREE       = KeyStroke.getKeyStroke(KeyEvent.VK_F, CONTROL_MASK);
++    public static final KeyStroke SPACE             = KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0);
+     public static final KeyStroke TOGGLE            = KeyStroke.getKeyStroke(KeyEvent.VK_T, CONTROL_MASK);
+     public static final KeyStroke PASTE             = KeyStroke.getKeyStroke(KeyEvent.VK_V, CONTROL_MASK);
+     public static final KeyStroke WHAT_CLASS        = KeyStroke.getKeyStroke(KeyEvent.VK_W, CONTROL_MASK);
+@@ -75,6 +76,9 @@
+     public static final KeyStroke ALT_LEFT_ARROW    = KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK);
+     public static final KeyStroke ALT_RIGHT_ARROW   = KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK);
+ 
++    public static final KeyStroke CONTEXT_MENU      = KeyStroke.getKeyStroke(KeyEvent.VK_CONTEXT_MENU, 0);
++    public static final KeyStroke SHIFT_F10_CONTEXT_MENU = KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK);
++
+     /**
+      * Check if an event matches the KeyStroke definition.
+      *
+Index: src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 1656228)
++++ src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -20,6 +20,7 @@
+ 
+ import java.awt.Component;
+ import java.awt.HeadlessException;
++import java.awt.event.ActionEvent;
+ import java.io.IOException;
+ import java.io.Serializable;
+ import java.util.Collection;
+@@ -39,6 +40,9 @@
+ import javax.swing.JPopupMenu;
+ import javax.swing.KeyStroke;
+ import javax.swing.MenuElement;
++import javax.swing.event.MenuKeyEvent;
++import javax.swing.event.MenuKeyListener;
++
+ import org.apache.jmeter.control.Controller;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.JMeterGUIComponent;
+@@ -69,7 +73,7 @@
+      *  and also for resource lookup in messages.properties
+     */
+     public static final String THREADS = "menu_threads"; //$NON-NLS-1$
+-    
++
+     public static final String FRAGMENTS = "menu_fragments"; //$NON-NLS-1$
+ 
+     public static final String TIMERS = "menu_timer"; //$NON-NLS-1$
+@@ -123,7 +127,7 @@
+     private static final String[] MENU_PARENT_SAMPLER = new String[] {
+         MenuFactory.CONTROLLERS };
+ 
+-    private static final List<MenuInfo> timers, controllers, samplers, threads, 
++    private static final List<MenuInfo> timers, controllers, samplers, threads,
+         fragments,configElements, assertions, listeners, nonTestElements,
+         postProcessors, preProcessors;
+ 
+@@ -202,7 +206,7 @@
+ 
+     /**
+      * @param menu JPopupMenu
+-     * @param addSaveTestFragmentMenu Add Save as Test Fragment menu if true 
++     * @param addSaveTestFragmentMenu Add Save as Test Fragment menu if true
+      */
+     public static void addFileMenu(JPopupMenu menu, boolean addSaveTestFragmentMenu) {
+         // the undo/redo as a standard goes first in Edit menus
+@@ -267,7 +271,6 @@
+         menu.add(redo);
+     }
+ 
+-
+     public static JMenu makeMenus(String[] categories, String label, String actionCommand) {
+         JMenu addMenu = new JMenu(label);
+         for (int i = 0; i < categories.length; i++) {
+@@ -374,6 +377,37 @@
+         for (MenuInfo info : menuInfo) {
+             menu.add(makeMenuItem(info, actionCommand));
+         }
++        // Bug 54784: adds listener for the enter and space keys to add items
++        menu.addMenuKeyListener(new MenuKeyListener() {
++            @Override
++            public void menuKeyTyped(MenuKeyEvent e) {
++            }
++
++            @Override
++            public void menuKeyReleased(final MenuKeyEvent e) {
++            }
++
++            @Override
++            public void menuKeyPressed(final MenuKeyEvent e) {
++                if (e.getKeyCode() != KeyStrokes.ENTER.getKeyCode()
++                        && e.getKeyCode() != KeyStrokes.SPACE.getKeyCode()) {
++                    return;
++                }
++                // using selectedPath because e.getPath() always returns the
++                // first item in the menu rather than the selected item
++                MenuElement[] selectedPath = e.getMenuSelectionManager().getSelectedPath();
++                final MenuElement source = selectedPath[selectedPath.length - 1];
++                JMeterUtils.invokeOnce("KEY_ADD", 200, null, new Runnable() {
++                    @Override
++                    public void run() {
++                        ActionEvent event = new ActionEvent(source, e.getID(), ActionNames.ADD);
++                        ActionRouter.getInstance().doActionNow(event);                        
++                    }
++                });
++                e.consume();
++            }
++        });
++        // end Bug 54784 change
+         GuiUtils.makeScrollableMenu(menu);
+         return menu;
+     }
+@@ -435,6 +469,7 @@
+         JMenuItem newMenuChoice = new JMenuItem(info.getLabel());
+         newMenuChoice.setName(info.getClassName());
+         newMenuChoice.addActionListener(ActionRouter.getInstance());
++
+         if (actionCommand != null) {
+             newMenuChoice.setActionCommand(actionCommand);
+         }
+@@ -555,7 +590,6 @@
+                 if (categories.contains(ASSERTIONS)) {
+                     assertions.add(new MenuInfo(item, name));
+                 }
+-
+             }
+         } catch (IOException e) {
+             log.error("", e);
+Index: src/core/org/apache/jmeter/util/JMeterUtils.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterUtils.java	(revision 1656228)
++++ src/core/org/apache/jmeter/util/JMeterUtils.java	(working copy)
+@@ -32,10 +32,12 @@
+ import java.net.URL;
+ import java.net.UnknownHostException;
+ import java.util.Enumeration;
++import java.util.HashMap;
+ import java.util.Hashtable;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.MissingResourceException;
+ import java.util.Properties;
+ import java.util.Random;
+@@ -69,6 +71,15 @@
+ public class JMeterUtils implements UnitTestManager {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+     
++    private static class Latest {
++        /** Last time for this event */
++        public volatile long time = 0;
++        /** for synchronization */
++        public final Object running = new Object();
++    }
++
++    private static Map<String, Latest> s_timestamps = new HashMap();
++    
+     // Note: cannot use a static variable here, because that would be processed before the JMeter properties
+     // have been defined (Bug 52783)
+     private static class LazyPatternCacheHolder {
+@@ -1330,6 +1341,100 @@
+     }
+     
+     /**
++     * Use this method for handling events in realtime, when the events may be
++     * generated more quickly than the the handler can complete. Call this
++     * method from the appropriate Listener.
++     * 
++     * Executes Runnables inside and outside the Swing Thread. Returns
++     * immediately. If this method is called again with the same id after less
++     * than the specified pause, then the first call will be ignored. The most
++     * recent call with a given id will not be allowed to start until previous
++     * call finishes. When previous call finishes, only the most recent call
++     * with same id will run. Others will be discarded.
++     * 
++     * @param id
++     *            This string uniquely identifies this task. If this method is
++     *            called again with the same id within the specified number of
++     *            milliseconds, then the first call will not be executed. If
++     *            this id is already executing, then it will wait until either
++     *            the previous execution finishes, or until a later call with
++     *            the same id.
++     * @param milliseconds
++     *            Wait this long in a separate thread before executing
++     *            Runnables. You can safely set this to zero. Set the time less
++     *            than the expected time to execute the Runnables. If you set to
++     *            0, then a series of calls will be executed at least twice. If
++     *            you set to greater than 0, then the first call may be ignored
++     *            if followed quickly by another call.
++     * @param worker
++     *            This Runnable will be executed first outside the Swing thread.
++     *            Set to null to skip this step.
++     * @param refresher
++     *            This Runnable will be executed inside the Swing thread after
++     *            the worker has completed. Activity that uses or changes the
++     *            state of Swing widgets should be included here. Set to null to
++     *            skip this step.
++     */
++    public static void invokeOnce(String id, final long milliseconds,
++            final Runnable worker, final Runnable refresher) {
++        synchronized (s_timestamps) {
++            if (!s_timestamps.containsKey(id)) { // call once for each id
++                s_timestamps.put(id, new Latest());
++            }
++        }
++        final Latest latest = s_timestamps.get(id);
++        final long time = System.currentTimeMillis();
++        latest.time = time;
++
++        (new Thread("Invoke once " + id) {
++            @Override
++            public void run() {
++                if (milliseconds > 0) {
++                    try {
++                        Thread.sleep(milliseconds);
++                    } catch (InterruptedException e) {
++                        return;
++                    }
++                }
++                synchronized (latest.running) { // can't start until previous
++                                                // finishes
++                    if (latest.time != time)
++                        return; // only most recent gets to run
++                    if (worker != null)
++                        worker.run(); // outside Swing thread
++                    if (refresher != null)
++                        invokeNow(refresher); // inside Swing thread
++                }
++            }
++        }).start();
++    }
++
++    /**
++     * Run this Runnable in the Swing Event Dispatching Thread, and return when
++     * done with execution. This method can be called whether or not the current
++     * thread is in the Swing thread.
++     * 
++     * @param runnable
++     *            This is the code to be executed in the Swing thread.
++     */
++    public static void invokeNow(Runnable runnable) {
++        if (runnable == null)
++            return;
++        try {
++            if (SwingUtilities.isEventDispatchThread()) {
++                runnable.run();
++            } else {
++                SwingUtilities.invokeAndWait(runnable);
++            }
++        } catch (InterruptedException ie) {
++            log.warn("Swing thread interrupted");
++            Thread.currentThread().interrupt();
++        } catch (java.lang.reflect.InvocationTargetException ite) {
++            ite.printStackTrace();
++            throw new IllegalStateException(ite.getMessage());
++        }
++    }
++    /**
+      * Help GC by triggering GC and finalization
+      */
+     public static final void helpGC() {

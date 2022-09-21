@@ -1,0 +1,98 @@
+Index: /workspace/rel-2-1/src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java
+===================================================================
+--- /workspace/rel-2-1/src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java	(revision 411162)
++++ /workspace/rel-2-1/src/components/org/apache/jmeter/extractor/gui/RegexExtractorGui.java	(working copy)
+@@ -53,6 +53,8 @@
+ 	private JRadioButton useBody;
+ 
+ 	private JRadioButton useHeaders;
++    
++    private JRadioButton useURL;
+ 
+ 	public RegexExtractorGui() {
+ 		super();
+@@ -66,7 +68,8 @@
+ 	public void configure(TestElement el) {
+ 		super.configure(el);
+ 		useHeaders.setSelected(el.getPropertyAsBoolean(RegexExtractor.USEHEADERS));
+-		useBody.setSelected(!el.getPropertyAsBoolean(RegexExtractor.USEHEADERS));
++		useBody.setSelected(el.getPropertyAsBoolean(RegexExtractor.USEBODY));
++        useURL.setSelected(el.getPropertyAsBoolean(RegexExtractor.USEURL));
+ 		regexField.setText(el.getPropertyAsString(RegexExtractor.REGEX));
+ 		templateField.setText(el.getPropertyAsString(RegexExtractor.TEMPLATE));
+ 		defaultField.setText(el.getPropertyAsString(RegexExtractor.DEFAULT));
+@@ -90,7 +93,9 @@
+ 	 */
+ 	public void modifyTestElement(TestElement extractor) {
+ 		super.configureTestElement(extractor);
+-		extractor.setProperty(RegexExtractor.USEHEADERS, JOrphanUtils.booleanToString(useHeaders.isSelected()));
++        extractor.setProperty(RegexExtractor.USEHEADERS, JOrphanUtils.booleanToString(useHeaders.isSelected()));
++        extractor.setProperty(RegexExtractor.USEBODY, JOrphanUtils.booleanToString(useBody.isSelected()));
++        extractor.setProperty(RegexExtractor.USEURL, JOrphanUtils.booleanToString(useURL.isSelected()));
+ 		extractor.setProperty(RegexExtractor.MATCH_NUMBER, matchNumberField.getText());
+ 		if (extractor instanceof RegexExtractor) {
+ 			RegexExtractor regex = (RegexExtractor) extractor;
+@@ -118,13 +123,16 @@
+ 
+ 		useBody = new JRadioButton(JMeterUtils.getResString("regex_src_body"));
+ 		useHeaders = new JRadioButton(JMeterUtils.getResString("regex_src_hdrs"));
++        useURL = new JRadioButton(JMeterUtils.getResString("regex_src_url"));
+ 
+ 		ButtonGroup group = new ButtonGroup();
+ 		group.add(useBody);
+ 		group.add(useHeaders);
++        group.add(useURL);
+ 
+ 		panel.add(useBody);
+ 		panel.add(useHeaders);
++        panel.add(useURL);
+ 
+ 		useBody.setSelected(true);
+ 		return panel;
+Index: /workspace/rel-2-1/src/components/org/apache/jmeter/extractor/RegexExtractor.java
+===================================================================
+--- /workspace/rel-2-1/src/components/org/apache/jmeter/extractor/RegexExtractor.java	(revision 411162)
++++ /workspace/rel-2-1/src/components/org/apache/jmeter/extractor/RegexExtractor.java	(working copy)
+@@ -56,6 +56,10 @@
+ 
+ 	public static final String REGEX = "RegexExtractor.regex"; // $NON-NLS-1$
+ 
++    public static final String USEBODY = "RegexExtractor.useBody"; // $NON-NLS-1$
++
++    public static final String USEURL = "RegexExtractor.useURL"; // $NON-NLS-1$
++
+ 	public static final String REFNAME = "RegexExtractor.refname"; // $NON-NLS-1$
+ 
+ 	public static final String MATCH_NUMBER = "RegexExtractor.match_number"; // $NON-NLS-1$
+@@ -107,7 +111,9 @@
+ 		PatternMatcherInput input = new PatternMatcherInput(
+                 useHeaders() 
+                         ? previousResult.getResponseHeaders()
+-                        : previousResult.getResponseDataAsString()); // Bug 36898
++                        : useBody()
++                                ? previousResult.getResponseDataAsString()
++                                : previousResult.getURL().toString()); // Bug 36898
+ 		log.debug("Regex = " + getRegex());
+ 		try {
+ 			Pattern pattern = patternCache.getPattern(getRegex(), Perl5Compiler.READ_ONLY_MASK);
+@@ -337,4 +343,8 @@
+ 	boolean useHeaders() {
+ 		return "true".equalsIgnoreCase(getPropertyAsString(USEHEADERS));
+ 	}
++
++    boolean useBody() {
++        return "true".equalsIgnoreCase(getPropertyAsString(USEBODY));
++    }
+ }
+Index: /workspace/rel-2-1/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- /workspace/rel-2-1/src/core/org/apache/jmeter/resources/messages.properties	(revision 411162)
++++ /workspace/rel-2-1/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -512,6 +512,7 @@
+ regex_source=Response Field to check
+ regex_src_body=Body
+ regex_src_hdrs=Headers
++regex_src_url=Url
+ regexfunc_param_1=Regular expression used to search results from previous request
+ regexfunc_param_2=Template for the replacement string, using groups from the regular expression.  Format is $[group]$.  Example $1$.
+ regexfunc_param_3=Which match to use.  An integer 1 or greater, RAND to indicate JMeter should randomly choose, A float, or ALL indicating all matches should be used

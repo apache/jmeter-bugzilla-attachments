@@ -1,0 +1,269 @@
+### Eclipse Workspace Patch 1.0
+#P jmeterSVN
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 958997)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -788,6 +788,10 @@
+ smime_assertion_signer_serial=Serial Number
+ smime_assertion_title=SMIME Assertion
+ smime_assertion_verify_signature=Verify signature
++smime_assertion_message_position=Execute assertion on message
++smime_assertion_mp_first=First message
++smime_assertion_mp_last=Last message
++smime_assertion_mp_specific=Message position:
+ soap_action=Soap Action
+ soap_data_title=Soap/XML-RPC Data
+ soap_sampler_title=SOAP/XML-RPC Request
+Index: src/components/org/apache/jmeter/assertions/SMIMEAssertionTestElement.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/SMIMEAssertionTestElement.java	(revision 958997)
++++ src/components/org/apache/jmeter/assertions/SMIMEAssertionTestElement.java	(working copy)
+@@ -23,6 +23,7 @@
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.IntegerProperty;
+ import org.apache.jmeter.testelement.property.StringProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+@@ -50,7 +51,15 @@
+     private static final String SIGNER_DN_KEY = "SMIMEAssertionTestElement.signerDn";
+ 
+     private static final String ISSUER_DN_KEY = "SMIMEAssertionTestElement.issuerDn";
++    
++    private static final String FIRST_MESSAGE = "SMIMEAssertionTestElement.firstMessage";
++    
++    private static final String LAST_MESSAGE = "SMIMEAssertionTestElement.lastMessage";
++    
++    private static final String SPECIFIC_MESSAGE_POSITION = "SMIMEAssertionTestElement.specificMessagePosition";
+ 
++    private static final String MESSAGE_POSITION = "SMIMEAssertionTestElement.messagePosition";
++    
+     public SMIMEAssertionTestElement() {
+         super();
+     }
+@@ -149,4 +158,35 @@
+         setProperty(new BooleanProperty(NOT_SIGNED_KEY, notSigned));
+     }
+ 
++    public boolean isFirstMessage() {
++        return getPropertyAsBoolean(FIRST_MESSAGE);
++    }
++
++    public void setFirstMessage(boolean firstMessage) {
++        setProperty(new BooleanProperty(FIRST_MESSAGE, firstMessage));
++    }
++    
++    public boolean isLastMessage() {
++        return getPropertyAsBoolean(LAST_MESSAGE);
++    }
++
++    public void setLastMessage(boolean lastMessage) {
++        setProperty(new BooleanProperty(LAST_MESSAGE, lastMessage));
++    }
++    
++    public boolean isSpecificMessagePosition() {
++        return getPropertyAsBoolean(SPECIFIC_MESSAGE_POSITION);
++    }
++
++    public void setSpecificMessagePosition(boolean specificPosition) {
++        setProperty(new BooleanProperty(SPECIFIC_MESSAGE_POSITION, specificPosition));
++    }
++    
++    public int getSpecificMessagePosition() {
++        return getPropertyAsInt(MESSAGE_POSITION);
++    }
++    
++    public void setSpecificMessagePosition(int position) {
++        setProperty(new IntegerProperty(MESSAGE_POSITION, position));
++    }
+ }
+Index: src/components/org/apache/jmeter/assertions/gui/SMIMEAssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/SMIMEAssertionGui.java	(revision 958997)
++++ src/components/org/apache/jmeter/assertions/gui/SMIMEAssertionGui.java	(working copy)
+@@ -36,7 +36,7 @@
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.gui.layout.VerticalLayout;
+  
+- public class SMIMEAssertionGui extends AbstractAssertionGui {
++ public class SMIMEAssertionGui extends AbstractAssertionGui implements ChangeListener{
+  
+     private static final long serialVersionUID = 1L;
+ 
+@@ -59,6 +59,14 @@
+     private JTextField issuerDnField = new JTextField();
+  
+     private JTextField signerCertFile = new JTextField();
++    
++    private JRadioButton firstMessage = new JRadioButton();
++    
++    private JRadioButton lastMessage = new JRadioButton();
++    
++    private JRadioButton messagePosition = new JRadioButton();
++    
++    private JTextField messagePositionTf = new JTextField(25);
+  
+     public SMIMEAssertionGui() {
+         init();
+@@ -76,6 +84,7 @@
+         box.add(makeTitlePanel());
+         box.add(createSignaturePanel());
+         box.add(createSignerPanel());
++        box.add(createMessagePositionPanel());
+         add(box, BorderLayout.NORTH);
+     }
+  
+@@ -182,6 +191,29 @@
+         return panel;
+     }
+  
++    private JPanel createMessagePositionPanel(){
++        JPanel panel = new JPanel();
++        panel.setBorder(BorderFactory.createTitledBorder(JMeterUtils
++            .getResString("smime_assertion_message_position")));
++        
++    	ButtonGroup buttonGroup = new ButtonGroup();
++        buttonGroup.add(firstMessage);
++        buttonGroup.add(lastMessage);
++        buttonGroup.add(messagePosition);
++        
++        firstMessage.setText(JMeterUtils.getResString("smime_assertion_mp_first"));        
++        lastMessage.setText(JMeterUtils.getResString("smime_assertion_mp_last"));
++        lastMessage.setSelected(true);
++        messagePosition.setText(JMeterUtils.getResString("smime_assertion_mp_specific"));
++        messagePosition.addChangeListener(this); 
++        messagePositionTf.setEnabled(false);
++        
++        panel.add(firstMessage);
++        panel.add(lastMessage);
++        panel.add(messagePosition);
++        panel.add(messagePositionTf);
++        return panel;
++    }
+     @Override
+     public void configure(TestElement el) {
+         super.configure(el);
+@@ -202,6 +234,10 @@
+         signerEmailField.setText(smimeAssertion.getSignerEmail());
+  
+         signerCertFile.setText(smimeAssertion.getSignerCertFile());
++        firstMessage.setSelected(smimeAssertion.isFirstMessage());
++        lastMessage.setSelected(smimeAssertion.isLastMessage());
++        messagePosition.setSelected(smimeAssertion.isSpecificMessagePosition());
++        messagePositionTf.setText(String.valueOf(smimeAssertion.getSpecificMessagePosition()));
+     }
+  
+     public void modifyTestElement(TestElement el) {
+@@ -221,6 +257,15 @@
+         smimeAssertion.setSignerCheckConstraints(signerCheckConstraints
+                 .isSelected());
+         smimeAssertion.setSignerCheckByFile(signerCheckByFile.isSelected());
++        smimeAssertion.setFirstMessage(firstMessage.isSelected());
++        smimeAssertion.setLastMessage(lastMessage.isSelected());
++        smimeAssertion.setSpecificMessagePosition(messagePosition.isSelected());
++        if(messagePosition.isSelected()){
++        	smimeAssertion.setSpecificMessagePosition(Integer.valueOf(messagePositionTf.getText()));	
++        }else{
++        	smimeAssertion.setSpecificMessagePosition(0);
++        }
++                
+     }
+  
+     public TestElement createTestElement() {
+@@ -228,5 +273,12 @@
+         modifyTestElement(smimeAssertion);
+         return smimeAssertion;
+     }
+- 
++
++	public void stateChanged(ChangeEvent e) {
++		if(messagePosition.isSelected()){
++			messagePositionTf.setEnabled(true);
++		}else{
++			messagePositionTf.setEnabled(false);
++		}
++	} 
+  }
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 958997)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -1484,6 +1484,46 @@
+   <property name="Action" required="Yes">Pause / Stop / Stop Now</property>
+   <property name="Duration" required="Yes, if Pause is selected">How long to pause for (milliseconds)</property>
+ </properties>
++</component>
++
++<component name="SMTP Sampler"  index="&sect-num;.1.19"  width="399" height="306" screenshot="smtp_sampler.png">
++<description>
++<p>
++The SMTP Sampler can send mail messages using SMTP/SMTPS protocol. 
++It is possible to set security propocols for the connection (SSL and TLS), as well as user authentication. 
++If a security protocol is used a verification on the server certificate will occur. <br></br>
++Two alternatives to handle this verification are available:<br></br>
++<ul>
++<li>Trust all certificates. This will ignore certificate chain verification</li>
++<li>Use a local truststore. With this option the certificate chain will be validated against the local truststore file.</li>
++</ul>
++</p>
++</description>
++<properties>
++<property name="Server" required="Yes">Hostname or IP address of the server. See below for use with <code>file</code> protocol.</property>
++<property name="Port" required="Yes">Port to be used to connect to the server (optional)</property>
++<property name="Address From" required="Yes">The from address that will appear in the e-mail</property>
++<property name="Address To" required="Yes">The destination e-mail address</property>
++<property name="Address To BCC" required="No">Blind carbon copy destinations e-mail address</property>
++<property name="Address To CC" required="No">Carbon copy destinations e-mail address</property>
++<property name="Use Auth" required="">Indicates if the SMTP server requires user authentication</property>
++<property name="Username" required="">User login name</property>
++<property name="Password" required="">User login password (N.B. this is stored unencrypted in the test plan)</property>
++<property name="Use no security features" required="">Indicates that the connection to the SMTP server does not use any security protocol.</property>
++<property name="Use SSL" required="">Indicates that the connection to the SMTP server must use the SSL protocol.</property>
++<property name="Use StartTLS" required="">Indicates that the connection to the SMTP server should attempt to start the TLS protocol.</property>
++<property name="Enforce StartTLS" required="">If the server does not start the TLS protocol the connection will be terminated.</property>
++<property name="Trust All Certificates" required="">When selected it will accept all certificates independent of the CA.</property>
++<property name="Use local truststore" required="">When selected it will only accept certificates that are locally trusted.</property>
++<property name="Local truststore" required="">Local file containing the trusted certificates.</property>
++<property name="Subject" required="">The e-mail message subject.</property>
++<property name="Include timestamp in subject" required="">Includes the System.currentTimemilis() in the subject line.</property>
++<property name="Message" required="">The message body.</property>
++<property name="Attach files" required="">Files to be attached to the message.</property>
++<property name="Send .eml" required="">If set, the .eml file will be sent instead fo the entries in the Subject, Message, and Attached files</property>
++<property name="Calculate message size" required="">Calculates the message size.</property>
++<property name="Check for failure" required="">Checks if errors occurred during the the mail delivery process.</property>
++</properties>
+ </component><a href="#">^</a>
+ 
+ </section>
+@@ -3680,6 +3720,7 @@
+     <property name="Message not signed" required="Yes">Whether or not to expect a signature in the message</property>
+     <property name="Verify Signature" required="Yes">If selected, the asertion will verify if it is a valid signature according to the parameters defined in the Signer Certificate box.</property>
+     <property name="Signer Cerificate" required="Yes">"No Check" means that it wil not perform signature verification. "Check values" is used to verify the signature against the inputs provided. And "Certificate file" will perform the verification against a specific certificate file.</property>
++    <property name="Message Position" required="Yes">Defines the position of the message that will be asserted if more than one is in the mailbox. "First" indicates the first message. "Last" is the last received mesage. "Message Position" defines a specific message and requires an integer value as input.</property>
+ </properties>
+ </component>
+ 
+Index: src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/SMIMEAssertion.java	(revision 958997)
++++ src/components/org/apache/jmeter/assertions/SMIMEAssertion.java	(working copy)
+@@ -67,7 +67,16 @@
+         AssertionResult res = new AssertionResult(name);
+ 
+         try {
+-            MimeMessage msg = getMessageFromResponse(response, 0);
++        	MimeMessage msg = null;
++        	if(testElement.isSpecificMessagePosition()){
++        		msg = getMessageFromResponse(response, testElement.getSpecificMessagePosition());
++        	}else if (testElement.isLastMessage()){
++        		SampleResult subResults[] = response.getSubResults();
++        		msg = getMessageFromResponse(response,subResults.length -1);
++        	}else{
++        		msg = getMessageFromResponse(response,0);
++        	}
++            
+             SMIMESignedParser s = null;
+             if (msg.isMimeType("multipart/signed")) {
+                 MimeMultipart multipart = (MimeMultipart) msg.getContent();

@@ -1,0 +1,111 @@
+Index: ClassFinder.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/jorphan/org/apache/jorphan/reflect/ClassFinder.java,v
+retrieving revision 1.9
+diff -u -r1.9 ClassFinder.java
+--- ClassFinder.java 11 Feb 2004 23:57:23 -0000 1.9
++++ ClassFinder.java 28 Aug 2004 15:28:47 -0000
+@@ -22,13 +22,7 @@
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.lang.reflect.Modifier;
+-import java.util.ArrayList;
+-import java.util.Enumeration;
+-import java.util.HashSet;
+-import java.util.Iterator;
+-import java.util.List;
+-import java.util.Set;
+-import java.util.StringTokenizer;
++import java.util.*;
+import java.util.zip.ZipFile;
+
+import org.apache.jorphan.logging.LoggingManager;
+@@ -107,7 +101,7 @@
+        throws IOException, ClassNotFoundException
+    {
+        List listPaths = null;
+-        ArrayList listClasses = null;
++        Set listClasses = null;
+        List listSuperClasses = null;
+        strPathsOrJars = addJarsInPath(strPathsOrJars);
+        if (log.isDebugEnabled())
+@@ -126,7 +120,7 @@
+                log.debug("listPaths : " + tIter.next());
+            }
+        }
+-        listClasses = new ArrayList();
++        listClasses = new TreeSet();
+        listSuperClasses = new ArrayList();
+        for (int i = 0; i < superClasses.length; i++)
+        {
+@@ -142,9 +136,9 @@
+                log.debug("listClasses : " + tIter.next());
+            }
+        }
+-        List subClassList =
++        Set subClassList =
+            findAllSubclasses(listSuperClasses, listClasses, innerClasses);
+-        return subClassList;
++        return new ArrayList(subClassList);
+    }
+
+    private static List getClasspathMatches(String[] strPathsOrJars)
+@@ -369,16 +363,16 @@
+     *                           the search
+     *@return                    ArrayList of the subclasses
+     */
+-    private static ArrayList findAllSubclasses(
++    private static Set findAllSubclasses(
+        List listSuperClasses,
+-        List listAllClasses,
++        Set listAllClasses,
+        boolean innerClasses)
+    {
+        Iterator iterClasses = null;
+-        ArrayList listSubClasses = null;
++        Set listSubClasses = null;
+        String strClassName = null;
+        Class tempClass = null;
+-        listSubClasses = new ArrayList();
++        listSubClasses = new TreeSet();
+        iterClasses = listSuperClasses.iterator();
+        while (iterClasses.hasNext())
+        {
+@@ -445,8 +439,8 @@
+     */
+    private static void findAllSubclassesOneClass(
+        Class theClass,
+-        List listAllClasses,
+-        List listSubClasses,
++        Set listAllClasses,
++        Set listSubClasses,
+        boolean innerClasses)
+    {
+        Iterator iterClasses = null;
+@@ -507,7 +501,7 @@
+        return strClassName;
+    }
+
+-    private static void findClassesInOnePath(String strPath, List listClasses)
++    private static void findClassesInOnePath(String strPath, Set listClasses)
+        throws IOException
+    {
+        File file = null;
+@@ -534,7 +528,7 @@
+        }
+    }
+
+-    private static void findClassesInPaths(List listPaths, List listClasses)
++    private static void findClassesInPaths(List listPaths, Set listClasses)
+        throws IOException
+    {
+        Iterator iterPaths = listPaths.iterator();
+@@ -547,7 +541,7 @@
+    private static void findClassesInPathsDir(
+        String strPathElement,
+        File dir,
+-        List listClasses)
++        Set listClasses)
+        throws IOException
+    {
+        File file = null;

@@ -1,0 +1,693 @@
+Index: src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/SMIMEAssertion.java	(revision 0)
++++ src/components/org/apache/jmeter/assertions/SMIMEAssertion.java	(revision 0)
+@@ -0,0 +1,427 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.assertions;
++
++import java.io.ByteArrayInputStream;
++import java.io.FileInputStream;
++import java.io.FileNotFoundException;
++import java.io.IOException;
++import java.io.Serializable;
++import java.math.BigInteger;
++import java.security.GeneralSecurityException;
++import java.security.Security;
++import java.security.cert.CertStore;
++import java.security.cert.CertificateException;
++import java.security.cert.CertificateFactory;
++import java.security.cert.X509Certificate;
++import java.util.ArrayList;
++import java.util.Iterator;
++import java.util.List;
++import java.util.Properties;
++
++import javax.mail.MessagingException;
++import javax.mail.Session;
++import javax.mail.internet.MimeMessage;
++import javax.mail.internet.MimeMultipart;
++import javax.security.auth.x500.X500Principal;
++
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.StringProperty;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++import org.bouncycastle.asn1.x509.GeneralName;
++import org.bouncycastle.cms.CMSException;
++import org.bouncycastle.cms.SignerInformation;
++import org.bouncycastle.cms.SignerInformationStore;
++import org.bouncycastle.jce.PrincipalUtil;
++import org.bouncycastle.jce.X509Principal;
++import org.bouncycastle.jce.provider.BouncyCastleProvider;
++import org.bouncycastle.mail.smime.SMIMEException;
++import org.bouncycastle.mail.smime.SMIMESignedParser;
++import org.bouncycastle.x509.extension.X509ExtensionUtil;
++
++public class SMIMEAssertion extends AbstractTestElement implements
++	Serializable, Assertion {
++
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++	private static final String VERIFY_SIGNATURE_KEY = "SMIMEAssertion.verifySignature";
++
++	private static final String NOT_SIGNED_KEY = "SMIMEAssertion.notSigned";
++
++	private static final String SIGNER_NO_CHECK_KEY = "SMIMEAssertion.signerNoCheck";
++
++	private static final String SIGNER_CHECK_BY_FILE_KEY = "SMIMEAssertion.signerCheckByFile";
++
++	private static final String SIGNER_CERT_FILE_KEY = "SMIMEAssertion.signerCertFile";
++
++	private static final String SINGER_CHECK_CONSTRAINTS_KEY = "SMIMEAssertion.signerCheckConstraints";
++
++	private static final String SIGNER_SERIAL_KEY = "SMIMEAssertion.signerSerial";
++
++	private static final String SIGNER_EMAIL_KEY = "SMIMEAssertion.signerEmail";
++
++	private static final String SIGNER_DN_KEY = "SMIMEAssertion.signerDn";
++
++	private static final String ISSUER_DN_KEY = "SMIMEAssertion.issuerDn";
++
++	public AssertionResult getResult(SampleResult response) {
++		checkForBouncycastle();
++
++		AssertionResult res = new AssertionResult(getName());
++
++		try {
++			MimeMessage msg = getMessageFromResponse(response, 0);
++			SMIMESignedParser s = null;
++			if (msg.isMimeType("multipart/signed")) {
++				MimeMultipart multipart = (MimeMultipart) msg.getContent();
++				s = new SMIMESignedParser(multipart);
++			} else if (msg.isMimeType("application/pkcs7-mime")
++				|| msg.isMimeType("application/x-pkcs7-mime")) {
++				s = new SMIMESignedParser(msg);
++			}
++
++			if (null != s) {
++
++				if (isNotSigned()) {
++					res.setFailure(true);
++					res.setFailureMessage("Mime message is signed");
++				} else if (isVerifySignature() || !isSignerNoCheck()) {
++					res = verifySignature(s);
++				}
++
++			} else {
++				if (!isNotSigned()) {
++					res.setFailure(true);
++					res.setFailureMessage("Mime message is not signed");
++				}
++			}
++
++		} catch (MessagingException e) {
++			String msg = "Cannot parse mime msg: " + e.getMessage();
++			log.warn(msg, e);
++			res.setFailure(true);
++			res.setFailureMessage(msg);
++		} catch (CMSException e) {
++			res.setFailure(true);
++			res.setFailureMessage("Error reading the signature: "
++				+ e.getMessage());
++		} catch (SMIMEException e) {
++			res.setFailure(true);
++			res.setFailureMessage("Cannot extract signed body part from signature: "
++				+ e.getMessage());
++		} catch (IOException e) { // should never happen
++			log.error("Cannot read mime message content: " + e.getMessage(), e);
++			res.setError(true);
++			res.setFailureMessage(e.getMessage());
++		}
++
++		return res;
++	}
++
++	private AssertionResult verifySignature(SMIMESignedParser s)
++		throws CMSException {
++		AssertionResult res = new AssertionResult(getName());
++
++		try {
++			CertStore certs = s.getCertificatesAndCRLs("Collection", "BC");
++			SignerInformationStore signers = s.getSignerInfos();
++			Iterator signerIt = signers.getSigners().iterator();
++
++			if (signerIt.hasNext()) {
++
++				SignerInformation signer = (SignerInformation) signerIt.next();
++				Iterator certIt = certs.getCertificates(signer.getSID())
++					.iterator();
++
++				if (certIt.hasNext()) {
++					// the signer certificate
++					X509Certificate cert = (X509Certificate) certIt.next();
++
++					if (isVerifySignature()) {
++
++						if (!signer.verify(cert.getPublicKey(), "BC")) {
++							res.setFailure(true);
++							res.setFailureMessage("Signature is invalid");
++						}
++					}
++
++					if (isSignerCheckConstraints()) {
++						StringBuffer failureMessage = new StringBuffer();
++
++						String serial = getSignerSerial();
++						if (serial.trim().length() > 0) {
++							BigInteger serialNbr = readSerialNumber(serial);
++							if (!serialNbr.equals(cert.getSerialNumber())) {
++								res.setFailure(true);
++								failureMessage
++									.append("Serial number ")
++									.append(serialNbr)
++									.append(
++										" does not match serial from signer certificate: ")
++									.append(cert.getSerialNumber())
++									.append("\n");
++							}
++						}
++
++						String email = getSignerEmail();
++						if (email.trim().length() > 0) {
++							List emailfromCert = getEmailFromCert(cert);
++							if (!emailfromCert.contains(email)) {
++								res.setFailure(true);
++								failureMessage
++									.append("Email address \"")
++									.append(email)
++									.append(
++										"\" not present in signer certificate\n");
++							}
++
++						}
++
++						String subject = getSignerDn();
++						if (subject.length() > 0) {
++							X500Principal principal = new X500Principal(subject);
++							if (!principal.equals(cert
++								.getSubjectX500Principal())) {
++								res.setFailure(true);
++								failureMessage
++									.append(
++										"Distinguished name of signer certificate does not match \"")
++									.append(subject).append("\"\n");
++							}
++						}
++
++						String issuer = getIssuerDn();
++						if (issuer.length() > 0) {
++							X500Principal principal = new X500Principal(issuer);
++							if (!principal
++								.equals(cert.getIssuerX500Principal())) {
++								res.setFailure(true);
++								failureMessage
++									.append(
++										"Issuer distinguished name of signer certificate does not match \"")
++									.append(subject).append("\"\n");
++							}
++						}
++
++						if (failureMessage.length() > 0) {
++							res.setFailureMessage(failureMessage.toString());
++						}
++					}
++
++					if (isSignerCheckByFile()) {
++						CertificateFactory cf = CertificateFactory
++							.getInstance("X.509");
++						X509Certificate certFromFile = (X509Certificate) cf
++							.generateCertificate(new FileInputStream(
++								getSignerCertFile()));
++
++						if (!certFromFile.equals(cert)) {
++							res.setFailure(true);
++							res.setFailureMessage("Signer certificate does not match certificate "
++									+ getSignerCertFile());
++						}
++					}
++
++				} else {
++					res.setFailure(true);
++					res.setFailureMessage("No signer certificate found in signature");
++				}
++
++			}
++
++			// TODO support multiple signers
++			if (signerIt.hasNext()) {
++				log.warn("SMIME message contains multiple signers! Checking multiple signers is not supported.");
++			}
++
++		} catch (GeneralSecurityException e) {
++			log.error(e.getMessage(), e);
++			res.setError(true);
++			res.setFailureMessage(e.getMessage());
++		} catch (FileNotFoundException e) {
++			res.setFailure(true);
++			res.setFailureMessage("certificate file not found: "
++				+ e.getMessage());
++		}
++
++		return res;
++	}
++
++	public boolean isVerifySignature() {
++		return getPropertyAsBoolean(VERIFY_SIGNATURE_KEY);
++	}
++
++	public void setVerifySignature(boolean verifySignature) {
++		setProperty(new BooleanProperty(VERIFY_SIGNATURE_KEY, verifySignature));
++	}
++
++	public String getIssuerDn() {
++		return getPropertyAsString(ISSUER_DN_KEY);
++	}
++
++	public void setIssuerDn(String issuertDn) {
++		setProperty(new StringProperty(ISSUER_DN_KEY, issuertDn));
++	}
++
++	/**
++	 * extracts a MIME message from the SampleResult
++	 */
++	private MimeMessage getMessageFromResponse(SampleResult response,
++		int messageNumber) throws MessagingException {
++		byte[] data = response.getResponseData();
++		Session session = Session.getDefaultInstance(new Properties());
++		MimeMessage msg = new MimeMessage(session, new ByteArrayInputStream(
++			data));
++
++		log.debug("msg.getSize() = " + msg.getSize());
++		return msg;
++	}
++
++	/**
++	 * Convert the value of <code>serialString</code> into a BigInteger.
++	 * Strings starting with 0x or 0X are parsed as hex numbers, otherwise as
++	 * decimal number.
++	 * 
++	 * @param serialString
++	 *            the String representation of the serial Number
++	 * @return
++	 */
++	private BigInteger readSerialNumber(String serialString) {
++		if (serialString.startsWith("0x") || serialString.startsWith("0X")) {
++			return new BigInteger(serialString.substring(2), 16);
++		} else {
++			return new BigInteger(serialString);
++		}
++	}
++
++	/**
++	 * Extract email addresses from a certificate
++	 * 
++	 * @param cert
++	 * @return a List of all email addresses found
++	 * @throws CertificateException
++	 */
++	private List getEmailFromCert(X509Certificate cert)
++		throws CertificateException {
++		List res = new ArrayList();
++
++		X509Principal subject = PrincipalUtil.getSubjectX509Principal(cert);
++		Iterator addressIt = subject.getValues(X509Principal.EmailAddress)
++			.iterator();
++		while (addressIt.hasNext()) {
++			String address = (String) addressIt.next();
++			res.add(address);
++		}
++
++		Iterator subjectAltNamesIt = X509ExtensionUtil
++			.getSubjectAlternativeNames(cert).iterator();
++		while (subjectAltNamesIt.hasNext()) {
++			List altName = (List) subjectAltNamesIt.next();
++			int type = ((Integer) altName.get(0)).intValue();
++			if (type == GeneralName.rfc822Name) {
++				String address = (String) altName.get(1);
++				res.add(address);
++			}
++		}
++
++		return res;
++	}
++
++	/**
++	 * Check if the Bouncycastle jce provider is installed and dynamically load
++	 * it, if needed;
++	 * 
++	 */
++	private static void checkForBouncycastle() {
++		if (null == Security.getProvider("BC")) {
++			Security.addProvider(new BouncyCastleProvider());
++		}
++	}
++
++	public boolean isSignerCheckByFile() {
++		return getPropertyAsBoolean(SIGNER_CHECK_BY_FILE_KEY);
++	}
++
++	public void setSignerCheckByFile(boolean signerCheckByFile) {
++		setProperty(new BooleanProperty(SIGNER_CHECK_BY_FILE_KEY,
++			signerCheckByFile));
++	}
++
++	public boolean isSignerCheckConstraints() {
++		return getPropertyAsBoolean(SINGER_CHECK_CONSTRAINTS_KEY);
++	}
++
++	public void setSignerCheckConstraints(boolean signerCheckConstraints) {
++		setProperty(new BooleanProperty(SINGER_CHECK_CONSTRAINTS_KEY,
++			signerCheckConstraints));
++	}
++
++	public boolean isSignerNoCheck() {
++		return getPropertyAsBoolean(SIGNER_NO_CHECK_KEY);
++	}
++
++	public void setSignerNoCheck(boolean signerNoCheck) {
++		setProperty(new BooleanProperty(SIGNER_NO_CHECK_KEY, signerNoCheck));
++	}
++
++	public String getSignerCertFile() {
++		return getPropertyAsString(SIGNER_CERT_FILE_KEY);
++	}
++
++	public void setSignerCertFile(String signerCertFile) {
++		setProperty(new StringProperty(SIGNER_CERT_FILE_KEY, signerCertFile));
++	}
++
++	public String getSignerDn() {
++		return getPropertyAsString(SIGNER_DN_KEY);
++	}
++
++	public void setSignerDn(String signerDn) {
++		setProperty(new StringProperty(SIGNER_DN_KEY, signerDn));
++	}
++
++	public String getSignerSerial() {
++		return getPropertyAsString(SIGNER_SERIAL_KEY);
++	}
++
++	public void setSignerSerial(String signerSerial) {
++		setProperty(new StringProperty(SIGNER_SERIAL_KEY, signerSerial));
++	}
++
++	public String getSignerEmail() {
++		return getPropertyAsString(SIGNER_EMAIL_KEY);
++	}
++
++	public void setSignerEmail(String signerEmail) {
++		setProperty(new StringProperty(SIGNER_EMAIL_KEY, signerEmail));
++	}
++
++	public boolean isNotSigned() {
++		return getPropertyAsBoolean(NOT_SIGNED_KEY);
++	}
++
++	public void setNotSigned(boolean notSigned) {
++		setProperty(new BooleanProperty(NOT_SIGNED_KEY, notSigned));
++	}
++
++}
+Index: src/components/org/apache/jmeter/assertions/gui/SMIMEAssertionGui.java
+===================================================================
+--- src/components/org/apache/jmeter/assertions/gui/SMIMEAssertionGui.java	(revision 0)
++++ src/components/org/apache/jmeter/assertions/gui/SMIMEAssertionGui.java	(revision 0)
+@@ -0,0 +1,233 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.assertions.gui;
++
++import java.awt.BorderLayout;
++
++import javax.swing.BorderFactory;
++import javax.swing.Box;
++import javax.swing.ButtonGroup;
++import javax.swing.JCheckBox;
++import javax.swing.JLabel;
++import javax.swing.JPanel;
++import javax.swing.JRadioButton;
++import javax.swing.JTextField;
++import javax.swing.event.ChangeEvent;
++import javax.swing.event.ChangeListener;
++
++import org.apache.jmeter.assertions.SMIMEAssertion;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++
++public class SMIMEAssertionGui extends AbstractAssertionGui {
++
++	private JCheckBox verifySignature;
++
++	private JCheckBox notSigned;
++
++	private JRadioButton signerNoCheck;
++
++	private JRadioButton signerCheckConstraints;
++
++	private JRadioButton signerCheckByFile;
++
++	private JTextField signerDnField;
++
++	private JTextField signerSerialNumberField;
++
++	private JTextField signerEmailField;
++
++	private JTextField issuerDnField;
++
++	private JTextField signerCertFile;
++
++	public SMIMEAssertionGui() {
++		init();
++	}
++
++	public String getLabelResource() {
++		return "smime_assertion_title";
++	}
++
++	private void init() {
++		setLayout(new BorderLayout());
++		setBorder(makeBorder());
++
++		Box box = Box.createVerticalBox();
++		box.add(makeTitlePanel());
++		box.add(createSignaturePanel());
++		box.add(createSignerPanel());
++		add(box, BorderLayout.NORTH);
++	}
++
++	private JPanel createSignaturePanel() {
++		JPanel panel = new JPanel();
++		panel.setBorder(BorderFactory.createTitledBorder(JMeterUtils
++			.getResString("smime_assertion_signature")));
++
++		verifySignature = new JCheckBox(JMeterUtils
++			.getResString("smime_assertion_verify_signature"));
++
++		notSigned = new JCheckBox(JMeterUtils
++			.getResString("smime_assertion_not_signed"));
++		notSigned.addChangeListener(new ChangeListener() {
++			public void stateChanged(ChangeEvent e) {
++				verifySignature.setEnabled(!notSigned.isSelected());
++			}
++		});
++
++		panel.add(verifySignature);
++		panel.add(notSigned);
++
++		return panel;
++	}
++
++	private JPanel createSignerPanel() {
++		JPanel panel = new JPanel();
++		panel.setBorder(BorderFactory.createTitledBorder(JMeterUtils
++			.getResString("smime_assertion_signer")));
++
++		panel.setLayout(new VerticalLayout(5, VerticalLayout.LEFT));
++
++		signerNoCheck = new JRadioButton(JMeterUtils
++			.getResString("smime_assertion_signer_no_check"));
++		signerCheckConstraints = new JRadioButton(JMeterUtils
++			.getResString("smime_assertion_signer_constraints"));
++		signerCheckByFile = new JRadioButton(JMeterUtils
++			.getResString("smime_assertion_signer_by_file"));
++
++		signerCertFile = new JTextField(25);
++
++		ButtonGroup buttonGroup = new ButtonGroup();
++		buttonGroup.add(signerNoCheck);
++		buttonGroup.add(signerCheckConstraints);
++		buttonGroup.add(signerCheckByFile);
++
++		panel.add(signerNoCheck);
++
++		panel.add(signerCheckConstraints);
++		signerCheckConstraints.addChangeListener(new ChangeListener() {
++			public void stateChanged(ChangeEvent e) {
++				signerDnField.setEnabled(signerCheckConstraints.isSelected());
++				signerSerialNumberField.setEnabled(signerCheckConstraints
++					.isSelected());
++				signerEmailField
++					.setEnabled(signerCheckConstraints.isSelected());
++				issuerDnField.setEnabled(signerCheckConstraints.isSelected());
++			}
++		});
++		Box box = Box.createHorizontalBox();
++		box.add(new JLabel(JMeterUtils
++			.getResString("smime_assertion_signer_dn")));
++		box.add(Box.createHorizontalStrut(5));
++		signerDnField = new JTextField(25);
++		box.add(signerDnField);
++		panel.add(box);
++
++		box = Box.createHorizontalBox();
++		box.add(new JLabel(JMeterUtils
++			.getResString("smime_assertion_signer_email")));
++		box.add(Box.createHorizontalStrut(5));
++		signerEmailField = new JTextField(25);
++		box.add(signerEmailField);
++		panel.add(box);
++
++		box = Box.createHorizontalBox();
++		box.add(new JLabel(JMeterUtils
++			.getResString("smime_assertion_issuer_dn")));
++		box.add(Box.createHorizontalStrut(5));
++		issuerDnField = new JTextField(25);
++		box.add(issuerDnField);
++		panel.add(box);
++
++		box = Box.createHorizontalBox();
++		box.add(new JLabel(JMeterUtils
++			.getResString("smime_assertion_signer_serial")));
++		box.add(Box.createHorizontalStrut(5));
++		signerSerialNumberField = new JTextField(25);
++		box.add(signerSerialNumberField);
++		panel.add(box);
++
++		// panel.add(signerCheckByFile);
++		signerCheckByFile.addChangeListener(new ChangeListener() {
++			public void stateChanged(ChangeEvent e) {
++				signerCertFile.setEnabled(signerCheckByFile.isSelected());
++			}
++		});
++		box = Box.createHorizontalBox();
++		box.add(signerCheckByFile);
++		box.add(Box.createHorizontalStrut(5));
++		box.add(signerCertFile);
++		panel.add(box);
++
++		return panel;
++	}
++
++	public void configure(TestElement el) {
++		super.configure(el);
++
++		SMIMEAssertion smimeAssertion = (SMIMEAssertion) el;
++		verifySignature.setSelected(smimeAssertion.isVerifySignature());
++		notSigned.setSelected(smimeAssertion.isNotSigned());
++
++		if (smimeAssertion.isSignerNoCheck())
++			signerNoCheck.setSelected(true);
++		if (smimeAssertion.isSignerCheckConstraints())
++			signerCheckConstraints.setSelected(true);
++		if (smimeAssertion.isSignerCheckByFile())
++			signerCheckByFile.setSelected(true);
++
++		issuerDnField.setText(smimeAssertion.getIssuerDn());
++		signerDnField.setText(smimeAssertion.getSignerDn());
++		signerSerialNumberField.setText(smimeAssertion.getSignerSerial());
++		signerEmailField.setText(smimeAssertion.getSignerEmail());
++
++		signerCertFile.setText(smimeAssertion.getSignerCertFile());
++	}
++
++	public void modifyTestElement(TestElement el) {
++		configureTestElement(el);
++
++		if (el instanceof SMIMEAssertion) {
++			SMIMEAssertion smimeAssertion = (SMIMEAssertion) el;
++			smimeAssertion.setVerifySignature(verifySignature.isSelected());
++			smimeAssertion.setNotSigned(notSigned.isSelected());
++
++			smimeAssertion.setIssuerDn(issuerDnField.getText());
++			smimeAssertion.setSignerDn(signerDnField.getText());
++			smimeAssertion.setSignerSerial(signerSerialNumberField.getText());
++			smimeAssertion.setSignerEmail(signerEmailField.getText());
++
++			smimeAssertion.setSignerCertFile(signerCertFile.getText());
++
++			smimeAssertion.setSignerNoCheck(signerNoCheck.isSelected());
++			smimeAssertion.setSignerCheckConstraints(signerCheckConstraints
++				.isSelected());
++			smimeAssertion.setSignerCheckByFile(signerCheckByFile.isSelected());
++		}
++	}
++
++	public TestElement createTestElement() {
++		SMIMEAssertion smimeAssertion = new SMIMEAssertion();
++		modifyTestElement(smimeAssertion);
++		return smimeAssertion;
++	}
++
++}
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 661583)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -725,6 +725,18 @@
+ size_assertion_label=Size in bytes\:
+ size_assertion_size_test=Size to Assert
+ size_assertion_title=Size Assertion
++smime_assertion_issuer_dn=Issuer distinguished name
++smime_assertion_not_signed=Message not signed
++smime_assertion_signature=Signature
++smime_assertion_signer=Signer certificate
++smime_assertion_signer_by_file=Certificate file
++smime_assertion_signer_constraints=Check values
++smime_assertion_signer_dn=Signer distinguished name
++smime_assertion_signer_email=Signer email address
++smime_assertion_signer_no_check=No check
++smime_assertion_signer_serial=Serial Number
++smime_assertion_title=SMIME Assertion
++smime_assertion_verify_signature=Verify signature
+ soap_action=Soap Action
+ soap_data_title=Soap/XML-RPC Data
+ soap_sampler_title=SOAP/XML-RPC Request

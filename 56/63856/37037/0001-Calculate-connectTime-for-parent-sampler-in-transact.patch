@@ -1,0 +1,42 @@
+From 041fc47bbefa0997bff5cd2c94486723d1340171 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Mon, 24 Feb 2020 14:36:53 +0100
+Subject: [PATCH] Calculate connectTime for parent sampler in transaction
+ controller
+
+---
+ .../java/org/apache/jmeter/control/TransactionSampler.java    | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/control/TransactionSampler.java b/src/core/src/main/java/org/apache/jmeter/control/TransactionSampler.java
+index 504dfe9c6d..b8ee999cb6 100644
+--- a/src/core/src/main/java/org/apache/jmeter/control/TransactionSampler.java
++++ b/src/core/src/main/java/org/apache/jmeter/control/TransactionSampler.java
+@@ -53,6 +53,8 @@ public class TransactionSampler extends AbstractSampler {
+ 
+     private long totalTime = 0;
+ 
++    private long totalConnectTime = 0;
++
+     /**
+      * @deprecated only for use by test code
+      */
+@@ -114,6 +116,7 @@ public class TransactionSampler extends AbstractSampler {
+         transactionSampleResult.addSubResult(res, false);
+         // Add current time to total for later use (exclude pause time)
+         totalTime += res.getTime();
++        totalConnectTime += res.getConnectTime();
+     }
+ 
+     protected void setTransactionDone() {
+@@ -133,6 +136,7 @@ public class TransactionSampler extends AbstractSampler {
+                     - transactionSampleResult.getStartTime() - totalTime);
+             transactionSampleResult.setEndTime(end);
+         }
++        transactionSampleResult.setConnectTime(totalConnectTime);
+     }
+ 
+     protected void setSubSampler(Sampler subSampler) {
+-- 
+2.17.1
+

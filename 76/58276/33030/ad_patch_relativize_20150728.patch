@@ -1,0 +1,200 @@
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1693046)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -98,7 +98,8 @@
+     public static final String UNDO             = "undo"; // $NON-NLS-1$
+     public static final String REDO             = "redo"; // $NON-NLS-1$
+     public static final String QUICK_COMPONENT  = "quick_component"; // $NON-NLS-1$
+-
++    public static final String RELATIVIZE		= "relativize";
++    
+     // Prevent instantiation
+     private ActionNames(){
+ 
+Index: src/core/org/apache/jmeter/gui/action/Relativize.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Relativize.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/Relativize.java	(working copy)
+@@ -0,0 +1,30 @@
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++
++import org.apache.jmeter.exceptions.IllegalUserActionException;
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++public class Relativize implements Command {
++	private static final Logger log = LoggingManager.getLoggerForClass();
++    private static final Set<String> commands = new HashSet<String>();
++
++    static {
++        commands.add(ActionNames.RELATIVIZE);
++    }
++
++	@Override
++	public void doAction(ActionEvent e) throws IllegalUserActionException {
++		log.info("use relative path: " + GuiPackage.getInstance().getMenuItemRelativize().getState());
++	}
++
++	@Override
++	public Set<String> getActionNames() {
++		return commands;
++	}
++
++}
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1693046)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -132,6 +132,11 @@
+     private UndoHistory undoHistory = new UndoHistory();
+ 
+     /**
++     * Relativize include paths
++     */
++    private JCheckBoxMenuItem menuItemRelativize;
++
++	/**
+      * Private constructor to permit instantiation only from within this class.
+      * Use {@link #getInstance()} to retrieve a singleton instance.
+      */
+@@ -858,4 +863,12 @@
+         ((JMeterToolBar)toolbar).updateUndoRedoIcons(history.canUndo(), history.canRedo());
+     }
+ 
++    
++    public JCheckBoxMenuItem getMenuItemRelativize() {
++		return menuItemRelativize;
++	}
++
++	public void setMenuItemRelativize(JCheckBoxMenuItem menuItemRelativize) {
++		this.menuItemRelativize = menuItemRelativize;
++	}
+ }
+Index: src/core/org/apache/jmeter/gui/util/FilePanelEntry.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/FilePanelEntry.java	(revision 1693046)
++++ src/core/org/apache/jmeter/gui/util/FilePanelEntry.java	(working copy)
+@@ -31,6 +31,8 @@
+ import javax.swing.event.ChangeEvent;
+ import javax.swing.event.ChangeListener;
+ 
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ public class FilePanelEntry extends HorizontalPanel implements ActionListener {
+@@ -141,7 +143,14 @@
+                 chooser = FileDialoger.promptToOpenFile(filetypes, filename.getText());
+             }
+             if (chooser != null && chooser.getSelectedFile() != null) {
+-                filename.setText(chooser.getSelectedFile().getPath());
++            	String filePath = chooser.getSelectedFile().getPath();
++                if(GuiPackage.getInstance().getMenuItemRelativize().getModel().isSelected()) {
++                	// make the file path relative to base dir (replace \ by / for unix compliance)
++                	filename.setText(FileServer.getFileServer().relativizeToBasedir(filePath).toString().replace('\\', '/'));
++                } else {
++                	// keep original file path
++                	filename.setText(filePath);
++                }
+                 fireFileChanged();
+             }
+         } else {
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(revision 1693046)
++++ src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(working copy)
+@@ -331,6 +331,12 @@
+         optionsMenu.add(functionHelper);
+         optionsMenu.add(lafMenu);
+ 
++        // OTHER OPTIONS MENU
++        JMenu otherOptions = makeMenuRes("other_options");
++        JCheckBoxMenuItem menuRelativize = makeCheckBoxMenuItemRes("menu_relativize", ActionNames.RELATIVIZE);
++        menuRelativize.setSelected(true);
++        otherOptions.add(menuRelativize);
++        
+         JCheckBoxMenuItem menuToolBar = makeCheckBoxMenuItemRes("menu_toolbar", ActionNames.TOOLBAR); //$NON-NLS-1$
+         JCheckBoxMenuItem menuLoggerPanel = makeCheckBoxMenuItemRes("menu_logger_panel", ActionNames.LOGGER_PANEL_ENABLE_DISABLE); //$NON-NLS-1$
+         GuiPackage guiInstance = GuiPackage.getInstance();
+@@ -337,6 +343,7 @@
+         if (guiInstance != null) { //avoid error in ant task tests (good way?)
+             guiInstance.setMenuItemToolbar(menuToolBar);
+             guiInstance.setMenuItemLoggerPanel(menuLoggerPanel);
++            guiInstance.setMenuItemRelativize(menuRelativize);
+         }
+         optionsMenu.add(menuToolBar);
+         optionsMenu.add(menuLoggerPanel);
+@@ -352,6 +359,8 @@
+ 
+         JMenuItem expand = makeMenuItemRes("menu_expand_all", ActionNames.EXPAND_ALL, KeyStrokes.EXPAND_ALL); //$NON-NLS-1$
+         optionsMenu.add(expand);
++        
++        optionsMenu.add(otherOptions);
+ 
+         addPluginsMenuItems(optionsMenu, menuCreators, MENU_LOCATION.OPTIONS);
+     }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1693046)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -1331,3 +1331,6 @@
+ you_must_enter_a_valid_number=You must enter a valid number
+ zh_cn=Chinese (Simplified)
+ zh_tw=Chinese (Traditional)
++# custom messages
++menu_relativize=Use Relative Path
++other_options=Other Options
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1693046)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -1316,3 +1316,6 @@
+ you_must_enter_a_valid_number=Vous devez entrer un nombre valide
+ zh_cn=Chinois (simplifi\u00E9)
+ zh_tw=Chinois (traditionnel)
++# custom messages
++menu_relativize=Utiliser des chemins relatifs
++other_options=Autres options
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/services/FileServer.java
+===================================================================
+--- src/core/org/apache/jmeter/services/FileServer.java	(revision 1693046)
++++ src/core/org/apache/jmeter/services/FileServer.java	(working copy)
+@@ -33,6 +33,8 @@
+ import java.io.OutputStreamWriter;
+ import java.io.Reader;
+ import java.io.Writer;
++import java.nio.file.FileSystems;
++import java.nio.file.Path;
+ import java.util.HashMap;
+ import java.util.Map;
+ import java.util.concurrent.ThreadLocalRandom;
+@@ -576,4 +578,21 @@
+     public void setScriptName(String scriptName) {
+         this.scriptName = scriptName;
+     }
++    
++    /**
++     * Constructs a relative path between the base dir and the given absolute path.
++     * @param absolutePath the absolute path
++     * @return the relative path
++     */
++    public Path relativizeToBasedir(String absolutePath) {
++    	Path base = FileSystems.getDefault().getPath(this.getBaseDir());
++    	Path absolute = FileSystems.getDefault().getPath(absolutePath);
++    	
++    	try {
++    		return base.relativize(absolute);
++    	} catch(IllegalArgumentException iae) {
++    		// absolute path couldn't be relativized
++    		return absolute;
++    	}
++    }
+ }

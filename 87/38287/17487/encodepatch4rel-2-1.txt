@@ -1,0 +1,653 @@
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/core/org/apache/jmeter/resources/messages.properties	(revision 371465)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -151,6 +151,7 @@
+ email_results_title=Email Results
+ en=English
+ enable=Activate
++encode=Encode:
+ encode?=Encode?
+ encoded_value=URL Encoded Value
+ endtime=End Time  
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/core/org/apache/jmeter/resources/messages_ja.properties
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/core/org/apache/jmeter/resources/messages_ja.properties	(revision 371467)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/core/org/apache/jmeter/resources/messages_ja.properties	(working copy)
+@@ -94,6 +94,7 @@
+ email_results_title=\u7D50\u679C\u3092\u30E1\u30FC\u30EB\u3067\u9001\u4FE1
+ en=\u82F1\u8A9E
+ enable=\u6709\u52B9
++encode=\u30A8\u30F3\u30B3\u30FC\u30C9\:
+ encoded_value=URL\u30A8\u30F3\u30B3\u30FC\u30C9\u5024
+ endtime=\u7D42\u4E86\u6642\u523B
+ entry_dn=\u30A8\u30F3\u30C8\u30EADN
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java	(revision 371464)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/jorphan/org/apache/jorphan/util/JOrphanUtils.java	(working copy)
+@@ -289,21 +289,82 @@
+ 	 * @return the encoded string
+ 	 */
+ 	public static String decode(String string, String encoding) throws UnsupportedEncodingException {
+-		if (decodeMethod != null) {
+-			// JDK1.4: return URLDecoder.decode(string, encoding);
+-			Object args[] = { string, encoding };
++		if (string == null)
++			return (null);
++
++		// use the specified encoding to extract bytes out of the
++		// given string so that the encoding is not lost. If an
++		// encoding is not specified, let it use platform default
++		byte[] bytes = null;
++		try {
++			if (encoding == null) {
++				bytes = string.getBytes();
++			} else {
++				bytes = string.getBytes(encoding);
++			}
++		} catch (UnsupportedEncodingException uee) {
++		}
++
++		return URLDecode(bytes, encoding);
++
++	}
++
++    /**
++	 * Decode and return the specified URL-encoded byte array.
++	 * 
++	 * @param bytes
++	 *            The url-encoded byte array
++	 * @param enc
++	 *            The encoding to use; if null, the default encoding is used
++	 * @exception IllegalArgumentException
++	 *                if a '%' character is not followed by a valid 2-digit
++	 *                hexadecimal number
++	 */
++	public static String URLDecode(byte[] bytes, String enc) {
++
++		if (bytes == null)
++			return (null);
++
++		int len = bytes.length;
++		int ix = 0;
++		int ox = 0;
++		while (ix < len) {
++			byte b = bytes[ix++]; // Get byte to test
++			if (b == '+') {
++				b = (byte) ' ';
++			} else if (b == '%') {
++				b = (byte) ((convertHexDigit(bytes[ix++]) << 4) + convertHexDigit(bytes[ix++]));
++			}
++			bytes[ox++] = b;
++		}
++		if (enc != null) {
+ 			try {
+-				return (String) decodeMethod.invoke(null, args);
++				return new String(bytes, 0, ox, enc);
+ 			} catch (Exception e) {
+ 				log.warn("Error trying to decode", e);
+-				return string;
+ 			}
+-		} else {
+-			return URLDecoder.decode(string); // JDK1.3
+ 		}
++		return new String(bytes, 0, ox);
++
+ 	}
+ 
+-	/**
++    /**
++	 * Convert a byte character value to hexidecimal digit value.
++	 * 
++	 * @param b
++	 *            the character value byte
++	 */
++	private static byte convertHexDigit(byte b) {
++		if ((b >= '0') && (b <= '9'))
++			return (byte) (b - '0');
++		if ((b >= 'a') && (b <= 'f'))
++			return (byte) (b - 'a' + 10);
++		if ((b >= 'A') && (b <= 'F'))
++			return (byte) (b - 'A' + 10);
++		return 0;
++	}
++
++    /**
+ 	 * Simple-minded String.replace() for JDK1.3 Should probably be recoded...
+ 	 * 
+ 	 * @param source
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/MultipartUrlConfig.java	(working copy)
+@@ -81,19 +81,23 @@
+ 		return mimetype;
+ 	}
+ 
+-	public void addArgument(String name, String value) {
++	public void addArgument(String name, String value, String encode) {
+ 		Arguments myArgs = this.getArguments();
+-		myArgs.addArgument(new HTTPArgument(name, value));
++		HTTPArgument arg = new HTTPArgument(name, value);
++		arg.setEncode(encode);
++		myArgs.addArgument(arg);
+ 	}
+ 
+-	public void addArgument(String name, String value, String metadata) {
++	public void addArgument(String name, String value, String metadata, String encode) {
+ 		Arguments myArgs = this.getArguments();
+-		myArgs.addArgument(new HTTPArgument(name, value, metadata));
++		HTTPArgument arg = new HTTPArgument(name, value, metadata);
++		arg.setEncode(encode);
++		myArgs.addArgument(arg);
+ 	}
+ 
+-	public void addEncodedArgument(String name, String value) {
++	public void addEncodedArgument(String name, String value, String encode) {
+ 		Arguments myArgs = getArguments();
+-		HTTPArgument arg = new HTTPArgument(name, value, true);
++		HTTPArgument arg = new HTTPArgument(name, value, true, encode);
+ 		if (arg.getName().equals(arg.getEncodedName()) && arg.getValue().equals(arg.getEncodedValue())) {
+ 			arg.setAlwaysEncoded(false);
+ 		}
+@@ -105,7 +109,7 @@
+ 	 * browser's output stream to be parsed and stored correctly into the
+ 	 * UrlConfig object.
+ 	 */
+-	public void parseArguments(String queryString) {
++	public void parseArguments(String queryString, String encode) {
+ 		String[] parts = JOrphanUtils.split(queryString, "--" + getBoundary());
+ 		for (int i = 0; i < parts.length; i++) {
+ 			if (parts[i].indexOf("filename=") > -1) {
+@@ -124,7 +128,7 @@
+ 				String name = parts[i].substring(index, parts[i].indexOf("\"", index));
+ 				index = parts[i].indexOf("\n", index) + 2;
+ 				String value = parts[i].substring(index).trim();
+-				this.addEncodedArgument(name, value);
++				this.addEncodedArgument(name, value, encode);
+ 			}
+ 		}
+ 	}
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/HttpDefaultsGui.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/HttpDefaultsGui.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/HttpDefaultsGui.java	(working copy)
+@@ -47,6 +47,8 @@
+ 	JLabeledTextField path;
+ 
+ 	JLabeledTextField port;
++	
++	JLabeledTextField encode;
+ 
+ 	HTTPArgumentsPanel argPanel;
+ 
+@@ -82,6 +84,7 @@
+ 		config.setProperty(HTTPSamplerBase.PATH, path.getText());
+ 		config.setProperty(new TestElementProperty(HTTPSamplerBase.ARGUMENTS, argPanel.createTestElement()));
+ 		config.setProperty(HTTPSamplerBase.PORT, port.getText());
++		config.setProperty(HTTPSamplerBase.ENCODE, encode.getText());
+ 		if (imageParser.isSelected())
+ 			config.setProperty(new BooleanProperty(HTTPSamplerBase.IMAGE_PARSER, true));
+ 		else {
+@@ -95,6 +98,7 @@
+ 		domain.setText(el.getPropertyAsString(HTTPSamplerBase.DOMAIN));
+ 		path.setText(el.getPropertyAsString(HTTPSamplerBase.PATH));
+ 		port.setText(el.getPropertyAsString(HTTPSamplerBase.PORT));
++		encode.setText(el.getPropertyAsString(HTTPSamplerBase.ENCODE));
+ 		argPanel.configure((TestElement) el.getProperty(HTTPSamplerBase.ARGUMENTS).getObjectValue());
+ 		imageParser.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.IMAGE_PARSER));
+ 	}
+@@ -120,6 +124,9 @@
+ 		port = new JLabeledTextField(JMeterUtils.getResString("web_server_port"));
+ 		urlPanel.add(port);
+ 
++		encode = new JLabeledTextField(JMeterUtils.getResString("encode"));
++		urlPanel.add(encode);
++
+ 		mainPanel.add(urlPanel);
+ 
+ 		argPanel = new HTTPArgumentsPanel();
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java	(working copy)
+@@ -19,6 +19,7 @@
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Component;
++import java.awt.Dimension;
+ import java.awt.FlowLayout;
+ 
+ import javax.swing.BorderFactory;
+@@ -75,6 +76,8 @@
+ 	private JCheckBox autoRedirects;
+ 
+ 	private JCheckBox useKeepAlive;
++	
++	private JTextField encode;
+ 
+ 	private JRadioButton post;
+ 
+@@ -116,6 +119,7 @@
+ 		element.setProperty(HTTPSamplerBase.PROTOCOL, protocol.getText());
+ 		element.setProperty(HTTPSamplerBase.METHOD, (post.isSelected() ? "POST" : "GET"));
+ 		element.setProperty(HTTPSamplerBase.PATH, path.getText());
++		element.setProperty(HTTPSamplerBase.ENCODE, encode.getText());
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.FOLLOW_REDIRECTS, followRedirects.isSelected()));
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.AUTO_REDIRECTS, autoRedirects.isSelected()));
+ 		element.setProperty(new BooleanProperty(HTTPSamplerBase.USE_KEEPALIVE, useKeepAlive.isSelected()));
+@@ -171,6 +175,8 @@
+ 
+ 		autoRedirects.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.AUTO_REDIRECTS));
+ 		useKeepAlive.setSelected(((AbstractTestElement) el).getPropertyAsBoolean(HTTPSamplerBase.USE_KEEPALIVE));
++		
++		encode.setText(el.getPropertyAsString(HTTPSamplerBase.ENCODE));
+ 	}
+ 
+ 	protected void init() {
+@@ -240,6 +246,10 @@
+ 
+ 		JLabel label = new JLabel(JMeterUtils.getResString("path"));
+ 		label.setLabelFor(path);
++		
++		JLabel encodeLabel = new JLabel(JMeterUtils.getResString("encode"));
++		encode = new JTextField();
++		encodeLabel.setLabelFor(encode);
+ 
+ 		autoRedirects = new JCheckBox(JMeterUtils.getResString("follow_redirects_auto"));
+ 		autoRedirects.setName(AUTO_REDIRECTS);
+@@ -264,6 +274,11 @@
+ 		optionPanel.add(followRedirects);
+ 		optionPanel.add(useKeepAlive);
+ 		optionPanel.setMinimumSize(optionPanel.getPreferredSize());
++		
++		JPanel encodePanel = new JPanel(new BorderLayout(5,0));
++		encodePanel.add(encodeLabel, BorderLayout.WEST);
++		encodePanel.add(encode, BorderLayout.CENTER);
++		encodePanel.setMinimumSize(encodePanel.getPreferredSize());
+ 
+ 		JPanel panel = new JPanel();
+ 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+@@ -269,6 +284,7 @@
+ 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+ 		panel.add(pathPanel);
+ 		panel.add(optionPanel);
++		panel.add(encodePanel);
+ 		return panel;
+ 	}
+ 
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/modifier/URLRewritingModifier.java	(working copy)
+@@ -127,7 +127,8 @@
+ 			}
+ 		} else {
+ 			sampler.getArguments().removeArgument(getArgumentName());
+-			sampler.getArguments().addArgument(new HTTPArgument(getArgumentName(), value, true));
++			HTTPArgument arg = new HTTPArgument(getArgumentName(), value, true, sampler.getEncode());
++			sampler.getArguments().addArgument(arg);
+ 		}
+ 	}
+ 
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -69,6 +69,8 @@
+ 	static String CR = "\r\n";
+ 
+ 	private Map headers = new HashMap();
++	
++	private String encode = "UTF-8";
+ 
+ 	/*
+ 	 * Optionally number the requests
+@@ -205,6 +207,8 @@
+ 		}
+ 		sampler.setPort(serverPort());
+ 		log.debug("Proxy: setting port: " + sampler.getPort());
++		sampler.setEncode(encode);
++		log.debug("Proxy: setting encode: " + encode);
+ 		if (url.indexOf("//") > -1) {
+ 			String protocol = url.substring(0, url.indexOf(":"));
+ 			log.debug("Proxy: setting protocol to : " + protocol);
+@@ -217,7 +221,7 @@
+ 			sampler.setProtocol("http");
+ 		}
+ 		if ((urlConfig = isMultipart(getContentType())) != null) {
+-			urlConfig.parseArguments(postData);
++			urlConfig.parseArguments(postData, sampler.getEncode());
+ 			sampler.setArguments(urlConfig.getArguments());
+ 			sampler.setFileField(urlConfig.getFileFieldName());
+ 			sampler.setFilename(urlConfig.getFilename());
+@@ -315,6 +319,14 @@
+ 		}
+ 		return str;
+ 	}
++	
++    /**
++     * set encode
++     * @param encode
++     */
++	public void setEncode(String encode) {
++    	this.encode = encode;
++    }
+ 
+ 	/**
+ 	 * Returns the remainder of a tokenized string.
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -94,6 +94,7 @@
+ 	 */
+ 	public void run() {
+ 		HttpRequestHdr request = new HttpRequestHdr();
++		request.setEncode(target.getPropertyAsString(ProxyControl.ENCODE));
+ 		SampleResult result = null;
+ 		HeaderManager headers = null;
+ 
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/ProxyControl.java	(working copy)
+@@ -81,6 +81,7 @@
+ 	public static final String DEFAULT_PORT_S = Integer.toString(DEFAULT_PORT);// Used
+ 																				// by
+ 																				// GUI
++	public static final String DEFAULT_ENCODE_S = "UTF-8";
+ 
+ 	private static PatternCacheLRU patternCache = new PatternCacheLRU(1000, new Perl5Compiler());
+ 
+@@ -88,7 +89,9 @@
+ 
+ 	public static final String PORT = "ProxyControlGui.port";
+ 
+-	public static final String EXCLUDE_LIST = "ProxyControlGui.exclude_list";
++    public static final String ENCODE = "ProxyControlGui.encode";
++    
++    public static final String EXCLUDE_LIST = "ProxyControlGui.exclude_list";
+ 
+ 	public static final String INCLUDE_LIST = "ProxyControlGui.include_list";
+ 
+@@ -151,6 +154,10 @@
+ 	public void setPort(String port) {
+ 		setProperty(PORT, port);
+ 	}
++	
++	public void setEncode(String encode) {
++		setProperty(ENCODE, encode);
++	}
+ 
+ 	public void setCaptureHttpHeaders(boolean capture) {
+ 		setProperty(new BooleanProperty(CAPTURE_HTTP_HEADERS, capture));
+@@ -209,6 +216,10 @@
+ 	public String getPortString() {
+ 		return getPropertyAsString(PORT);
+ 	}
++	
++	public String getEncode() {
++		return getPropertyAsString(ENCODE);
++	}
+ 
+ 	public int getDefaultPort() {
+ 		return DEFAULT_PORT;
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/proxy/gui/ProxyControlGui.java	(working copy)
+@@ -103,6 +103,8 @@
+ 	 */
+ 	private JCheckBox regexMatch;
+ 
++    private JTextField encodeField;
++    
+ 	/**
+ 	 * List of available target controllers
+ 	 */
+@@ -170,6 +172,7 @@
+ 		if (el instanceof ProxyControl) {
+ 			model = (ProxyControl) el;
+ 			model.setPort(portField.getText());
++			model.setEncode(encodeField.getText());
+ 			setIncludeListInProxyControl(model);
+ 			setExcludeListInProxyControl(model);
+ 			model.setCaptureHttpHeaders(httpHeaders.isSelected());
+@@ -218,6 +221,7 @@
+ 		super.configure(element);
+ 		model = (ProxyControl) element;
+ 		portField.setText(model.getPortString());
++		encodeField.setText(model.getEncode());
+ 		httpHeaders.setSelected(model.getCaptureHttpHeaders());
+ 		groupingMode.setSelectedIndex(model.getGroupingMode());
+ 		addAssertions.setSelected(model.getAssertions());
+@@ -391,6 +395,8 @@
+ 		Box myBox = Box.createVerticalBox();
+ 		myBox.add(createPortPanel());
+ 		myBox.add(Box.createVerticalStrut(5));
++		myBox.add(createEncodePanel());
++		myBox.add(Box.createVerticalStrut(5));
+ 		myBox.add(createTargetPanel());
+ 		myBox.add(Box.createVerticalStrut(5));
+ 		myBox.add(createGroupingPanel());
+@@ -475,6 +481,21 @@
+ 
+ 		return panel;
+ 	}
++	
++	private JPanel createEncodePanel() {
++		HorizontalPanel panel = new HorizontalPanel();
++        encodeField = new JTextField(ProxyControl.DEFAULT_ENCODE_S, 20);
++        encodeField.setName(ProxyControl.ENCODE);
++        encodeField.addKeyListener(this);
++        
++        JLabel label = new JLabel(JMeterUtils.getResString("encode"));
++        label.setLabelFor(encodeField);
++        
++        panel.add(label);
++        panel.add(encodeField);
++        
++        return panel;
++	}
+ 
+ 	private JPanel createTargetPanel() {
+ 		targetNodesModel = new DefaultComboBoxModel();
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -115,6 +115,8 @@
+ 	public final static String IMAGE_PARSER = "HTTPSampler.image_parser"; // $NON-NLS-1$
+ 
+ 	public final static String MONITOR = "HTTPSampler.monitor"; // $NON-NLS-1$
++	
++	public final static String ENCODE = "HTTPSampler.encode";
+ 
+ 	/** A number to indicate that the port has not been set. * */
+ 	public static final int UNSPECIFIED_PORT = 0;
+@@ -262,9 +264,9 @@
+ 	}
+ 
+ 	public void addEncodedArgument(String name, String value, String metaData) {
+-		log.debug("adding argument: name: " + name + " value: " + value + " metaData: " + metaData);
++		log.debug("adding argument: name: " + name + " value: " + value + " metaData: " + metaData + " encode:" + getEncode());
+ 
+-		HTTPArgument arg = new HTTPArgument(name, value, metaData, true);
++		HTTPArgument arg = new HTTPArgument(name, value, metaData, true, getEncode());
+ 
+ 		if (arg.getName().equals(arg.getEncodedName()) && arg.getValue().equals(arg.getEncodedValue())) {
+ 			arg.setAlwaysEncoded(false);
+@@ -273,11 +275,15 @@
+ 	}
+ 
+ 	public void addArgument(String name, String value) {
+-		this.getArguments().addArgument(new HTTPArgument(name, value));
++		HTTPArgument arg = new HTTPArgument(name, value);
++		arg.setEncode(getEncode());
++		this.getArguments().addArgument(arg);
+ 	}
+ 
+ 	public void addArgument(String name, String value, String metadata) {
+-		this.getArguments().addArgument(new HTTPArgument(name, value, metadata));
++		HTTPArgument arg = new HTTPArgument(name, value, metadata);
++		arg.setEncode(getEncode());
++		this.getArguments().addArgument(arg);
+ 	}
+ 
+ 	public void addTestElement(TestElement el) {
+@@ -379,6 +385,14 @@
+ 	public void setImageParser(boolean parseImages) {
+ 		setProperty(new BooleanProperty(IMAGE_PARSER, parseImages));
+ 	}
++	
++    public void setEncode(String encode) {
++     	setProperty(ENCODE, encode);
++    }
++    
++    public String getEncode() {
++    	return getPropertyAsString(ENCODE);
++    }
+ 
+ 	/**
+ 	 * Obtain a result that will help inform the user that an error has occured
+@@ -455,6 +469,7 @@
+                 log.warn("Unexpected argument type: "+objectValue.getClass().getName());
+ 				item = new HTTPArgument((Argument) objectValue);
+ 			}
++			item.setEncode(getEncode());
+ 			if (!first) {
+ 				buf.append(QRY_SEP);
+ 			} else {
+@@ -486,6 +501,7 @@
+ 	 */
+ 	public void parseArguments(String queryString) {
+ 		String[] args = JOrphanUtils.split(queryString, QRY_SEP);
++        String encode = getPropertyAsString(ENCODE);
+ 		for (int i = 0; i < args.length; i++) {
+ 			// need to handle four cases: 
+             // - string contains name=value
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/util/EncoderCache.java	(working copy)
+@@ -37,7 +37,12 @@
+ 	}
+ 
+ 	public String getEncoded(String k) {
+-		Object encodedValue = cache.getElement(k);
++		return getEncoded(k, "utf8");
++	}
++	
++	public String getEncoded(String k, String encode) {
++		String key = k + ":" + encode;
++		Object encodedValue = cache.getElement(key);
+ 		if (encodedValue != null) {
+ 			return (String) encodedValue;
+ 		}
+@@ -42,7 +47,7 @@
+ 			return (String) encodedValue;
+ 		}
+ 		try {
+-			encodedValue = JOrphanUtils.encode(k, "utf8");
++			encodedValue = JOrphanUtils.encode(k, encode);
+ 		} catch (UnsupportedEncodingException e) {
+ 			// This can't happen (how should utf8 not be supported!?!),
+ 			// so just throw an Error:
+@@ -48,7 +53,7 @@
+ 			// so just throw an Error:
+ 			throw new Error("Should not happen: " + e.toString());
+ 		}
+-		cache.addElement(k, encodedValue);
++		cache.addElement(key, encodedValue);
+ 		return (String) encodedValue;
+ 	}
+ }
+Index: C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java
+===================================================================
+--- C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java	(revision 371466)
++++ C:/eclipse_workspaces/w_jmeter/trunk/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java	(working copy)
+@@ -48,6 +48,8 @@
+ 	private static final String USE_EQUALS = "HTTPArgument.use_equals";
+ 
+ 	private static EncoderCache cache = new EncoderCache(1000);
++	
++	private String encode = "UTF-8";
+ 
+ 	/**
+ 	 * Constructor for the Argument object.
+@@ -53,7 +55,7 @@
+ 	 * Constructor for the Argument object.
+ 	 */
+ 	public HTTPArgument(String name, String value, String metadata) {
+-		this(name, value, false);
++		this(name, value, false, null);
+ 		this.setMetaData(metadata);
+ 	}
+ 
+@@ -88,18 +90,18 @@
+ 	 * Constructor for the Argument object.
+ 	 */
+ 	public HTTPArgument(String name, String value) {
+-		this(name, value, false);
++		this(name, value, false, null);
+ 	}
+ 
+-	public HTTPArgument(String name, String value, boolean alreadyEncoded) {
++	public HTTPArgument(String name, String value, boolean alreadyEncoded, String encode) {
+ 		setAlwaysEncoded(true);
+ 		if (alreadyEncoded) {
+ 			try {
+-				name = JOrphanUtils.decode(name, "UTF-8");
+-				value = JOrphanUtils.decode(value, "UTF-8");
++				name = JOrphanUtils.decode(name, encode);
++				value = JOrphanUtils.decode(value, encode);
+ 			} catch (UnsupportedEncodingException e) {
+ 				// UTF-8 unsupported? You must be joking!
+-				log.error("UTF-8 encoding not supported!");
++				log.error(encode + " encoding not supported!");
+ 				throw new Error(e.toString());
+ 			}
+ 		}
+@@ -106,10 +108,13 @@
+ 		setName(name);
+ 		setValue(value);
+ 		setMetaData("=");
++		if (encode != null) {
++			this.encode = encode;
++		}
+ 	}
+ 
+-	public HTTPArgument(String name, String value, String metaData, boolean alreadyEncoded) {
+-		this(name, value, alreadyEncoded);
++	public HTTPArgument(String name, String value, String metaData, boolean alreadyEncoded, String encode) {
++		this(name, value, alreadyEncoded, encode);
+ 		setMetaData(metaData);
+ 	}
+ 
+@@ -135,9 +140,14 @@
+ 		}
+ 	}
+ 
++
++	public void setEncode(String encode) {
++		this.encode = encode;
++	}
++	
+ 	public String getEncodedValue() {
+ 		if (isAlwaysEncoded()) {
+-			return cache.getEncoded(getValue());
++			return cache.getEncoded(getValue(), encode);
+ 		} else {
+ 			return getValue();
+ 		}
+@@ -145,7 +155,7 @@
+ 
+ 	public String getEncodedName() {
+ 		if (isAlwaysEncoded()) {
+-			return cache.getEncoded(getName());
++			return cache.getEncoded(getName(), encode);
+ 		} else {
+ 			return getName();
+ 		}

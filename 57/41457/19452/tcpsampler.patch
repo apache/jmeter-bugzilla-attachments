@@ -1,0 +1,319 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 499277)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -563,6 +563,7 @@
+ resultsaver_prefix=Filename prefix\:
+ resultsaver_title=Save Responses to a file
+ retobj=Return object
++reuseconnection=Re-use connection
+ root=Root
+ root_title=Root
+ run=Run
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	(revision 499277)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/config/gui/TCPConfigGui.java	(working copy)
+@@ -39,8 +38,10 @@
+ public class TCPConfigGui extends AbstractConfigGui {
+ 	private final static String SERVER = "server"; //$NON-NLS-1$
+ 
+-	private final static String PORT = "port"; //$NON-NLS-1$   
++	private final static String RE_USE_CONNECTION = "reUseConnection"; //$NON-NLS-1$
+ 
++	private final static String PORT = "port"; //$NON-NLS-1$
++
+ 	// NOTUSED yet private final static String FILENAME = "filename";
+ 	// //$NON-NLS-1$
+ 	private final static String TIMEOUT = "timeout"; //$NON-NLS-1$
+@@ -51,6 +52,8 @@
+ 
+ 	private JTextField server;
+ 
++    private JCheckBox reUseConnection;
++
+ 	private JTextField port;
+ 
+ 	// NOTUSED yet private JTextField filename;
+@@ -78,6 +81,7 @@
+ 	public void configure(TestElement element) {
+ 		super.configure(element);
+ 		server.setText(element.getPropertyAsString(TCPSampler.SERVER));
++		reUseConnection.setSelected(element.getPropertyAsBoolean(TCPSampler.RE_USE_CONNECTION));
+ 		port.setText(element.getPropertyAsString(TCPSampler.PORT));
+ 		// filename.setText(element.getPropertyAsString(TCPSampler.FILENAME));
+ 		timeout.setText(element.getPropertyAsString(TCPSampler.TIMEOUT));
+@@ -93,12 +97,13 @@
+ 
+ 	/**
+ 	 * Modifies a given TestElement to mirror the data in the gui components.
+-	 * 
++	 *
+ 	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
+ 	 */
+ 	public void modifyTestElement(TestElement element) {
+ 		configureTestElement(element);
+ 		element.setProperty(TCPSampler.SERVER, server.getText());
++		element.setProperty(TCPSampler.RE_USE_CONNECTION, JOrphanUtils.booleanToString(reUseConnection.isSelected()));
+ 		element.setProperty(TCPSampler.PORT, port.getText());
+ 		// element.setProperty(TCPSampler.FILENAME, filename.getText());
+ 		element.setProperty(TCPSampler.NODELAY, JOrphanUtils.booleanToString(setNoDelay.isSelected()));
+@@ -145,6 +150,19 @@
+ 		return serverPanel;
+ 	}
+ 
++	private JPanel createClosePortPanel() {
++        JLabel label = new JLabel(JMeterUtils.getResString("reUseConnection"));
++
++        reUseConnection = new JCheckBox("", true);
++		reUseConnection.setName(RE_USE_CONNECTION);
++		label.setLabelFor(reUseConnection);
++
++		JPanel closePortPanel = new JPanel(new BorderLayout(5, 0));
++		closePortPanel.add(label, BorderLayout.WEST);
++		closePortPanel.add(reUseConnection, BorderLayout.CENTER);
++		return closePortPanel;
++	}
++
+ 	private JPanel createPortPanel() {
+ 		JLabel label = new JLabel(JMeterUtils.getResString("tcp_port"));
+ 
+@@ -174,7 +192,7 @@
+ 
+ 	// private JPanel createFilenamePanel()//Not used yet
+ 	// {
+-	//		
++	//
+ 	// JLabel label = new JLabel(JMeterUtils.getResString("file_to_retrieve"));
+ 	//
+ 	// filename = new JTextField(10);
+@@ -197,6 +215,7 @@
+ 
+ 		VerticalPanel mainPanel = new VerticalPanel();
+ 		mainPanel.add(createServerPanel());
++		mainPanel.add(createClosePortPanel());
+ 		mainPanel.add(createPortPanel());
+ 		mainPanel.add(createTimeoutPanel());
+ 		mainPanel.add(createNoDelayPanel());
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/control/gui/TCPSamplerGui.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/control/gui/TCPSamplerGui.java	(revision 499277)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/control/gui/TCPSamplerGui.java	(working copy)
+@@ -56,13 +56,13 @@
+ 
+ 	/**
+ 	 * Modifies a given TestElement to mirror the data in the gui components.
+-	 * 
++	 *
+ 	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
+ 	 */
+ 	public void modifyTestElement(TestElement sampler) {
+ 		sampler.clear();
+-		((TCPSampler) sampler).addTestElement(TcpDefaultPanel.createTestElement());
+-		((TCPSampler) sampler).addTestElement(loginPanel.createTestElement());
++        sampler.addTestElement(TcpDefaultPanel.createTestElement());
++		sampler.addTestElement(loginPanel.createTestElement());
+ 		this.configureTestElement(sampler);
+ 	}
+ 
+Index: src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java
+===================================================================
+--- src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	(revision 499277)
++++ src/protocol/tcp/org/apache/jmeter/protocol/tcp/sampler/TCPSampler.java	(working copy)
+@@ -13,35 +13,29 @@
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+- * 
++ *
+  */
+ 
+ package org.apache.jmeter.protocol.tcp.sampler;
+ 
+-import java.io.File;
+-import java.io.FileInputStream;
+-import java.io.FileNotFoundException;
+-import java.io.IOException;
+-import java.io.InputStream;
+-import java.io.OutputStream;
+-import java.net.Socket;
+-import java.net.UnknownHostException;
+-import java.util.HashMap;
+-import java.util.Map;
+-import java.util.Properties;
+-
+ import org.apache.jmeter.config.ConfigTestElement;
+-import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.samplers.AbstractSampler;
+ import org.apache.jmeter.samplers.Entry;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.ThreadListener;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
++import java.io.*;
++import java.net.Socket;
++import java.net.UnknownHostException;
++import java.util.HashMap;
++import java.util.Map;
++import java.util.Properties;
++
+ /**
+  * A sampler which understands Tcp requests.
+- * 
+  */
+ public class TCPSampler extends AbstractSampler implements ThreadListener {
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+@@ -60,6 +54,8 @@
+ 
+ 	public final static String REQUEST = "TCPSampler.request"; //$NON-NLS-1$
+ 
++	public final static String RE_USE_CONNECTION = "TCPSampler.reUseConnection"; //$NON-NLS-1$
++
+ 	private final static String TCPKEY = "TCP"; //$NON-NLS-1$ key for HashMap
+ 
+ 	private final static String ERRKEY = "ERR"; //$NON-NLS-1$ key for HashMap
+@@ -99,7 +95,9 @@
+ 		}
+ 	}
+ 
+-	/** the cache of TCP Connections */
++	/**
++	 * the cache of TCP Connections
++	 */
+ 	private static ThreadLocal tp = new ThreadLocal() {
+ 		protected Object initialValue() {
+ 			return new HashMap();
+@@ -121,12 +119,14 @@
+ 
+ 	private Socket getSocket() {
+ 		Map cp = (Map) tp.get();
+-		Socket con = (Socket) cp.get(TCPKEY);
+-		if (con != null) {
+-			log.debug(this + " Reusing connection " + con); //$NON-NLS-1$
+-			return con;
++		Socket con = null;
++		if (isReUseConnection()) {
++			con = (Socket) cp.get(TCPKEY);
++			if (con != null) {
++				log.debug(this + " Reusing connection " + con); //$NON-NLS-1$
++				return con;
++			}
+ 		}
+-
+ 		// Not in cache, so create new one and cache it
+ 		try {
+ 			con = new Socket(getServer(), getPort());
+@@ -162,6 +162,14 @@
+ 		return getPropertyAsString(SERVER);
+ 	}
+ 
++	public void setReUseConnection(String newServer) {
++		this.setProperty(RE_USE_CONNECTION, newServer);
++	}
++
++	public boolean isReUseConnection() {
++		return getPropertyAsBoolean(RE_USE_CONNECTION);
++	}
++
+ 	public void setPort(String newFilename) {
+ 		this.setProperty(PORT, newFilename);
+ 	}
+@@ -205,7 +213,7 @@
+ 	/**
+ 	 * Returns a formatted string label describing this sampler Example output:
+ 	 * Tcp://Tcp.nowhere.com/pub/README.txt
+-	 * 
++	 *
+ 	 * @return a formatted string label describing this sampler
+ 	 */
+ 	public String getLabel() {
+@@ -254,7 +262,7 @@
+ 		SampleResult res = new SampleResult();
+ 		boolean isSuccessful = false;
+ 		res.setSampleLabel(getName());// Use the test element name for the
+-										// label
++		// label
+ 		res.setSamplerData("Host: " + getServer() + " Port: " + getPort());
+ 		res.sampleStart();
+ 		try {
+@@ -299,21 +307,23 @@
+ 			log.debug("", ex);
+ 			res.setResponseCode("500");
+ 			res.setResponseMessage(ex.toString());
+-            closeSocket();
++			closeSocket();
+ 		} finally {
+-    		// Calculate response time
+-    		res.sampleEnd();
+-    
+-    		// Set if we were successful or not
+-    		res.setSuccessful(isSuccessful);
+-        }
++			// Calculate response time
++			res.sampleEnd();
+ 
++			// Set if we were successful or not
++			res.setSuccessful(isSuccessful);
++			if (!isReUseConnection()) {
++				closeSocket();
++			}
++		}
++
+ 		return res;
+ 	}
+ 
+-    /**
+-	 * @param rc
+-	 *            response code
++	/**
++	 * @param rc response code
+ 	 * @return whether this represents success or not
+ 	 */
+ 	private boolean checkResponseCode(String rc) {
+@@ -326,25 +336,25 @@
+ 		return true;
+ 	}
+ 
+-    public void threadStarted() {
+-        log.debug("Thread Started");
+-    }
++	public void threadStarted() {
++		log.debug("Thread Started");
++	}
+ 
+-    private void closeSocket() {
+-        Map cp = (Map) tp.get();
+-        Socket con = (Socket) cp.remove(TCPKEY);
+-        if (con != null) {
+-            log.debug(this + " Closing connection " + con); //$NON-NLS-1$
+-            try {
+-                con.close();
+-            } catch (IOException e) {
+-                log.warn("Error closing socket "+e);
+-            }
+-        }
+-    }
++	private void closeSocket() {
++		Map cp = (Map) tp.get();
++		Socket con = (Socket) cp.remove(TCPKEY);
++		if (con != null) {
++			log.debug(this + " Closing connection " + con); //$NON-NLS-1$
++			try {
++				con.close();
++			} catch (IOException e) {
++				log.warn("Error closing socket " + e);
++			}
++		}
++	}
+ 
+-    public void threadFinished() {
+-        log.debug("Thread Finished");
+-        closeSocket();
+-    }
++	public void threadFinished() {
++		log.debug("Thread Finished");
++		closeSocket();
++	}
+ }

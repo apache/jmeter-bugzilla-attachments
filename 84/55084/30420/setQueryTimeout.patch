@@ -1,0 +1,133 @@
+diff -ruN jmeter-jdbc-to-orig/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java jmeter-jdbc-to/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+--- jmeter-jdbc-to-orig/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	2013-06-09 00:02:08.000000000 +0400
++++ jmeter-jdbc-to/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	2013-06-09 02:14:52.270593715 +0400
+@@ -112,6 +112,7 @@
+     private String queryArgumentsTypes = ""; // $NON-NLS-1$
+     private String variableNames = ""; // $NON-NLS-1$
+     private String resultVariable = "";
++    private String queryTimeout = "";
+ 
+     /**
+      *  Cache of PreparedStatements stored in a per-connection basis. Each entry of this
+@@ -142,6 +143,8 @@
+             String _queryType = getQueryType();
+             if (SELECT.equals(_queryType)) {
+                 stmt = conn.createStatement();
++                setTimeoutForStatement(stmt, getIntegerQueryTimeout());
++                
+                 ResultSet rs = null;
+                 try {
+                     rs = stmt.executeQuery(getQuery());
+@@ -159,6 +162,7 @@
+                 return sb.getBytes(ENCODING);
+             } else if (UPDATE.equals(_queryType)) {
+                 stmt = conn.createStatement();
++                setTimeoutForStatement(stmt, getIntegerQueryTimeout());
+                 stmt.executeUpdate(getQuery());
+                 int updateCount = stmt.getUpdateCount();
+                 String results = updateCount + " updates";
+@@ -332,10 +336,17 @@
+             } else {
+                 pstmt = conn.prepareStatement(getQuery());
+             }
++            setTimeoutForStatement(pstmt, getIntegerQueryTimeout());
++            
+             // PreparedStatementMap is associated to one connection so 
+             //  2 threads cannot use the same PreparedStatement map at the same time
+             preparedStatementMap.put(getQuery(), pstmt);
++        } else {
++        	if(pstmt.getQueryTimeout() != getIntegerQueryTimeout()) {
++        		setTimeoutForStatement(pstmt, getIntegerQueryTimeout());
++        	}
+         }
++        
+         pstmt.clearParameters();
+         return pstmt;
+     }
+@@ -556,7 +567,33 @@
+      */
+     public void setResultVariable(String resultVariable) {
+         this.resultVariable = resultVariable;
+-    }    
++    }
++    
++    /**
++     * @return the integer representation queryTimeout
++     */
++    public int getIntegerQueryTimeout() {
++        int timeout = 0;
++    	try {
++        	timeout = Integer.parseInt(queryTimeout);
++        } catch (NumberFormatException nfe) {
++        	timeout = 0;
++        }
++    	return timeout;
++    }
++    /**
++     * @return the queryTimeout
++     */
++    public String getQueryTimeout() {
++        return queryTimeout ;
++    }
++
++    /**
++     * @param resultVariable the variable name in which results will be stored
++     */
++    public void setQueryTimeout(String queryTimeout) {
++        this.queryTimeout = queryTimeout;
++    }  
+ 
+ 
+     /** 
+@@ -604,5 +641,18 @@
+         }
+         perConnCache.clear();
+     }
++    
++    /**
++     * Set timeout for statement
++     * @param stmt the statement to set timeout
++     * @param timeout the timeout in seconds to set
++     */
++    private static void setTimeoutForStatement(Statement stmt, int timeout) {
++    	try {
++    		stmt.setQueryTimeout(timeout);
++		} catch (SQLException e) {
++			log.warn("Error setting timeout", e);
++		}
++    }
+ 
+ }
+\ No newline at end of file
+diff -ruN jmeter-jdbc-to-orig/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/JDBCTestElementBeanInfoSupport.java jmeter-jdbc-to/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/JDBCTestElementBeanInfoSupport.java
+--- jmeter-jdbc-to-orig/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/JDBCTestElementBeanInfoSupport.java	2013-06-09 00:02:08.000000000 +0400
++++ jmeter-jdbc-to/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/JDBCTestElementBeanInfoSupport.java	2013-06-09 01:00:06.126726265 +0400
+@@ -42,6 +42,7 @@
+                 "queryArgumentsTypes", // $NON-NLS-1$
+                 "variableNames", // $NON-NLS-1$
+                 "resultVariable", // $NON-NLS-1$
++                "queryTimeout",
+                 });
+ 
+         PropertyDescriptor p = property("dataSource"); // $NON-NLS-1$
+@@ -63,6 +64,10 @@
+         p = property("resultVariable"); // $NON-NLS-1$
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+         p.setValue(DEFAULT, "");
++        
++        p = property("queryTimeout"); // $NON-NLS-1$
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(DEFAULT, "");
+ 
+         p = property("queryType"); // $NON-NLS-1$
+         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+diff -ruN jmeter-jdbc-to-orig/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties jmeter-jdbc-to/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties
+--- jmeter-jdbc-to-orig/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	2013-06-09 00:02:08.000000000 +0400
++++ jmeter-jdbc-to/src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSamplerResources.properties	2013-06-09 01:24:36.234682829 +0400
+@@ -30,4 +30,6 @@
+ variableNames.shortDescription=Output variable names for each column  (comma separated)
+ resultVariable.displayName=Result variable name
+ resultVariable.shortDescription=Name of the JMeter variable that stores the result set objects in a list of maps for looking up results by column name.
++queryTimeout.displayName=Query timeout
++resultVariable.shortDescription=The timeout of statement measured in seconds
+ 

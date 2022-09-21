@@ -1,0 +1,335 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/jorphan/org/apache/jorphan/io/TextFile.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/jorphan/org/apache/jorphan/io/TextFile.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/jorphan/org/apache/jorphan/io/TextFile.java	(working copy)
+@@ -119,16 +119,11 @@
+ 			}
+ 			writer.write(body);
+ 			writer.flush();
+-			writer.close();
+ 		} catch (IOException ioe) {
+-			try {
+-				if (writer != null) {
+-					writer.close();
+-				}
+-			} catch (IOException e) {
+-			}
+ 			log.error("", ioe);
+-		}
++		} finally {
++            JOrphanUtils.closeQuietly(writer);
++        }
+ 	}
+ 
+ 	/**
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/StandardGenerator.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/StandardGenerator.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/protocol/http/org/apache/jmeter/protocol/http/util/accesslog/StandardGenerator.java	(working copy)
+@@ -27,6 +27,7 @@
+ 
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
++import org.apache.jorphan.util.JOrphanUtils;
+ 
+ /**
+  * Description:<br>
+@@ -117,15 +118,8 @@
+ 	 * @see org.apache.jmeter.protocol.http.util.accesslog.Generator#close()
+ 	 */
+ 	public void close() {
+-		try {
+-			if (OUTPUT != null) {
+-				OUTPUT.close();
+-			}
+-			if (WRITER != null) {
+-				WRITER.close();
+-			}
+-		} catch (IOException exception) {
+-		}
++        JOrphanUtils.closeQuietly(OUTPUT);
++        JOrphanUtils.closeQuietly(WRITER);
+ 	}
+ 
+ 	/*
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(working copy)
+@@ -64,6 +64,7 @@
+ import org.apache.jorphan.gui.RendererUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.reflect.Functor;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+ /**
+@@ -389,11 +390,12 @@
+                 writer = new FileWriter(output);
+                 Vector data = this.getAllTableData();
+                 OldSaveService.saveCSVStats(data,writer);
+-                writer.close();
+             } catch (FileNotFoundException e) {
+                 log.warn(e.getMessage());
+             } catch (IOException e) {
+                 log.warn(e.getMessage());
++            } finally {
++                JOrphanUtils.closeQuietly(writer);
+             }
+         }
+     }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Load.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Load.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Load.java	(working copy)
+@@ -40,6 +40,7 @@
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+ import com.thoughtworks.xstream.converters.ConversionException;
+@@ -113,13 +114,7 @@
+ 			}
+ 			JMeterUtils.reportErrorToUser(msg);
+ 		} finally {
+-			try {
+-				if (reader!=null) {
+-                    reader.close();
+-                }
+-			} catch (IOException e1) {
+-				// ignored
+-			}
++            JOrphanUtils.closeQuietly(reader);
+ 			GuiPackage.getInstance().updateCurrentGui();
+ 			GuiPackage.getInstance().getMainFrame().repaint();
+ 		}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Save.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Save.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/gui/action/Save.java	(working copy)
+@@ -37,6 +37,7 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+ /**
+@@ -114,7 +115,7 @@
+ 			log.error("", ex);
+ 			throw new IllegalUserActionException("Couldn't save test plan to file: " + updateFile);
+ 		} finally {
+-			closeStream(ostream);
++            JOrphanUtils.closeQuietly(ostream);
+ 		}
+ 	}
+ 
+@@ -128,15 +129,4 @@
+ 			tree.replace(item, testElement);
+ 		}
+ 	}
+-
+-	private void closeStream(FileOutputStream fos) {
+-		if (fos != null) {
+-			try {
+-				fos.close();
+-			} catch (IOException ex) {
+-				log.error("", ex);
+-			}
+-		}
+-	}
+-
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/reporters/ResultSaver.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/reporters/ResultSaver.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/reporters/ResultSaver.java	(working copy)
+@@ -30,6 +30,7 @@
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+ /**
+@@ -132,11 +133,7 @@
+ 		} catch (IOException e1) {
+ 			log.error("Error saving sample " + s.getSampleLabel(), e1);
+ 		} finally {
+-			try {
+-				if (pw != null)
+-					pw.close();
+-			} catch (IOException e) {
+-			}
++            JOrphanUtils.closeQuietly(pw);
+ 		}
+ 	}
+ 
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/save/SaveGraphicsService.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/save/SaveGraphicsService.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/save/SaveGraphicsService.java	(working copy)
+@@ -35,6 +35,7 @@
+ import org.apache.batik.ext.awt.image.codec.PNGImageEncoder;
+ import org.apache.batik.ext.awt.image.codec.tiff.TIFFEncodeParam;
+ import org.apache.batik.ext.awt.image.codec.tiff.TIFFImageEncoder;
++import org.apache.jorphan.util.JOrphanUtils;
+ 
+ /**
+  * Class is responsible for taking a component and saving it as a JPEG, PNG or
+@@ -90,14 +91,10 @@
+ 
+ 		try {
+ 			encoder.encode(image);
+-			fos.close();
+ 		} catch (Exception e) {
+ 			e.printStackTrace();
+ 		} finally {
+-			try {
+-				fos.close();
+-			} catch (Exception e) {
+-			}
++            JOrphanUtils.closeQuietly(fos);
+ 		}
+ 	}
+ 
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/JMeter.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/JMeter.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/core/org/apache/jmeter/JMeter.java	(working copy)
+@@ -664,7 +664,9 @@
+ 		} catch (Exception e) {
+ 			System.out.println("Error in NonGUIDriver " + e.toString());
+ 			log.error("", e);
+-		}
++        } finally {
++            JOrphanUtils.closeQuietly(reader);
++        }
+ 	}
+ 
+ 	/**
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/functions/org/apache/jmeter/functions/XPathFileContainer.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/functions/org/apache/jmeter/functions/XPathFileContainer.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/functions/org/apache/jmeter/functions/XPathFileContainer.java	(working copy)
+@@ -29,6 +29,7 @@
+ import javax.xml.transform.TransformerException;
+ 
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ import org.apache.xpath.XPathAPI;
+ import org.w3c.dom.NodeList;
+@@ -100,8 +101,7 @@
+ 			log.warn(e.toString());
+ 			throw e;
+ 		} finally {
+-			if (fis != null)
+-				fis.close();
++            JOrphanUtils.closeQuietly(fis);
+ 		}
+ 	}
+ 
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/JMeterReport.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/JMeterReport.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/JMeterReport.java	(working copy)
+@@ -223,10 +223,11 @@
+ 
+         ReportActionRouter.getInstance().actionPerformed(new ActionEvent(main, 1, ReportCheckDirty.ADD_ALL));
+         if (testFile != null) {
++            FileInputStream reader = null;
+             try {
+                 File f = new File(testFile.getArgument());
+                 log.info("Loading file: " + f);
+-                FileInputStream reader = new FileInputStream(f);
++                reader = new FileInputStream(f);
+                 HashTree tree = SaveService.loadTree(reader);
+ 
+                 ReportGuiPackage.getInstance().setReportPlanFile(f.getAbsolutePath());
+@@ -236,6 +237,9 @@
+                 log.error("Failure loading test file", e);
+                 JMeterUtils.reportErrorToUser(e.toString());
+             }
++            finally{
++                JOrphanUtils.closeQuietly(reader);
++            }
+         }
+     }
+ 
+@@ -304,6 +308,9 @@
+ 			System.out.println("Error in NonGUIDriver " + e.toString());
+ 			log.error("", e);
+ 		}
++        finally{
++            JOrphanUtils.closeQuietly(reader);
++        }
+ 	}
+ 
+     
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/report/gui/action/ReportLoad.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/report/gui/action/ReportLoad.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/report/gui/action/ReportLoad.java	(working copy)
+@@ -40,6 +40,7 @@
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+ import com.thoughtworks.xstream.XStream;
+@@ -112,13 +113,7 @@
+ 			}
+ 			JMeterUtils.reportErrorToUser(msg);
+ 		} finally {
+-			try {
+-				if (reader != null) {
+-                    reader.close();
+-                }
+-			} catch (IOException e1) {
+-				// ignored
+-			}
++		    JOrphanUtils.closeQuietly(reader);
+ 			ReportGuiPackage.getInstance().updateCurrentGui();
+ 			ReportGuiPackage.getInstance().getMainFrame().repaint();
+ 		}
+Index: C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/report/gui/action/ReportSave.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/report/gui/action/ReportSave.java	(revision 533698)
++++ C:/Documents and Settings/alf.hogemark/workspace/Jmeter 2.2 official/src/reports/org/apache/jmeter/report/gui/action/ReportSave.java	(working copy)
+@@ -39,6 +39,7 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+ /**
+@@ -125,7 +126,7 @@
+ 			log.error("", ex);
+ 			throw new IllegalUserActionException("Couldn't save test plan to file: " + updateFile);
+ 		} finally {
+-			closeStream(ostream);
++            JOrphanUtils.closeQuietly(ostream);
+ 		}
+ 	}
+ 
+@@ -138,15 +139,4 @@
+ 			tree.replace(item, testElement);
+ 		}
+ 	}
+-
+-	private void closeStream(FileOutputStream fos) {
+-		if (fos != null) {
+-			try {
+-				fos.close();
+-			} catch (Exception ex) {
+-				log.error("", ex);
+-			}
+-		}
+-	}
+-
+ }

@@ -1,0 +1,175 @@
+Index: src/core/org/apache/jmeter/samplers/SampleEvent.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleEvent.java	(revision 1029431)
++++ src/core/org/apache/jmeter/samplers/SampleEvent.java	(working copy)
+@@ -73,6 +73,8 @@
+ 
+     private final String hostname;
+ 
++	private boolean isTransactionSampleEvent;
++
+ 
+     /*
+      * Only for Unit tests
+@@ -90,10 +92,7 @@
+      * @param threadGroup name
+      */
+     public SampleEvent(SampleResult result, String threadGroup) {
+-        this.result = result;
+-        this.threadGroup = threadGroup;
+-        this.hostname = HOSTNAME;
+-        values = new String[variableNames.length];
++    	this(result, threadGroup, HOSTNAME, false);
+     }
+ 
+     /**
+@@ -104,11 +103,7 @@
+      * @param jmvars Jmeter variables
+      */
+     public SampleEvent(SampleResult result, String threadGroup, JMeterVariables jmvars) {
+-        this.result = result;
+-        this.threadGroup = threadGroup;
+-        this.hostname = HOSTNAME;
+-        values = new String[variableNames.length];
+-        saveVars(jmvars);
++    	this(result, threadGroup, jmvars, false);
+     }
+ 
+     /**
+@@ -119,13 +114,37 @@
+      * @param hostname
+      */
+     public SampleEvent(SampleResult result, String threadGroup, String hostname) {
++       this(result, threadGroup, hostname, false);
++    }
++    
++    /**
++     * Only intended for use when loading results from a file.
++     *
++     * @param result
++     * @param threadGroup
++     * @param hostname
++     * @param isTransactionSampleEvent Is this sample a true one or a transaction
++     */
++    public SampleEvent(SampleResult result, String threadGroup, String hostname, boolean isTransactionSampleEvent) {
+         this.result = result;
+         this.threadGroup = threadGroup;
+         this.hostname = hostname;
+         values = new String[variableNames.length];
++        this.isTransactionSampleEvent = isTransactionSampleEvent;
+     }
+ 
+-    private void saveVars(JMeterVariables vars){
++    /**
++     * @param result
++     * @param threadGroup
++     * @param jmvars
++     * @param isTransactionSampleEvent
++     */
++    public SampleEvent(SampleResult result, String threadGroup, JMeterVariables jmvars, boolean isTransactionSampleEvent) {
++    	this(result, threadGroup, HOSTNAME, isTransactionSampleEvent);
++    	saveVars(jmvars);
++	}
++
++	private void saveVars(JMeterVariables vars){
+         for(int i = 0; i < variableNames.length; i++){
+             values[i] = vars.get(variableNames[i]);
+         }
+@@ -161,4 +180,18 @@
+     public String getHostname() {
+         return hostname;
+     }
++
++	/**
++	 * @return the isTransactionSampleEvent
++	 */
++	public boolean isTransactionSampleEvent() {
++		return isTransactionSampleEvent;
++	}
++
++	/**
++	 * @param isTransactionSampleEvent the isTransactionSampleEvent to set
++	 */
++	public void setTransactionSampleEvent(boolean isTransactionSampleEvent) {
++		this.isTransactionSampleEvent = isTransactionSampleEvent;
++	}
+ }
+Index: src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/TransactionController.java	(revision 1001614)
++++ src/core/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -174,12 +174,12 @@
+         {
+             if (res != null) {
+                 res.setIdleTime(pauseTime+res.getIdleTime());
+-                 res.sampleEnd();
++            	res.sampleEnd();
+                 res.setResponseMessage("Number of samples in transaction : " + calls + ", number of failing samples : " + noFailingSamples);
+                 if(res.isSuccessful()) {
+                     res.setResponseCodeOK();
+                 }
+-
++                
+                 // TODO could these be done earlier (or just once?)
+                 JMeterContext threadContext = getThreadContext();
+                 JMeterVariables threadVars = threadContext.getVariables();
+@@ -188,7 +188,7 @@
+                 if (pack == null) {
+                     log.warn("Could not fetch SamplePackage");
+                 } else {
+-                    SampleEvent event = new SampleEvent(res, threadContext.getThreadGroup().getName(),threadVars);
++                    SampleEvent event = new SampleEvent(res, threadContext.getThreadGroup().getName(),threadVars, true);
+                     // We must set res to null now, before sending the event for the transaction,
+                     // so that we can ignore that event in our sampleOccured method
+                     res = null;
+@@ -208,28 +208,36 @@
+         if (!isParent()) {
+             // Check if we are still sampling our children
+             if(res != null) {
+-                SampleResult sampleResult = se.getResult();
+-                res.setThreadName(sampleResult.getThreadName());
+-                res.setBytes(res.getBytes() + sampleResult.getBytes());
+-                if (!isIncludeTimers()) {// Accumulate waiting time for later
+-                    pauseTime += sampleResult.getEndTime() - sampleResult.getTime() - prevEndTime;
+-                    prevEndTime = sampleResult.getEndTime();
+-                }
+-                if(!sampleResult.isSuccessful()) {
+-                    res.setSuccessful(false);
+-                    noFailingSamples++;
+-                }
+-                res.setAllThreads(sampleResult.getAllThreads());
+-                res.setGroupThreads(sampleResult.getGroupThreads());
+-                res.setLatency(res.getLatency() + sampleResult.getLatency());
++               	if(!se.isTransactionSampleEvent())
++               	{
++	               	SampleResult sampleResult = se.getResult();
++	                res.setThreadName(sampleResult.getThreadName());
++	                res.setBytes(res.getBytes() + sampleResult.getBytes());
++	                if (!isIncludeTimers()) {// Accumulate waiting time for later
++	                    pauseTime += sampleResult.getEndTime() - sampleResult.getTime() - prevEndTime;
++	                    prevEndTime = sampleResult.getEndTime();
++	                    
++	                }
++	                
++	                if(!sampleResult.isSuccessful()) {
++	                    res.setSuccessful(false);
++	                    noFailingSamples++;
++	                }
++	                res.setAllThreads(sampleResult.getAllThreads());
++	                res.setGroupThreads(sampleResult.getGroupThreads());
++	                res.setLatency(res.getLatency() + sampleResult.getLatency());
++               	}
+             }
++           
+         }
+     }
+ 
+     public void sampleStarted(SampleEvent e) {
++
+     }
+ 
+     public void sampleStopped(SampleEvent e) {
++ 
+     }
+ 
+     /**

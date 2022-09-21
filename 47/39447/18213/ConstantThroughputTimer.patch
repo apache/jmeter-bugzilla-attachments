@@ -1,0 +1,237 @@
+Index: C:/JavaClasses/workspace/jMeter_rel-2-1/src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java
+===================================================================
+--- C:/JavaClasses/workspace/jMeter_rel-2-1/src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java    (revision 398628)
++++ C:/JavaClasses/workspace/jMeter_rel-2-1/src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java    (working copy)
+@@ -17,11 +17,16 @@
+ 
+ package org.apache.jmeter.timers;
+ 
++import java.util.Hashtable;
++import java.util.Map;
++
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.testbeans.TestBean;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.TestListener;
++import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.JMeterThread;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -39,12 +44,6 @@
+ 
+    private static final double MILLISEC_PER_MIN = 60000.0;
+ 
+-   /**
+-    * Target time for the start of the next request. The delay provided by the
+-    * timer will be calculated so that the next request happens at this time.
+-    */
+-   private long previousTime = 0;
+-
+    private String calcMode; // String representing the mode
+                                // (Locale-specific)
+ 
+@@ -54,6 +53,20 @@
+     * Desired throughput, in samples per minute.
+     */
+    private double throughput;
++    
++    /**
++     * Calculated milliseconds per request.
++     */
++    private long millisecondsPerRequest;
++    
++    //For calculating throughput across all threads
++    private final static ThrougputInfo allThreadsInfo = new ThrougputInfo();
++    
++    //For holding the ThrougputInfo objects for all ThreadGroups. Keyed by ThreadGroup objects
++    private final static Map threadGroupsInfoMap = new Hashtable();
++    
++    //For calculating throughput on a single thread
++    private final ThrougputInfo thisThreadInfo = new ThrougputInfo();
+ 
+    /**
+     * Constructor for a non-configured ConstantThroughputTimer.
+@@ -68,7 +81,16 @@
+     *            Desired sampling rate, in samples per minute.
+     */
+    public void setThroughput(double throughput) {
++        if (log.isDebugEnabled()) {
++            log.debug(this.threadName() + " - setThroughput(" + throughput + ")");
++        }
++        
+        this.throughput = throughput;
++        this.millisecondsPerRequest = (long)(MILLISEC_PER_MIN / this.throughput);
++        
++        if (log.isDebugEnabled()) {
++            log.debug(this.threadName() + " - Calculated millisecondsPerRequest=" + this.millisecondsPerRequest);
++        }
+    }
+ 
+    /**
+@@ -95,47 +117,106 @@
+     * 
+     * @see org.apache.jmeter.timers.Timer#delay()
+     */
+-   public synchronized long delay() {
+-       long currentTime = System.currentTimeMillis();
+-       long currentTarget = previousTime == 0 ? currentTime : previousTime;
+-       previousTime = currentTarget + calculateDelay();
+-       if (currentTime > currentTarget) {
+-           // We're behind schedule -- try to catch up:
+-           return 0;
+-       }
+-       return currentTarget - currentTime;
++   public long delay() {
++        final ThrougputInfo currentInfo = getTargetThroughputInfo();
++        final long calculatedDelay = this.calculateDelay(currentInfo);
++        return Math.max(calculatedDelay, 0);
+    }
+ 
+-   /**
+-    * @param currentTime
+-    * @return new Target time
+-    */
+-   protected long calculateCurrentTarget(long currentTime) {
+-       return currentTime + calculateDelay();
+-   }
++    /**
++     * Using the specified mode return the appropriate ThrougputInfo object.
++     * 
++     * @return The ThrougputInfo for the current mode.
++     */
++    private ThrougputInfo getTargetThroughputInfo() {
++        final ThrougputInfo currentInfo;
++        
++        if (log.isDebugEnabled()) {
++            log.debug(this.threadName() + " - Getting ThroughputInfo for modeInt=" + this.modeInt);
++        }
++        
++        // Use switch statement for performance (large order performance difference over if/elseif/else
++        switch (this.modeInt) {
++            case 2: //All threads in this group
++                final JMeterContext context = JMeterContextService.getContext();
++                final JMeterThread thread = context.getThread();
++                final org.apache.jmeter.threads.ThreadGroup group = thread.getThreadGroup();
++                
++                if (log.isDebugEnabled()) {
++                    log.debug(this.threadName() + " - Getting ThroughputInfo for ThreadGroup=" + group.getName());
++                }
++                
++                synchronized (threadGroupsInfoMap) {
++                    ThrougputInfo info = (ThrougputInfo)threadGroupsInfoMap.get(group);
++                    if (info == null) {
++                        info = new ThrougputInfo();
++                        threadGroupsInfoMap.put(group, info);
++                    }
++                    currentInfo = info;
++                }
++                
++                break;
++                
++            case 1: //All threads
++                currentInfo = allThreadsInfo;
++                break;
+ 
+-   // Calculate the delay based on the mode
+-   private long calculateDelay() {
+-       long offset = 0;
+-       long rate = (long) (MILLISEC_PER_MIN / getThroughput());
+-       switch (modeInt) {
+-       case 1: // Total number of threads
+-           offset = (
+-           // previousTime == 0 ? //TODO - why is this needed?
+-                   // (JMeterContextService.getContext().getThreadNum() + 1)
+-                   // :
+-                   JMeterContextService.getNumberOfThreads()) * rate;
+-           break;
+-       case 2: // Active threads in this group
+-           offset = JMeterContextService.getContext().getThread().getThreadGroup().getNumberOfThreads() * rate;
+-           break;
+-       default:
+-           offset = rate; // i.e. rate * 1
+-           break;
+-       }
+-       return offset;
+-   }
++            case 0: //This thread only
++            default:
++                currentInfo = thisThreadInfo;
++                break;
++        }
+ 
++        return currentInfo;
++    }
++    
++    /**
++     * Calculates the the delay needed to achieve the througput using the
++     * passed ThrougputInfo object.
++     * 
++     * @param info The ThrougputInfo object that contains the last scheduled request time and a mutext for synchronization.
++     * @return The delay before the next request is executed to achieve the desired throughput.
++     */
++    private long calculateDelay(ThrougputInfo info) {
++        final long now = System.currentTimeMillis();
++        final long calculatedDelay;
++        
++        if (log.isDebugEnabled()) {
++            log.debug(this.threadName() + " - now=" + now + ", lastScheduledTime=" + info.lastScheduledTime);
++        }
++        
++        //Synchronize on the info object's MUTEX to ensure
++        //Multiple threads don't update the scheduled time simultaneously
++        synchronized (info.MUTEX) {
++            final long nextRequstTime = info.lastScheduledTime + this.millisecondsPerRequest;
++            info.lastScheduledTime = Math.max(now, nextRequstTime);
++            calculatedDelay = info.lastScheduledTime - now;
++        }
++        
++        if (log.isDebugEnabled()) {
++            log.debug(this.threadName() + " - nextScheduledTime=" + info.lastScheduledTime + ", calculatedDelay=" + calculatedDelay);
++        }
++        
++        return Math.max(calculatedDelay, 0);
++    }
++
++    /**
++     * Resets all of the ThrougputInfo objects.
++     */
++    private synchronized void reset() {
++        log.debug("Clearing last scheduled times for all scopes.");
++        this.thisThreadInfo.lastScheduledTime = 0;
++        allThreadsInfo.lastScheduledTime = 0;
++        threadGroupsInfoMap.clear();
++    }
++    
++    /**
++     * @return The name of the current thread.
++     */
++    private String threadName() {
++        return Thread.currentThread().getName();
++    }
++
+    /**
+     * Provide a description of this timer class.
+     * 
+@@ -153,10 +234,9 @@
+     * 
+     * @see org.apache.jmeter.testelement.TestListener#testStarted()
+     */
+-   public synchronized void testStarted()// synch to protect targetTime
++   public void testStarted()
+    {
+-       log.debug("Test started - reset throughput calculation.");
+-       previousTime = 0;
++        reset();
+    }
+ 
+    /*
+@@ -165,6 +245,7 @@
+     * @see org.apache.jmeter.testelement.TestListener#testEnded()
+     */
+    public void testEnded() {
++        reset();
+    }
+ 
+    /*

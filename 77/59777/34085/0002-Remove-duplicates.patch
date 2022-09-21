@@ -1,0 +1,524 @@
+From fd2741f8b97cd8f205b630928d5ba52cd4328e7c Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Mon, 1 Aug 2016 20:53:05 +0200
+Subject: [PATCH 2/2] Remove duplicates
+
+---
+ .../apache/jmeter/logging/LogkitLoggerAdapter.java | 341 ---------------------
+ .../apache/jmeter/logging/LogkitLoggerFactory.java |  70 -----
+ src/core/org/slf4j/impl/StaticLoggerBinder.java    |  78 -----
+ 3 files changed, 489 deletions(-)
+ delete mode 100644 src/core/org/apache/jmeter/logging/LogkitLoggerAdapter.java
+ delete mode 100644 src/core/org/apache/jmeter/logging/LogkitLoggerFactory.java
+ delete mode 100644 src/core/org/slf4j/impl/StaticLoggerBinder.java
+
+diff --git a/src/core/org/apache/jmeter/logging/LogkitLoggerAdapter.java b/src/core/org/apache/jmeter/logging/LogkitLoggerAdapter.java
+deleted file mode 100644
+index 0fbd8d9..0000000
+--- a/src/core/org/apache/jmeter/logging/LogkitLoggerAdapter.java
++++ /dev/null
+@@ -1,341 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-
+-package org.apache.jmeter.logging;
+-
+-import java.io.Serializable;
+-
+-import org.apache.log.Logger;
+-import org.apache.log.Priority;
+-import org.slf4j.helpers.FormattingTuple;
+-import org.slf4j.helpers.MarkerIgnoringBase;
+-import org.slf4j.helpers.MessageFormatter;
+-
+-/**
+- * Logkit adapter for slf4j 
+- * @since 3.0
+- */
+-public class LogkitLoggerAdapter extends MarkerIgnoringBase implements Serializable {
+-
+-    final transient Logger logger;
+-
+-    private static final long serialVersionUID = -122848886791823355L;
+-
+-    /**
+-     * @deprecated Only for use by JUnit
+-     */
+-    @Deprecated // only for Unit test usage
+-    public LogkitLoggerAdapter() {
+-        super();
+-        this.logger = null;
+-    }
+-    
+-    LogkitLoggerAdapter(org.apache.log.Logger logkitLogger) {
+-        this.logger = logkitLogger;
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#debug(java.lang.String)
+-     */
+-    @Override
+-    public void debug(String msg) {
+-        logger.debug(msg);
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#debug(java.lang.String, java.lang.Object)
+-     */
+-    @Override
+-    public void debug(String format, Object arg) {
+-        if (logger.isDebugEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg);
+-            logger.log(Priority.DEBUG, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#debug(java.lang.String, java.lang.Object[])
+-     */
+-    @Override
+-    public void debug(String format, Object... args) {
+-        if (logger.isDebugEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, args);
+-            logger.log(Priority.DEBUG, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#debug(java.lang.String, java.lang.Throwable)
+-     */
+-    @Override
+-    public void debug(String msg, Throwable throwable) {
+-        if (logger.isDebugEnabled()) {
+-            logger.log(Priority.DEBUG, msg, throwable);
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#debug(java.lang.String, java.lang.Object, java.lang.Object)
+-     */
+-    @Override
+-    public void debug(String format, Object arg1, Object arg2) {
+-        if (logger.isDebugEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg1, arg2);
+-            logger.log(Priority.DEBUG, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#error(java.lang.String)
+-     */
+-    @Override
+-    public void error(String message) {
+-        if (logger.isErrorEnabled()) {
+-            logger.log(Priority.ERROR, message);
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#error(java.lang.String, java.lang.Object)
+-     */
+-    @Override
+-    public void error(String format, Object arg) {
+-        if (logger.isErrorEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg);
+-            logger.log(Priority.ERROR, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#error(java.lang.String, java.lang.Object[])
+-     */
+-    @Override
+-    public void error(String format, Object... args) {
+-        if (logger.isErrorEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, args);
+-            logger.log(Priority.ERROR, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#error(java.lang.String, java.lang.Throwable)
+-     */
+-    @Override
+-    public void error(String message, Throwable throwable) {
+-        if (logger.isErrorEnabled()) {
+-            logger.log(Priority.ERROR, message, throwable);
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#error(java.lang.String, java.lang.Object, java.lang.Object)
+-     */
+-    @Override
+-    public void error(String format, Object arg1, Object arg2) {
+-        if (logger.isErrorEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg1, arg2);
+-            logger.log(Priority.ERROR, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#info(java.lang.String)
+-     */
+-    @Override
+-    public void info(String message) {
+-        if (logger.isInfoEnabled()) {
+-            logger.log(Priority.INFO, message);
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#info(java.lang.String, java.lang.Object)
+-     */
+-    @Override
+-    public void info(String format, Object arg1) {
+-        if (logger.isInfoEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg1);
+-            logger.log(Priority.INFO, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#info(java.lang.String, java.lang.Object[])
+-     */
+-    @Override
+-    public void info(String format, Object... args) {
+-        if (logger.isInfoEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, args);
+-            logger.log(Priority.INFO, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#info(java.lang.String, java.lang.Throwable)
+-     */
+-    @Override
+-    public void info(String message, Throwable throwable) {
+-        if (logger.isInfoEnabled()) {
+-            logger.log(Priority.INFO, message, throwable);
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#info(java.lang.String, java.lang.Object, java.lang.Object)
+-     */
+-    @Override
+-    public void info(String format, Object arg1, Object arg2) {
+-        if (logger.isInfoEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg1, arg2);
+-            logger.log(Priority.INFO, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#isDebugEnabled()
+-     */
+-    @Override
+-    public boolean isDebugEnabled() {
+-        return logger.isDebugEnabled();
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#isErrorEnabled()
+-     */
+-    @Override
+-    public boolean isErrorEnabled() {
+-        return logger.isErrorEnabled();
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#isInfoEnabled()
+-     */
+-    @Override
+-    public boolean isInfoEnabled() {
+-        return logger.isInfoEnabled();
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#isTraceEnabled()
+-     */
+-    @Override
+-    public boolean isTraceEnabled() {
+-        return logger.isDebugEnabled();
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#isWarnEnabled()
+-     */
+-    @Override
+-    public boolean isWarnEnabled() {
+-        return logger.isWarnEnabled();
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#warn(java.lang.String)
+-     */
+-    @Override
+-    public void warn(String message) {
+-        if (logger.isWarnEnabled()) {
+-            logger.log(Priority.WARN, message);
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#warn(java.lang.String, java.lang.Object)
+-     */
+-    @Override
+-    public void warn(String format, Object arg) {
+-        if (logger.isWarnEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg);
+-            logger.log(Priority.WARN, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#warn(java.lang.String, java.lang.Object[])
+-     */
+-    @Override
+-    public void warn(String format, Object... args) {
+-        if (logger.isWarnEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, args);
+-            logger.log(Priority.WARN, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#warn(java.lang.String, java.lang.Throwable)
+-     */
+-    @Override
+-    public void warn(String message, Throwable throwable) {
+-        if (logger.isWarnEnabled()) {
+-            logger.log(Priority.WARN, message, throwable);
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#warn(java.lang.String, java.lang.Object, java.lang.Object)
+-     */
+-    @Override
+-    public void warn(String format, Object arg1, Object arg2) {
+-        if (logger.isWarnEnabled()) {
+-            FormattingTuple ft = MessageFormatter.format(format, arg1, arg2);
+-            logger.log(Priority.WARN, ft.getMessage(), ft.getThrowable());
+-        }
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#trace(java.lang.String)
+-     */
+-    @Override
+-    public void trace(String message) {
+-        debug(message);
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#trace(java.lang.String, java.lang.Object)
+-     */
+-    @Override
+-    public void trace(String format, Object arg) {
+-        debug(format, arg);
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#trace(java.lang.String, java.lang.Object[])
+-     */
+-    @Override
+-    public void trace(String format, Object... args) {
+-        debug(format, args);
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#trace(java.lang.String, java.lang.Throwable)
+-     */
+-    @Override
+-    public void trace(String message, Throwable throwable) {
+-        debug(message, throwable);
+-    }
+-
+-    /* (non-Javadoc)
+-     * @see org.slf4j.Logger#trace(java.lang.String, java.lang.Object, java.lang.Object)
+-     */
+-    @Override
+-    public void trace(String format, Object arg1, Object arg2) {
+-        debug(format, arg1, arg2);
+-    }
+-}
+diff --git a/src/core/org/apache/jmeter/logging/LogkitLoggerFactory.java b/src/core/org/apache/jmeter/logging/LogkitLoggerFactory.java
+deleted file mode 100644
+index df418c1..0000000
+--- a/src/core/org/apache/jmeter/logging/LogkitLoggerFactory.java
++++ /dev/null
+@@ -1,70 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-
+-package org.apache.jmeter.logging;
+-
+-import java.util.HashMap;
+-import java.util.Map;
+-
+-import org.apache.jorphan.logging.LoggingManager;
+-import org.apache.log.Hierarchy;
+-import org.slf4j.ILoggerFactory;
+-import org.slf4j.Logger;
+-
+-/**
+- * Implementation of {@link ILoggerFactory} for Logkit
+- * @since 3.0
+- */
+-public class LogkitLoggerFactory implements ILoggerFactory {
+-    // key: name (String), value: a Log4jLogger;
+-    private final Map<String, Logger> loggerMap;
+-
+-    /**
+-     * 
+-     */
+-    public LogkitLoggerFactory() {
+-        loggerMap = new HashMap<>();
+-    }
+-
+-    /**
+-     * 
+-     * @see org.slf4j.ILoggerFactory#getLogger(java.lang.String)
+-     */
+-    @Override
+-    public Logger getLogger(String name) {
+-        Logger slf4jLogger = null;
+-        if(name == null) {
+-            name = Logger.ROOT_LOGGER_NAME;
+-        }
+-        // protect against concurrent access of loggerMap
+-        synchronized (this) {
+-            slf4jLogger = loggerMap.get(name);
+-            if (slf4jLogger == null) {
+-                org.apache.log.Logger logkitLogger;
+-                if (name.equalsIgnoreCase(Logger.ROOT_LOGGER_NAME)) {
+-                    logkitLogger = Hierarchy.getDefaultHierarchy().getRootLogger();
+-                } else {
+-                    logkitLogger = LoggingManager.getLoggerFor(name);
+-                }
+-                slf4jLogger = new LogkitLoggerAdapter(logkitLogger);
+-                loggerMap.put(name, slf4jLogger);
+-            }
+-        }
+-        return slf4jLogger;
+-    }
+-}
+diff --git a/src/core/org/slf4j/impl/StaticLoggerBinder.java b/src/core/org/slf4j/impl/StaticLoggerBinder.java
+deleted file mode 100644
+index 5edcd73..0000000
+--- a/src/core/org/slf4j/impl/StaticLoggerBinder.java
++++ /dev/null
+@@ -1,78 +0,0 @@
+-/*
+- * Licensed to the Apache Software Foundation (ASF) under one or more
+- * contributor license agreements.  See the NOTICE file distributed with
+- * this work for additional information regarding copyright ownership.
+- * The ASF licenses this file to You under the Apache License, Version 2.0
+- * (the "License"); you may not use this file except in compliance with
+- * the License.  You may obtain a copy of the License at
+- *
+- *   http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- *
+- */
+-
+-package org.slf4j.impl;
+-
+-import org.apache.jmeter.logging.LogkitLoggerFactory;
+-import org.slf4j.ILoggerFactory;
+-import org.slf4j.LoggerFactory;
+-import org.slf4j.spi.LoggerFactoryBinder;
+-
+-/**
+- * The binding of {@link LoggerFactory} class with an actual instance of
+- * {@link ILoggerFactory} is performed using information returned by this class.
+- * 
+- * @since 3.0
+- */
+-public class StaticLoggerBinder implements LoggerFactoryBinder {
+-
+-    /**
+-     * The unique instance of this class.
+-     * 
+-     */
+-    private static final StaticLoggerBinder SINGLETON = new StaticLoggerBinder();
+-
+-    /**
+-     * Return the singleton of this class.
+-     * 
+-     * @return the StaticLoggerBinder singleton
+-     */
+-    public static final StaticLoggerBinder getSingleton() {
+-        return SINGLETON;
+-    }
+-
+-    /**
+-     * Declare the version of the SLF4J API this implementation is compiled
+-     * against. The value of this field is usually modified with each release.
+-     */
+-    // to avoid constant folding by the compiler, this field must *not* be final
+-    public static String REQUESTED_API_VERSION = "1.7"; // !final
+-
+-    private static final String loggerFactoryClassStr = LogkitLoggerFactory.class
+-            .getName();
+-
+-    /**
+-     * The ILoggerFactory instance returned by the {@link #getLoggerFactory}
+-     * method should always be the same object
+-     */
+-    private final ILoggerFactory loggerFactory;
+-
+-    private StaticLoggerBinder() {
+-        loggerFactory = new LogkitLoggerFactory();
+-    }
+-
+-    @Override
+-    public ILoggerFactory getLoggerFactory() {
+-        return loggerFactory;
+-    }
+-
+-    @Override
+-    public String getLoggerFactoryClassStr() {
+-        return loggerFactoryClassStr;
+-    }
+-}
+-- 
+2.7.4
+

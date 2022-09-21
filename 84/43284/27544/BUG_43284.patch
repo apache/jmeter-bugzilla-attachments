@@ -1,0 +1,137 @@
+Index: src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java
+===================================================================
+--- src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	(revision 1172489)
++++ src/core/org/apache/jmeter/visualizers/gui/AbstractVisualizer.java	(working copy)
+@@ -32,6 +32,7 @@
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.SavePropertyDialog;
+ import org.apache.jmeter.gui.UnsharedComponent;
++import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jmeter.reporters.AbstractListenerElement;
+ import org.apache.jmeter.reporters.ResultCollector;
+@@ -110,7 +111,7 @@
+     private static final Logger log = LoggingManager.getLoggerForClass();
+     
+     /** File Extensions */
+-    private static final String[] EXTS = { ".jtl", ".csv" }; // $NON-NLS-1$ $NON-NLS-2$
++    private static final String[] EXTS = { FileDialoger.JTL_SUFFIX, ".csv" }; // $NON-NLS-1$ 
+ 
+     /** A panel allowing results to be saved. */
+     private FilePanel filePanel;
+Index: src/core/org/apache/jmeter/JMeter.java
+===================================================================
+--- src/core/org/apache/jmeter/JMeter.java	(revision 1172489)
++++ src/core/org/apache/jmeter/JMeter.java	(working copy)
+@@ -62,6 +62,7 @@
+ import org.apache.jmeter.gui.tree.JMeterTreeListener;
+ import org.apache.jmeter.gui.tree.JMeterTreeModel;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.plugin.JMeterPlugin;
+ import org.apache.jmeter.plugin.PluginManager;
+ import org.apache.jmeter.reporters.ResultCollector;
+@@ -370,7 +371,7 @@
+                     CLOption jtl = parser.getArgumentById(LOGFILE_OPT);
+                     String jtlFile = null;
+                     if (jtl != null){
+-                        jtlFile=processLAST(jtl.getArgument(), ".jtl"); // $NON-NLS-1$
++                        jtlFile=processLAST(jtl.getArgument(), FileDialoger.JTL_SUFFIX); 
+                     }
+                     startNonGui(testFile, jtlFile, rem);
+                     startOptionalServers();
+Index: src/core/org/apache/jmeter/gui/util/FileDialoger.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/FileDialoger.java	(revision 1172489)
++++ src/core/org/apache/jmeter/gui/util/FileDialoger.java	(working copy)
+@@ -30,6 +30,8 @@
+  * Class implementing a file open dialogue
+  */
+ public final class FileDialoger {
++    public static final String JMX_SUFFIX = ".jmx";//$NON-NLS-1$
++    public static final String JTL_SUFFIX = ".jtl";//$NON-NLS-1$
+     /**
+      * The last directory visited by the user while choosing Files.
+      */
+@@ -122,7 +124,7 @@
+             }
+             lastJFCDirectory = jfc.getCurrentDirectory().getAbsolutePath();
+         }
+-        String ext = ".jmx";//$NON-NLS-1$
++        String ext = JMX_SUFFIX;
+         if (filename != null) {
+             jfc.setSelectedFile(new File(lastJFCDirectory, filename));
+             int i = -1;
+Index: src/core/org/apache/jmeter/gui/action/Load.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Load.java	(revision 1172489)
++++ src/core/org/apache/jmeter/gui/action/Load.java	(working copy)
+@@ -73,7 +73,7 @@
+     }
+ 
+     public void doAction(ActionEvent e) {
+-        JFileChooser chooser = FileDialoger.promptToOpenFile(new String[] { ".jmx" }); //$NON-NLS-1$
++        JFileChooser chooser = FileDialoger.promptToOpenFile(new String[] { FileDialoger.JMX_SUFFIX });
+         if (chooser == null) {
+             return;
+         }
+Index: src/core/org/apache/jmeter/gui/action/Save.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Save.java	(revision 1173017)
++++ src/core/org/apache/jmeter/gui/action/Save.java	(working copy)
+@@ -51,7 +51,7 @@
+ public class Save implements Command {
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+-    public static final String JMX_FILE_EXTENSION = ".jmx"; // $NON-NLS-1$
++    public static final String JMX_FILE_EXTENSION = FileDialoger.JMX_SUFFIX; // $NON-NLS-1$
+ 
+     private static final Set<String> commands = new HashSet<String>();
+ 
+Index: src/core/org/apache/jmeter/gui/action/Analyze.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/Analyze.java	(revision 1172489)
++++ src/core/org/apache/jmeter/gui/action/Analyze.java	(working copy)
+@@ -45,7 +45,7 @@
+ 
+     public void doAction(ActionEvent e) {
+         FileReporter analyzer = new FileReporter();
+-        final JFileChooser chooser = FileDialoger.promptToOpenFile(new String[] { ".jtl" }); //$NON-NLS-1$
++        final JFileChooser chooser = FileDialoger.promptToOpenFile(new String[] { FileDialoger.JTL_SUFFIX });
+         if (chooser != null) {
+             try {
+                 analyzer.init(chooser.getSelectedFile().getPath());
+Index: src/reports/org/apache/jmeter/gui/util/ReportFileDialoger.java
+===================================================================
+--- src/reports/org/apache/jmeter/gui/util/ReportFileDialoger.java	(revision 1172489)
++++ src/reports/org/apache/jmeter/gui/util/ReportFileDialoger.java	(working copy)
+@@ -115,7 +115,7 @@
+             }
+             lastJFCDirectory = jfc.getCurrentDirectory().getAbsolutePath();
+         }
+-        String ext = ".jmx";
++        String ext = FileDialoger.JMX_SUFFIX;
+         if (filename != null) {
+             jfc.setSelectedFile(new File(lastJFCDirectory, filename));
+             int i = -1;
+Index: src/components/org/apache/jmeter/control/gui/IncludeControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/IncludeControllerGui.java	(revision 1172489)
++++ src/components/org/apache/jmeter/control/gui/IncludeControllerGui.java	(working copy)
+@@ -23,6 +23,7 @@
+ 
+ import org.apache.jmeter.control.IncludeController;
+ import org.apache.jmeter.gui.action.ActionNames;
++import org.apache.jmeter.gui.util.FileDialoger;
+ import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jmeter.gui.util.MenuFactory;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -36,7 +37,7 @@
+     private static final long serialVersionUID = 240L;
+ 
+     private FilePanel includePanel =
+-        new FilePanel(JMeterUtils.getResString("include_path"), ".jmx"); //$NON-NLS-1$ //$NON-NLS-2$
++        new FilePanel(JMeterUtils.getResString("include_path"), FileDialoger.JMX_SUFFIX); //$NON-NLS-1$ 
+ 
+     /**
+      * Initializes the gui panel for the ModuleController instance.

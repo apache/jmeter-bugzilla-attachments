@@ -1,0 +1,167 @@
+Index: src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(revision 1785890)
++++ src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(working copy)
+@@ -31,6 +31,7 @@
+ import java.util.Properties;
+ 
+ import org.apache.commons.lang3.CharUtils;
++import org.apache.commons.lang3.time.FastDateFormat;
+ import org.apache.jmeter.save.CSVSaveService;
+ import org.apache.jmeter.testelement.TestPlan;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -276,7 +277,7 @@
+ 
+     private static final boolean SAMPLE_COUNT;
+ 
+-    private static final DateFormat DATE_FORMATTER;
++    private static final FastDateFormat DATE_FORMATTER;
+ 
+     /**
+      * The string used to separate fields when stored to disk, for example, the
+@@ -353,7 +354,7 @@
+         // Prepare for a pretty date
+         // FIXME Can TIMESTAMP_FORMAT be null ? it does not appear to me .
+         if (!PRINT_MILLISECONDS && !NONE.equalsIgnoreCase(TIMESTAMP_FORMAT) && (TIMESTAMP_FORMAT != null)) {
+-            DATE_FORMATTER = new SimpleDateFormat(TIMESTAMP_FORMAT);
++            DATE_FORMATTER = FastDateFormat.getInstance(TIMESTAMP_FORMAT);
+         } else {
+             DATE_FORMATTER = null;
+         }
+@@ -441,7 +442,7 @@
+     private boolean printMilliseconds = PRINT_MILLISECONDS;
+ 
+     /** A formatter for the time stamp. */
+-    private transient DateFormat formatter = DATE_FORMATTER;
++    private transient FastDateFormat formatter = DATE_FORMATTER;
+     /* Make transient as we don't want to save the SimpleDataFormat class
+      * Also, there's currently no way to change the value via the GUI, so changing it
+      * later means editting the JMX, or recreating the Listener.
+@@ -581,7 +582,7 @@
+         try {
+             SampleSaveConfiguration clone = (SampleSaveConfiguration)super.clone();
+             if(this.formatter != null) {
+-                clone.formatter = (SimpleDateFormat)this.formatter.clone();
++                clone.formatter = (FastDateFormat)this.formatter.clone();
+             }
+             return clone;
+         }
+@@ -907,13 +908,14 @@
+ 
+     ///////////////// End of standard field accessors /////////////////////
+ 
++    
+     /**
+      * Intended for use by CsvSaveService (and test cases)
+      * @param fmt
+      *            format of the date to be saved. If <code>null</code>
+      *            milliseconds since epoch will be printed
+      */
+-    public void setFormatter(DateFormat fmt){
++    public void setFastDateFormater(FastDateFormat fmt){
+         printMilliseconds = fmt == null; // maintain relationship
+         formatter = fmt;
+     }
+@@ -922,7 +924,7 @@
+         return printMilliseconds;
+     }
+ 
+-    public DateFormat formatter() {
++    public FastDateFormat threadSafeFormatter() {
+         return formatter;
+     }
+ 
+Index: src/core/org/apache/jmeter/save/CSVSaveService.java
+===================================================================
+--- src/core/org/apache/jmeter/save/CSVSaveService.java	(revision 1785890)
++++ src/core/org/apache/jmeter/save/CSVSaveService.java	(working copy)
+@@ -30,7 +30,6 @@
+ import java.io.Writer;
+ import java.nio.charset.StandardCharsets;
+ import java.text.ParseException;
+-import java.text.SimpleDateFormat;
+ import java.util.ArrayList;
+ import java.util.Date;
+ import java.util.List;
+@@ -40,6 +39,7 @@
+ import org.apache.commons.collections.map.LinkedMap;
+ import org.apache.commons.lang3.CharUtils;
+ import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.lang3.time.FastDateFormat;
+ import org.apache.jmeter.assertions.AssertionResult;
+ import org.apache.jmeter.reporters.ResultCollector;
+ import org.apache.jmeter.samplers.SampleEvent;
+@@ -214,15 +214,14 @@
+                         log.warn("Cannot parse timestamp: '{}'", text);
+                         boolean foundMatch = false;
+                         for(String fmt : DATE_FORMAT_STRINGS) {
+-                            SimpleDateFormat dateFormat = new SimpleDateFormat(fmt);
+-                            dateFormat.setLenient(false);
++                            FastDateFormat dateFormat = FastDateFormat.getInstance(fmt);
+                             try {
+                                 Date stamp = dateFormat.parse(text);
+                                 timeStamp = stamp.getTime();
+                                 // method is only ever called from one thread at a time
+                                 // so it's OK to use a static DateFormat
+                                 log.warn("Setting date format to: {}", fmt);
+-                                saveConfig.setFormatter(dateFormat);
++                                saveConfig.setFastDateFormater(dateFormat);
+                                 foundMatch = true;
+                                 break;
+                             } catch (ParseException pe) {
+@@ -233,8 +232,8 @@
+                             throw new ParseException("No date-time format found matching "+text,-1);
+                         }
+                     }
+-                } else if (saveConfig.formatter() != null) {
+-                    Date stamp = saveConfig.formatter().parse(text);
++                } else if (saveConfig.threadSafeFormatter() != null) {
++                    Date stamp = saveConfig.threadSafeFormatter().parse(text);
+                     timeStamp = stamp.getTime();
+                 } else { // can this happen?
+                     final String msg = "Unknown timestamp format";
+@@ -802,8 +801,8 @@
+         if (saveConfig.saveTimestamp()) {
+             if (saveConfig.printMilliseconds()) {
+                 text.append(sample.getTimeStamp());
+-            } else if (saveConfig.formatter() != null) {
+-                String stamp = saveConfig.formatter().format(
++            } else if (saveConfig.threadSafeFormatter() != null) {
++                String stamp = saveConfig.threadSafeFormatter().format(
+                         new Date(sample.getTimeStamp()));
+                 text.append(stamp);
+             }
+Index: test/src/org/apache/jmeter/samplers/TestSampleSaveConfiguration.java
+===================================================================
+--- test/src/org/apache/jmeter/samplers/TestSampleSaveConfiguration.java	(revision 1785887)
++++ test/src/org/apache/jmeter/samplers/TestSampleSaveConfiguration.java	(working copy)
+@@ -25,10 +25,10 @@
+ import static org.junit.Assert.assertTrue;
+ 
+ import java.lang.reflect.Method;
+-import java.text.SimpleDateFormat;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
++import org.apache.commons.lang3.time.FastDateFormat;
+ import org.apache.jmeter.junit.JMeterTestCase;
+ import org.junit.Test;
+ 
+@@ -136,13 +136,13 @@
+         assertEquals("Hash codes should be equal",a.hashCode(), b.hashCode());
+         assertTrue("Objects should be equal",a.equals(b));
+         assertTrue("Objects should be equal",b.equals(a));
+-        a.setFormatter(null);
+-        b.setFormatter(null);
++        b.setFastDateFormater(null);
++        b.setFastDateFormater(null);
+         assertEquals("Hash codes should be equal",a.hashCode(), b.hashCode());
+         assertTrue("Objects should be equal",a.equals(b));
+         assertTrue("Objects should be equal",b.equals(a));
+-        a.setFormatter(new SimpleDateFormat());
+-        b.setFormatter(new SimpleDateFormat());
++        b.setFastDateFormater(FastDateFormat.getInstance());
++        b.setFastDateFormater(FastDateFormat.getInstance());
+         assertEquals("Hash codes should be equal",a.hashCode(), b.hashCode());
+         assertTrue("Objects should be equal",a.equals(b));
+         assertTrue("Objects should be equal",b.equals(a));

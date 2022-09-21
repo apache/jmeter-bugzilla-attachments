@@ -1,0 +1,48 @@
+Index: xdocs/stylesheets/site_printable.vsl
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/xdocs/stylesheets/site_printable.vsl,v
+retrieving revision 1.5
+diff -u -r1.5 site_printable.vsl
+--- xdocs/stylesheets/site_printable.vsl	11 Jun 2003 15:49:30 -0000	1.5
++++ xdocs/stylesheets/site_printable.vsl	12 Jun 2003 00:55:12 -0000
+@@ -345,16 +345,31 @@
+ #end
+ 
+ #macro (makeIndex $subsections)
++#set ($level2 = $root.getAttributeValue("index-level-2"))
++#set ($colbreak = $root.getAttributeValue("colbreak"))
++#if  ("$!colbreak" != "")
++<table width="100%">
++<tr><td valign="top">
++#end
+ 	<ul>
+ 	#foreach ($sect in $subsections)
++	#if (("$!colbreak" != "") && ($sect.getAttributeValue("name").startsWith("$colbreak")))
++	</ul></td><td valign="top"><ul>
++	#end
+ 		<li><a href="#$sect.getAttributeValue("anchor")">$sect.getAttributeValue("name")</a></li>
++		#if ("$!level2" != "no")
+ 		<ul>
+ 		#foreach ($comp in $sect.getChildren("component"))
+ 			<li><a href="#$comp.getAttributeValue("name").replace($space,$udsc)">$comp.getAttributeValue("name")</a></li>
+ 		#end
+ 		</ul>
++		#end
+ 	#end
+ 	</ul>
++#if ("$!colbreak" != "")
++	</td></tr>
++</table>
++#end
+ #end
+ 
+ #macro (getProjectImage)
+@@ -419,6 +434,8 @@
+ 						  #foreach ( $section in $allSections )
+ 								#section ($section)
+ 						  #end
++						  <br/>
++						  #pagelinks()
+ 						  </td>
+ 					 </tr>
+ 

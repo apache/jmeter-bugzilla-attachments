@@ -1,0 +1,313 @@
+Index: src/core/org/apache/jmeter/gui/GuiPackage.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/GuiPackage.java	(revision 1617267)
++++ src/core/org/apache/jmeter/gui/GuiPackage.java	(working copy)
+@@ -44,6 +44,9 @@
+ import org.apache.jmeter.testbeans.gui.TestBeanGUI;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
++import org.apache.jmeter.testelement.property.JMeterProperty;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.testelement.property.TestElementProperty;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jmeter.util.LocaleChangeEvent;
+ import org.apache.jmeter.util.LocaleChangeListener;
+@@ -104,7 +107,7 @@
+ 
+     /** The main JMeter frame. */
+     private MainFrame mainFrame;
+-    
++
+     /** The main JMeter toolbar. */
+     private JToolBar toolbar;
+ 
+@@ -121,13 +124,18 @@
+      */
+     private LoggerPanel loggerPanel;
+ 
+-    
+     /**
++     * History for tree states
++     */
++    private UndoHistory undoHistory = new UndoHistory();
++
++    /**
+      * Private constructor to permit instantiation only from within this class.
+      * Use {@link #getInstance()} to retrieve a singleton instance.
+      */
+     private GuiPackage(JMeterTreeModel treeModel, JMeterTreeListener treeListener) {
+         this.treeModel = treeModel;
++        this.treeModel.addTreeModelListener(undoHistory);
+         this.treeListener = treeListener;
+         JMeterUtils.addLocaleChangeListener(this);
+     }
+@@ -155,6 +163,7 @@
+     public static GuiPackage getInstance(JMeterTreeListener listener, JMeterTreeModel treeModel) {
+         if (guiPack == null) {
+             guiPack = new GuiPackage(treeModel, listener);
++            guiPack.undoHistory.add(treeModel, "Created");
+         }
+         return guiPack;
+     }
+@@ -408,8 +417,12 @@
+                 log.debug("Updating current node " + currentNode.getName());
+                 JMeterGUIComponent comp = getGui(currentNode.getTestElement());
+                 TestElement el = currentNode.getTestElement();
++                int before = getTestElementCheckSum(el);
+                 comp.modifyTestElement(el);
+-                currentNode.nameChanged(); // Bug 50221 - ensure label is updated
++                int after = getTestElementCheckSum(el);
++                if (before != after) {
++                    currentNode.nameChanged(); // Bug 50221 - ensure label is updated
++                }
+             }
+             // The current node is now updated
+             currentNodeUpdated = true;
+@@ -464,7 +477,10 @@
+      *             if a subtree cannot be added to the currently selected node
+      */
+     public HashTree addSubTree(HashTree subTree) throws IllegalUserActionException {
+-        return treeModel.addSubTree(subTree, treeListener.getCurrentNode());
++        HashTree hashTree = treeModel.addSubTree(subTree, treeListener.getCurrentNode());
++        undoHistory.clear();
++        undoHistory.add(this.treeModel, "Loaded tree");
++        return hashTree;
+     }
+ 
+     /**
+@@ -527,7 +543,7 @@
+     public JMeterTreeListener getTreeListener() {
+         return treeListener;
+     }
+-    
++
+     /**
+      * Set the main JMeter toolbar.
+      *
+@@ -546,7 +562,7 @@
+     public JToolBar getMainToolbar() {
+         return toolbar;
+     }
+-    
++
+     /**
+      * Set the menu item toolbar.
+      *
+@@ -670,6 +686,8 @@
+         getTreeModel().clearTestPlan();
+         nodesToGui.clear();
+         setTestPlanFile(null);
++        undoHistory.clear();
++        undoHistory.add(this.treeModel, "Initial Tree");
+     }
+ 
+     /**
+@@ -680,6 +698,8 @@
+     public void clearTestPlan(TestElement element) {
+         getTreeModel().clearTestPlan(element);
+         removeNode(element);
++        undoHistory.clear();
++        undoHistory.add(this.treeModel, "Initial Tree");
+     }
+ 
+     public static void showErrorMessage(final String message, final String title){
+@@ -720,7 +740,7 @@
+             }
+         }
+     }
+-    
++
+     /**
+      * Register process to stop on reload
+      * @param stoppable
+@@ -730,7 +750,7 @@
+     }
+ 
+     /**
+-     * 
++     *
+      * @return List<IStoppable> Copy of IStoppable
+      */
+     public List<Stoppable> getStoppables() {
+@@ -746,7 +766,7 @@
+     public void setMenuItemLoggerPanel(JCheckBoxMenuItem menuItemLoggerPanel) {
+         this.menuItemLoggerPanel = menuItemLoggerPanel;
+     }
+-    
++
+     /**
+      * Get the menu item LoggerPanel.
+      *
+@@ -769,4 +789,53 @@
+     public LoggerPanel getLoggerPanel() {
+         return loggerPanel;
+     }
++
++    /**
++     * Navigate up and down in history
++     *
++     * @param offset int
++     */
++    public void goInHistory(int offset) {
++        undoHistory.getRelativeState(offset, this.treeModel);
++    }
++
++    /**
++     * @return true if history contains redo item
++     */
++    public boolean canRedo() {
++        return undoHistory.canRedo();
++    }
++
++    /**
++     * @return true if history contains undo item
++     */
++    public boolean canUndo() {
++        return undoHistory.canUndo();
++    }
++
++    /**
++     * Compute checksum of TestElement to detect changes
++     * the method calculates properties checksum to detect testelement
++     * modifications
++     * TODO would be better to override hashCode for TestElement, but I decided to touch it
++     *
++     * @param el {@link TestElement}
++     * @return int checksum
++     */
++    private int getTestElementCheckSum(TestElement el) {
++        int ret = el.getClass().hashCode();
++        PropertyIterator it = el.propertyIterator();
++        while (it.hasNext()) {
++            JMeterProperty obj = it.next();
++            if (obj instanceof TestElementProperty) {
++                ret ^= getTestElementCheckSum(((TestElementProperty) obj)
++                        .getElement());
++            } else {
++                ret ^= obj.getName().hashCode();
++                ret ^= obj.getStringValue().hashCode();
++            }
++        }
++        return ret;
++    }
++
+ }
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1617267)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -95,6 +95,8 @@
+     public static final String MOVE_DOWN        = "move_down"; // $NON-NLS-1$
+     public static final String MOVE_LEFT        = "move_left"; // $NON-NLS-1$
+     public static final String MOVE_RIGHT       = "move_right"; // $NON-NLS-1$
++    public static final String UNDO             = "undo"; // $NON-NLS-1$
++    public static final String REDO             = "redo"; // $NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames(){
+Index: src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 1617267)
++++ src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -206,6 +206,10 @@
+      * @param addSaveTestFragmentMenu Add Save as Test Fragment menu if true 
+      */
+     public static void addFileMenu(JPopupMenu menu, boolean addSaveTestFragmentMenu) {
++        // the undo/redo as a standard goes first in Edit menus
++        // maybe there's better place for them in JMeter?
++        addUndoItems(menu);
++
+         addSeparator(menu);
+         menu.add(makeMenuItemRes("open", ActionNames.OPEN));// $NON-NLS-1$
+         menu.add(makeMenuItemRes("menu_merge", ActionNames.MERGE));// $NON-NLS-1$
+@@ -247,6 +251,27 @@
+         menu.add(makeMenuItemRes("help", ActionNames.HELP));// $NON-NLS-1$
+     }
+ 
++    /**
++     * Add undo / redo
++     * @param menu JPopupMenu
++     */
++    private static void addUndoItems(JPopupMenu menu) {
++        addSeparator(menu);
++
++        JMenuItem undo = makeMenuItemRes("undo", ActionNames.UNDO); //$NON-NLS-1$
++        //undo.setAccelerator(KeyStrokes.UNDO);
++        undo.setEnabled(GuiPackage.getInstance().canUndo());
++        menu.add(undo);
++
++        JMenuItem redo = makeMenuItemRes("redo", ActionNames.REDO); //$NON-NLS-1$
++        //redo.setAccelerator(KeyStrokes.REDO);
++        // TODO: we could even show some hints on action being undone here if this will be required (by passing those hints into history  records)
++        redo.setEnabled(GuiPackage.getInstance().canRedo());
++        menu.add(redo);
++        // TODO: find a way to enable/disable toolbar items depending on action states
++    }
++
++
+     public static JMenu makeMenus(String[] categories, String label, String actionCommand) {
+         JMenu addMenu = new JMenu(label);
+         for (int i = 0; i < categories.length; i++) {
+Index: src/core/org/apache/jmeter/images/toolbar/icons-toolbar.properties
+===================================================================
+--- src/core/org/apache/jmeter/images/toolbar/icons-toolbar.properties	(revision 1617267)
++++ src/core/org/apache/jmeter/images/toolbar/icons-toolbar.properties	(working copy)
+@@ -14,7 +14,7 @@
+ #   limitations under the License.
+ 
+ # Icons order. Keys separate by comma. Use a pipe | to have a space between two icons.
+-toolbar=new,templates,open,close,save,save_as_testplan,|,cut,copy,paste,|,expand,collapse,toggle,|,test_start,test_start_notimers,test_stop,test_shutdown,|,test_start_remote_all,test_stop_remote_all,test_shutdown_remote_all,|,test_clear,test_clear_all,|,search,search_reset,|,function_helper,help
++toolbar=new,templates,open,close,save,save_as_testplan,|,undo,redo,cut,copy,paste,|,expand,collapse,toggle,|,test_start,test_start_notimers,test_stop,test_shutdown,|,test_start_remote_all,test_stop_remote_all,test_shutdown_remote_all,|,test_clear,test_clear_all,|,search,search_reset,|,function_helper,help
+ 
+ # Icon / action definition file.
+ # Key:      button names
+@@ -43,4 +43,6 @@
+ search=menu_search,SEARCH_TREE,org/apache/jmeter/images/toolbar/search.png
+ search_reset=menu_search_reset,SEARCH_RESET,org/apache/jmeter/images/toolbar/searchreset.png
+ function_helper=function_dialog_menu_item,FUNCTIONS,org/apache/jmeter/images/toolbar/function.png
+-help=help,HELP,org/apache/jmeter/images/toolbar/help.png
+\ No newline at end of file
++help=help,HELP,org/apache/jmeter/images/toolbar/help.png
++undo=undo,UNDO,org/apache/jmeter/images/toolbar/undo.png
++redo=redo,REDO,org/apache/jmeter/images/toolbar/redo.png
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1617267)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -769,6 +769,7 @@
+ read_soap_response=Read SOAP Response
+ realm=Realm
+ record_controller_title=Recording Controller
++redo=Redo
+ ref_name_field=Reference Name\:
+ regex_extractor_title=Regular Expression Extractor
+ regex_field=Regular Expression\:
+@@ -1131,6 +1132,7 @@
+ transaction_controller_parent=Generate parent sample
+ transaction_controller_title=Transaction Controller
+ unbind=Thread Unbind
++undo=Undo
+ unescape_html_string=String to unescape
+ unescape_string=String containing Java escapes
+ uniform_timer_delay=Constant Delay Offset (in milliseconds)\:
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1617267)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -762,6 +762,7 @@
+ read_soap_response=Lire la r\u00E9ponse SOAP
+ realm=Univers (realm)
+ record_controller_title=Contr\u00F4leur Enregistreur
++redo=R\u00E9tablir
+ ref_name_field=Nom de r\u00E9f\u00E9rence \:
+ regex_extractor_title=Extracteur Expression r\u00E9guli\u00E8re
+ regex_field=Expression r\u00E9guli\u00E8re \:
+@@ -1124,6 +1125,7 @@
+ transaction_controller_parent=G\u00E9n\u00E9rer en \u00E9chantillon parent
+ transaction_controller_title=Contr\u00F4leur Transaction
+ unbind=D\u00E9connexion de l'unit\u00E9
++undo=Annuler
+ unescape_html_string=Cha\u00EEne \u00E0 \u00E9chapper
+ unescape_string=Cha\u00EEne de caract\u00E8res contenant des\u00E9chappements Java
+ uniform_timer_delay=D\u00E9lai de d\u00E9calage constant (en millisecondes) \:

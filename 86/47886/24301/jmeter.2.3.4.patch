@@ -1,0 +1,400 @@
+Index: src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 817742)
++++ src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -33,6 +33,10 @@
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Properties;
++import java.util.concurrent.Executors;
++import java.util.concurrent.Future;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.TimeUnit;
+ 
+ import org.apache.jmeter.JMeter;
+ import org.apache.jmeter.testbeans.TestBean;
+@@ -93,7 +97,7 @@
+     private static final List<TestListener> testList = new ArrayList<TestListener>();
+ 
+     /** JMeterThread => its JVM thread */
+-    private final Map<JMeterThread, Thread> allThreads;
++    private final Map<JMeterThread, Future<?>> allThreads;
+ 
+     /** flag to show that groups are still being created, i.e test plan is not complete */
+     private volatile boolean startingGroups;
+@@ -106,6 +110,8 @@
+ 
+     private HashTree test;
+ 
++    private ScheduledExecutorService mThreadPool;
++    
+     private volatile SearchByClass testListenersSave;
+ 
+     private final String host;
+@@ -152,9 +158,9 @@
+             thrd.stop();
+             thrd.interrupt();
+             if (now) {
+-                Thread t = engine.allThreads.get(thrd);
++                Future<?> t = engine.allThreads.get(thrd);
+                 if (t != null) {
+-                    t.interrupt();
++                    t.cancel(true);
+                 }
+             }
+             return true;
+@@ -170,7 +176,7 @@
+ 
+     public StandardJMeterEngine(String host) {
+         this.host = host;
+-        this.allThreads = Collections.synchronizedMap(new HashMap<JMeterThread, Thread>());
++        this.allThreads = Collections.synchronizedMap(new HashMap<JMeterThread, Future<?>>());
+         // Hack to allow external control
+         engine = this;
+     }
+@@ -425,6 +431,10 @@
+         // and the listeners, and the timer
+         Iterator<ThreadGroup> iter = searcher.getSearchResults().iterator();
+ 
++		int threadPoolSize = JMeterUtils.getPropDefault("threadPoolSize", 1000);
++        log.debug("thread pool size is " + threadPoolSize);
++		mThreadPool = Executors.newScheduledThreadPool(threadPoolSize);
++
+         /*
+          * Here's where the test really starts. Run a Full GC now: it's no harm
+          * at all (just delays test start by a tiny amount) and hitting one too
+@@ -468,22 +478,18 @@
+                 jmeterThread.setThreadNum(i);
+                 jmeterThread.setThreadGroup(group);
+                 jmeterThread.setInitialContext(JMeterContextService.getContext());
+-                jmeterThread.setInitialDelay((int) (perThreadDelay * i));
+                 final String threadName = groupName + " " + (groupCount) + "-" + (i + 1);
+                 jmeterThread.setThreadName(threadName);
+ 
+-                scheduleThread(jmeterThread, group);
+-
+                 // Set up variables for stop handling
+                 jmeterThread.setEngine(this);
+                 jmeterThread.setOnErrorStopTest(onErrorStopTest);
+                 jmeterThread.setOnErrorStopTestNow(onErrorStopTestNow);
+                 jmeterThread.setOnErrorStopThread(onErrorStopThread);
+-
+-                Thread newThread = new Thread(jmeterThread);
+-                newThread.setName(threadName);
+-                allThreads.put(jmeterThread, newThread);
+-                newThread.start();
++                
++                jmeterThread.initRun();
++                Future<?> future = scheduleThread(jmeterThread, group, (int)perThreadDelay*i);
++                allThreads.put(jmeterThread, future);
+             } // end of thread startup for this thread group
+             if (serialized && iter.hasNext()) {
+                 log.info("Waiting for thread group: "+groupName+" to finish before starting next group");
+@@ -506,55 +512,30 @@
+      * @param thread
+      * @param group
+      */
+-    private void scheduleThread(JMeterThread thread, ThreadGroup group) {
++    private Future<?> scheduleThread(JMeterThread thread, ThreadGroup group, int delay) {
+         // if true the Scheduler is enabled
+-        if (group.getScheduler()) {
+-            long now = System.currentTimeMillis();
+-            // set the start time for the Thread
+-            if (group.getDelay() > 0) {// Duration is in seconds
+-                thread.setStartTime(group.getDelay() * 1000 + now);
+-            } else {
+-                long start = group.getStartTime();
+-                if (start < now) {
+-                    start = now; // Force a sensible start time
+-                }
+-                thread.setStartTime(start);
+-            }
+-
+-            // set the endtime for the Thread
+-            if (group.getDuration() > 0) {// Duration is in seconds
+-                thread.setEndTime(group.getDuration() * 1000 + (thread.getStartTime()));
+-            } else {
+-                thread.setEndTime(group.getEndTime());
+-            }
+-
+-            // Enables the scheduler
+-            thread.setScheduled(true);
+-        }
++    	return mThreadPool.schedule(thread, delay, TimeUnit.MILLISECONDS);
+     }
+ 
+     private boolean verifyThreadsStopped() {
+         boolean stoppedAll = true;
+-        List<Thread> threadsToCheck = new ArrayList<Thread>(allThreads.size());
++        List<Future<?>> threadsToCheck = new ArrayList<Future<?>>(allThreads.size());
+         synchronized (allThreads) { // Protect iterator
+             Iterator<JMeterThread> iter = allThreads.keySet().iterator();
+             while (iter.hasNext()) {
+-                Thread t = allThreads.get(iter.next());
++                Future<?> t = allThreads.get(iter.next());
+                 if (t != null) {
+                     threadsToCheck.add(t); // Do work later to reduce time in synch block.
+                 }
+             }
+         }
+         for(int i=0; i < threadsToCheck.size(); i++) {
+-            Thread t = threadsToCheck.get(i);
+-            if (t.isAlive()) {
+-                try {
+-                    t.join(WAIT_TO_DIE);
+-                } catch (InterruptedException e) {
+-                }
+-                if (t.isAlive()) {
++        	Future<?> t = threadsToCheck.get(i);
++            if (t.isCancelled() || t.isDone()) {
++               	t.cancel(true);
++                if (t.isCancelled() || t.isDone()) {
+                     stoppedAll = false;
+-                    log.warn("Thread won't exit: " + t.getName());
++                    log.warn("Thread won't exit: " + t);
+                 }
+             }
+         }
+@@ -568,8 +549,8 @@
+                 JMeterThread item = iter.next();
+                 item.stop(); // set stop flag
+                 item.interrupt(); // interrupt sampler if possible
+-                Thread t = allThreads.get(item);
+-                t.interrupt(); // also interrupt JVM thread
++                Future<?> t = allThreads.get(item);
++                t.cancel(true);// also interrupt JVM thread
+             }
+         }
+     }
+Index: src/core/org/apache/jmeter/threads/JMeterContextService.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterContextService.java	(revision 817709)
++++ src/core/org/apache/jmeter/threads/JMeterContextService.java	(working copy)
+@@ -55,6 +55,10 @@
+     public static JMeterContext getContext() {
+         return threadContext.get();
+     }
++    public static void setContext(JMeterContext context) {
++    	clearContext();
++    	threadContext.set(context);
++    }
+ 
+     /**
+      * Method is called by the JMeterEngine class when a test run is started.
+@@ -125,4 +129,8 @@
+     public static synchronized void clearTotalThreads() {
+         totalThreads = 0;
+     }
++
++	public static void clearContext() {
++    	threadContext.remove();
++	}
+ }
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 817738)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -90,17 +90,8 @@
+      */
+     private String threadName;
+ 
+-    private int initialDelay = 0;
+-
+     private int threadNum = 0;
+ 
+-    private long startTime = 0;
+-
+-    private long endTime = 0;
+-
+-    private boolean scheduler = false;
+-    // based on this scheduler is enabled or disabled
+-
+     // Gives access to parent thread threadGroup
+     private ThreadGroup threadGroup;
+ 
+@@ -119,6 +110,8 @@
+     
+     private volatile Sampler currentSampler;
+ 
++	private JMeterContext mThreadContext;
++
+     public JMeterThread(HashTree test, JMeterThreadMonitor monitor, ListenerNotifier note) {
+         this.monitor = monitor;
+         threadVars = new JMeterVariables();
+@@ -136,75 +129,6 @@
+         threadVars.putAll(context.getVariables());
+     }
+ 
+-    /**
+-     * Enable the scheduler for this JMeterThread.
+-     */
+-    public void setScheduled(boolean sche) {
+-        this.scheduler = sche;
+-    }
+-
+-    /**
+-     * Set the StartTime for this Thread.
+-     *
+-     * @param stime the StartTime value.
+-     */
+-    public void setStartTime(long stime) {
+-        startTime = stime;
+-    }
+-
+-    /**
+-     * Get the start time value.
+-     *
+-     * @return the start time value.
+-     */
+-    public long getStartTime() {
+-        return startTime;
+-    }
+-
+-    /**
+-     * Set the EndTime for this Thread.
+-     *
+-     * @param etime
+-     *            the EndTime value.
+-     */
+-    public void setEndTime(long etime) {
+-        endTime = etime;
+-    }
+-
+-    /**
+-     * Get the end time value.
+-     *
+-     * @return the end time value.
+-     */
+-    public long getEndTime() {
+-        return endTime;
+-    }
+-
+-    /**
+-     * Check the scheduled time is completed.
+-     *
+-     */
+-    private void stopScheduler() {
+-        long delay = System.currentTimeMillis() - endTime;
+-        if ((delay >= 0)) {
+-            running = false;
+-        }
+-    }
+-
+-    /**
+-     * Wait until the scheduled start time if necessary
+-     *
+-     */
+-    private void startScheduler() {
+-        long delay = (startTime - System.currentTimeMillis());
+-        if (delay > 0) {
+-            try {
+-                Thread.sleep(delay);
+-            } catch (Exception e) {
+-            }
+-        }
+-    }
+-
+     public void setThreadName(String threadName) {
+         this.threadName = threadName;
+     }
+@@ -234,9 +158,10 @@
+ 
+     public void run() {
+         // threadContext is not thread-safe, so keep within thread
+-        JMeterContext threadContext = JMeterContextService.getContext();
++        threadStarted();
++    	JMeterContextService.setContext(mThreadContext);
++    	JMeterContext threadContext = mThreadContext;
+         try {
+-            initRun(threadContext);
+             while (running) {
+                 Sampler sam;
+                 while (running && (sam = controller.next()) != null) {
+@@ -268,6 +193,7 @@
+             log.info("Thread finished: " + threadName);
+             threadFinished();
+             monitor.threadFinished(this); // Tell the engine we are done
++            JMeterContextService.clearContext();
+         }
+     }
+ 
+@@ -378,10 +304,6 @@
+                     compiler.done(pack); // Finish up
+                 }
+             }
+-            if (scheduler) {
+-                // checks the scheduler to stop the iteration
+-                stopScheduler();
+-            }
+         } catch (JMeterStopTestException e) {
+             log.info("Stopping Test: " + e.toString());
+             stopTest();
+@@ -437,8 +359,9 @@
+      * @param threadContext 
+      *
+      */
+-    private void initRun(JMeterContext threadContext) {
+-        threadContext.setVariables(threadVars);
++    public void initRun() {
++    	JMeterContext threadContext = new JMeterContext();
++    	threadContext.setVariables(threadVars);
+         threadContext.setThreadNum(getThreadNum());
+         threadContext.getVariables().put(LAST_SAMPLE_OK, "true");
+         threadContext.setThread(this);
+@@ -446,11 +369,6 @@
+         threadContext.setEngine(engine);
+         testTree.traverse(compiler);
+         // listeners = controller.getListeners();
+-        if (scheduler) {
+-            // set the scheduler to start
+-            startScheduler();
+-        }
+-        rampUpDelay(); // TODO - how to handle thread stopped here
+         log.info("Thread started: " + Thread.currentThread().getName());
+         /*
+          * Setting SamplingStarted before the contollers are initialised allows
+@@ -465,7 +383,7 @@
+         if (!startEarlier) {
+             threadContext.setSamplingStarted(true);
+         }
+-        threadStarted();
++        mThreadContext = threadContext;
+     }
+ 
+     private void threadStarted() {
+@@ -526,7 +444,7 @@
+ 
+     /** {@inheritDoc} */
+     public boolean interrupt(){
+-        Sampler samp = currentSampler; // fetch once
++    	Sampler samp = currentSampler; // fetch once
+         if (samp instanceof Interruptible){
+             log.warn("Interrupting: " + threadName + " sampler: " +samp.getName());
+             try {
+@@ -674,26 +592,7 @@
+ 
+     }
+ 
+-    public void setInitialDelay(int delay) {
+-        initialDelay = delay;
+-    }
+-
+     /**
+-     * Initial delay if ramp-up period is active for this threadGroup.
+-     */
+-    private void rampUpDelay() {
+-        if (initialDelay > 0) {
+-            long start = System.currentTimeMillis();
+-            try {
+-                Thread.sleep(initialDelay);
+-            } catch (InterruptedException e) {
+-                long actual = System.currentTimeMillis() - start;
+-                log.warn("RampUp delay for "+threadName+" was interrupted. Waited "+actual+" milli-seconds out of "+initialDelay);
+-            }
+-        }
+-    }
+-
+-    /**
+      * Returns the threadNum.
+      */
+     public int getThreadNum() {

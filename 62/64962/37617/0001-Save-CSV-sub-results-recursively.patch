@@ -1,0 +1,42 @@
+From 6c336984c63c537ad523a18a3dd5542de006a84b Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Thu, 10 Dec 2020 17:02:13 +0100
+Subject: [PATCH 1/2] Save CSV sub-results recursively
+
+Bugzilla Id: 64962
+---
+ .../org/apache/jmeter/save/CSVSaveService.java | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java b/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java
+index 2f21dc56e1..0b29926a6e 100644
+--- a/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java
++++ b/src/core/src/main/java/org/apache/jmeter/save/CSVSaveService.java
+@@ -1112,10 +1112,20 @@ public final class CSVSaveService {
+ 
+         if(saveConfiguration.saveSubresults()) {
+             SampleResult result = event.getResult();
+-            for (SampleResult subResult : result.getSubResults()) {
+-                formattedResult = resultToDelimitedString(event, subResult, saveConfiguration, delimiter);
+-                out.println(formattedResult);
+-            }
++            saveSubResults(event, out, saveConfiguration, delimiter, result, 0);
++        }
++    }
++
++    private static void saveSubResults(SampleEvent event, PrintWriter out, SampleSaveConfiguration saveConfiguration,
++            String delimiter, SampleResult result, int recursionLevel) {
++        if (recursionLevel > 10) {
++            return;
++        }
++        String formattedResult;
++        for (SampleResult subResult : result.getSubResults()) {
++            formattedResult = resultToDelimitedString(event, subResult, saveConfiguration, delimiter);
++            out.println(formattedResult);
++            saveSubResults(event, out, saveConfiguration, delimiter, subResult, recursionLevel + 1);
+         }
+     }
+ }
+-- 
+2.25.1
+

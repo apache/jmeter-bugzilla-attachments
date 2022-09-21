@@ -1,0 +1,163 @@
+diff --git a/bin/jmeter.properties b/bin/jmeter.properties
+index 271cbed25..5fa94eed4 100644
+--- a/bin/jmeter.properties
++++ b/bin/jmeter.properties
+@@ -916,15 +916,19 @@ beanshell.server.file=../extras/startup.bsh
+ # of Test and Thread Listeners.
+ 
+ #---------------------------------------------------------------------------
+-# Groovy function
++# JSR-223 function
+ #---------------------------------------------------------------------------
+ 
+-# Path to Groovy file containing script to call on JMeter startup
++# Path to JSR-223 file containing script to call on JMeter startup
+ # This script can use pre-defined variables:
+ # log : Logger to log any message
+ # props : JMeter Property
+ # OUT : System.OUT
+-#groovy.init.file=
++#jsr223.init.file=
++
++#---------------------------------------------------------------------------
++# Groovy function
++#---------------------------------------------------------------------------
+ 
+ #Path to Groovy file containing utility functions to make available to __groovy function
+ #groovy.utilities=
+diff --git a/docs/images/screenshots/backend_listener.png b/docs/images/screenshots/backend_listener.png
+index 521548f51..76d258125 100644
+Binary files a/docs/images/screenshots/backend_listener.png and b/docs/images/screenshots/backend_listener.png differ
+diff --git a/src/core/org/apache/jmeter/JMeter.java b/src/core/org/apache/jmeter/JMeter.java
+index 4098bf3c6..2fe97619f 100644
+--- a/src/core/org/apache/jmeter/JMeter.java
++++ b/src/core/org/apache/jmeter/JMeter.java
+@@ -57,7 +57,9 @@ import org.apache.commons.cli.avalon.CLArgsParser;
+ import org.apache.commons.cli.avalon.CLOption;
+ import org.apache.commons.cli.avalon.CLOptionDescriptor;
+ import org.apache.commons.cli.avalon.CLUtil;
++import org.apache.commons.io.FilenameUtils;
+ import org.apache.commons.io.IOUtils;
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.control.ReplaceableController;
+ import org.apache.jmeter.engine.ClientJMeterEngine;
+ import org.apache.jmeter.engine.DistributedRunner;
+@@ -673,18 +675,23 @@ public class JMeter implements JMeterPlugin {
+                 }
+             }
+         }
+-        
+-        // Should we run a Groovy script on startup?
+-        String jsr223Init = JMeterUtils.getProperty("groovy.init.file");// $NON-NLS-1$
++
++        // Should we run a JSR-223 script on startup?
++        String jsr223Init = JMeterUtils.getProperty("jsr223.init.file");// $NON-NLS-1$
+         if (jsr223Init != null){
+-            log.info("Running Groovy init script in file: {}", jsr223Init);
++            log.info("Running JSR-223 init script in file: {}", jsr223Init);
+             File file = new File(jsr223Init);
+             if(file.exists() && file.canRead()) {
++                String extension = FilenameUtils.getExtension(jsr223Init);
+                 try (FileReader reader = new FileReader(file)) {
+                     ScriptEngineManager scriptEngineManager = new ScriptEngineManager();
+-                    ScriptEngine engine = scriptEngineManager.getEngineByName("Groovy");
++                    ScriptEngine engine = scriptEngineManager.getEngineByName(
++                            StringUtils.defaultString(extension, "groovy"));
++                    if (engine == null) {
++                        engine = scriptEngineManager.getEngineByName("groovy");
++                    }
+                     Bindings bindings = engine.createBindings();
+-                    final Logger logger = LoggerFactory.getLogger("groovy.init.file");
++                    final Logger logger = LoggerFactory.getLogger("jsr223.init.file");
+                     bindings.put("log", logger); // $NON-NLS-1$ (this name is fixed)
+                     Properties props = JMeterUtils.getJMeterProperties();
+                     bindings.put("props", props); // $NON-NLS-1$ (this name is fixed)
+@@ -692,10 +699,14 @@ public class JMeter implements JMeterPlugin {
+                     bindings.put("OUT", System.out); // NOSONAR $NON-NLS-1$ (this name is fixed)
+                     engine.eval(reader, bindings);
+                 } catch (IOException | ScriptException ex) {
+-                    log.error("Error running init script referenced by property {}", jsr223Init, ex);
++                    log.error(
++                            "Error running init script referenced by property {} with engine for {}",
++                            jsr223Init, extension, ex);
+                 }
+             } else {
+-                log.error("Script {} referenced by property {} is not readable or does not exists", file.getAbsolutePath(), jsr223Init);
++                log.error(
++                        "Script {} referenced by property {} is not readable or does not exists",
++                        file.getAbsolutePath(), jsr223Init);
+             }
+         }
+     }
+diff --git a/xdocs/changes.xml b/xdocs/changes.xml
+index aa988cd3f..a555abcd9 100644
+--- a/xdocs/changes.xml
++++ b/xdocs/changes.xml
+@@ -160,7 +160,7 @@ this behaviour, set <code>httpclient.reset_state_on_thread_group_iteration=false
+   <li><bug>62470</bug>CSV Output : Enable logging of sub results when <code>jmeter.save.saveservice.subresults=true</code>. Contributed by Ubik Load Pack (support at ubikloadpack.com)</li>
+   <li><bug>62473</bug>Setting "<code>saveservice_properties</code>" has counter intuitive behaviour</li>
+   <li><bug>62354</bug>Correct calculation and usage of units for second per user (reported by jffagot05 at gmail.com)</li>
+-  <li><bug>62700</bug>Introduce groovy.init.file to allow calling a groovy script on JMeter startup</li>
++  <li><bug>62700</bug>Introduce <code>jsr223.init.file</code> to allow calling a JSR-223 script on JMeter startup</li>
+   <li><bug>62128</bug>Try to guess <code>JMETER_HOME</code> correctly, when <code>jmeter.bat</code> is called from a batch file in another directory. Contributed by logox01 (logox01 at gmx.at)</li>
+   <li><pr>386</pr>Add parameter support for RMI keystore creation scripts. Contributed by Logan Mauzaize (t524467 at airfrance.fr)</li>
+   <li><bug>62065</bug>Use Maven artifact for JAF Module instead of embedded module</li>
+diff --git a/xdocs/usermanual/properties_reference.xml b/xdocs/usermanual/properties_reference.xml
+index 33ff14f60..500587603 100644
+--- a/xdocs/usermanual/properties_reference.xml
++++ b/xdocs/usermanual/properties_reference.xml
+@@ -1496,10 +1496,6 @@ JMETER-SERVER</source>
+     confirmation dialogue.<br/>
+     Defaults to: <code>false</code>
+ </property>
+-<property name="jsr223.compiled_scripts_cache_size">
+-    Used by JSR223 elements.<br/>
+-    Size of compiled scripts cache.<br/>
+-    Defaults to: <code>100</code></property>
+ </properties>
+ </section>
+ <section name="&sect-num;.36 Classpath configuration" anchor="classpath">
+@@ -1875,21 +1871,35 @@ JMETER-SERVER</source>
+ </section>
+ 
+ <section name="&sect-num;.43 Advanced Groovy Scripting configuration" anchor="groovy">
+-<description>Advanced properties for configuration of scripting in Grooyv</description>
++<description>Advanced properties for configuration of scripting in Groovy</description>
++<properties>
++    <property name="groovy.utilities">
++    Path to Groovy file containing utility functions to make available to <funclink name="__groovy"/> function.<br/>
++    Defaults to <code>bin/utility.groovy</code>
++    </property>
++</properties>
++</section>
++
++<section name="&sect-num;.43 Advanced JSR-223 Scripting configuration" anchor="jsr223">
++<description>Advanced properties for configuration of scripting in JSR-223</description>
+ <properties>
+-    <property name="groovy.init.file">
+-    Path to Groovy file containing script to call on JMeter startup. <br/>
+-    This script can use pre-defined variables:
++    <property name="jsr223.init.file">
++    <p>Path to JSR-223 file containing script to call on JMeter startup.</p>
++    <p>The actual scripting engine to use will be determined by the extension
++    of the init file name. If the file name has no extension, or no scripting
++    engine could be found for that extension, Groovy will be used.</p>
++    <p>This script can use pre-defined variables:</p>
+     <ul>
+         <li><code>log</code>: Logger to log any message, uses SLF4J library</li>
+         <li><code>props</code>: JMeter Properties</li>
+         <li><code>OUT</code>: System.OUT, useful to write in the console</li>
+     </ul>
+-    No script is defined by default. 
++    No script is defined by default.
+     </property>
+-    <property name="groovy.utilities">
+-    Path to Groovy file containing utility functions to make available to __groovy function. <br/>
+-    Defaults to <code>bin/utility.groovy</code> 
++    <property name="jsr223.compiled_scripts_cache_size">
++    Used by JSR223 elements.<br/>
++    Size of compiled scripts cache.<br/>
++    Defaults to: <code>100</code>
+     </property>
+ </properties>
+ </section>

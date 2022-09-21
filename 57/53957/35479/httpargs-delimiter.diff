@@ -1,0 +1,81 @@
+diff --git a/src/core/org/apache/jmeter/config/gui/ArgumentsPanel.java b/src/core/org/apache/jmeter/config/gui/ArgumentsPanel.java
+index 2fe7527..d5e99ed 100644
+--- a/src/core/org/apache/jmeter/config/gui/ArgumentsPanel.java
++++ b/src/core/org/apache/jmeter/config/gui/ArgumentsPanel.java
+@@ -118,6 +118,12 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+     /** Command for moving a row down in the table. */
+     private static final String DOWN = "down"; // $NON-NLS-1$
+ 
++    /** When pasting from the clipboard, split lines on linebreak */
++    private static final String CLIPBOARD_LINE_DELIMITERS = "\n"; //$NON-NLS-1$
++
++    /** When pasting from the clipboard, split parameters on tab */
++    private static final String CLIPBOARD_ARG_DELIMITERS = "\t"; //$NON-NLS-1$
++
+     /** Command for showing detail. */
+     private static final String DETAIL = "detail"; // $NON-NLS-1$
+ 
+@@ -531,8 +537,10 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+ 
+     /**
+      * Add values from the clipboard
++     * @param lineDelimiter Delimiter string to split clipboard into lines
++     * @param argDelimiter Delimiter string to split line into key-value pair
+      */
+-    protected void addFromClipboard() {
++    protected void addFromClipboard(String lineDelimiter, String argDelimiter) {
+         GuiUtils.stopTableEditing(table);
+         int rowCount = table.getRowCount();
+         try {
+@@ -540,9 +548,9 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+             if(clipboardContent == null) {
+                 return;
+             }
+-            String[] clipboardLines = clipboardContent.split("\n");
++            String[] clipboardLines = clipboardContent.split(lineDelimiter);
+             for (String clipboardLine : clipboardLines) {
+-                String[] clipboardCols = clipboardLine.split("\t");
++                String[] clipboardCols = clipboardLine.split(argDelimiter);
+                 if (clipboardCols.length > 0) {
+                     Argument argument = createArgumentFromClipboard(clipboardCols);
+                     tableModel.addRow(argument);
+@@ -567,6 +575,10 @@ public class ArgumentsPanel extends AbstractConfigGui implements ActionListener
+         }
+     }
+ 
++    protected void addFromClipboard() {
++        addFromClipboard(CLIPBOARD_LINE_DELIMITERS, CLIPBOARD_ARG_DELIMITERS);
++    }
++
+     protected Argument createArgumentFromClipboard(String[] clipboardCols) {
+         Argument argument = makeNewArgument();
+         argument.setName(clipboardCols[0]);
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/gui/HTTPArgumentsPanel.java b/src/protocol/http/org/apache/jmeter/protocol/http/gui/HTTPArgumentsPanel.java
+index 1bb4cf2..ce14655 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/gui/HTTPArgumentsPanel.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/gui/HTTPArgumentsPanel.java
+@@ -50,6 +50,12 @@ public class HTTPArgumentsPanel extends ArgumentsPanel {
+ 
+     private static final String INCLUDE_EQUALS = "include_equals"; //$NON-NLS-1$
+ 
++    /** When pasting from the clipboard, split lines on linebreak or '&' */
++    private static final String CLIPBOARD_LINE_DELIMITERS = "\n|&"; //$NON-NLS-1$
++
++    /** When pasting from the clipboard, split parameters on tab or '=' */
++    private static final String CLIPBOARD_ARG_DELIMITERS = "\t|="; //$NON-NLS-1$
++
+     @Override
+     protected void initializeTableModel() {
+         tableModel = new ObjectTableModel(new String[] {
+@@ -142,6 +148,11 @@ public class HTTPArgumentsPanel extends ArgumentsPanel {
+     }
+ 
+     @Override
++    protected void addFromClipboard() {
++        addFromClipboard(CLIPBOARD_LINE_DELIMITERS, CLIPBOARD_ARG_DELIMITERS);
++    }
++
++    @Override
+     protected Argument createArgumentFromClipboard(String[] clipboardCols) {
+         HTTPArgument argument = makeNewArgument();
+         argument.setName(clipboardCols[0]);

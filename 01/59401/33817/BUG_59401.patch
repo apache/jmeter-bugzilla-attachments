@@ -1,0 +1,58 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1740902)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -185,6 +185,19 @@
+         }
+     };
+ 
++    private static final String JMETER_RESPONSE_HEADERS = "__jmeter.RESPONSE_HEADERS";
++    
++    private static final HttpResponseInterceptor RESPONSE_HEADERS_EXTRACTOR = new HttpResponseInterceptor() {
++        
++        @Override
++        public void process(HttpResponse response, HttpContext context)
++                throws HttpException, IOException {
++            context.setAttribute(JMETER_RESPONSE_HEADERS, response.getAllHeaders());
++        }
++    };
++    
++    private static final HttpResponseInterceptor RESPONSE_CONTENT_ENCODING = new ResponseContentEncoding();
++    
+     /**
+      * 1 HttpClient instance per combination of (HttpClient,HttpClientKey)
+      */
+@@ -357,7 +370,7 @@
+             res.setResponseMessage(statusLine.getReasonPhrase());
+             res.setSuccessful(isSuccessCode(statusCode));
+ 
+-            res.setResponseHeaders(getResponseHeaders(httpResponse));
++            res.setResponseHeaders(getResponseHeaders(httpResponse, localContext));
+             if (res.isRedirect()) {
+                 final Header headerLocation = httpResponse.getLastHeader(HTTPConstants.HEADER_LOCATION);
+                 if (headerLocation == null) { // HTTP protocol violation, but avoids NPE
+@@ -750,7 +763,8 @@
+             }
+             // see https://issues.apache.org/jira/browse/HTTPCORE-397
+             ((AbstractHttpClient) httpClient).setReuseStrategy(DefaultClientConnectionReuseStrategy.INSTANCE);
+-            ((AbstractHttpClient) httpClient).addResponseInterceptor(new ResponseContentEncoding());
++            ((AbstractHttpClient) httpClient).addResponseInterceptor(RESPONSE_HEADERS_EXTRACTOR);
++            ((AbstractHttpClient) httpClient).addResponseInterceptor(RESPONSE_CONTENT_ENCODING);
+             ((AbstractHttpClient) httpClient).addResponseInterceptor(METRICS_SAVER); // HACK
+             ((AbstractHttpClient) httpClient).addRequestInterceptor(METRICS_RESETTER); 
+             
+@@ -894,11 +908,12 @@
+      *
+      * @param response
+      *            containing the headers
++     * @param localContext {@link HttpContext}
+      * @return string containing the headers, one per line
+      */
+-    private String getResponseHeaders(HttpResponse response) {
++    private String getResponseHeaders(HttpResponse response, HttpContext localContext) {
+         StringBuilder headerBuf = new StringBuilder();
+-        Header[] rh = response.getAllHeaders();
++        Header[] rh = (Header[]) localContext.getAttribute(JMETER_RESPONSE_HEADERS);
+         headerBuf.append(response.getStatusLine());// header[0] is not the status line...
+         headerBuf.append("\n"); // $NON-NLS-1$
+ 

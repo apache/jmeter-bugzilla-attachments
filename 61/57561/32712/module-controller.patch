@@ -1,0 +1,264 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 1677165)
++++ bin/jmeter.properties	(working copy)
+@@ -1074,6 +1074,15 @@
+ # Size of compiled scripts cache
+ #jsr223.compiled_scripts_cache_size=100
+ 
++#module controller configuration 
++#true - allows to change automatically module controller`s name to target element`s name
++#false (by default) - autochange disabled
++#module_controller.name_autochange.defaultEnabled=true
++
++#allows to configure default prefix used in name autochange functionality
++#module_controller.name_autochange.defaultPrefix=<custom prefix>
++#module_controller.name_autochange.defaultPrefix=[MC]
++
+ #---------------------------------------------------------------------------
+ # Classpath configuration
+ #---------------------------------------------------------------------------
+Index: src/components/org/apache/jmeter/control/ModuleController.java
+===================================================================
+--- src/components/org/apache/jmeter/control/ModuleController.java	(revision 1677165)
++++ src/components/org/apache/jmeter/control/ModuleController.java	(working copy)
+@@ -30,6 +30,7 @@
+ import org.apache.jmeter.testelement.property.CollectionProperty;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.NullProperty;
++import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.collections.HashTree;
+ import org.apache.jorphan.collections.ListedHashTree;
+ 
+@@ -51,6 +52,10 @@
+     private static final long serialVersionUID = 240L;
+ 
+     private static final String NODE_PATH = "ModuleController.node_path";// $NON-NLS-1$
++    
++    private static final String NAME_AUTOCHANGE = "ModuleController.name_autochange";// $NON-NLS-1$
++    
++    private static final String NAME_PREFIX = "ModuleController.name_prefix";// $NON-NLS-1$
+ 
+     private transient JMeterTreeNode selectedNode = null;
+ 
+@@ -61,6 +66,10 @@
+      */
+     public ModuleController() {
+         super();
++        this.setNameAutochangeEnabled(
++        		JMeterUtils.getPropDefault("module_controller.name_autochange.defaultEnabled", false));
++        this.setNamePrefix(
++        		JMeterUtils.getPropDefault("module_controller.name_autochange.defaultPrefix", ""));
+     }
+ 
+     @Override
+@@ -203,4 +212,20 @@
+             cloneChildren((JMeterTreeNode) to.getLastChild(), child);
+         }
+     }
++
++	public boolean isNameAutochangeEnabled() {
++		return getPropertyAsBoolean(NAME_AUTOCHANGE);
++	}
++
++	public void setNameAutochangeEnabled(boolean enableNameAutochange) {
++		setProperty(NAME_AUTOCHANGE, enableNameAutochange);
++	}
++
++	public String getNamePrefix() {
++		return getPropertyAsString(NAME_PREFIX);
++	}
++
++	public void setNamePrefix(String namePrefix) {
++		setProperty(NAME_PREFIX, namePrefix);
++	}    
+ }
+Index: src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java
+===================================================================
+--- src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java	(revision 1677165)
++++ src/components/org/apache/jmeter/control/gui/ModuleControllerGui.java	(working copy)
+@@ -23,17 +23,22 @@
+ import java.awt.FlowLayout;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
++import java.awt.event.MouseAdapter;
++import java.awt.event.MouseEvent;
+ import java.util.Collection;
+ import java.util.Iterator;
+ 
++import javax.swing.BorderFactory;
+ import javax.swing.Box;
+ import javax.swing.BoxLayout;
+ import javax.swing.ImageIcon;
+ import javax.swing.JButton;
++import javax.swing.JCheckBox;
+ import javax.swing.JLabel;
+ import javax.swing.JMenu;
+ import javax.swing.JPanel;
+ import javax.swing.JPopupMenu;
++import javax.swing.JTextField;
+ import javax.swing.JTree;
+ import javax.swing.tree.DefaultMutableTreeNode;
+ import javax.swing.tree.DefaultTreeCellRenderer;
+@@ -47,7 +52,9 @@
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.action.ActionNames;
+ import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.gui.util.HorizontalPanel;
+ import org.apache.jmeter.gui.util.MenuFactory;
++import org.apache.jmeter.gui.util.VerticalPanel;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.testelement.TestPlan;
+ import org.apache.jmeter.threads.AbstractThreadGroup;
+@@ -98,6 +105,16 @@
+      * Helps navigating test plan
+      */
+     private JButton expandButton;
++    
++    /**
++     * allows to change automatically module controller`s name to target element`s name
++     */
++    private JCheckBox nameAutochangeEnabled;
++    
++    /**
++     * provides prefix for name field in case of using name autochange 
++     */
++    private JTextField nameAutochangePrefix;
+ 
+     /**
+      * Initializes the gui panel for the ModuleController instance.
+@@ -105,11 +122,39 @@
+     public ModuleControllerGui() {
+ 		moduleToRunTreeModel = new DefaultTreeModel(new DefaultMutableTreeNode());
+ 		moduleToRunTreeNodes = new JTree(moduleToRunTreeModel);
++	
++		//test element name replacer (called after selecting module to run in module controller tree)
++		MouseAdapter ml = new MouseAdapter() {
++			public void mouseClicked(MouseEvent e) {
++				if(!nameAutochangeEnabled.isSelected()){
++					return;
++				}
++				TreePath selPath = moduleToRunTreeNodes.getPathForLocation(e.getX(),
++						e.getY());
++				if (selPath != null) {
++					Object[] nodesOnPath = selPath.getPath();
++					//do not allow to reference test plan
++					if (nodesOnPath.length > 1) {						
++						JMeterTreeNode tn = (JMeterTreeNode) ((DefaultMutableTreeNode)selPath.getLastPathComponent()).getUserObject();
++						//prevent also changing name if thread group is selected
++						if(!(tn.getTestElement() instanceof AbstractThreadGroup)){
++							setElementName(nameAutochangePrefix.getText() + tn.getName());
++						}
++					}
++				}
++			}
++		};
++		moduleToRunTreeNodes.addMouseListener(ml);		
+ 		moduleToRunTreeNodes.setCellRenderer(new ModuleControllerCellRenderer());
+ 		
+         warningLabel = new JLabel(""); // $NON-NLS-1$
+         init();
+     }
++	
++	private void setElementName(String name)
++	{
++		this.namePanel.setName(name);
++	}
+ 
+     /** {@inheritDoc}} */
+     @Override
+@@ -120,13 +165,17 @@
+     @Override
+     public void configure(TestElement el) {
+         super.configure(el);
+-        ModuleController controller = (ModuleController) el;
+-        this.selected = controller.getSelectedNode();
+-        if (selected == null && controller.getNodePath() != null) {
+-            warningLabel.setText(JMeterUtils.getResString("module_controller_warning") // $NON-NLS-1$
+-                    + renderPath(controller.getNodePath()));
+-        } else {
+-            warningLabel.setText(""); // $NON-NLS-1$
++        if(el instanceof ModuleController){
++	        ModuleController controller = (ModuleController) el;
++	        this.selected = controller.getSelectedNode();
++	        if (selected == null && controller.getNodePath() != null) {
++	            warningLabel.setText(JMeterUtils.getResString("module_controller_warning") // $NON-NLS-1$
++	                    + renderPath(controller.getNodePath()));
++	        } else {
++	            warningLabel.setText(""); // $NON-NLS-1$
++	        }
++	        nameAutochangeEnabled.setSelected(controller.isNameAutochangeEnabled());
++	        nameAutochangePrefix.setText(controller.getNamePrefix());
+         }
+         reinitialize();
+     }
+@@ -178,6 +227,11 @@
+                 ((ModuleController) element).setSelectedNode(selected);
+             }
+         }
++        if(element instanceof ModuleController){
++        	ModuleController mc = (ModuleController) element;
++        	mc.setNameAutochangeEnabled(nameAutochangeEnabled.isSelected());
++        	mc.setNamePrefix(nameAutochangePrefix.getText());
++        }
+     }
+ 
+     /** {@inheritDoc}} */
+@@ -206,14 +260,15 @@
+         MenuFactory.addFileMenu(menu);
+         return menu;
+     }
+-
++    
++    
+     private void init() {
+         setLayout(new VerticalLayout(5, VerticalLayout.BOTH, VerticalLayout.TOP));
+         setBorder(makeBorder());
+         add(makeTitlePanel());
++        add(getNameAutochangePanel());
+ 
+-        JPanel modulesPanel = new JPanel();
+-        
++        JPanel modulesPanel = new JPanel();        
+         expandButton = new JButton(JMeterUtils.getResString("expand")); //$NON-NLS-1$
+         expandButton.addActionListener(this);
+         modulesPanel.add(expandButton);
+@@ -231,6 +286,25 @@
+         add(treePanel);
+     }
+ 
++	private VerticalPanel getNameAutochangePanel() {
++		VerticalPanel nameAutochangePanel = new VerticalPanel();
++        nameAutochangeEnabled = new JCheckBox(
++        		JMeterUtils.getResString("module_controller_name_autochange_enabled"));
++        nameAutochangeEnabled.setSelected(
++        		JMeterUtils.getPropDefault("module_controller.name_autochange.defaultEnabled", false));
++        nameAutochangePanel.add(nameAutochangeEnabled);
++        
++        HorizontalPanel hp = new HorizontalPanel();
++        hp.add(new JLabel(JMeterUtils.getResString("module_controller_name_autochange_prefix")));
++        nameAutochangePrefix = new JTextField(
++        		JMeterUtils.getPropDefault("module_controller.name_autochange.defaultPrefix", ""));
++        hp.add(nameAutochangePrefix);
++        
++        nameAutochangePanel.add(hp);
++        nameAutochangePanel.setBorder(BorderFactory.createEtchedBorder());
++		return nameAutochangePanel;
++	}
++
+     /**
+      * Recursively traverse module to run tree in order to find JMeterTreeNode element given by testPlanPath
+      * in a DefaultMutableTreeNode tree
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1677165)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -661,6 +661,8 @@
+ module_controller_module_to_run=Module To Run 
+ module_controller_title=Module Controller
+ module_controller_warning=Could not find module: 
++module_controller_name_autochange_enabled=Enable name autochange
++module_controller_name_autochange_prefix=Prefix:
+ monitor_equation_active=Active:  (busy/max) > 25%
+ monitor_equation_dead=Dead:  no response
+ monitor_equation_healthy=Healthy:  (busy/max) < 25%

@@ -1,0 +1,98 @@
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java b/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+index 62a2163..8f6bb2f 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/config/gui/UrlConfigGui.java
+@@ -20,6 +20,8 @@ package org.apache.jmeter.protocol.http.config.gui;
+ 
+ import java.awt.BorderLayout;
+ import java.awt.Component;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
+ import java.awt.FlowLayout;
+ import java.awt.Font;
+ 
+@@ -27,6 +29,7 @@ import javax.swing.BorderFactory;
+ import javax.swing.Box;
+ import javax.swing.BoxLayout;
+ import javax.swing.JCheckBox;
++import javax.swing.JComboBox;
+ import javax.swing.JLabel;
+ import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+@@ -116,7 +119,7 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+ 
+     private JCheckBox useBrowserCompatibleMultipartMode;
+ 
+-    private JLabeledChoice method;
++    private JComboBox method;
+     
+     private JLabeledChoice httpImplementation;
+ 
+@@ -186,7 +189,7 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+         if (notConfigOnly){
+             followRedirects.setSelected(true);
+             autoRedirects.setSelected(false);
+-            method.setText(HTTPSamplerBase.DEFAULT_METHOD);
++            method.setSelectedItem(HTTPSamplerBase.DEFAULT_METHOD);
+             useKeepAlive.setSelected(true);
+             useMultipartForPost.setSelected(false);
+             useBrowserCompatibleMultipartMode.setSelected(HTTPSamplerBase.BROWSER_COMPATIBLE_MULTIPART_MODE_DEFAULT);
+@@ -266,7 +269,7 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+         element.setProperty(HTTPSamplerBase.CONTENT_ENCODING, contentEncoding.getText());
+         element.setProperty(HTTPSamplerBase.PATH, path.getText());
+         if (notConfigOnly){
+-            element.setProperty(HTTPSamplerBase.METHOD, method.getText());
++            element.setProperty(HTTPSamplerBase.METHOD, (String) method.getSelectedItem());
+             element.setProperty(new BooleanProperty(HTTPSamplerBase.FOLLOW_REDIRECTS, followRedirects.isSelected()));
+             element.setProperty(new BooleanProperty(HTTPSamplerBase.AUTO_REDIRECTS, autoRedirects.isSelected()));
+             element.setProperty(new BooleanProperty(HTTPSamplerBase.USE_KEEPALIVE, useKeepAlive.isSelected()));
+@@ -352,7 +355,7 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+         contentEncoding.setText(el.getPropertyAsString(HTTPSamplerBase.CONTENT_ENCODING));
+         path.setText(el.getPropertyAsString(HTTPSamplerBase.PATH));
+         if (notConfigOnly){
+-            method.setText(el.getPropertyAsString(HTTPSamplerBase.METHOD));
++            method.setSelectedItem(el.getPropertyAsString(HTTPSamplerBase.METHOD));
+             followRedirects.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.FOLLOW_REDIRECTS));
+             autoRedirects.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.AUTO_REDIRECTS));
+             useKeepAlive.setSelected(el.getPropertyAsBoolean(HTTPSamplerBase.USE_KEEPALIVE));
+@@ -625,10 +628,19 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+         JLabel contentEncodingLabel = new JLabel(JMeterUtils.getResString("content_encoding")); // $NON-NLS-1$
+         contentEncodingLabel.setLabelFor(contentEncoding);
+ 
++        JPanel methodPanel = null;
+         if (notConfigOnly){
+-            method = new JLabeledChoice(JMeterUtils.getResString("method"), // $NON-NLS-1$
+-                    HTTPSamplerBase.getValidMethodsAsArray(), true);
+-            method.addChangeListener(this);
++            methodPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
++            JLabel methodLabel = new JLabel(JMeterUtils.getResString("method")); // $NON-NLS-1$
++            method = new JComboBox(HTTPSamplerBase.getValidMethodsAsArray());
++            method.setEditable(true);
++            method.addActionListener(new ActionListener() {
++                public void actionPerformed(ActionEvent e) {
++                    stateChanged(new ChangeEvent(e.getSource()));
++                }
++            });
++            methodPanel.add(methodLabel);
++            methodPanel.add(method);
+         }
+ 
+         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+@@ -641,7 +653,7 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+         panel.add(Box.createHorizontalStrut(5));
+ 
+         if (notConfigOnly){
+-            panel.add(method);
++            panel.add(methodPanel);
+         }
+         panel.setMinimumSize(panel.getPreferredSize());
+         panel.add(Box.createHorizontalStrut(5));
+@@ -800,7 +812,7 @@ public class UrlConfigGui extends JPanel implements ChangeListener {
+         }
+         // disable the multi-part if not a post request
+         else if(e.getSource() == method) {
+-            boolean isPostMethod = HTTPConstants.POST.equals(method.getText());
++            boolean isPostMethod = HTTPConstants.POST.equals((String) method.getSelectedItem());
+             useMultipartForPost.setEnabled(isPostMethod);    
+         }
+     }

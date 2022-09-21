@@ -1,0 +1,264 @@
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 1)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -313,6 +313,9 @@
+ 		if (((TestPlan) plan[0]).isSerialized()) {
+ 			serialized = true;
+ 		}
++		
++		JMeterUtils.clearSemaphores();
++		
+         JMeterContextService.startTest();
+         try {
+         	compileTree();
+         	
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 1)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -195,6 +195,8 @@
+ 		long delay = System.currentTimeMillis() - endTime;
+ 		if ((delay >= 0)) {
+ 			running = false;
++			//release all semaphores of threadgroup
++			org.apache.jmeter.util.JMeterUtils.releaseSemaphoresForThreadGroup(threadGroup.getName());
+ 		}
+ 	}
+ 
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/JMeterUtils.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/JMeterUtils.java	(revision 1)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/JMeterUtils.java	(working copy)
+@@ -38,7 +38,11 @@
+ import java.util.ResourceBundle;
+ import java.util.StringTokenizer;
+ import java.util.Vector;
++import java.util.ArrayList;
+ 
++import java.util.concurrent.Semaphore;
++import java.util.HashMap;
++
+ import javax.swing.ImageIcon;
+ import javax.swing.JButton;
+ import javax.swing.JComboBox;
+@@ -86,6 +90,63 @@
+ 	// Provide Random numbers to whomever wants one
+ 	private static Random rand = new Random();
+ 
++	// Provide a means to synchronize threads
++	private static HashMap<String, Pair> semaphores = new HashMap<String, Pair>();
++
++	public static void releaseAllSemaphores() {
++		Iterator it = semaphores.values().iterator();
++		//iterate trough hashmap and release all semaphores of current threadgroup
++		while (it.hasNext()) {
++			Pair pair = (Pair)it.next();
++			Semaphore sem = (Semaphore)pair.second;	
++			if (sem != null) {
++				sem.release();
++			}			
++		}
++	}
++
++	public static void releaseSemaphoresForThreadGroup(String tgroup) {
++		Iterator it = semaphores.values().iterator();
++		//iterate trough hashmap and release all semaphores of current threadgroup
++		while (it.hasNext()) {
++			Pair pair = (Pair)it.next();
++			Semaphore sem = (Semaphore)pair.second;
++			ArrayList al = (ArrayList)pair.first;
++			if (al.contains(tgroup)) {
++				if (sem != null) {
++					sem.release();
++				}
++			} 
++		}
++	}
++
++	public static void acquireSemaphore(String name, String tgroup, int count) throws java.lang.InterruptedException {
++		Pair pair = semaphores.get(name);
++		if (pair == null) {
++			//create arraylist with one element (name of threadgroup)
++			ArrayList al = new ArrayList();
++			al.add(tgroup);
++			pair = new Pair(al, new Semaphore(count, true));
++			semaphores.put(name, pair);
++		} else {
++			//add threadgroup-name to arraylist
++			((ArrayList)pair.first).add(tgroup);	
++		}
++		((Semaphore)pair.second).acquire();
++	}
++	
++	public static void releaseSemaphore(String name)  {
++		Pair pair = (Pair)semaphores.get(name);
++		Semaphore sem = (Semaphore)pair.second;
++		if (sem != null) {
++			sem.release();
++		}
++	}
++	
++	public static void clearSemaphores() {
++		semaphores.clear();
++	}
++
+ 	/**
+ 	 * Gets Perl5Matcher for this thread.
+ 	 */
+@@ -1102,4 +1163,5 @@
+ 		}
+ 		return f;
+ 	}
++		
+ }
+ 
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/Pair.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/Pair.java	(revision 0)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/util/Pair.java	(revision 0)
+@@ -0,0 +1,16 @@
++package org.apache.jmeter.util;
++
++public class Pair{
++
++	public Object first;
++	public Object second;
++
++	public Pair(){
++	}
++
++	public Pair(Object first, Object second){
++		this.first = first;
++		this.second = second;
++	}
++	
++}
+
+Index: jakarta-jmeter-2.3/src/protocol/java/org/apache/jmeter/protocol/java/test/AcquireSemaphore.java
+===================================================================
+--- jakarta-jmeter-2.3/src/protocol/java/org/apache/jmeter/protocol/java/test/AcquireSemaphore.java	(revision 0)
++++ jakarta-jmeter-2.3/src/protocol/java/org/apache/jmeter/protocol/java/test/AcquireSemaphore.java	(revision 0)
+@@ -0,0 +1,62 @@
++package org.apache.jmeter.protocol.java.test;
++
++import java.io.Serializable;
++
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.config.Arguments;
++import org.apache.jmeter.protocol.java.sampler.AbstractJavaSamplerClient;
++import org.apache.jmeter.protocol.java.sampler.JavaSamplerContext;
++import org.apache.jmeter.samplers.SampleResult;
++
++public class AcquireSemaphore extends AbstractJavaSamplerClient implements Serializable {
++	
++	public static final String SEMAPHORE_NAME = "";
++	public static final int SEMAPHORE_COUNT = 1;
++
++	private String name;
++	private int count;
++	
++	public AcquireSemaphore() {		
++	}
++
++	public void setupTest(JavaSamplerContext context) {
++		name  = context.getParameter("Name", SEMAPHORE_NAME);
++		count = context.getIntParameter("Count", SEMAPHORE_COUNT);
++	}
++
++	public SampleResult runTest(JavaSamplerContext context) {			
++		JMeterContext jmctx = JMeterContextService.getContext();
++		String tgname = jmctx.getThreadGroup().getName();
++		SampleResult results = new SampleResult();
++		results.sampleStart();
++		try {
++			results.setSampleLabel(tgname);
++			org.apache.jmeter.util.JMeterUtils.acquireSemaphore(getName(), tgname, getCount());
++			results.setSuccessful(true);
++		} catch (Exception e) {			
++			results.setSuccessful(false);
++		} finally {
++			results.sampleEnd();
++		}
++		return results;
++	}
++
++	public void teardownTest(JavaSamplerContext context) {
++	}
++
++	public Arguments getDefaultParameters() {
++		Arguments params = new Arguments();
++		params.addArgument("Name", String.valueOf(SEMAPHORE_NAME));		
++		params.addArgument("Count", String.valueOf(SEMAPHORE_COUNT));	
++		return params;
++	}
++
++	private String getName() {
++		return name;
++	}
++
++	private int getCount() {
++		return count;
++	}
++}
+
+Index: jakarta-jmeter-2.3/src/protocol/java/org/apache/jmeter/protocol/java/test/ReleaseSemaphore.java
+===================================================================
+--- jakarta-jmeter-2.3/src/protocol/java/org/apache/jmeter/protocol/java/test/ReleaseSemaphore.java	(revision 0)
++++ jakarta-jmeter-2.3/src/protocol/java/org/apache/jmeter/protocol/java/test/ReleaseSemaphore.java	(revision 0)
+@@ -0,0 +1,54 @@
++package org.apache.jmeter.protocol.java.test;
++
++import java.io.Serializable;
++
++import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.config.Arguments;
++import org.apache.jmeter.protocol.java.sampler.AbstractJavaSamplerClient;
++import org.apache.jmeter.protocol.java.sampler.JavaSamplerContext;
++import org.apache.jmeter.samplers.SampleResult;
++
++public class ReleaseSemaphore extends AbstractJavaSamplerClient implements Serializable {
++	
++	public static final String SEMAPHORE_NAME = "";	
++
++	private String name;
++	
++	public ReleaseSemaphore() {		
++	}
++
++	public void setupTest(JavaSamplerContext context) {
++		name  = context.getParameter("Name", SEMAPHORE_NAME);		
++	}
++
++	public SampleResult runTest(JavaSamplerContext context) {			
++		JMeterContext jmctx = JMeterContextService.getContext();
++		String tgname = jmctx.getThreadGroup().getName();
++		SampleResult results = new SampleResult();
++		results.sampleStart();
++		try {
++			results.setSampleLabel(tgname);
++			org.apache.jmeter.util.JMeterUtils.releaseSemaphore(getName());			
++			results.setSuccessful(true);
++		} catch (Exception e) {			
++			results.setSuccessful(false);
++		} finally {
++			results.sampleEnd();
++		}
++		return results;
++	}
++
++	public void teardownTest(JavaSamplerContext context) {
++	}
++
++	public Arguments getDefaultParameters() {
++		Arguments params = new Arguments();
++		params.addArgument("Name", String.valueOf(SEMAPHORE_NAME));		
++		return params;
++	}
++
++	private String getName() {
++		return name;
++	}
++}

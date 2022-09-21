@@ -1,0 +1,352 @@
+Index: /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/gui/util/FileListPanel.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/gui/util/FileListPanel.java	(revision 751908)
++++ /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/gui/util/FileListPanel.java	(working copy)
+@@ -45,6 +45,9 @@
+ import org.apache.jorphan.reflect.Functor;
+ 
+ public class FileListPanel extends JPanel implements ActionListener {
++
++    private static final long serialVersionUID = 1L;
++
+     private JTable files = null;
+ 
+     private transient ObjectTableModel tableModel = null;
+@@ -51,6 +54,8 @@
+ 
+     private static final String ACTION_BROWSE = "browse"; // $NON-NLS-1$
+ 
++    private static final String LABEL_LIBRARY = "library"; // $NON-NLS-1$
++
+     private JButton browse = new JButton(JMeterUtils.getResString(ACTION_BROWSE));
+ 
+     private JButton clear = new JButton(JMeterUtils.getResString("clear")); // $NON-NLS-1$
+@@ -183,7 +188,7 @@
+     }
+ 
+     protected void initializeTableModel() {
+-        tableModel = new ObjectTableModel(new String[] { "Library" },
++        tableModel = new ObjectTableModel(new String[] { JMeterUtils.getResString(LABEL_LIBRARY) },
+                 new Functor[0] , new Functor[0] , // i.e. bypass the Functors
+                 new Class[] { String.class });
+     }
+Index: /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(revision 751908)
++++ /Workspaces-JMeter/Jmeter/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -44,7 +44,7 @@
+ aggregate_report_90=90%
+ aggregate_report_90%_line=90% Line
+ aggregate_report_bandwidth=KB/sec
+-aggregate_report_count=# Samples
++aggregate_report_count=\# Samples
+ aggregate_report_error=Error
+ aggregate_report_error%=Error %
+ aggregate_report_max=Max
+@@ -92,7 +92,7 @@
+ bind=Thread Bind
+ browse=Browse...
+ bsf_sampler_title=BSF Sampler
+-bsf_script=Script to run (variables: log, Label, FileName, Parameters, args[], SampleResult, ctx, vars, props, OUT)
++bsf_script=Script to run (variables\: log, Label, FileName, Parameters, args[], SampleResult, ctx, vars, props, OUT)
+ bsf_script_file=Script file to run
+ bsf_script_language=Scripting language\:
+ bsf_script_parameters=Parameters to pass to script/file\:
+@@ -97,7 +97,7 @@
+ bsf_script_language=Scripting language\:
+ bsf_script_parameters=Parameters to pass to script/file\:
+ bsh_assertion_script=Script (see below for variables that are defined)
+-bsh_assertion_script_variables=The following variables are defined for the script:\nRead/Write: Failure, FailureMessage, SampleResult, vars, props, log.\nReadOnly: Response[Data|Code|Message|Headers], RequestHeaders, SampleLabel, SamplerData, ctx
++bsh_assertion_script_variables=The following variables are defined for the script\:\nRead/Write\: Failure, FailureMessage, SampleResult, vars, props, log.\nReadOnly\: Response[Data|Code|Message|Headers], RequestHeaders, SampleLabel, SamplerData, ctx
+ bsh_assertion_title=BeanShell Assertion
+ bsh_function_expression=Expression to evaluate
+ bsh_sampler_title=BeanShell Sampler
+@@ -102,10 +102,10 @@
+ bsh_function_expression=Expression to evaluate
+ bsh_sampler_title=BeanShell Sampler
+ bsh_script=Script (see below for variables that are defined)
+-bsh_script_variables=The following variables are defined for the script:\nSampleResult, ResponseCode, ResponseMessage, IsSuccess, Label, FileName, ctx, vars, props, log
+ bsh_script_file=Script file
+ bsh_script_parameters=Parameters (-> String Parameters and String []bsh.args)
+ bsh_script_reset_interpreter=Reset bsh.Interpreter before each call
++bsh_script_variables=The following variables are defined for the script\:\nSampleResult, ResponseCode, ResponseMessage, IsSuccess, Label, FileName, ctx, vars, props, log
+ busy_testing=I'm busy testing, please stop the test before changing settings
+ cache_manager_title=HTTP Cache Manager
+ cache_session_id=Cache Session Id?
+@@ -110,9 +110,9 @@
+ cache_manager_title=HTTP Cache Manager
+ cache_session_id=Cache Session Id?
+ cancel=Cancel
+-cancel_revert_project=There are test items that have not been saved.  Do you wish to revert to the previously saved test plan?
+ cancel_exit_to_save=There are test items that have not been saved.  Do you wish to save before exiting?
+ cancel_new_to_save=There are test items that have not been saved.  Do you wish to save before clearing the test plan?
++cancel_revert_project=There are test items that have not been saved.  Do you wish to revert to the previously saved test plan?
+ char_value=Unicode character number (decimal or 0xhex)
+ choose_function=Choose a function
+ choose_language=Choose Language
+@@ -233,13 +233,13 @@
+ fr=French
+ ftp_binary_mode=Use Binary mode ?
+ ftp_get=get(RETR)
+-ftp_local_file=Local File:
+-ftp_local_file_contents=Local File Contents:
+-ftp_remote_file=Remote File:
++ftp_local_file=Local File\:
++ftp_local_file_contents=Local File Contents\:
++ftp_put=put(STOR)
++ftp_remote_file=Remote File\:
+ ftp_sample_title=FTP Request Defaults
+ ftp_save_response_data=Save File in Response ?
+ ftp_testing_title=FTP Request
+-ftp_put=put(STOR)
+ function_dialog_menu_item=Function Helper Dialog
+ function_helper_title=Function Helper
+ function_name_param=Name of variable in which to store the result (required)
+@@ -287,7 +287,7 @@
+ html_assertion_label=HTML Assertion
+ html_assertion_title=HTML Assertion
+ html_parameter_mask=HTML Parameter Mask
+-http_implementation=HTTP Implementation:
++http_implementation=HTTP Implementation\:
+ http_response_code=HTTP response code
+ http_url_rewriting_modifier_title=HTTP URL Re-writing Modifier
+ http_user_parameter_modifier=HTTP User Parameter Modifier
+@@ -294,8 +294,8 @@
+ httpmirror_title=HTTP Mirror Server
+ id_prefix=ID Prefix
+ id_suffix=ID Suffix
++if_controller_evaluate_all=Evaluate for all children?
+ if_controller_expression=Interpret Condition as Variable Expression?
+-if_controller_evaluate_all=Evaluate for all children?
+ if_controller_label=Condition (default Javascript)
+ if_controller_title=If Controller
+ ignore_subcontrollers=Ignore sub-controller blocks
+@@ -356,7 +356,7 @@
+ jms_receive_queue=JNDI name Receive queue
+ jms_request=Request Only
+ jms_requestreply=Request Response
+-jms_sample_title= JMS Default Request
++jms_sample_title=JMS Default Request
+ jms_send_queue=JNDI name Request queue
+ jms_subscriber_on_message=Use MessageListener.onMessage()
+ jms_subscriber_receive=Use TopicSubscriber.receive()
+@@ -361,7 +361,7 @@
+ jms_subscriber_on_message=Use MessageListener.onMessage()
+ jms_subscriber_receive=Use TopicSubscriber.receive()
+ jms_subscriber_title=JMS Subscriber
+-jms_testing_title= Messaging Request
++jms_testing_title=Messaging Request
+ jms_text_message=Text Message
+ jms_timeout=Timeout (milliseconds)
+ jms_topic=Topic
+@@ -419,7 +419,8 @@
+ ldap_secure=Use Secure LDAP Protocol ?
+ ldap_testing_title=LDAP Request
+ ldapext_sample_title=LDAP Extended Request Defaults
+-ldapext_testing_title= LDAP Extended Request
++ldapext_testing_title=LDAP Extended Request
++library=Library
+ load=Load
+ load_wsdl=Load WSDL
+ log_errors_only=Errors
+@@ -429,7 +430,7 @@
+ log_function_string=String to be logged
+ log_function_string_ret=String to be logged (and returned)
+ log_function_throwable=Throwable text (optional)
+-log_only=Log/Display Only:
++log_only=Log/Display Only\:
+ log_parser=Name of Log Parser class
+ log_parser_cnf_msg=Could not find the class. Please make sure you place your jar file in the /lib directory.
+ log_parser_illegal_msg=Could not access the class due to IllegalAcessException.
+@@ -444,18 +445,18 @@
+ loop_controller_title=Loop Controller
+ looping_control=Looping Control
+ lower_bound=Lower Bound
+-mail_reader_account=Username:
++mail_reader_account=Username\:
+ mail_reader_all_messages=All
+ mail_reader_delete=Delete messages from the server
+-mail_reader_folder=Folder:
++mail_reader_folder=Folder\:
+ mail_reader_imap=IMAP
+ mail_reader_imaps=IMAPS
+-mail_reader_num_messages=Number of messages to retrieve:
+-mail_reader_password=Password:
++mail_reader_num_messages=Number of messages to retrieve\:
++mail_reader_password=Password\:
+ mail_reader_pop3=POP3
+ mail_reader_pop3s=POP3S
+-mail_reader_server=Server:
+-mail_reader_server_type=Server Type:
++mail_reader_server=Server\:
++mail_reader_server_type=Server Type\:
+ mail_reader_storemime=Store the message using MIME
+ mail_reader_title=Mail Reader Sampler
+ mail_sent=Mail sent successfully
+@@ -465,7 +466,7 @@
+ match_num_field=Match No. (0 for Random)\:
+ max=Maximum
+ maximum_param=The maximum value allowed for a range of values
+-md5hex_assertion_failure=Error asserting MD5 sum : got {0} but should have been {1}
++md5hex_assertion_failure=Error asserting MD5 sum \: got {0} but should have been {1}
+ md5hex_assertion_label=MD5Hex
+ md5hex_assertion_md5hex_test=MD5Hex to Assert
+ md5hex_assertion_title=MD5Hex Assertion
+@@ -497,14 +498,14 @@
+ modification_manager_title=Modification Manager
+ modify_test=Modify Test
+ modtest=Modification test
++module_controller_module_to_run=Module To Run 
+ module_controller_title=Module Controller
+-module_controller_warning=Could not find module: 
+-module_controller_module_to_run=Module To Run 
+-monitor_equation_active=Active:  (busy/max) > 25%
+-monitor_equation_dead=Dead:  no response
+-monitor_equation_healthy=Healthy:  (busy/max) < 25%
+-monitor_equation_load=Load:  ( (busy / max) * 50) + ( (used memory / max memory) * 50)
+-monitor_equation_warning=Warning:  (busy/max) > 67%
++module_controller_warning=Could not find module\: 
++monitor_equation_active=Active\:  (busy/max) > 25%
++monitor_equation_dead=Dead\:  no response
++monitor_equation_healthy=Healthy\:  (busy/max) < 25%
++monitor_equation_load=Load\:  ( (busy / max) * 50) + ( (used memory / max memory) * 50)
++monitor_equation_warning=Warning\:  (busy/max) > 67%
+ monitor_health_tab_title=Health
+ monitor_health_title=Monitor Results
+ monitor_is_title=Use as Monitor
+@@ -574,7 +575,7 @@
+ proxy_daemon_error=Could not create proxy - see log for details
+ proxy_headers=Capture HTTP Headers
+ proxy_httpsspoofing=Attempt HTTPS Spoofing
+-proxy_httpsspoofing_match=Optional URL match string:
++proxy_httpsspoofing_match=Optional URL match string\:
+ proxy_regex=Regex matching
+ proxy_sampler_settings=HTTP Sampler settings
+ proxy_sampler_type=Type\:
+@@ -650,10 +651,10 @@
+ resultaction_title=Result Status Action Handler
+ resultsaver_errors=Save Failed Responses only
+ resultsaver_prefix=Filename prefix\:
++resultsaver_skipautonumber=Don't add number to prefix
+ resultsaver_success=Save Successful Responses only
+-resultsaver_skipautonumber=Don\'t add number to prefix
+ resultsaver_title=Save Responses to a file
+-resultsaver_variable=Variable Name:
++resultsaver_variable=Variable Name\:
+ retobj=Return object
+ reuseconnection=Re-use connection
+ revert_project=Revert
+@@ -674,7 +675,7 @@
+ save?=Save?
+ save_all_as=Save Test Plan as
+ save_as=Save Selection As...
+-save_as_error=More than one item selected!
++save_as_error=More than one item selected\!
+ save_as_image=Save Node As Image
+ save_as_image_all=Save Screen As Image
+ save_assertionresultsfailuremessage=Save Assertion Failure Message
+@@ -695,10 +696,10 @@
+ save_requestheaders=Save Request Headers (XML)
+ save_responsedata=Save Response Data (XML)
+ save_responseheaders=Save Response Headers (XML)
++save_samplecount=Save Sample and Error Counts
+ save_samplerdata=Save Sampler Data (XML)
+ save_subresults=Save Sub Results (XML)
+ save_success=Save Success
+-save_samplecount=Save Sample and Error Counts
+ save_threadcounts=Save Active Thread Counts
+ save_threadname=Save Thread Name
+ save_time=Save Elapsed Time
+@@ -743,7 +744,7 @@
+ soap_action=Soap Action
+ soap_data_title=Soap/XML-RPC Data
+ soap_sampler_title=SOAP/XML-RPC Request
+-soap_send_action=Send SOAPAction: 
++soap_send_action=Send SOAPAction\: 
+ spline_visualizer_average=Average
+ spline_visualizer_incoming=Incoming
+ spline_visualizer_maximum=Maximum
+@@ -750,8 +751,8 @@
+ spline_visualizer_minimum=Minimum
+ spline_visualizer_title=Spline Visualizer
+ spline_visualizer_waitingmessage=Waiting for samples
+-split_function_string=String to split
+ split_function_separator=String to split on. Default is , (comma).
++split_function_string=String to split
+ ssl_alias_prompt=Please type your preferred alias
+ ssl_alias_select=Select your alias for the test
+ ssl_alias_title=Client Alias
+@@ -773,7 +774,7 @@
+ switch_controller_label=Switch Value
+ switch_controller_title=Switch Controller
+ table_visualizer_bytes=Bytes
+-table_visualizer_sample_num=Sample #
++table_visualizer_sample_num=Sample \#
+ table_visualizer_sample_time=Sample Time(ms)
+ table_visualizer_start_time=Start Time
+ table_visualizer_status=Status
+@@ -819,8 +820,8 @@
+ transaction_controller_parent=Generate parent sample
+ transaction_controller_title=Transaction Controller
+ unbind=Thread Unbind
++unescape_html_string=String to unescape
+ unescape_string=String containing Java escapes
+-unescape_html_string=String to unescape
+ uniform_timer_delay=Constant Delay Offset (in milliseconds)\:
+ uniform_timer_memo=Adds a random delay with a uniform distribution
+ uniform_timer_range=Random Delay Maximum (in milliseconds)\:
+@@ -859,22 +860,22 @@
+ view_results_render_json=Render JSON
+ view_results_render_text=Show Text
+ view_results_render_xml=Render XML
++view_results_tab_assertion=Assertion result
+ view_results_tab_request=Request
+ view_results_tab_response=Response data
+ view_results_tab_sampler=Sampler result
+-view_results_tab_assertion=Assertion result
+ view_results_title=View Results
+ view_results_tree_title=View Results Tree
+-warning=Warning!
++warning=Warning\!
+ web_request=HTTP Request
+ web_server=Web Server
+-web_server_client=Client implementation:
++web_server_client=Client implementation\:
+ web_server_domain=Server Name or IP\:
+ web_server_port=Port Number\:
++web_testing2_title=HTTP Request HTTPClient
+ web_testing_embedded_url_pattern=Embedded URLs must match\:
+ web_testing_retrieve_images=Retrieve All Embedded Resources from HTML Files
+ web_testing_title=HTTP Request
+-web_testing2_title=HTTP Request HTTPClient
+ webservice_proxy_host=Proxy Host
+ webservice_proxy_note=If Use HTTP Proxy is checked, but no host or port are provided, the sampler
+ webservice_proxy_note2=will look at command line options. If no proxy host or port are provided by
+@@ -882,7 +883,7 @@
+ webservice_proxy_port=Proxy Port
+ webservice_sampler_title=WebService(SOAP) Request
+ webservice_soap_action=SOAPAction
+-webservice_timeout=Timeout:
++webservice_timeout=Timeout\:
+ webservice_use_proxy=Use HTTP Proxy
+ while_controller_label=Condition (function or variable)
+ while_controller_title=While Controller
+@@ -895,7 +896,7 @@
+ xml_tolerant_button=Tolerant XML/HTML Parser
+ xml_validate_button=Validate XML
+ xml_whitespace_button=Ignore Whitespace
+-xmlschema_assertion_label=File Name:
++xmlschema_assertion_label=File Name\:
+ xmlschema_assertion_title=XML Schema Assertion
+ xpath_assertion_button=Validate
+ xpath_assertion_check=Check XPath Expression
+@@ -912,7 +913,7 @@
+ xpath_assertion_whitespace=Ignore whitespace
+ xpath_expression=XPath expression to match against
+ xpath_extractor_namespace=Use Namespaces?
+-xpath_extractor_query=XPath query:
++xpath_extractor_query=XPath query\:
+ xpath_extractor_title=XPath Extractor
+ xpath_extractor_tolerant=Use Tidy ?
+ xpath_file_file_name=XML file to get values from 
+

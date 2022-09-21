@@ -1,0 +1,93 @@
+From 92ef52ca2031a33498b424fb204e27dfc78999d3 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Fri, 16 Jan 2015 22:15:40 +0100
+Subject: [PATCH] Use only configured DNS Servers
+
+---
+ .../protocol/http/control/DNSCacheManager.java     | 16 +++++++++------
+ .../protocol/http/control/TestDNSCacheManager.java | 24 ++++++++++++++++++++++
+ 2 files changed, 34 insertions(+), 6 deletions(-)
+ create mode 100644 test/src/org/apache/jmeter/protocol/http/control/TestDNSCacheManager.java
+
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java
+index c3862b2..3cd31e9 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java
+@@ -42,7 +42,6 @@ import org.xbill.DNS.ExtendedResolver;
+ import org.xbill.DNS.Lookup;
+ import org.xbill.DNS.Record;
+ import org.xbill.DNS.Resolver;
+-import org.xbill.DNS.SimpleResolver;
+ import org.xbill.DNS.TextParseException;
+ import org.xbill.DNS.Type;
+ 
+@@ -104,12 +103,17 @@ public class DNSCacheManager extends ConfigTestElement implements TestIterationL
+         clone.cache = new LinkedHashMap<String, InetAddress[]>();
+         CollectionProperty dnsServers = getServers();
+         try {
+-            clone.resolver = new ExtendedResolver();
++            String[] serverNames = new String[dnsServers.size()];
+             PropertyIterator dnsServIt = dnsServers.iterator();
++            int index=0;
+             while (dnsServIt.hasNext()) {
+-                String dnsServer = dnsServIt.next().getStringValue();
+-                ((ExtendedResolver) clone.resolver).addResolver(new SimpleResolver(dnsServer));
++                serverNames[index] = dnsServIt.next().getStringValue();
++                index++;
+             }
++            clone.resolver = new ExtendedResolver(serverNames);
++            log.debug("Using DNS Resolvers: "
++                    + Arrays.asList(((ExtendedResolver) clone.resolver)
++                            .getResolvers()));
+             // resolvers will be chosen via round-robin
+             ((ExtendedResolver) clone.resolver).setLoadBalance(true);
+         } catch (UnknownHostException uhe) {
+@@ -146,13 +150,13 @@ public class DNSCacheManager extends ConfigTestElement implements TestIterationL
+      */
+     private InetAddress[] requestLookup(String host) throws UnknownHostException {
+         InetAddress[] addresses = null;
+-        if (isCustomResolver() && ((ExtendedResolver) resolver).getResolvers().length > 1) {
++        if (isCustomResolver() && ((ExtendedResolver) resolver).getResolvers().length > 0) {
+             try {
+                 Lookup lookup = new Lookup(host, Type.A);
+                 lookup.setCache(lookupCache);
+                 lookup.setResolver(resolver);
+                 Record[] records = lookup.run();
+-                if (records.length == 0) {
++                if (records == null || records.length == 0) {
+                     throw new UnknownHostException("Failed to resolve host name: " + host);
+                 }
+                 addresses = new InetAddress[records.length];
+diff --git a/test/src/org/apache/jmeter/protocol/http/control/TestDNSCacheManager.java b/test/src/org/apache/jmeter/protocol/http/control/TestDNSCacheManager.java
+new file mode 100644
+index 0000000..67a0c9f
+--- /dev/null
++++ b/test/src/org/apache/jmeter/protocol/http/control/TestDNSCacheManager.java
+@@ -0,0 +1,24 @@
++package org.apache.jmeter.protocol.http.control;
++
++import java.net.UnknownHostException;
++
++import org.apache.jmeter.junit.JMeterTestCase;
++import org.junit.Test;
++
++public class TestDNSCacheManager extends JMeterTestCase {
++
++    @Test
++    public void testCloneWithCustomResolverAndInvalidNameserver() throws UnknownHostException {
++        DNSCacheManager original = new DNSCacheManager();
++        original.setCustomResolver(true);
++        original.addServer("127.0.0.99");
++        DNSCacheManager clone = (DNSCacheManager) original.clone();
++        try {
++            clone.resolve("jmeter.apache.org");
++            fail();
++        } catch (UnknownHostException e) {
++            // OK
++        }
++    }
++
++}
+-- 
+1.9.1
+

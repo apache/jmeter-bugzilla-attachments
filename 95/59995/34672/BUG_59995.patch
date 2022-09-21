@@ -1,0 +1,263 @@
+Index: src/core/org/apache/jmeter/JMeter.java
+===================================================================
+--- src/core/org/apache/jmeter/JMeter.java	(revision 1779950)
++++ src/core/org/apache/jmeter/JMeter.java	(working copy)
+@@ -318,8 +318,7 @@
+     public JMeter() {
+         super();
+     }
+-
+-
++    
+     /**
+      * Starts up JMeter in GUI mode
+      */
+@@ -339,6 +338,7 @@
+             log.warn("Could not set LAF to:"+jMeterLaf, ex);
+         }
+         splash.setProgress(10);
++        JMeterUtils.applyHiDPIOnFonts();
+         PluginManager.install(this, true);
+ 
+         JMeterTreeModel treeModel = new JMeterTreeModel();
+Index: src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1779701)
++++ src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -104,6 +104,8 @@
+     public static final String RUN_TG           = "run_tg"; // $NON-NLS-1$
+     public static final String RUN_TG_NO_TIMERS = "run_tg_no_timers"; // $NON-NLS-1$
+     public static final String VALIDATE_TG      = "validate_tg"; //$NON-NLS-1$
++    public static final String ZOOM_IN          = "zoom_in"; //$NON-NLS-1$
++    public static final String ZOOM_OUT         = "zoom_out"; //$NON-NLS-1$
+ 
+     // Prevent instantiation
+     private ActionNames() {}
+Index: src/core/org/apache/jmeter/gui/action/LookAndFeelCommand.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/LookAndFeelCommand.java	(revision 1779701)
++++ src/core/org/apache/jmeter/gui/action/LookAndFeelCommand.java	(working copy)
+@@ -18,9 +18,6 @@
+ 
+ package org.apache.jmeter.gui.action;
+ 
+-import java.awt.Dialog;
+-import java.awt.Frame;
+-import java.awt.Window;
+ import java.awt.event.ActionEvent;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+@@ -29,7 +26,6 @@
+ import java.util.Set;
+ import java.util.prefs.Preferences;
+ 
+-import javax.swing.SwingUtilities;
+ import javax.swing.UIManager;
+ 
+ import org.apache.jmeter.gui.util.JMeterMenuBar;
+@@ -130,15 +126,7 @@
+         try {
+             String className = ev.getActionCommand().substring(ActionNames.LAF_PREFIX.length()).replace('/', '.');
+             UIManager.setLookAndFeel(className);
+-            for (Window w : Window.getWindows()) {
+-                SwingUtilities.updateComponentTreeUI(w);
+-                if (w.isDisplayable() &&
+-                    (w instanceof Frame ? !((Frame)w).isResizable() :
+-                    w instanceof Dialog ? !((Dialog)w).isResizable() :
+-                    true)) {
+-                    w.pack();
+-                }
+-            }
++            JMeterUtils.refreshUI();
+             PREFS.put(USER_PREFS_KEY, className);
+         } catch (javax.swing.UnsupportedLookAndFeelException | InstantiationException | ClassNotFoundException | IllegalAccessException e) {
+             JMeterUtils.reportErrorToUser("Look and Feel unavailable:" + e.toString());
+Index: src/core/org/apache/jmeter/gui/action/ZoomInOut.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/action/ZoomInOut.java	(revision 0)
++++ src/core/org/apache/jmeter/gui/action/ZoomInOut.java	(revision 0)
+@@ -0,0 +1,60 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * Zoom IN/OUT
++ */
++public class ZoomInOut extends AbstractAction {
++    private static final Set<String> commands = new HashSet<>();
++
++    private static final float ZOOM_SCALE = JMeterUtils.getPropDefault("zoom_scale", 1.1f);
++
++    static {
++        commands.add(ActionNames.ZOOM_IN);
++        commands.add(ActionNames.ZOOM_OUT);
++    }
++
++    /**
++     * @see org.apache.jmeter.gui.action.AbstractActionWithNoRunningTest#doActionAfterCheck(ActionEvent)
++     */
++    @Override
++    public void doAction(ActionEvent e) {
++        final String actionCommand = e.getActionCommand();
++        if (actionCommand.equals(ActionNames.ZOOM_IN)) {
++            JMeterUtils.applyScaleOnFonts(ZOOM_SCALE);
++        } else if (actionCommand.equals(ActionNames.ZOOM_OUT)) {
++            JMeterUtils.applyScaleOnFonts(1/ZOOM_SCALE);
++        }
++    }
++
++    /**
++     * @see org.apache.jmeter.gui.action.Command#getActionNames()
++     */
++    @Override
++    public Set<String> getActionNames() {
++        return commands;
++    }
++}
+Index: src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java
+===================================================================
+--- src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(revision 1779819)
++++ src/core/org/apache/jmeter/gui/util/JMeterMenuBar.java	(working copy)
+@@ -346,6 +346,11 @@
+         JMenuItem expand = makeMenuItemRes("menu_expand_all", ActionNames.EXPAND_ALL, KeyStrokes.EXPAND_ALL); //$NON-NLS-1$
+         optionsMenu.add(expand);
+ 
++        JMenuItem zoomIn = makeMenuItemRes("menu_zoom_in", ActionNames.ZOOM_IN); //$NON-NLS-1$
++        optionsMenu.add(zoomIn);
++        JMenuItem zoomOut = makeMenuItemRes("menu_zoom_out", ActionNames.ZOOM_OUT); //$NON-NLS-1$
++        optionsMenu.add(zoomOut);
++
+         addPluginsMenuItems(optionsMenu, menuCreators, MENU_LOCATION.OPTIONS);
+     }
+ 
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1780121)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -668,6 +668,8 @@
+ menu_threads=Threads (Users)
+ menu_timer=Timer
+ menu_toolbar=Toolbar
++menu_zoom_in=Zoom In
++menu_zoom_out=Zoom Out
+ metadata=MetaData
+ method=Method\:
+ mimetype=Mimetype
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1780121)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -658,6 +658,8 @@
+ menu_threads=Moteurs d'utilisateurs
+ menu_timer=Compteurs de temps
+ menu_toolbar=Barre d'outils
++menu_zoom_in=Agrandir
++menu_zoom_out=R\u00E9duire
+ metadata=M\u00E9ta-donn\u00E9es
+ method=M\u00E9thode \:
+ mimetype=Type MIME
+Index: src/core/org/apache/jmeter/util/JMeterUtils.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterUtils.java	(revision 1779701)
++++ src/core/org/apache/jmeter/util/JMeterUtils.java	(working copy)
+@@ -18,7 +18,11 @@
+ 
+ package org.apache.jmeter.util;
+ 
++import java.awt.Dialog;
++import java.awt.Font;
++import java.awt.Frame;
+ import java.awt.HeadlessException;
++import java.awt.Window;
+ import java.io.BufferedReader;
+ import java.io.File;
+ import java.io.FileInputStream;
+@@ -35,6 +39,7 @@
+ import java.util.MissingResourceException;
+ import java.util.Properties;
+ import java.util.ResourceBundle;
++import java.util.Set;
+ import java.util.Vector;
+ import java.util.concurrent.ThreadLocalRandom;
+ 
+@@ -42,6 +47,7 @@
+ import javax.swing.JOptionPane;
+ import javax.swing.JTable;
+ import javax.swing.SwingUtilities;
++import javax.swing.UIManager;
+ 
+ import org.apache.commons.io.IOUtils;
+ import org.apache.jmeter.gui.GuiPackage;
+@@ -1144,4 +1150,49 @@
+         return delimiterValue;
+     }
+ 
++    /**
++     * Apply HiDPI scale factor on font if HiDPI mode is enabled
++     */
++    public static void applyHiDPIOnFonts() {
++        if (!getHiDPIMode()) {
++            return;
++        }
++        applyScaleOnFonts((float) getHiDPIScaleFactor());
++    }
++    
++    /**
++     * Apply HiDPI scale factor on fonts
++     * @param scale flot scale to apply
++     */
++    public static void applyScaleOnFonts(final float scale) {
++        SwingUtilities.invokeLater(() -> {
++            Set<Object> keySet = UIManager.getLookAndFeelDefaults().keySet();
++            Object[] keys = keySet.toArray(new Object[keySet.size()]);
++            for (Object key : keys) {
++                if (key != null && key.toString().toLowerCase().contains("font")) {
++                    Font font = UIManager.getDefaults().getFont(key);
++                    if (font != null) {
++                        font = font.deriveFont(font.getSize() * scale);
++                        UIManager.put(key, font);
++                    }
++                }
++            } 
++            JMeterUtils.refreshUI();
++        });
++    }
++    
++    /**
++     * Refresh UI after LAF change or resizing
++     */
++    public static final void refreshUI() {
++        for (Window w : Window.getWindows()) {
++            SwingUtilities.updateComponentTreeUI(w);
++            if (w.isDisplayable() &&
++                (w instanceof Frame ? !((Frame)w).isResizable() :
++                w instanceof Dialog ? !((Dialog)w).isResizable() :
++                true)) {
++                w.pack();
++            }
++        }
++    }
+ }

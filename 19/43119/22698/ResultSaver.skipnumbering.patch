@@ -1,0 +1,114 @@
+Index: src/core/org/apache/jmeter/reporters/ResultSaver.java
+===================================================================
+--- src/core/org/apache/jmeter/reporters/ResultSaver.java	(revision 703027)
++++ src/core/org/apache/jmeter/reporters/ResultSaver.java	(working copy)
+@@ -58,6 +58,8 @@
+ 
+     public static final String SUCCESS_ONLY = "FileSaver.successonly"; // $NON-NLS-1$
+ 
++    public static final String SKIP_AUTO_NUMBER = "FileSaver.skipautonumber"; // $NON-NLS-1$
++
+     private synchronized long nextNumber() {
+         return ++sequenceNumber;
+     }
+@@ -142,7 +144,7 @@
+             }
+         }
+ 
+-        String fileName = makeFileName(s.getContentType());
++        String fileName = makeFileName(s.getContentType(), getSkipAutoNumber());
+         log.debug("Saving " + s.getSampleLabel() + " in " + fileName);
+         s.setResultFileName(fileName);// Associate sample with file name
+         String variable = getVariableName();
+@@ -173,7 +175,7 @@
+      *         from the contentType e.g. Content-Type:
+      *         text/html;charset=ISO-8859-1
+      */
+-    private String makeFileName(String contentType) {
++    private String makeFileName(String contentType, boolean skipAutoNumber) {
+         String suffix = "unknown";
+         if (contentType != null) {
+             int i = contentType.indexOf("/");
+@@ -186,7 +188,12 @@
+                 }
+             }
+         }
+-        return getFilename() + nextNumber() + "." + suffix;
++        if (skipAutoNumber) {
++            return getFilename() + "." + suffix;
++        }
++        else {
++            return getFilename() + nextNumber() + "." + suffix;
++        }
+     }
+ 
+     /*
+@@ -219,6 +226,10 @@
+         return getPropertyAsBoolean(ERRORS_ONLY);
+     }
+ 
++    private boolean getSkipAutoNumber() {
++        return getPropertyAsBoolean(SKIP_AUTO_NUMBER);
++    }
++
+     private boolean getSuccessOnly() {
+         return getPropertyAsBoolean(SUCCESS_ONLY);
+     }
+Index: src/core/org/apache/jmeter/reporters/gui/ResultSaverGui.java
+===================================================================
+--- src/core/org/apache/jmeter/reporters/gui/ResultSaverGui.java	(revision 703027)
++++ src/core/org/apache/jmeter/reporters/gui/ResultSaverGui.java	(working copy)
+@@ -48,6 +48,8 @@
+ 
+     private JCheckBox successOnly;
+ 
++    private JCheckBox skipAutoNumber;
++
+     public ResultSaverGui() {
+         super();
+         init();
+@@ -68,6 +70,7 @@
+         filename.setText(el.getPropertyAsString(ResultSaver.FILENAME));
+         errorsOnly.setSelected(el.getPropertyAsBoolean(ResultSaver.ERRORS_ONLY));
+         successOnly.setSelected(el.getPropertyAsBoolean(ResultSaver.SUCCESS_ONLY));
++        skipAutoNumber.setSelected(el.getPropertyAsBoolean(ResultSaver.SKIP_AUTO_NUMBER));
+         variableName.setText(el.getPropertyAsString(ResultSaver.VARIABLE_NAME,""));
+     }
+ 
+@@ -89,6 +92,7 @@
+         super.configureTestElement(te);
+         te.setProperty(ResultSaver.FILENAME, filename.getText());
+         te.setProperty(ResultSaver.ERRORS_ONLY, errorsOnly.isSelected());
++        te.setProperty(ResultSaver.SKIP_AUTO_NUMBER, skipAutoNumber.isSelected());
+         te.setProperty(ResultSaver.SUCCESS_ONLY, successOnly.isSelected());
+         AbstractTestElement at = (AbstractTestElement) te;
+         at.setProperty(ResultSaver.VARIABLE_NAME, variableName.getText(),""); //$NON-NLS-1$
+@@ -100,6 +104,7 @@
+     public void clearGui() {
+         super.clearGui();
+ 
++        skipAutoNumber.setSelected(false);
+         filename.setText(""); //$NON-NLS-1$
+         errorsOnly.setSelected(false);
+         successOnly.setSelected(false);
+@@ -117,6 +122,8 @@
+         box.add(errorsOnly);
+         successOnly = new JCheckBox(JMeterUtils.getResString("resultsaver_success")); // $NON-NLS-1$
+         box.add(successOnly);
++        skipAutoNumber = new JCheckBox(JMeterUtils.getResString("resultsaver_skipautonumber")); // $NON-NLS-1$
++        box.add(skipAutoNumber);
+         add(box, BorderLayout.NORTH);
+     }
+ 
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 703027)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -644,6 +644,7 @@
+ resultsaver_errors=Save Failed Responses only
+ resultsaver_prefix=Filename prefix\:
+ resultsaver_success=Save Successful Responses only
++resultsaver_skipautonumber=Don\'t Auto Number
+ resultsaver_title=Save Responses to a file
+ resultsaver_variable=Variable Name:
+ retobj=Return object

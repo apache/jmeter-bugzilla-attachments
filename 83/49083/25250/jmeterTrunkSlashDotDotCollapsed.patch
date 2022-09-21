@@ -1,0 +1,189 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 931413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -1223,7 +1223,8 @@
+             // Browsers seem to tolerate Location headers with spaces,
+             // replacing them automatically with %20. We want to emulate
+             // this behaviour.
+-            String location = encodeSpaces(lastRes.getRedirectLocation());
++            String location = ConversionUtils.removeSlashDotDot(lastRes.getRedirectLocation());
++            location = encodeSpaces(location);
+             try {
+                 lastRes = sample(ConversionUtils.makeRelativeURL(lastRes.getURL(), location), GET, true, frameDepth);
+             } catch (MalformedURLException e) {
+Index: src/protocol/http/org/apache/jmeter/protocol/http/util/ConversionUtils.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/util/ConversionUtils.java	(revision 931413)
++++ src/protocol/http/org/apache/jmeter/protocol/http/util/ConversionUtils.java	(working copy)
+@@ -21,6 +21,9 @@
+ import java.net.MalformedURLException;
+ import java.net.URL;
+ import java.nio.charset.Charset;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.StringTokenizer;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ 
+@@ -35,6 +38,11 @@
+ 
+     private static final String CHARSET_EQ = "charset="; // $NON-NLS-1$
+     private static final int CHARSET_EQ_LEN = CHARSET_EQ.length();
++    
++	private static final String SLASHDOTDOT = "/..";
++	private static final String DOTDOT = "..";
++	private static final String SLASH = "/";
++	private static final String DOTSLASHSLASH = "://";
+ 
+     /**
+      * Extract the encoding (charset) from the Content-Type,
+@@ -85,6 +93,7 @@
+      */
+     public static URL makeRelativeURL(URL baseURL, String location) throws MalformedURLException{
+         URL initial = new URL(baseURL,location);
++        
+         // skip expensive processing if it cannot apply
+         if (!location.startsWith("../")){// $NON-NLS-1$
+             return initial;
+@@ -101,4 +110,113 @@
+         }
+         return initial;
+     }
++
++	/**
++	 * collapses absolute or relative URLs containing '/..' converting
++	 * http://host/path1/../path2 to http://host/path2 or /one/two/../three to
++	 * /one/three
++	 * 
++	 * @param url
++	 * @return collapsed URL
++	 */
++    public static String removeSlashDotDot(String url)
++    {
++        if (url == null || (url = url.trim()).length() == 0 || !url.contains(SLASHDOTDOT))
++        {
++            return url;
++        }
++
++        /**
++         * http://auth@host:port/path1/path2/path3/?query#anchor
++         */
++
++        // get to 'path' part of the URL, preserving schema, auth, host if
++        // present
++        StringBuilder s = new StringBuilder(url);
++
++        // find index of path start
++
++        int dotSlashSlashIndex = url.indexOf(DOTSLASHSLASH);
++        final int pathStartIndex;
++        if (dotSlashSlashIndex >= 0)
++        {
++            // absolute URL
++            pathStartIndex = s.indexOf(SLASH, dotSlashSlashIndex + DOTSLASHSLASH.length());
++        } else
++        {
++            // document or context-relative URL like:
++            // '/path/to'
++            // OR '../path/to'
++            // OR '/path/to/../path/'
++            pathStartIndex = 0;
++        }
++
++        // find path endIndex
++        int pathEndIndex = url.length();
++
++        int questionMarkIdx = url.indexOf('?');
++        if (questionMarkIdx > 0)
++        {
++            pathEndIndex = questionMarkIdx;
++        } else
++        {
++            int anchorIdx = url.indexOf('#');
++            if (anchorIdx > 0)
++            {
++                pathEndIndex = anchorIdx;
++            }
++        }
++
++        // path is between idx='pathStartIndex' (inclusive) and
++        // idx='pathEndIndex' (exclusive)
++        String currentPath = s.substring(pathStartIndex, pathEndIndex);
++        final boolean startsWithSlash = currentPath.startsWith(SLASH);
++        final boolean endsWithSlash = currentPath.endsWith(SLASH);
++
++        StringTokenizer st = new StringTokenizer(currentPath, SLASH);
++        List<String> tokens = new ArrayList<String>();
++        while (st.hasMoreTokens())
++        {
++            tokens.add(st.nextToken());
++        }
++
++        for (int i = 0; i < tokens.size(); i++)
++        {
++            if (i < tokens.size() - 1)
++            {
++                final String thisToken = tokens.get(i);
++
++                // Verify for a ".." component at next iteration
++                if (thisToken.length() > 0 && !thisToken.equals(DOTDOT) && tokens.get(i + 1).equals(DOTDOT))
++                {
++                    tokens.remove(i);
++                    tokens.remove(i);
++                    i = i - 2;
++                    if (i < -1)
++                    {
++                        i = -1;
++                    }
++                }
++            }
++
++        }
++
++        String newPath = startsWithSlash ? SLASH : "";
++        for (int i = 0; i < tokens.size(); i++)
++        {
++            newPath += tokens.get(i);
++
++            // append '/' if this isn't the last token or it is but the original
++            // path terminated w/ a '/'
++            boolean appendSlash = i < (tokens.size() - 1) ? true : endsWithSlash;
++            if (appendSlash)
++            {
++                newPath += SLASH;
++            }
++        }
++
++        // install new path
++        s.replace(pathStartIndex, pathEndIndex, newPath);
++        return s.toString();
++    }
+ }
+Index: test/src/org/apache/jmeter/protocol/http/util/TestHTTPUtils.java
+===================================================================
+--- test/src/org/apache/jmeter/protocol/http/util/TestHTTPUtils.java	(revision 931413)
++++ test/src/org/apache/jmeter/protocol/http/util/TestHTTPUtils.java	(working copy)
+@@ -59,4 +59,22 @@
+             assertEquals(new URL("http://192.168.0.1/../d"),ConversionUtils.makeRelativeURL(base,"/../d"));
+             assertEquals(new URL("http://192.168.0.1/a/b/c/d"),ConversionUtils.makeRelativeURL(base,"./d"));
+         }
++		
++		public void testRemoveSlashDotDot()
++		{
++			assertEquals("/path/", ConversionUtils.removeSlashDotDot("/path/"));
++			assertEquals("http://host/", ConversionUtils.removeSlashDotDot("http://host/"));
++			assertEquals("/two", ConversionUtils.removeSlashDotDot("/one/../two"));
++			assertEquals("http://host:8080/two", ConversionUtils.removeSlashDotDot("http://host:8080/one/../two"));
++			assertEquals("http://host:8080/two/", ConversionUtils.removeSlashDotDot("http://host:8080/one/../two/"));
++			assertEquals("http://usr@host:8080/two/", ConversionUtils.removeSlashDotDot("http://usr@host:8080/one/../two/"));
++			assertEquals("http://host:8080/two/?query#anchor", ConversionUtils.removeSlashDotDot("http://host:8080/one/../two/?query#anchor"));
++			assertEquals("one", ConversionUtils.removeSlashDotDot("one/two/.."));
++			assertEquals("../../path", ConversionUtils.removeSlashDotDot("../../path"));
++			assertEquals("/", ConversionUtils.removeSlashDotDot("/one/.."));
++			assertEquals("/", ConversionUtils.removeSlashDotDot("/one/../"));
++			assertEquals("/?a", ConversionUtils.removeSlashDotDot("/one/..?a"));
++			assertEquals("http://host/one", ConversionUtils.removeSlashDotDot("http://host/one/../one"));
++			assertEquals("http://host/one/two", ConversionUtils.removeSlashDotDot("http://host/one/two/../../one/two"));
++		}
+ }

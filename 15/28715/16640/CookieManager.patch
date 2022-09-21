@@ -1,0 +1,54 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/CookieManager.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/protocol/http/org/apache/jmeter/protocol/http/control/CookieManager.java,v
+retrieving revision 1.40
+diff -r1.40 CookieManager.java
+33a34,35
+> import java.util.HashSet;
+> import java.util.Iterator;
+34a37
+> import java.util.Set;
+67a71,72
+> 	
+> 	private Set temporaryCookies = new HashSet();
+177,184d181
+< 	public void recoverRunningVersion() {
+< 		// do nothing, the cookie manager has to accept changes.
+< 	}
+< 
+< 	public void setRunningVersion(boolean running) {
+< 		// do nothing, the cookie manager has to accept changes.
+< 	}
+< 
+196a194,196
+> 			if (isRunningVersion() && getClearEachIteration()) {
+> 				addTemporaryCookie(c.getName());
+> 			}
+202a203,219
+> 	public void recoverRunningVersion() {
+> 		if (log.isDebugEnabled()) {
+> 			log.debug("start recoverRunningVersion, now we have " + getCookieCount() + " cookies.");
+> 		}
+> 		if (temporaryCookies.size()>0) {
+> 			Iterator itr = temporaryCookies.iterator();
+> 			while (itr.hasNext()) {
+> 				removeCookieNamed((String)itr.next());
+> 			}
+> 		}
+> 		temporaryCookies.clear();
+> 		super.recoverRunningVersion();
+> 		if (log.isDebugEnabled()) {
+> 			log.debug("end recoverRunningVersion, now we have " + getCookieCount() + " cookies.");
+> 		}
+> 	}
+> 
+220c237
+< 		log.debug("Clear all cookies");
+---
+> 		log.debug("Clearing " + getCookieCount() + " cookies");
+428c445,447
+< 
+---
+> 	private void addTemporaryCookie(String cookieName) {
+> 		temporaryCookies.add(cookieName);
+> 	}

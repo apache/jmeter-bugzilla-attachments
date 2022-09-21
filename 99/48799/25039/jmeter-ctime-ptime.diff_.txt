@@ -1,0 +1,380 @@
+Index: bin/jmeter.properties
+===================================================================
+--- bin/jmeter.properties	(revision 910946)
++++ bin/jmeter.properties	(working copy)
+@@ -326,6 +326,8 @@
+ #jmeter.save.saveservice.subresults=true
+ #jmeter.save.saveservice.assertions=true
+ #jmeter.save.saveservice.latency=true
++#jmeter.save.saveservice.connectTime=true
++#jmeter.save.saveservice.processingTime=false
+ #jmeter.save.saveservice.samplerData=false
+ #jmeter.save.saveservice.responseHeaders=false
+ #jmeter.save.saveservice.requestHeaders=false
+@@ -738,4 +740,4 @@
+ 
+ # Should JMeter automatically load additional system properties?
+ # File name to look for (comment to disable)
+-system.properties=system.properties
+\ No newline at end of file
++system.properties=system.properties
+Index: src/components/org/apache/jmeter/visualizers/SamplerResultTab.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/SamplerResultTab.java	(revision 911985)
++++ src/components/org/apache/jmeter/visualizers/SamplerResultTab.java	(working copy)
+@@ -142,6 +142,8 @@
+                 statsBuff.append(JMeterUtils.getResString("view_results_sample_start")).append(startTime).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_load_time")).append(sampleResult.getTime()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_latency")).append(sampleResult.getLatency()).append(NL); //$NON-NLS-1$
++                statsBuff.append(JMeterUtils.getResString("view_results_connect_time")).append(sampleResult.getConnectTime()).append(NL); //$NON-NLS-1$
++                statsBuff.append(JMeterUtils.getResString("view_results_processing_time")).append(sampleResult.getProcessingTime()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_size_in_bytes")).append(sampleResult.getBytes()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_sample_count")).append(sampleResult.getSampleCount()).append(NL); //$NON-NLS-1$
+                 statsBuff.append(JMeterUtils.getResString("view_results_error_count")).append(sampleResult.getErrorCount()).append(NL); //$NON-NLS-1$
+Index: src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- src/core/org/apache/jmeter/control/TransactionController.java	(revision 911985)
++++ src/core/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -221,6 +221,8 @@
+                 }
+                 res.setAllThreads(sampleResult.getAllThreads());
+                 res.setGroupThreads(sampleResult.getGroupThreads());
++                res.setConnectTime(res.getConnectTime() + sampleResult.getConnectTime());
++                res.setProcessingTime(res.getProcessingTime() + sampleResult.getProcessingTime());
+                 res.setLatency(res.getLatency() + sampleResult.getLatency());
+             }
+         }
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 911985)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -712,6 +712,8 @@
+ save_idletime=Save Idle Time
+ save_label=Save Label
+ save_latency=Save Latency
++save_connecttime=Save Connect Time
++save_processingtime=Save Processing Time
+ save_message=Save Response Message
+ save_overwrite_existing_file=The selected file already exists, do you want to overwrite it?
+ save_requestheaders=Save Request Headers (XML)
+@@ -896,6 +898,8 @@
+ view_results_fields=fields:
+ view_results_in_table=View Results in Table
+ view_results_latency=Latency: 
++view_results_connect_time=Connect time: 
++view_results_processing_time=Processing time: 
+ view_results_load_time=Load time: 
+ view_results_render=Render: 
+ view_results_render_html=HTML
+Index: src/core/org/apache/jmeter/samplers/SampleResult.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleResult.java	(revision 911985)
++++ src/core/org/apache/jmeter/samplers/SampleResult.java	(working copy)
+@@ -164,6 +164,8 @@
+     private long time = 0; // elapsed time
+ 
+     private long latency = 0; // time to first response
++    private long connectTime = 0; // time to connect
++    private long processingTime = 0; // total time to first responses
+ 
+     private boolean stopThread = false; // Should thread terminate?
+ 
+@@ -475,6 +477,9 @@
+         setEndTime(Math.max(getEndTime(), subResult.getEndTime()));
+         // Include the byte count for the added sample
+         setBytes(getBytes() + subResult.getBytes());
++        // Sum connect and processing times, contrary to latency
++        setConnectTime(getConnectTime() + subResult.getConnectTime());
++        setProcessingTime(getProcessingTime() + subResult.getProcessingTime());
+         subResult.setParent(this);
+     }
+ 
+@@ -1014,7 +1019,7 @@
+      *
+      */
+     public void latencyEnd() {
+-        latency = currentTimeInMs() - startTime - idleTime;
++        latency = processingTime = currentTimeInMs() - startTime - idleTime;
+     }
+ 
+     /**
+@@ -1028,8 +1033,49 @@
+     }
+ 
+     /**
++     * @return Returns the connect time.
++     */
++    public long getConnectTime() {
++    	return connectTime;
++    }
++    
++    /**
++     * Set the time to setup the TCP connection
++     */
++    public void connectTimeEnd() {
++    	connectTime = currentTimeInMs() - startTime - idleTime;
++    }
++    
++    /**
+      * This is only intended for use by SampleResultConverter!
+      *
++     * @param connectionTime
++     *            The connection time to set.
++     */
++    public void setConnectTime(long time) {
++    	connectTime= time;
++    }
++    
++    /**
++     * @return Returns the connect time.
++     */
++    public long getProcessingTime() {
++        return processingTime;
++    }
++    
++    /**
++     * This is only intended for use by SampleResultConverter!
++     *
++     * @param connectionTime
++     *            The connection time to set.
++     */
++    public void setProcessingTime(long time) {
++        processingTime= time;
++    }
++    
++    /**
++     * This is only intended for use by SampleResultConverter!
++     *
+      * @param timeStamp
+      *            The timeStamp to set.
+      */
+Index: src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(revision 911985)
++++ src/core/org/apache/jmeter/samplers/SampleSaveConfiguration.java	(working copy)
+@@ -193,6 +193,8 @@
+     private static final String SUBRESULTS_PROP      = "jmeter.save.saveservice.subresults"; // $NON_NLS-1$
+     private static final String ASSERTIONS_PROP      = "jmeter.save.saveservice.assertions"; // $NON_NLS-1$
+     private static final String LATENCY_PROP         = "jmeter.save.saveservice.latency"; // $NON_NLS-1$
++    private static final String CONNECTTIME_PROP     = "jmeter.save.saveservice.connectTime"; // $NON_NLS-1$
++    private static final String PROCESSINGTIME_PROP  = "jmeter.save.saveservice.processingTime"; // $NON_NLS-1$
+     private static final String SAMPLERDATA_PROP     = "jmeter.save.saveservice.samplerData"; // $NON_NLS-1$
+     private static final String RESPONSEHEADERS_PROP = "jmeter.save.saveservice.responseHeaders"; // $NON_NLS-1$
+     private static final String REQUESTHEADERS_PROP  = "jmeter.save.saveservice.requestHeaders"; // $NON_NLS-1$
+@@ -211,7 +213,8 @@
+     // N.B. Remember to update the equals and hashCode methods when adding new variables.
+ 
+     // Initialise values from properties
+-    private boolean time = _time, latency = _latency, timestamp = _timestamp, success = _success, label = _label,
++    private boolean time = _time, latency = _latency, connectTime = _connectTime, processingTime = _processingTime, 
++            timestamp = _timestamp, success = _success, label = _label,
+             code = _code, message = _message, threadName = _threadName, dataType = _dataType, encoding = _encoding,
+             assertions = _assertions, subresults = _subresults, responseData = _responseData,
+             samplerData = _samplerData, xml = _xml, fieldNames = _fieldNames, responseHeaders = _responseHeaders,
+@@ -245,7 +248,7 @@
+ 
+     // Defaults from properties:
+     private static final boolean _time, _timestamp, _success, _label, _code, _message, _threadName, _xml,
+-            _responseData, _dataType, _encoding, _assertions, _latency, _subresults, _samplerData, _fieldNames,
++            _responseData, _dataType, _encoding, _assertions, _latency, _connectTime, _processingTime, _subresults, _samplerData, _fieldNames,
+             _responseHeaders, _requestHeaders;
+ 
+     private static final boolean _responseDataOnError;
+@@ -298,6 +301,8 @@
+         _subresults      = TRUE.equalsIgnoreCase(props.getProperty(SUBRESULTS_PROP, TRUE));
+         _assertions      = TRUE.equalsIgnoreCase(props.getProperty(ASSERTIONS_PROP, TRUE));
+         _latency         = TRUE.equalsIgnoreCase(props.getProperty(LATENCY_PROP, TRUE));
++        _connectTime     = TRUE.equalsIgnoreCase(props.getProperty(CONNECTTIME_PROP, TRUE));
++        _processingTime  = TRUE.equalsIgnoreCase(props.getProperty(PROCESSINGTIME_PROP, FALSE));
+         _samplerData     = TRUE.equalsIgnoreCase(props.getProperty(SAMPLERDATA_PROP, FALSE));
+         _responseHeaders = TRUE.equalsIgnoreCase(props.getProperty(RESPONSEHEADERS_PROP, FALSE));
+         _requestHeaders  = TRUE.equalsIgnoreCase(props.getProperty(REQUESTHEADERS_PROP, FALSE));
+@@ -483,6 +488,8 @@
+         SampleSaveConfiguration s = (SampleSaveConfiguration)obj;
+         boolean primitiveValues = s.time == time &&
+             s.latency == latency &&
++            s.connectTime == connectTime &&
++            s.processingTime == processingTime &&
+             s.timestamp == timestamp &&
+             s.success == success &&
+             s.label == label &&
+@@ -528,6 +535,8 @@
+         int hash = 7;
+         hash = 31 * hash + (time ? 1 : 0);
+         hash = 31 * hash + (latency ? 1 : 0);
++        hash = 31 * hash + (connectTime ? 1 : 0);
++        hash = 31 * hash + (processingTime ? 1 : 0);
+         hash = 31 * hash + (timestamp ? 1 : 0);
+         hash = 31 * hash + (success ? 1 : 0);
+         hash = 31 * hash + (label ? 1 : 0);
+@@ -626,6 +635,22 @@
+     public void setLatency(boolean latency) {
+         this.latency = latency;
+     }
++    
++    public boolean saveConnectTime() {
++        return connectTime;
++    }
++    
++    public void setConnectTime(boolean connectTime) {
++        this.connectTime = connectTime;
++    }
++    
++    public boolean saveProcessingTime() {
++        return processingTime;
++    }
++    
++    public void setProcessingTime(boolean processingTime) {
++        this.processingTime = processingTime;
++    }
+ 
+     public boolean saveMessage() {
+         return message;
+Index: src/core/org/apache/jmeter/samplers/StatisticalSampleResult.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/StatisticalSampleResult.java	(revision 911985)
++++ src/core/org/apache/jmeter/samplers/StatisticalSampleResult.java	(working copy)
+@@ -77,7 +77,9 @@
+         }
+         this.setEndTime(Math.max(getEndTime(), res.getEndTime()));
+ 
+-        setLatency(getLatency()+ res.getLatency());
++        setConnectTime(getConnectTime() + res.getConnectTime());
++        setProcessingTime(getProcessingTime() + res.getProcessingTime());
++        setLatency(getLatency() + res.getLatency());
+ 
+     }
+ 
+Index: src/core/org/apache/jmeter/save/CSVSaveService.java
+===================================================================
+--- src/core/org/apache/jmeter/save/CSVSaveService.java	(revision 911985)
++++ src/core/org/apache/jmeter/save/CSVSaveService.java	(working copy)
+@@ -88,6 +88,8 @@
+     private static final String CSV_URL = "URL"; // $NON-NLS-1$
+     private static final String CSV_FILENAME = "Filename"; // $NON-NLS-1$
+     private static final String CSV_LATENCY = "Latency"; // $NON-NLS-1$
++    private static final String CSV_CONNECTTIME = "ConnectTime"; // $NON-NLS-1$
++    private static final String CSV_PROCESSINGTIME = "ProcessingTime"; // $NON-NLS-1$
+     private static final String CSV_ENCODING = "Encoding"; // $NON-NLS-1$
+     private static final String CSV_HOSTNAME = "Hostname"; // $NON-NLS-1$
+     private static final String CSV_IDLETIME = "IdleTime"; // $NON-NLS-1$
+@@ -291,6 +293,16 @@
+                 text = parts[i++];
+                 result.setLatency(Long.parseLong(text));
+             }
++            if (saveConfig.saveConnectTime()) {
++                field = CSV_CONNECTTIME;
++                text = parts[i++];
++                result.setConnectTime(Long.parseLong(text));
++            }
++            if (saveConfig.saveProcessingTime()) {
++                field = CSV_PROCESSINGTIME;
++                text = parts[i++];
++                result.setProcessingTime(Long.parseLong(text));
++            }
+ 
+             if (saveConfig.saveEncoding()) {
+                 field = CSV_ENCODING;
+@@ -425,6 +437,16 @@
+             text.append(delim);
+         }
+ 
++        if (saveConfig.saveConnectTime()) {
++            text.append(CSV_CONNECTTIME);
++            text.append(delim);
++        }
++        
++        if (saveConfig.saveProcessingTime()) {
++            text.append(CSV_PROCESSINGTIME);
++            text.append(delim);
++        }
++        
+         if (saveConfig.saveEncoding()) {
+             text.append(CSV_ENCODING);
+             text.append(delim);
+@@ -489,6 +511,8 @@
+             headerLabelMethods.put(CSV_URL, new Functor("setUrl"));
+             headerLabelMethods.put(CSV_FILENAME, new Functor("setFileName"));
+             headerLabelMethods.put(CSV_LATENCY, new Functor("setLatency"));
++            headerLabelMethods.put(CSV_CONNECTTIME, new Functor("setConnectTime"));
++            headerLabelMethods.put(CSV_PROCESSINGTIME, new Functor("setProcessingTime"));
+             headerLabelMethods.put(CSV_ENCODING, new Functor("setEncoding"));
+             // Both these are needed in the list even though they set the same variable
+             headerLabelMethods.put(CSV_SAMPLE_COUNT, new Functor("setSampleCount"));
+@@ -844,6 +868,14 @@
+             text.append(sample.getLatency());
+         }
+ 
++        if (saveConfig.saveConnectTime()) {
++            text.append(sample.getConnectTime());
++        }
++        
++        if (saveConfig.saveProcessingTime()) {
++            text.append(sample.getProcessingTime());
++        }
++        
+         if (saveConfig.saveEncoding()) {
+             text.append(sample.getDataEncodingWithDefault());
+         }
+Index: src/core/org/apache/jmeter/save/converters/SampleResultConverter.java
+===================================================================
+--- src/core/org/apache/jmeter/save/converters/SampleResultConverter.java	(revision 911985)
++++ src/core/org/apache/jmeter/save/converters/SampleResultConverter.java	(working copy)
+@@ -75,6 +75,8 @@
+     private static final String ATT_HOSTNAME          = "hn"; //$NON-NLS-1$
+     private static final String ATT_LABEL             = "lb"; //$NON-NLS-1$
+     private static final String ATT_LATENCY           = "lt"; //$NON-NLS-1$
++    private static final String ATT_CONNECTTIME       = "ct"; //$NON-NLS-1$
++    private static final String ATT_PROCESSINGTIME    = "pt"; //$NON-NLS-1$
+ 
+     private static final String ATT_ALL_THRDS         = "na"; //$NON-NLS-1$
+     private static final String ATT_GRP_THRDS         = "ng"; //$NON-NLS-1$
+@@ -241,6 +243,12 @@
+         if (save.saveLatency()) {
+             writer.addAttribute(ATT_LATENCY, Long.toString(res.getLatency()));
+         }
++        if (save.saveConnectTime()) {
++            writer.addAttribute(ATT_CONNECTTIME, Long.toString(res.getConnectTime()));
++        }
++        if (save.saveProcessingTime()) {
++            writer.addAttribute(ATT_PROCESSINGTIME, Long.toString(res.getProcessingTime()));
++        }
+         if (save.saveTimestamp()) {
+             writer.addAttribute(ATT_TIME_STAMP, Long.toString(res.getTimeStamp()));
+         }
+@@ -383,6 +391,8 @@
+                 Converter.getLong(reader.getAttribute(ATT_TIME)));
+         res.setIdleTime(Converter.getLong(reader.getAttribute(ATT_IDLETIME)));
+         res.setLatency(Converter.getLong(reader.getAttribute(ATT_LATENCY)));
++        res.setConnectTime(Converter.getLong(reader.getAttribute(ATT_CONNECTTIME)));
++        res.setProcessingTime(Converter.getLong(reader.getAttribute(ATT_PROCESSINGTIME)));
+         res.setBytes(Converter.getInt(reader.getAttribute(ATT_BYTES)));
+         res.setSampleCount(Converter.getInt(reader.getAttribute(ATT_SAMPLE_COUNT),1)); // default is 1
+         res.setErrorCount(Converter.getInt(reader.getAttribute(ATT_ERROR_COUNT),0)); // default is 0
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(revision 911985)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSampler.java	(working copy)
+@@ -503,6 +503,10 @@
+                 // This should never happen, but...
+                 throw new BindException();
+             }
++
++            // Stop connection timer
++            res.connectTimeEnd();
++
+             // Nice, we've got a connection. Finish sending the request:
+             if (method.equals(POST)) {
+                 String postBody = sendPostData(conn);
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(revision 911985)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/SoapSampler.java	(working copy)
+@@ -277,6 +277,7 @@
+                 while ((len = instream.read(buffer)) > 0) {
+                     if (first) { // save the latency
+                         res.latencyEnd();
++                        res.processingTimeEnd();
+                         first = false;
+                     }
+                     outstream.write(buffer, 0, len);

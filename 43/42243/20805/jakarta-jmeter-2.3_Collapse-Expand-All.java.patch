@@ -1,0 +1,215 @@
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/resources/messages.properties	(revision 1)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -90,6 +90,7 @@
+ clear=Clear
+ clear_all=Clear All
+ clear_cookies_per_iter=Clear cookies each iteration?
++collapse_all=Collapse all nodes
+ column_delete_disallowed=Deleting this column is not permitted
+ column_number=Column number of CSV file | next | *alias
+ compare=Compare
+@@ -172,6 +173,7 @@
+ example_data=Sample Data
+ example_title=Example Sampler
+ exit=Exit
++expand_all=Expand all nodes
+ expiration=Expiration
+ field_name=Field name
+ file=File
+
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/ActionNames.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/ActionNames.java	(revision 1)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/ActionNames.java	(working copy)
+@@ -40,6 +40,7 @@
+     public final static String CLEAR            = "action.clear"; // $NON-NLS-1$
+     public final static String CLEAR_ALL        = "action.clear_all"; // $NON-NLS-1$
+     public static final String CLOSE            = "close"; // $NON-NLS-1$
++    public static final String COLLAPSE_ALL		= "collapse_all"; // $NON-NLS-1$
+     public static final String COPY             = "Copy"; // $NON-NLS-1$
+     public final static String CUT              = "Cut"; // $NON-NLS-1$
+     public static final String DEBUG_ON        = "debug_on"; // $NON-NLS-1$
+@@ -49,6 +50,7 @@
+     public static final String EDIT             = "edit"; // $NON-NLS-1$
+     public static final String ENABLE           = "enable"; // $NON-NLS-1$
+     public static final String EXIT             = "exit"; // $NON-NLS-1$
++    public static final String EXPAND_ALL		= "expand_all"; // $NON-NLS-1$
+     public static final String FUNCTIONS        = "functions"; // $NON-NLS-1$
+     public final static String HELP             = "help"; // $NON-NLS-1$
+     public final static String INSERT_AFTER     = "drag_n_drop.insert_after";//$NON-NLS-1$
+     
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/CollapseAllCommand.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/CollapseAllCommand.java	(revision 0)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/CollapseAllCommand.java	(revision 0)
+@@ -0,0 +1,73 @@
++/*
++ * Copyright 2006 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++import javax.swing.JTree;
++import javax.swing.tree.*;
++
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++import org.apache.jmeter.gui.tree.JMeterTreeListener;
++
++public class CollapseAllCommand implements Command {
++
++    private static Set commands = new HashSet();
++
++    static {
++        commands.add(ActionNames.COLLAPSE_ALL);
++    }
++
++
++    public void doAction(ActionEvent e) {
++			GuiPackage guiPack = GuiPackage.getInstance();
++			JTree tree = guiPack.getTreeListener().getJTree(); 
++			collapseAll(tree);	
++			guiPack.getMainFrame().repaint();
++    }
++
++    /**
++     * Provide the list of Action names that are available in this command.
++     */
++    public Set getActionNames() {
++        return commands;
++    }
++    
++    
++    public void collapseAll(JTree tree) {
++	    	TreePath [] paths;
++				paths = tree.getSelectionPaths();
++				for(int i = 0; i < paths.length; i++)
++					collapseAll(tree, paths[i]);
++		} 
++
++		public void collapseAll(JTree tree, TreePath path) {
++				Object node = path.getLastPathComponent();
++				TreeModel model = tree.getModel();
++				if (model.isLeaf(node)) {
++						return;
++				}
++				int num = model.getChildCount(node);
++				for (int i = 0; i < num; i++) {
++						collapseAll(tree, path.pathByAddingChild(model.getChild(node, i)));
++				}
++				tree.collapsePath(path);
++		} 
++}
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/ExpandAllCommand.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/ExpandAllCommand.java	(revision 0)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/action/ExpandAllCommand.java	(revision 0)
+@@ -0,0 +1,69 @@
++/*
++ * Copyright 2006 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.gui.action;
++
++import java.awt.event.ActionEvent;
++import java.util.HashSet;
++import java.util.Set;
++import javax.swing.JTree;
++import javax.swing.tree.*;
++
++import org.apache.jmeter.gui.GuiPackage;
++import org.apache.jmeter.gui.tree.JMeterTreeNode;
++
++public class ExpandAllCommand implements Command {
++
++    private static Set commands = new HashSet();
++
++    static {
++        commands.add(ActionNames.EXPAND_ALL);
++    }
++
++
++    public void doAction(ActionEvent e) {
++			GuiPackage guiPack = GuiPackage.getInstance();
++			JTree tree = guiPack.getTreeListener().getJTree();		
++			
++			TreePath [] paths;
++			paths = tree.getSelectionPaths();
++			for(int i = 0; i< paths.length; i++)
++					expandAll(tree, paths[i]);
++			
++			guiPack.getMainFrame().repaint();
++    }
++
++    /**
++     * Provide the list of Action names that are available in this command.
++     */
++    public Set getActionNames() {
++        return commands;
++    }
++    
++    
++		public void expandAll(JTree tree, TreePath path) {
++				Object node = path.getLastPathComponent();
++				TreeModel model = tree.getModel();
++				if (model.isLeaf(node))
++						return;
++				tree.expandPath(path);
++				int num = model.getChildCount(node);
++				for (int i = 0; i < num; i++)
++						expandAll(tree, path.pathByAddingChild(model.getChild(node, i)));
++			} 
++
++}
+
+Index: jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/util/MenuFactory.java
+===================================================================
+--- jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/util/MenuFactory.java	(revision 1)
++++ jakarta-jmeter-2.3/src/core/org/apache/jmeter/gui/util/MenuFactory.java	(working copy)
+@@ -199,6 +199,15 @@
+ 		addSeparator(menu);
+ 		menu.add(makeMenuItem(JMeterUtils.getResString("help"), // $NON-NLS-1$
+                 "Help", ActionNames.HELP));// $NON-NLS-1$
++                
++		addSeparator(menu);                
++		JMenuItem expand_all = makeMenuItem(JMeterUtils.getResString("expand_all"),
++                "Expand all", ActionNames.EXPAND_ALL); // $NON-NLS-1$
++		JMenuItem collapse_all = makeMenuItem(JMeterUtils.getResString("collapse_all"),
++                "Collapse all", ActionNames.COLLAPSE_ALL); // $NON-NLS-1$  
++                        
++	    menu.add(expand_all);
++	    menu.add(collapse_all);                 
+ 	}
+ 
+ 	public static JMenu makeMenus(String[] categories, String label, String actionCommand) {

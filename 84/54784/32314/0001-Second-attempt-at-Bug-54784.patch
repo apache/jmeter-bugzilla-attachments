@@ -1,0 +1,278 @@
+From a7c6ef0b69ccbca6fefdf528260bde6d50c9c57f Mon Sep 17 00:00:00 2001
+From: Graham <graham@ham1.co.uk>
+Date: Sun, 21 Dec 2014 02:31:35 +0000
+Subject: [PATCH] Second attempt at Bug 54784
+
+---
+ src/core/org/apache/jmeter/gui/GuiPackage.java     | 19 ++++++----
+ .../org/apache/jmeter/gui/action/KeyStrokes.java   |  4 ++
+ .../apache/jmeter/gui/tree/JMeterTreeListener.java | 27 ++++++++++++--
+ .../org/apache/jmeter/gui/util/MenuFactory.java    | 43 +++++++++++++++++++---
+ 4 files changed, 76 insertions(+), 17 deletions(-)
+
+diff --git a/src/core/org/apache/jmeter/gui/GuiPackage.java b/src/core/org/apache/jmeter/gui/GuiPackage.java
+index d794635..3edd245 100644
+--- a/src/core/org/apache/jmeter/gui/GuiPackage.java
++++ b/src/core/org/apache/jmeter/gui/GuiPackage.java
+@@ -19,6 +19,7 @@
+ package org.apache.jmeter.gui;
+ 
+ import java.awt.Component;
++import java.awt.Point;
+ import java.awt.event.MouseEvent;
+ import java.beans.Introspector;
+ import java.util.ArrayList;
+@@ -151,7 +152,7 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+     public static GuiPackage getInstance() {
+         return guiPack;
+     }
+-    
++
+     /**
+      * Register as listener of:
+      * - UndoHistory
+@@ -607,7 +608,9 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+      *            the popup menu to display
+      */
+     public void displayPopUp(MouseEvent e, JPopupMenu popup) {
+-        displayPopUp((Component) e.getSource(), e, popup);
++        final Point point = new Point(e.getX(), e.getY());
++        Component invoker = (Component) e.getSource();
++        displayPopUp(invoker, point, popup);
+     }
+ 
+     /**
+@@ -616,17 +619,17 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+      *
+      * @param invoker
+      *            the source component
+-     * @param e
+-     *            the mouse event causing this popup to be displayed
++     * @param p
++     *            the point at which to display the popup
+      * @param popup
+      *            the popup menu to display
+      */
+-    public void displayPopUp(Component invoker, MouseEvent e, JPopupMenu popup) {
++    public void displayPopUp(Component invoker, Point p, JPopupMenu popup) {
+         if (popup != null) {
+-            log.debug("Showing pop up for " + invoker + " at x,y = " + e.getX() + "," + e.getY());
++            log.debug("Showing pop up for " + invoker + " at x,y = " + p.x + "," + p.y);
+ 
+             popup.pack();
+-            popup.show(invoker, e.getX(), e.getY());
++            popup.show(invoker, p.x, p.y);
+             popup.setVisible(true);
+             popup.requestFocusInWindow();
+         }
+@@ -759,7 +762,7 @@ public final class GuiPackage implements LocaleChangeListener, HistoryListener {
+ 
+     /**
+      * Register process to stop on reload
+-     * 
++     *
+      * @param stoppable
+      *            The {@link Stoppable} to be registered
+      */
+diff --git a/src/core/org/apache/jmeter/gui/action/KeyStrokes.java b/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+index 5590c5c..bd74968 100644
+--- a/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
++++ b/src/core/org/apache/jmeter/gui/action/KeyStrokes.java
+@@ -57,6 +57,7 @@ public final class KeyStrokes {
+     public static final KeyStroke SAVE              = KeyStroke.getKeyStroke(KeyEvent.VK_S, CONTROL_MASK);
+     public static final KeyStroke SAVE_ALL_AS       = KeyStroke.getKeyStroke(KeyEvent.VK_S, CONTROL_MASK | InputEvent.SHIFT_DOWN_MASK);
+     public static final KeyStroke SEARCH_TREE       = KeyStroke.getKeyStroke(KeyEvent.VK_F, CONTROL_MASK);
++    public static final KeyStroke SPACE             = KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0);
+     public static final KeyStroke TOGGLE            = KeyStroke.getKeyStroke(KeyEvent.VK_T, CONTROL_MASK);
+     public static final KeyStroke PASTE             = KeyStroke.getKeyStroke(KeyEvent.VK_V, CONTROL_MASK);
+     public static final KeyStroke WHAT_CLASS        = KeyStroke.getKeyStroke(KeyEvent.VK_W, CONTROL_MASK);
+@@ -75,6 +76,9 @@ public final class KeyStrokes {
+     public static final KeyStroke ALT_LEFT_ARROW    = KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK);
+     public static final KeyStroke ALT_RIGHT_ARROW   = KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK);
+ 
++    public static final KeyStroke CONTEXT_MENU      = KeyStroke.getKeyStroke(KeyEvent.VK_CONTEXT_MENU, 0);
++    public static final KeyStroke SHIFT_F10_CONTEXT_MENU = KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK);
++
+     /**
+      * Check if an event matches the KeyStroke definition.
+      *
+diff --git a/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java b/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+index 43bc436..ad46c3e 100644
+--- a/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
++++ b/src/core/org/apache/jmeter/gui/tree/JMeterTreeListener.java
+@@ -18,7 +18,10 @@
+ 
+ package org.apache.jmeter.gui.tree;
+ 
++import java.awt.Component;
+ import java.awt.Container;
++import java.awt.Point;
++import java.awt.Rectangle;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
+ import java.awt.event.InputEvent;
+@@ -54,7 +57,7 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+ 
+     /**
+      * Constructor for the JMeterTreeListener object.
+-     * 
++     *
+      * @param model
+      *            The {@link JMeterTreeModel} for this listener
+      */
+@@ -219,8 +222,12 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+             actionName = ActionNames.MOVE_LEFT;
+         } else if (KeyStrokes.matches(e, KeyStrokes.ALT_RIGHT_ARROW)) {
+             actionName = ActionNames.MOVE_RIGHT;
+-        } 
+-        
++        } else if (KeyStrokes.matches(e, KeyStrokes.SHIFT_F10_CONTEXT_MENU)
++                || KeyStrokes.matches(e, KeyStrokes.CONTEXT_MENU)) {
++            // Bug 54784
++            displayPopupMenu(e);
++        }
++
+         if (actionName != null) {
+             final ActionRouter actionRouter = ActionRouter.getInstance();
+             actionRouter.doActionNow(new ActionEvent(e.getSource(), e.getID(), actionName));
+@@ -228,6 +235,16 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+         }
+     }
+ 
++    private void displayPopupMenu(KeyEvent e) {
++        Component invoker = e.getComponent();
++        TreePath path = new TreePath(getCurrentNode().getPath());
++        Rectangle r = getJTree().getPathBounds(path);
++        int padding = 5;
++        Point point = new Point(r.x + padding, r.y + padding);
++        JPopupMenu popup = getCurrentNode().createPopupMenu();
++        GuiPackage.getInstance().displayPopUp(invoker, point, popup);
++    }
++
+     @Override
+     public void keyReleased(KeyEvent e) {
+     }
+@@ -237,7 +254,9 @@ public class JMeterTreeListener implements TreeSelectionListener, MouseListener,
+     }
+ 
+     private boolean isRightClick(MouseEvent e) {
+-        return e.isPopupTrigger() || (InputEvent.BUTTON2_MASK & e.getModifiers()) > 0 || (InputEvent.BUTTON3_MASK == e.getModifiers());
++        return e.isPopupTrigger()
++                || (InputEvent.BUTTON2_MASK & e.getModifiers()) > 0
++                || (InputEvent.BUTTON3_MASK == e.getModifiers());
+     }
+ 
+     private void displayPopUp(MouseEvent e) {
+diff --git a/src/core/org/apache/jmeter/gui/util/MenuFactory.java b/src/core/org/apache/jmeter/gui/util/MenuFactory.java
+index feecbd0..053b7b2 100644
+--- a/src/core/org/apache/jmeter/gui/util/MenuFactory.java
++++ b/src/core/org/apache/jmeter/gui/util/MenuFactory.java
+@@ -20,6 +20,7 @@ package org.apache.jmeter.gui.util;
+ 
+ import java.awt.Component;
+ import java.awt.HeadlessException;
++import java.awt.event.ActionEvent;
+ import java.io.IOException;
+ import java.io.Serializable;
+ import java.util.Collection;
+@@ -39,6 +40,9 @@ import javax.swing.JMenuItem;
+ import javax.swing.JPopupMenu;
+ import javax.swing.KeyStroke;
+ import javax.swing.MenuElement;
++import javax.swing.event.MenuKeyEvent;
++import javax.swing.event.MenuKeyListener;
++
+ import org.apache.jmeter.control.Controller;
+ import org.apache.jmeter.gui.GuiPackage;
+ import org.apache.jmeter.gui.JMeterGUIComponent;
+@@ -69,7 +73,7 @@ public final class MenuFactory {
+      *  and also for resource lookup in messages.properties
+     */
+     public static final String THREADS = "menu_threads"; //$NON-NLS-1$
+-    
++
+     public static final String FRAGMENTS = "menu_fragments"; //$NON-NLS-1$
+ 
+     public static final String TIMERS = "menu_timer"; //$NON-NLS-1$
+@@ -123,7 +127,7 @@ public final class MenuFactory {
+     private static final String[] MENU_PARENT_SAMPLER = new String[] {
+         MenuFactory.CONTROLLERS };
+ 
+-    private static final List<MenuInfo> timers, controllers, samplers, threads, 
++    private static final List<MenuInfo> timers, controllers, samplers, threads,
+         fragments,configElements, assertions, listeners, nonTestElements,
+         postProcessors, preProcessors;
+ 
+@@ -202,7 +206,7 @@ public final class MenuFactory {
+ 
+     /**
+      * @param menu JPopupMenu
+-     * @param addSaveTestFragmentMenu Add Save as Test Fragment menu if true 
++     * @param addSaveTestFragmentMenu Add Save as Test Fragment menu if true
+      */
+     public static void addFileMenu(JPopupMenu menu, boolean addSaveTestFragmentMenu) {
+         // the undo/redo as a standard goes first in Edit menus
+@@ -267,7 +271,6 @@ public final class MenuFactory {
+         menu.add(redo);
+     }
+ 
+-
+     public static JMenu makeMenus(String[] categories, String label, String actionCommand) {
+         JMenu addMenu = new JMenu(label);
+         for (int i = 0; i < categories.length; i++) {
+@@ -374,6 +377,36 @@ public final class MenuFactory {
+         for (MenuInfo info : menuInfo) {
+             menu.add(makeMenuItem(info, actionCommand));
+         }
++        // Bug 54784: adds listener for the enter and space keys to add items
++        menu.addMenuKeyListener(new MenuKeyListener() {
++            @Override
++            public void menuKeyTyped(MenuKeyEvent e) {}
++
++            @Override
++            public void menuKeyReleased(MenuKeyEvent e) {}
++
++            @Override
++            public void menuKeyPressed(MenuKeyEvent e) {
++                if (e.getKeyCode() != KeyStrokes.ENTER.getKeyCode()
++                        && e.getKeyCode() != KeyStrokes.SPACE.getKeyCode()) {
++                    return;
++                }
++                // using selectedPath because e.getPath() always returns the
++                // first item in the menu rather than the selected item
++                MenuElement[] selectedPath = e.getMenuSelectionManager().getSelectedPath();
++                MenuElement source = selectedPath[selectedPath.length - 1];
++
++                ActionEvent event = new ActionEvent(source, e.getID(), ActionNames.ADD);
++                ActionRouter.getInstance().actionPerformed(event);
++                // small hack: for some reason the menu doesn't hide when
++                // adding elements that can't contain children, e.g.Counter
++                if (e.getComponent().isShowing()) {
++                    e.getComponent().setVisible(false);
++                }
++                e.consume();
++            }
++        });
++        // end Bug 54784 change
+         GuiUtils.makeScrollableMenu(menu);
+         return menu;
+     }
+@@ -435,6 +468,7 @@ public final class MenuFactory {
+         JMenuItem newMenuChoice = new JMenuItem(info.getLabel());
+         newMenuChoice.setName(info.getClassName());
+         newMenuChoice.addActionListener(ActionRouter.getInstance());
++
+         if (actionCommand != null) {
+             newMenuChoice.setActionCommand(actionCommand);
+         }
+@@ -555,7 +589,6 @@ public final class MenuFactory {
+                 if (categories.contains(ASSERTIONS)) {
+                     assertions.add(new MenuInfo(item, name));
+                 }
+-
+             }
+         } catch (IOException e) {
+             log.error("", e);
+-- 
+1.9.1
+

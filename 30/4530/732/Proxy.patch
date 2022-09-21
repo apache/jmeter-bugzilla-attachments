@@ -1,0 +1,26 @@
+*** /home/jmheight/jakarta-jmeter/src/org/apache/jmeter/protocol/http/proxy/Proxy.java	Wed Oct 24 19:34:32 2001
+--- Proxy.java	Tue Oct 30 10:50:56 2001
+***************
+*** 218,222 ****
+  			}
+  			SrvrSocket.getOutputStream().flush();
+! 			urlConfig.parseArguments(buff.toString());
+  			target.deliverUrlConfig(urlConfig);
+  
+--- 218,225 ----
+  			}
+  			SrvrSocket.getOutputStream().flush();
+!                         if ("application/x-www-form-urlencoded".equalsIgnoreCase(request.contentType))
+!                           urlConfig.parseArguments(buff.toString());
+!                         else
+!                           urlConfig.putProperty(UrlConfig.BODY, buff.toString());
+  			target.deliverUrlConfig(urlConfig);
+  
+***************
+*** 423,426 ****
+--- 426,430 ----
+  		urlConfig.setProtocol(request.url.substring(0, request.url.indexOf(":")));
+  		urlConfig.setPort(request.serverPort());
++                 urlConfig.putProperty(UrlConfig.CONTENT_TYPE, request.contentType);
+  
+  	}

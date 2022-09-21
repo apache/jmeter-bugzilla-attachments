@@ -1,0 +1,154 @@
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java
+index 2cea326..9680582 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/CacheManager.java
+@@ -122,7 +122,7 @@ public class CacheManager extends ConfigTestElement implements TestStateListener
+      * @param res result
+      */
+     public void saveDetails(URLConnection conn, HTTPSampleResult res){
+-        if (isCacheable(res)){
++        if (isCacheable(res) && !hasVaryHeader(conn)){
+             String lastModified = conn.getHeaderField(HTTPConstants.LAST_MODIFIED);
+             String expires = conn.getHeaderField(HTTPConstants.EXPIRES);
+             String etag = conn.getHeaderField(HTTPConstants.ETAG);
+@@ -133,6 +133,10 @@ public class CacheManager extends ConfigTestElement implements TestStateListener
+         }
+     }
+ 
++    private boolean hasVaryHeader(URLConnection conn) {
++        return conn.getHeaderField(HTTPConstants.VARY) != null;
++    }
++
+     /**
+      * Save the Last-Modified, Etag, and Expires headers if the result is
+      * cacheable. Version for Commons HttpClient implementation.
+@@ -145,7 +149,7 @@ public class CacheManager extends ConfigTestElement implements TestStateListener
+      *             if extraction of the the uri from <code>method</code> fails
+      */
+     public void saveDetails(HttpMethod method, HTTPSampleResult res) throws URIException{
+-        if (isCacheable(res)){
++        if (isCacheable(res) && !hasVaryHeader(method)){
+             String lastModified = getHeader(method ,HTTPConstants.LAST_MODIFIED);
+             String expires = getHeader(method ,HTTPConstants.EXPIRES);
+             String etag = getHeader(method ,HTTPConstants.ETAG);
+@@ -156,6 +160,10 @@ public class CacheManager extends ConfigTestElement implements TestStateListener
+         }
+     }
+ 
++    private boolean hasVaryHeader(HttpMethod method) {
++        return getHeader(method, HTTPConstants.VARY) != null;
++    }
++
+     /**
+      * Save the Last-Modified, Etag, and Expires headers if the result is
+      * cacheable. Version for Apache HttpClient implementation.
+@@ -166,7 +174,7 @@ public class CacheManager extends ConfigTestElement implements TestStateListener
+      *            result to decide if result is cacheable
+      */
+     public void saveDetails(HttpResponse method, HTTPSampleResult res) {
+-        if (isCacheable(res)){
++        if (isCacheable(res) && !hasVaryHeader(method)){
+             String lastModified = getHeader(method ,HTTPConstants.LAST_MODIFIED);
+             String expires = getHeader(method ,HTTPConstants.EXPIRES);
+             String etag = getHeader(method ,HTTPConstants.ETAG);
+@@ -176,6 +184,10 @@ public class CacheManager extends ConfigTestElement implements TestStateListener
+         }
+     }
+ 
++    private boolean hasVaryHeader(HttpResponse method) {
++        return getHeader(method, HTTPConstants.VARY) != null;
++    }
++
+     // helper method to save the cache entry
+     private void setCache(String lastModified, String cacheControl, String expires, String etag, String url, String date) {
+         if (log.isDebugEnabled()){
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java
+index 586c890..2cc2c33 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPConstantsInterface.java
+@@ -75,6 +75,7 @@ public interface HTTPConstantsInterface {
+     String LAST_MODIFIED = "Last-Modified"; // $NON-NLS-1$
+     String EXPIRES = "Expires"; // $NON-NLS-1$
+     String CACHE_CONTROL = "Cache-Control";  //e.g. public, max-age=259200
+-    String DATE = "Date";  //e.g. Date Header of response 
++    String DATE = "Date";  //e.g. Date Header of response
++    String VARY = "Vary"; // $NON-NLS-1$
+ 
+ }
+diff --git a/test/src/org/apache/jmeter/protocol/http/control/TestCacheManager.java b/test/src/org/apache/jmeter/protocol/http/control/TestCacheManager.java
+index 2b27d9b..49e72dd 100644
+--- a/test/src/org/apache/jmeter/protocol/http/control/TestCacheManager.java
++++ b/test/src/org/apache/jmeter/protocol/http/control/TestCacheManager.java
+@@ -73,6 +73,8 @@ public class TestCacheManager extends JMeterTestCase {
+                 return cacheControl;
+             } else if (HTTPConstants.DATE.equals(name)){
+                 return currentTimeInGMT;
++            } else if (HTTPConstants.VARY.equals(name)) {
++                return vary;
+             }
+             return super.getHeaderField(name);
+         }
+@@ -105,8 +107,10 @@ public class TestCacheManager extends JMeterTestCase {
+                 return expires == null ? null : new Header(HTTPConstants.EXPIRES, expires);
+             } else if (HTTPConstants.CACHE_CONTROL.equals(headerName)) {
+                 return cacheControl == null ? null : new Header(HTTPConstants.CACHE_CONTROL, cacheControl);
+-            } if (HTTPConstants.DATE.equals(headerName)) {
++            } else if (HTTPConstants.DATE.equals(headerName)) {
+                 return this.dateHeader;
++            } else if (HTTPConstants.VARY.equals(headerName)) {
++                return vary == null ? null : new Header(HTTPConstants.VARY, vary);
+             }
+             return null;
+         }
+@@ -144,6 +148,7 @@ public class TestCacheManager extends JMeterTestCase {
+     private static final TimeZone GMT = TimeZone.getTimeZone("GMT");
+     private CacheManager cacheManager;
+     private String currentTimeInGMT;
++    private String vary = null;
+     private URL url;
+     private URI uri;
+     private URLConnection urlConnection;
+@@ -228,6 +233,20 @@ public class TestCacheManager extends JMeterTestCase {
+         assertFalse("Should not find valid entry",this.cacheManager.inCache(url));
+     }
+ 
++    public void testCacheVaryJava() throws Exception{
++        this.cacheManager.setUseExpires(true);
++        this.cacheManager.testIterationStart(null);
++        assertNull("Should not find entry",getThreadCacheEntry(LOCAL_HOST));
++        assertFalse("Should not find valid entry",this.cacheManager.inCache(url));
++        ((URLConnectionStub)urlConnection).expires=makeDate(new Date(System.currentTimeMillis()));
++        ((URLConnectionStub)urlConnection).cacheControl="public, max-age=5";
++        this.vary="Accept-Encoding";
++        this.cacheManager.saveDetails(this.urlConnection, sampleResultOK);
++        this.vary=null;
++        assertNull("Should not find entry",getThreadCacheEntry(LOCAL_HOST));
++        assertFalse("Should not find valid entry",this.cacheManager.inCache(url));
++    }
++
+     public void testExpiresHttpClient() throws Exception{
+         this.cacheManager.setUseExpires(true);
+         this.cacheManager.testIterationStart(null);
+@@ -257,7 +276,21 @@ public class TestCacheManager extends JMeterTestCase {
+         assertNotNull("Should find entry",getThreadCacheEntry(LOCAL_HOST));
+         assertFalse("Should not find valid entry",this.cacheManager.inCache(url));
+     }
+-    
++
++    public void testCacheVaryHttpClient() throws Exception{
++        this.cacheManager.setUseExpires(true);
++        this.cacheManager.testIterationStart(null);
++        assertNull("Should not find entry",getThreadCacheEntry(LOCAL_HOST));
++        assertFalse("Should not find valid entry",this.cacheManager.inCache(url));
++        ((HttpMethodStub)httpMethod).expires=makeDate(new Date(System.currentTimeMillis()));
++        ((HttpMethodStub)httpMethod).cacheControl="public, max-age=5";
++        this.vary = "Something";
++        this.cacheManager.saveDetails(httpMethod, sampleResultOK);
++        assertNull("Should not find entry",getThreadCacheEntry(LOCAL_HOST));
++        assertFalse("Should not find valid entry",this.cacheManager.inCache(url));
++        this.vary = null;
++    }
++
+     public void testCacheHttpClientHEAD() throws Exception{
+         this.cacheManager.setUseExpires(true);
+         this.cacheManager.testIterationStart(null);

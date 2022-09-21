@@ -1,0 +1,19 @@
+Index: src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 1174430)
++++ src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -570,9 +570,11 @@
+      * </ul> 
+      */
+     private void stopAllThreads() {
+-        // ConcurrentHashMap does not need synch. here
+-        for (JMeterThread item : allThreads.keySet()) {
+-            item.stop();
++        for (Iterator<Map.Entry<JMeterThread, Thread>> iterator = allThreads.entrySet().iterator(); iterator.hasNext();) {
++            Map.Entry<JMeterThread, Thread> entry = iterator.next();
++            entry.getKey().stop();
++            // 51880
++            entry.getValue().interrupt();
+         }
+     }
+ 

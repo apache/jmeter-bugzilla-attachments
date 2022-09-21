@@ -1,0 +1,302 @@
+Index: src/components/org/apache/jmeter/sampler/DebugSampler.java
+===================================================================
+--- src/components/org/apache/jmeter/sampler/DebugSampler.java	(revision 1234525)
++++ src/components/org/apache/jmeter/sampler/DebugSampler.java	(working copy)
+@@ -75,7 +75,7 @@
+         res.setResponseData(sb.toString(), null);
+         res.setDataType(SampleResult.TEXT);
+         res.setSamplerData(rd.toString());
+-        res.setSuccessful(true);
++        res.setResponseOK();
+         res.sampleEnd();
+         return res;
+     }
+Index: src/components/org/apache/jmeter/extractor/DebugPostProcessor.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/DebugPostProcessor.java	(revision 1234525)
++++ src/components/org/apache/jmeter/extractor/DebugPostProcessor.java	(working copy)
+@@ -18,6 +18,13 @@
+ 
+ package org.apache.jmeter.extractor;
+ 
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.Comparator;
++import java.util.Map;
++import java.util.HashMap;
++import java.util.Set;
++
+ import org.apache.jmeter.processor.PostProcessor;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.testbeans.TestBean;
+@@ -25,32 +32,123 @@
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.threads.JMeterContext;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  * Debugging Post-Processor: creates a subSample containing the variables defined in the previous sampler.
+  */
+ public class DebugPostProcessor extends AbstractTestElement implements PostProcessor, TestBean {
+ 
+-    private static final long serialVersionUID = 240L;
++    private static final long serialVersionUID = 260L;
+ 
++    private boolean displaySamplerProperties;
++
++    private boolean displayJMeterVariables;
++
++    private boolean displayJMeterProperties;
++
++    private boolean displaySystemProperties;
++
+     public void process(){
+         StringBuilder sb = new StringBuilder(100);
++        StringBuilder rd = new StringBuilder(20); // for request Data
++        SampleResult sr = new SampleResult();
++        sr.setSampleLabel(getName());
++        sr.sampleStart();
+         JMeterContext threadContext = getThreadContext();
+-        PropertyIterator i = threadContext.getCurrentSampler().propertyIterator();
+-        while(i.hasNext())
+-        {
+-            JMeterProperty prop = i.next();
+-            sb.append(prop.getName());
++        if (isDisplaySamplerProperties()){
++            rd.append("SamplerProperties\n");
++            sb.append("SamplerProperties:\n");
++            formatPropertyIterator(sb, threadContext.getCurrentSampler().propertyIterator());
++            sb.append("\n");
++        }
++
++        if (isDisplayJMeterVariables()){
++            rd.append("JMeterVariables\n");
++            sb.append("JMeterVariables:\n");
++            formatSet(sb, threadContext.getVariables().entrySet());
++            sb.append("\n");
++        }
++
++        if (isDisplayJMeterProperties()){
++            rd.append("JMeterProperties\n");
++            sb.append("JMeterProperties:\n");
++            formatSet(sb, JMeterUtils.getJMeterProperties().entrySet());
++            sb.append("\n");
++        }
++
++        if (isDisplaySystemProperties()){
++            rd.append("SystemProperties\n");
++            sb.append("SystemProperties:\n");
++            formatSet(sb, System.getProperties().entrySet());
++            sb.append("\n");
++        }
++
++        sr.setResponseData(sb.toString(), null);
++        sr.setDataType(SampleResult.TEXT);
++        sr.setSamplerData(rd.toString());
++        sr.setResponseOK();
++        sr.sampleEnd();
++        threadContext.getPreviousResult().addSubResult(sr);
++    }
++
++    private void formatPropertyIterator(StringBuilder sb, PropertyIterator iter) {
++        Map<String, String> map = new HashMap<String, String>();
++        while (iter.hasNext()) {
++            JMeterProperty item = iter.next();
++            map.put(item.getName(), item.getStringValue());
++        }
++        formatSet(sb, map.entrySet());
++    }
++
++    private void formatSet(StringBuilder sb, @SuppressWarnings("rawtypes") Set s) {
++        @SuppressWarnings("unchecked")
++        ArrayList<Map.Entry<Object, Object>> al = new ArrayList<Map.Entry<Object, Object>>(s);
++        Collections.sort(al, new Comparator<Map.Entry<Object, Object>>(){
++            public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
++                String m1,m2;
++                m1=(String)o1.getKey();
++                m2=(String)o2.getKey();
++                return m1.compareTo(m2);
++            }
++        });
++        for(Map.Entry<Object, Object> me : al){
++            sb.append(me.getKey());
+             sb.append("=");
+-            sb.append(prop.getStringValue());
++            sb.append(me.getValue());
+             sb.append("\n");
+-         }
+-         SampleResult sr = new SampleResult();
+-         sr.setResponseData(sb.toString(), null);
+-         sr.setDataType(SampleResult.TEXT);
+-         sr.setSampleLabel(getName());
+-         sr.setSuccessful(true);
+-         sr.setSamplerData("SamplerPropertyValues");
+-         threadContext.getPreviousResult().addSubResult(sr);
++        }
+     }
++
++    public boolean isDisplayJMeterVariables() {
++        return displayJMeterVariables;
++    }
++
++    public void setDisplayJMeterVariables(boolean displayJMeterVariables) {
++        this.displayJMeterVariables = displayJMeterVariables;
++    }
++
++    public boolean isDisplayJMeterProperties() {
++        return displayJMeterProperties;
++    }
++
++    public void setDisplayJMeterProperties(boolean displayJMeterPropterties) {
++        this.displayJMeterProperties = displayJMeterPropterties;
++    }
++
++    public boolean isDisplaySamplerProperties() {
++        return displaySamplerProperties;
++    }
++
++    public void setDisplaySamplerProperties(boolean displaySamplerProperties) {
++        this.displaySamplerProperties = displaySamplerProperties;
++    }
++
++    public boolean isDisplaySystemProperties() {
++        return displaySystemProperties;
++    }
++
++    public void setDisplaySystemProperties(boolean displaySystemProperties) {
++        this.displaySystemProperties = displaySystemProperties;
++    }
+ }
+Index: src/components/org/apache/jmeter/extractor/DebugPostProcessorBeanInfo.java
+===================================================================
+--- src/components/org/apache/jmeter/extractor/DebugPostProcessorBeanInfo.java	(revision 1234525)
++++ src/components/org/apache/jmeter/extractor/DebugPostProcessorBeanInfo.java	(working copy)
+@@ -18,12 +18,40 @@
+ 
+ package org.apache.jmeter.extractor;
+ 
++import java.beans.PropertyDescriptor;
++
+ import org.apache.jmeter.testbeans.BeanInfoSupport;
+ 
+ public class DebugPostProcessorBeanInfo extends BeanInfoSupport {
+ 
+     public DebugPostProcessorBeanInfo() {
+         super(DebugPostProcessor.class);
++
++        PropertyDescriptor p;
++
++        p = property("displaySamplerProperties");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setValue(NOT_OTHER, Boolean.TRUE);
++        p.setValue(DEFAULT, Boolean.TRUE);
++
++        p = property("displayJMeterVariables");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setValue(NOT_OTHER, Boolean.TRUE);
++        p.setValue(DEFAULT, Boolean.TRUE);
++
++        p = property("displayJMeterProperties");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setValue(NOT_OTHER, Boolean.TRUE);
++        p.setValue(DEFAULT, Boolean.FALSE);
++
++        p = property("displaySystemProperties");
++        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
++        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
++        p.setValue(NOT_OTHER, Boolean.TRUE);
++        p.setValue(DEFAULT, Boolean.FALSE);
+     }
+ 
+ }
+Index: src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_de.properties
+===================================================================
+--- src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_de.properties	(revision 1234525)
++++ src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_de.properties	(working copy)
+@@ -13,4 +13,12 @@
+ #   See the License for the specific language governing permissions and
+ #   limitations under the License.
+ 
++displayJMeterProperties.displayName=JMeter Eigenschaften
++displayJMeterProperties.shortDescription=Sollen die JMeter Eigenschaften angezeigt werden?
++displayJMeterVariables.displayName=JMeter Variablen
++displayJMeterVariables.shortDescription=Sollen die JMeter Variablen angezeigt werden
+ displayName=Debug Post-Prozessor
++displaySamplerProperties.displayName=Sampler Eigenschaften
++displaySamplerProperties.shortDescription=Sollen die Sampler Eigenschaften angezeigt werden
++displaySystemProperties.displayName=System Eigenschaften
++displaySystemProperties.shortDescription=Sollen die System Eigenschaften angezeigt werden
+Index: src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_fr.properties
+===================================================================
+--- src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_fr.properties	(revision 1234525)
++++ src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_fr.properties	(working copy)
+@@ -14,4 +14,12 @@
+ #   limitations under the License.
+ 
+ #Stored by I18NEdit, may be edited!
++displayJMeterProperties.displayName=Propri\u00E9t\u00E9s JMeter
++displayJMeterProperties.shortDescription=Afficher les propri\u00E9t\u00E9s JMeter ?
++displayJMeterVariables.displayName=Variables JMeter
++displayJMeterVariables.shortDescription=Afficher les variables JMeter ?
+ displayName=Post-Processeur D\u00E9bogage
++displaySamplerProperties.displayName=Propri\u00E9t\u00E9s Echantillon
++displaySamplerProperties.shortDescription=Afficher les propri\u00E9t\u00E9s Echantillon ?
++displaySystemProperties.displayName=Propri\u00E9t\u00E9s Syst\u00E8me
++displaySystemProperties.shortDescription=Afficher les propri\u00E9t\u00E9s syst\u00E8mes ?
+Index: src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_pt_BR.properties
+===================================================================
+--- src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_pt_BR.properties	(revision 1234525)
++++ src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_pt_BR.properties	(working copy)
+@@ -13,4 +13,12 @@
+ #   See the License for the specific language governing permissions and
+ #   limitations under the License.
+ 
++displayJMeterProperties.displayName=Propriedades do JMeter
++displayJMeterProperties.shortDescription=Exibir propriedades do JMeter?
++displayJMeterVariables.displayName=Vari\u00E1veis do JMeter
++displayJMeterVariables.shortDescription=Exibir vari\u00E1veis do JMeter?
+ displayName=Debug P\u00F3s-Processador
++displaySamplerProperties.displayName=Propriedades do testador?
++displaySamplerProperties.shortDescription=Exibir propriedades do testador?
++displaySystemProperties.displayName=Propriedades do sistema
++displaySystemProperties.shortDescription=Exibir propriedades do sistema?
+Index: src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_tr.properties
+===================================================================
+--- src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_tr.properties	(revision 1234525)
++++ src/components/org/apache/jmeter/extractor/DebugPostProcessorResources_tr.properties	(working copy)
+@@ -14,4 +14,12 @@
+ #   limitations under the License.
+ 
+ #Stored by I18NEdit, may be edited!
++displayJMeterProperties.displayName=JMeter ayarlar\u0131
++displayJMeterProperties.shortDescription=JMeter ayarlar\u0131n\u0131 g\u00F6ster ?
++displayJMeterVariables.displayName=JMeter de\u011Fi\u015Fkenleri
++displayJMeterVariables.shortDescription=JMeter de\u011Fi\u015Fkenlerini g\u00F6ster ?
+ displayName=Ay\u0131klama Son \u0130\u015Flemcisi
++displaySamplerProperties.displayName=\u00D6rnekleyicisi ayarlar\u0131
++displaySamplerProperties.shortDescription=\u00D6rnekleyicisi ayarlar\u0131n\u0131 g\u00F6ster ?
++displaySystemProperties.displayName=Sistem ayarlar\u0131
++displaySystemProperties.shortDescription=Sistem ayarlar\u0131n\u0131 g\u00F6ster ?
+Index: src/components/org/apache/jmeter/extractor/DebugPostProcessorResources.properties
+===================================================================
+--- src/components/org/apache/jmeter/extractor/DebugPostProcessorResources.properties	(revision 1234525)
++++ src/components/org/apache/jmeter/extractor/DebugPostProcessorResources.properties	(working copy)
+@@ -13,4 +13,12 @@
+ #   See the License for the specific language governing permissions and
+ #   limitations under the License.
+ 
+-displayName=Debug PostProcessor
+\ No newline at end of file
++displayJMeterProperties.displayName=JMeter properties
++displayJMeterProperties.shortDescription=Display JMeter properties ?
++displayJMeterVariables.displayName=JMeter variables
++displayJMeterVariables.shortDescription=Display JMeter variables ?
++displayName=Debug PostProcessor
++displaySamplerProperties.displayName=Sampler properties
++displaySamplerProperties.shortDescription=Display Sampler properties ?
++displaySystemProperties.displayName=System properties
++displaySystemProperties.shortDescription=Display System properties ?

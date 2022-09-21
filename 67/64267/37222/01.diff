@@ -1,0 +1,44 @@
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+index 4824ed6a70..fab565a59b 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+@@ -255,19 +255,32 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+                     if (!authScope.getRealm().equals(auth.getRealm())) {
+                         continue;
+                     }
+-                    try {
+-                        URL authUrl = new URL(auth.getURL());
+-                        if (authUrl.getHost().equals(authScope.getHost()) && getPort(authUrl) == authScope.getPort()) {
+-                            return auth;
+-                        }
+-                    } catch (MalformedURLException e) {
+-                        log.debug("Invalid URL {} in authManager", auth.getURL());
++                    if (matchesOnUrl(authScope, auth)) {
++                        return auth;
+                     }
+                 }
+             }
+             return null;
+         }
+ 
++        private boolean matchesOnUrl(AuthScope authScope, Authorization auth) {
++            String authUrlString = auth.getURL().toLowerCase();
++            try {
++                URL authUrl = new URL(authUrlString);
++                if (authUrl.getHost().equals(authScope.getHost()) && getPort(authUrl) == authScope.getPort()) {
++                    return true;
++                }
++            } catch (MalformedURLException e) {
++                for (String prefix: Arrays.asList("http://", "https://")) {
++                    if ((prefix + authScope.getHost() + ":" + authScope.getPort()).startsWith(authUrlString)) {
++                        return true;
++                    }
++                }
++                log.debug("Invalid URL {} in authManager", authUrlString);
++            }
++            return false;
++        }
++
+         private int getPort(URL url) {
+             if (url.getPort() == -1) {
+                 return url.getProtocol().equals("https") ? 443 : 80;

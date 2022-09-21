@@ -1,0 +1,393 @@
+Index: src/core/org/apache/jmeter/util/JsseSSLManager.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JsseSSLManager.java	(revision 541989)
++++ src/core/org/apache/jmeter/util/JsseSSLManager.java	(working copy)
+@@ -20,18 +20,13 @@
+ 
+ import java.net.HttpURLConnection;
+ import java.net.Socket;
++import java.security.GeneralSecurityException;
+ import java.security.Principal;
+ import java.security.PrivateKey;
+ import java.security.Provider;
+ import java.security.SecureRandom;
+ import java.security.cert.X509Certificate;
+ 
+-import org.apache.commons.httpclient.protocol.Protocol;
+-import org.apache.commons.httpclient.protocol.ProtocolSocketFactory;
+-import org.apache.jmeter.util.keystore.JmeterKeyStore;
+-import org.apache.jorphan.logging.LoggingManager;
+-import org.apache.log.Logger;
+-
+ import javax.net.ssl.HostnameVerifier;
+ import javax.net.ssl.HttpsURLConnection;
+ import javax.net.ssl.KeyManager;
+@@ -43,6 +38,12 @@
+ import javax.net.ssl.X509KeyManager;
+ import javax.net.ssl.X509TrustManager;
+ 
++import org.apache.commons.httpclient.protocol.Protocol;
++import org.apache.commons.httpclient.protocol.ProtocolSocketFactory;
++import org.apache.jmeter.util.keystore.JmeterKeyStore;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
+ /**
+  * The SSLManager handles the KeyStore information for JMeter. Basically, it
+  * handles all the logic for loading and initializing all the JSSE parameters
+@@ -74,13 +75,10 @@
+ 	 */
+ 	private SecureRandom rand;
+ 
+-	/**
+-	 * Cache the Context so we can retrieve it from other places
+-	 */
+-	private SSLContext context = null;
+-
+ 	private Provider pro = null;
+ 
++    private SSLContext defaultContext;
++    
+ 	/**
+ 	 * Create the SSLContext, and wrap all the X509KeyManagers with
+ 	 * our X509KeyManager so that we can choose our alias.
+@@ -94,8 +92,29 @@
+ 		if (null == this.rand) {
+ 			this.rand = new SecureRandom();
+ 		}
+-
+-		this.getContext();
++		try {
++            this.defaultContext = createContext();
++            
++            HttpSSLProtocolSocketFactory sockFactory = new HttpSSLProtocolSocketFactory(this);
++            
++            HttpsURLConnection.setDefaultSSLSocketFactory(sockFactory);
++            HttpsURLConnection.setDefaultHostnameVerifier(new HostnameVerifier() {
++                public boolean verify(String hostname, SSLSession session) {
++                    return true;
++                }
++            });
++            /*
++             * Also set up HttpClient defaults
++             */
++            Protocol protocol = new Protocol(
++                    JsseSSLManager.HTTPS, 
++                    (ProtocolSocketFactory) sockFactory,
++                    443);
++            Protocol.registerProtocol(JsseSSLManager.HTTPS, protocol);
++            log.debug("SSL stuff all set");
++        } catch (GeneralSecurityException ex) {
++            log.error("Could not set up SSLContext", ex);
++        }
+ 		log.debug("JsseSSLManager installed");
+ 	}
+ 
+@@ -138,89 +157,66 @@
+ 	 * 
+ 	 * @return The Context value
+ 	 */
+-	private SSLContext getContext() {
+-		if (null == this.context) {
+-			try {
+-				if (pro != null) {
+-					this.context = SSLContext.getInstance(DEFAULT_SSL_PROTOCOL, pro); // $NON-NLS-1$
+-				} else {
+-					this.context = SSLContext.getInstance(DEFAULT_SSL_PROTOCOL); // $NON-NLS-1$
+-				}
+-				log.debug("SSL context = " + context);
+-			} catch (Exception ee) {
+-				log.error("Could not create SSLContext", ee);
+-			}
+-			try {
+-				KeyManagerFactory managerFactory = 
+-					KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());				
+-				JmeterKeyStore keys = this.getKeyStore();
+-				managerFactory.init(null, this.defaultpw.toCharArray());
+-				KeyManager[] managers = managerFactory.getKeyManagers();
+-				log.debug(keys.getClass().toString());
+-				
+-				// Now wrap the default managers with our key manager
+-				for (int i = 0; i < managers.length; i++) {
+-					if (managers[i] instanceof X509KeyManager) {
+-						X509KeyManager manager = (X509KeyManager) managers[i];
+-						managers[i] = new WrappedX509KeyManager(manager, keys);
+-					}
+-				}
+-				
+-				// Get the default trust managers
+-		        TrustManagerFactory tmfactory = TrustManagerFactory.getInstance(
+-		                TrustManagerFactory.getDefaultAlgorithm());
+-		        tmfactory.init(this.getTrustStore());
+-		        
+-		        // Wrap the defaults in our custom trust manager
+-		        TrustManager[] trustmanagers = tmfactory.getTrustManagers();
+-		        for (int i = 0; i < trustmanagers.length; i++) {
+-		            if (trustmanagers[i] instanceof X509TrustManager) {
+-		                trustmanagers[i] = new CustomX509TrustManager(
+-		                    (X509TrustManager)trustmanagers[i]); 
+-		            }
+-		        }
+-		     	context.init(managers, trustmanagers, this.rand);
+-				
+-				/*
+-				 * The following will need to be removed if the SSL properties are to be
+-				 * applied on a per-connection basis
+-				 */
+-				HttpsURLConnection.setDefaultSSLSocketFactory(new HttpSSLProtocolSocketFactory(context));
+-				HttpsURLConnection.setDefaultHostnameVerifier(new HostnameVerifier() {
+-					public boolean verify(String hostname, SSLSession session) {
+-						return true;
+-					}
+-				});
+-				/*
+-				 * Also set up HttpClient defaults
+-				 */
+-				Protocol protocol = new Protocol(
+-						JsseSSLManager.HTTPS,
+-						(ProtocolSocketFactory) new HttpSSLProtocolSocketFactory(context),
+-						443
+-						);
+-				Protocol.registerProtocol(JsseSSLManager.HTTPS, protocol);
+-				log.debug("SSL stuff all set");
+-			} catch (Exception e) {
+-				log.error("Could not set up SSLContext", e);
+-			}
+-
+-            if (log.isDebugEnabled()){
+-    			String[] dCiphers = this.context.getSocketFactory().getDefaultCipherSuites();
+-    			String[] sCiphers = this.context.getSocketFactory().getSupportedCipherSuites();
+-    			int len = (dCiphers.length > sCiphers.length) ? dCiphers.length : sCiphers.length;
+-    			for (int i = 0; i < len; i++) {
+-    				if (i < dCiphers.length) {
+-    					log.debug("Default Cipher: " + dCiphers[i]);
+-    				}
+-    				if (i < sCiphers.length) {
+-    					log.debug("Supported Cipher: " + sCiphers[i]);
+-    				}
+-    			}
++    public SSLContext getContext() {
++        return this.defaultContext;
++    }
++    
++    /**
++     * Creates new SSL context
++     * @return SSL context
++     * @throws GeneralSecurityException
++     */
++	public SSLContext createContext() throws GeneralSecurityException {
++		SSLContext context;
++        if (pro != null) {
++            context = SSLContext.getInstance(DEFAULT_SSL_PROTOCOL, pro); // $NON-NLS-1$
++        } else {
++            context = SSLContext.getInstance(DEFAULT_SSL_PROTOCOL); // $NON-NLS-1$
++        }
++        KeyManagerFactory managerFactory = 
++            KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());             
++        JmeterKeyStore keys = this.getKeyStore();
++        managerFactory.init(null, this.defaultpw.toCharArray());
++        KeyManager[] managers = managerFactory.getKeyManagers();
++        log.debug(keys.getClass().toString());
++        
++        // Now wrap the default managers with our key manager
++        for (int i = 0; i < managers.length; i++) {
++            if (managers[i] instanceof X509KeyManager) {
++                X509KeyManager manager = (X509KeyManager) managers[i];
++                managers[i] = new WrappedX509KeyManager(manager, keys);
+             }
+-		}
+-		return this.context;
+-	}
++        }
++        
++        // Get the default trust managers
++        TrustManagerFactory tmfactory = TrustManagerFactory.getInstance(
++                TrustManagerFactory.getDefaultAlgorithm());
++        tmfactory.init(this.getTrustStore());
++        
++        // Wrap the defaults in our custom trust manager
++        TrustManager[] trustmanagers = tmfactory.getTrustManagers();
++        for (int i = 0; i < trustmanagers.length; i++) {
++            if (trustmanagers[i] instanceof X509TrustManager) {
++                trustmanagers[i] = new CustomX509TrustManager(
++                    (X509TrustManager)trustmanagers[i]); 
++            }
++        }
++        context.init(managers, trustmanagers, this.rand);
++        if (log.isDebugEnabled()){
++            String[] dCiphers = context.getSocketFactory().getDefaultCipherSuites();
++            String[] sCiphers = context.getSocketFactory().getSupportedCipherSuites();
++            int len = (dCiphers.length > sCiphers.length) ? dCiphers.length : sCiphers.length;
++            for (int i = 0; i < len; i++) {
++                if (i < dCiphers.length) {
++                    log.debug("Default Cipher: " + dCiphers[i]);
++                }
++                if (i < sCiphers.length) {
++                    log.debug("Supported Cipher: " + sCiphers[i]);
++                }
++            }
++        }
++        return context;
++    }
+ 
+ 	/**
+ 	 * This is the X509KeyManager we have defined for the sole purpose of
+Index: src/core/org/apache/jmeter/util/HttpSSLProtocolSocketFactory.java
+===================================================================
+--- src/core/org/apache/jmeter/util/HttpSSLProtocolSocketFactory.java	(revision 541989)
++++ src/core/org/apache/jmeter/util/HttpSSLProtocolSocketFactory.java	(working copy)
+@@ -23,6 +23,7 @@
+ import java.net.Socket;
+ import java.net.SocketAddress;
+ import java.net.UnknownHostException;
++import java.security.GeneralSecurityException;
+ 
+ import javax.net.ssl.SSLContext;
+ import javax.net.ssl.SSLSocket;
+@@ -46,14 +47,17 @@
+ 
+ 	private static final Logger log = LoggingManager.getLoggerForClass();
+ 	
+-	private SSLSocketFactory sslfac;
++	private JsseSSLManager sslManager;
+ 
++    private ThreadLocal threadlocal;
++    
+     private HttpSSLProtocolSocketFactory(){
+     }
+     
+-    public HttpSSLProtocolSocketFactory(SSLContext context) {
++    public HttpSSLProtocolSocketFactory(JsseSSLManager sslManager) {
+         super();
+-		sslfac=context.getSocketFactory();
++        this.sslManager = sslManager;
++        this.threadlocal = new ThreadLocal();
+     }
+     
+     private static final String protocolList = JMeterUtils.getPropDefault("https.socket.protocols", "");
+@@ -87,6 +91,24 @@
+     	}
+     	return sb.toString();
+ 	}
++    
++    private SSLContext getThreadLocalSSLContext() throws GeneralSecurityException {
++        SSLContext sslContext = (SSLContext) this.threadlocal.get();
++        if (sslContext == null) {
++            sslContext = this.sslManager.createContext();
++            this.threadlocal.set(sslContext);
++        }
++        return sslContext;
++    }
++    
++    private SSLSocketFactory getSSLSocketFactory() throws IOException {
++        try {
++            SSLContext sslContext = getThreadLocalSSLContext();
++            return sslContext.getSocketFactory();
++        } catch (GeneralSecurityException ex) {
++            throw new IOException(ex.getMessage());
++        }
++    }
+ 
+ 	/**
+      * Attempts to get a new socket connection to the given host within the given time limit.
+@@ -114,11 +136,13 @@
+             throw new IllegalArgumentException("Parameters may not be null");
+         }
+         int timeout = params.getConnectionTimeout();
++        
++        SSLSocketFactory sockFactory = getSSLSocketFactory();
+         Socket socket;
+         if (timeout == 0) {
+-        	socket = sslfac.createSocket(host, port, localAddress, localPort);
++        	socket = sockFactory.createSocket(host, port, localAddress, localPort);
+         } else {
+-            socket = sslfac.createSocket();
++            socket = sockFactory.createSocket();
+             SocketAddress localaddr = new InetSocketAddress(localAddress, localPort);
+             SocketAddress remoteaddr = new InetSocketAddress(host, port);
+             socket.bind(localaddr);
+@@ -133,7 +157,8 @@
+      */
+     public Socket createSocket(String host, int port)
+         throws IOException, UnknownHostException {
+-    	Socket sock = sslfac.createSocket(
++        SSLSocketFactory sockFactory = getSSLSocketFactory();
++    	Socket sock = sockFactory.createSocket(
+             host,
+             port
+         );
+@@ -150,7 +175,8 @@
+         int port,
+         boolean autoClose)
+         throws IOException, UnknownHostException {
+-    	Socket sock = sslfac.createSocket(
++        SSLSocketFactory sockFactory = getSSLSocketFactory();
++    	Socket sock = sockFactory.createSocket(
+             socket,
+             host,
+             port,
+@@ -170,7 +196,8 @@
+         int clientPort)
+         throws IOException, UnknownHostException {
+ 
+-        Socket sock = sslfac.createSocket(
++        SSLSocketFactory sockFactory = getSSLSocketFactory();
++        Socket sock = sockFactory.createSocket(
+             host,
+             port,
+             clientHost,
+@@ -181,22 +208,37 @@
+     }
+ 
+ 	public Socket createSocket(InetAddress host, int port) throws IOException {
+-		Socket sock=sslfac.createSocket(host,port);
++        SSLSocketFactory sockFactory = getSSLSocketFactory();
++		Socket sock = sockFactory.createSocket(host,port);
+         setSocket(sock);
+ 		return sock;
+ 	}
+ 
+ 	public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
+-		Socket sock=sslfac.createSocket(address, port, localAddress, localPort);
++        SSLSocketFactory sockFactory = getSSLSocketFactory();
++		Socket sock = sockFactory.createSocket(address, port, localAddress, localPort);
+         setSocket(sock);
+ 		return sock;
+ 	}
+ 
+ 	public String[] getDefaultCipherSuites() {
+-		return sslfac.getDefaultCipherSuites();
++        try {
++            SSLContext sslContext = getThreadLocalSSLContext();
++            SSLSocketFactory sockFactory = sslContext.getSocketFactory();
++            return sockFactory.getDefaultCipherSuites();
++        } catch (GeneralSecurityException ex) {
++            return new String[] {};
++        }
+ 	}
+ 
+ 	public String[] getSupportedCipherSuites() {
+-		return sslfac.getSupportedCipherSuites();
++        try {
++            SSLContext sslContext = getThreadLocalSSLContext();
++            SSLSocketFactory sockFactory = sslContext.getSocketFactory();
++            return sockFactory.getSupportedCipherSuites();
++        } catch (GeneralSecurityException ex) {
++            return new String[] {};
++        }
+ 	}
++    
+ }
+Index: src/core/org/apache/jmeter/util/JMeterVersion.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JMeterVersion.java	(revision 541989)
++++ src/core/org/apache/jmeter/util/JMeterVersion.java	(working copy)
+@@ -42,7 +42,7 @@
+ 	 * JMeterUtils This ensures that JMeterUtils always gets the correct
+ 	 * version, even if it is not re-compiled during the build.
+ 	 */
+-	private static final String VERSION = "2.2.1";
++	private static final String VERSION = "2.2.20070528";
+ 
+ 	static final String COPYRIGHT = "Copyright (c) 1998-2007 The Apache Software Foundation";
+ 

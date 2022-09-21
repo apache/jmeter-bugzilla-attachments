@@ -1,0 +1,44 @@
+From 804a83bee835f1f00bf47d6808e9c16959ef56d9 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Mon, 10 May 2021 20:50:02 +0200
+Subject: [PATCH] Decode query for GET on curl parsing
+
+---
+ .../jmeter/protocol/http/curl/BasicCurlParser.java | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java
+index ca869b9e00..4c350fa684 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/curl/BasicCurlParser.java
+@@ -46,6 +46,8 @@ import org.apache.commons.cli.avalon.CLOptionDescriptor;
+ import org.apache.commons.io.FileUtils;
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.commons.lang3.tuple.Pair;
++import org.apache.http.NameValuePair;
++import org.apache.http.client.utils.URLEncodedUtils;
+ import org.apache.jmeter.protocol.http.control.AuthManager.Mechanism;
+ import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.Cookie;
+@@ -818,6 +820,18 @@ public class BasicCurlParser {
+                 request.setPostData(null);
+                 request.setMethod("GET");
+             }
++            if ("GET".equals(request.getMethod())) {
++                String url = request.getUrl();
++                url = url.replaceAll("\\s*\\\\$", ""); // our CLI parser has a bug, that could lead to stray backslashes
++                try {
++                    for (NameValuePair nameValuePair : URLEncodedUtils.parse(new URI(url), StandardCharsets.UTF_8)) {
++                        request.addFormStringData(nameValuePair.getName(), nameValuePair.getValue());
++                    }
++                    request.setUrl(url.substring(0, url.indexOf('?')));
++                } catch (URISyntaxException e) {
++                    LOGGER.warn("Could not handle query parameters for URI: {}", url, e);
++                }
++            }
+             return request;
+         } else {
+             throw new IllegalArgumentException(
+-- 
+2.25.1
+

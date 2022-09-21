@@ -1,0 +1,236 @@
+From 58ad5bc8089cf077c34a4afc32fd34eaf1a8778b Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Tue, 15 Dec 2020 17:30:08 +0100
+Subject: [PATCH 2/2] Sort properties and variables in a human expected order
+ for DebugPostProcessor and DebugSampler
+
+That means the following order would hold:
+ 1,2,10,11,20,abc_1,abc_2,abc_10
+
+Bugzilla Id: 64988
+---
+ .../jmeter/extractor/DebugPostProcessor.java  |  8 +-
+ .../apache/jmeter/sampler/DebugSampler.java   |  7 +-
+ .../util/AlphaNumericKeyComparator.java       | 87 +++++++++++++++++++
+ .../util/TestAlphaNumericKeyComparator.java   | 64 ++++++++++++++
+ 4 files changed, 155 insertions(+), 11 deletions(-)
+ create mode 100644 src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java
+ create mode 100644 src/jorphan/src/test/java/org/apache/jorphan/util/TestAlphaNumericKeyComparator.java
+
+diff --git a/src/components/src/main/java/org/apache/jmeter/extractor/DebugPostProcessor.java b/src/components/src/main/java/org/apache/jmeter/extractor/DebugPostProcessor.java
+index e163adc1b7..47c9905690 100644
+--- a/src/components/src/main/java/org/apache/jmeter/extractor/DebugPostProcessor.java
++++ b/src/components/src/main/java/org/apache/jmeter/extractor/DebugPostProcessor.java
+@@ -33,6 +33,7 @@ import org.apache.jmeter.testelement.property.PropertyIterator;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.util.AlphaNumericKeyComparator;
+ 
+ /**
+  * Debugging Post-Processor: creates a subSample containing the variables defined in the previous sampler.
+@@ -108,12 +109,7 @@ public class DebugPostProcessor extends AbstractTestElement implements PostProce
+     private void formatSet(StringBuilder sb, @SuppressWarnings("rawtypes") Set s) {
+         @SuppressWarnings("unchecked")
+         List<Map.Entry<Object, Object>> al = new ArrayList<>(s);
+-        al.sort(
+-                (Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) -> {
+-                String m1 = (String)o1.getKey();
+-                String m2 =(String)o2.getKey();
+-                return m1.compareTo(m2);
+-            });
++        al.sort(AlphaNumericKeyComparator.INSTANCE);
+         al.forEach(me -> sb.append(me.getKey()).append("=").append(me.getValue()).append("\n"));
+     }
+ 
+diff --git a/src/components/src/main/java/org/apache/jmeter/sampler/DebugSampler.java b/src/components/src/main/java/org/apache/jmeter/sampler/DebugSampler.java
+index 63e1be6014..981ce3263a 100644
+--- a/src/components/src/main/java/org/apache/jmeter/sampler/DebugSampler.java
++++ b/src/components/src/main/java/org/apache/jmeter/sampler/DebugSampler.java
+@@ -34,6 +34,7 @@ import org.apache.jmeter.testbeans.TestBean;
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.util.AlphaNumericKeyComparator;
+ 
+ /**
+  * The Debug Sampler can be used to "sample" JMeter variables, JMeter properties and System Properties.
+@@ -90,11 +91,7 @@ public class DebugSampler extends AbstractSampler implements TestBean {
+     private void formatSet(StringBuilder sb, @SuppressWarnings("rawtypes") Set s) {
+         @SuppressWarnings("unchecked")
+         List<Map.Entry<Object, Object>> al = new ArrayList<>(s);
+-        al.sort((Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) -> {
+-                String m1 = (String)o1.getKey();
+-                String m2 = (String)o2.getKey();
+-                return m1.compareTo(m2);
+-        });
++        al.sort(AlphaNumericKeyComparator.INSTANCE);
+         al.forEach(me -> sb.append(me.getKey()).append("=").append(me.getValue()).append("\n"));
+     }
+ 
+diff --git a/src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java b/src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java
+new file mode 100644
+index 0000000000..9a610eb61e
+--- /dev/null
++++ b/src/jorphan/src/main/java/org/apache/jorphan/util/AlphaNumericKeyComparator.java
+@@ -0,0 +1,87 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to you under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.apache.jorphan.util;
++
++import java.math.BigInteger;
++import java.util.Comparator;
++import java.util.Map;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++/**
++ * Comparator for {@link Map.Entry} Objects, that compares based on their keys only. The keys
++ * will be compared in a human readable fashion by trying to parse numbers that appear in
++ * the keys as integers and compare those, too.<p>
++ * Heavily influenced by https://codereview.stackexchange.com/questions/37192/number-aware-string-sorting-with-comparator
++ */
++public class AlphaNumericKeyComparator implements Comparator<Map.Entry<Object, Object>> {
++    
++    public static final AlphaNumericKeyComparator INSTANCE = new AlphaNumericKeyComparator();
++    
++    private AlphaNumericKeyComparator() {
++        // don't instantiate this class on your own.
++    }
++
++    private static final Pattern parts = Pattern.compile("(\\D*)(\\d*)");
++    private static final int ALPHA_PART = 1;
++    private static final int NUM_PART = 2;
++
++    @Override
++    public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
++        Matcher m1 = parts.matcher(o1.getKey().toString());
++        Matcher m2 = parts.matcher(o2.getKey().toString());
++
++        while (m1.find() && m2.find()) {
++            int compareCharGroup = m1.group(ALPHA_PART).compareTo(m2.group(ALPHA_PART));
++            if (compareCharGroup != 0) {
++                return compareCharGroup;
++            }
++            String numberPart1 = m1.group(NUM_PART);
++            String numberPart2 = m2.group(NUM_PART);
++            if (numberPart1.isEmpty()) {
++                if (numberPart2.isEmpty()) {
++                    return 0;
++                }
++                return -1;
++            } else if (numberPart2.isEmpty()) {
++                return 1;
++            }
++            int lengthNumber1 = numberPart1.length();
++            int lengthNumber2 = numberPart2.length();
++            if (lengthNumber1 != lengthNumber2) {
++                if (lengthNumber1 < lengthNumber2) {
++                    return -1;
++                }
++                return 1;
++            }
++            BigInteger i1 = new BigInteger(numberPart1);
++            BigInteger i2 = new BigInteger(numberPart2);
++            int compareNumber = i1.compareTo(i2);
++            if (compareNumber != 0) {
++                return compareNumber;
++            }
++        }
++        if (m1.hitEnd() && m2.hitEnd()) {
++            return 0;
++        }
++        if (m1.hitEnd()) {
++            return -1;
++        }
++        return 1;
++    }
++
++}
+diff --git a/src/jorphan/src/test/java/org/apache/jorphan/util/TestAlphaNumericKeyComparator.java b/src/jorphan/src/test/java/org/apache/jorphan/util/TestAlphaNumericKeyComparator.java
+new file mode 100644
+index 0000000000..4f19a41702
+--- /dev/null
++++ b/src/jorphan/src/test/java/org/apache/jorphan/util/TestAlphaNumericKeyComparator.java
+@@ -0,0 +1,64 @@
++package org.apache.jorphan.util;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++
++import java.util.Comparator;
++import java.util.Map;
++
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.CsvSource;
++import org.junit.jupiter.params.provider.ValueSource;
++
++class TestAlphaNumericKeyComparator {
++
++    @ParameterizedTest
++    @ValueSource(strings = { "abc", "", "var_123", "434", "_" })
++    void testComparatorWithEqualKeys(String candidate) {
++        Comparator<Map.Entry<Object, Object>> comparator = AlphaNumericKeyComparator.INSTANCE;
++        assertEquals(0, comparator.compare(entry(candidate), entry(candidate)));
++    }
++
++    @ParameterizedTest
++    @CsvSource({
++        "a,                    1",
++        "a10,                  a1",
++        "a2,                   a1",
++        "a20,                  a10",
++        "a10,                  a2",
++        "z,                    10000",
++        "def,                  abc",
++        "123_z,                123_a",
++        "9-9-z,                9-9-a",
++        "abc,                  ''",
++        "'abc.,${something}1', 'abc.,${something}'",
++        "number1,              number",
++        "789b,                 789"
++        })
++    void testComparatorDifferentKeys(String higher, String lower) {
++        Comparator<Map.Entry<Object, Object>> comparator = AlphaNumericKeyComparator.INSTANCE;
++        int compareLowerFirst = comparator.compare(entry(lower), entry(higher)) > 0 ? 1 : -1;
++        assertEquals(-1, compareLowerFirst);
++        int compareHigherFirst = comparator.compare(entry(higher), entry(lower)) > 0 ? 1 : -1;
++        assertEquals(1, compareHigherFirst);
++    }
++
++    private Map.Entry<Object, Object> entry(final String key) {
++        return new Map.Entry<Object, Object>() {
++
++            @Override
++            public Object getKey() {
++                return key;
++            }
++
++            @Override
++            public Object getValue() {
++                return null;
++            }
++
++            @Override
++            public Object setValue(Object value) {
++                return null;
++            }
++        };
++    }
++}
+-- 
+2.25.1
+

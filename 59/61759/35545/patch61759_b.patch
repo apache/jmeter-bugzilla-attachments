@@ -1,0 +1,52 @@
+Index: src/functions/org/apache/jmeter/functions/ChangeCase.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/ChangeCase.java	(revision 1816027)
++++ src/functions/org/apache/jmeter/functions/ChangeCase.java	(working copy)
+@@ -50,7 +50,7 @@
+ public class ChangeCase extends AbstractFunction {
+ 
+     private static final Pattern NOT_ALPHANUMERIC_REGEX = 
+-            Pattern.compile("[^a-zA-Z]");
++            Pattern.compile("[\\s\\-_]+");
+     private static final Logger LOGGER = LoggerFactory.getLogger(ChangeCase.class);
+     private static final List<String> DESC = new LinkedList<>();
+     private static final String KEY = "__changeCase";
+Index: test/src/org/apache/jmeter/functions/TestChangeCase.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestChangeCase.java	(revision 1816027)
++++ test/src/org/apache/jmeter/functions/TestChangeCase.java	(working copy)
+@@ -144,20 +144,29 @@
+     
+     @Test
+     public void testEmptyMode() throws Exception {
+-        params.add(new CompoundVariable("ab-CD eF"));
++        params.add(new CompoundVariable("ab_ -CD eF"));
+         params.add(new CompoundVariable(""));
+         changeCase.setParameters(params);
+         String returnValue = changeCase.execute(result, null);
+-        assertEquals("AB-CD EF", returnValue);
++        assertEquals("AB_ -CD EF", returnValue);
+     }
+-
++    
+     @Test
+     public void testChangeCaseWrongModeIgnore() throws Exception {
+     	params.add(new CompoundVariable("ab-CD eF"));
+-        params.add(new CompoundVariable("Wrong"));
++    	params.add(new CompoundVariable("Wrong"));
++    	changeCase.setParameters(params);
++    	String returnValue = changeCase.execute(result, null);
++    	assertEquals("ab-CD eF", returnValue);
++    }
++
++    @Test
++    public void testChangeCaseNonEnglish() throws Exception {
++    	params.add(new CompoundVariable("ab-àÀè_È é É ù Ù ì Ì ò Ò ñ ÑäöüßCD   eF"));
++        params.add(new CompoundVariable("LOWER_CAMEL_CASE"));
+         changeCase.setParameters(params);
+         String returnValue = changeCase.execute(result, null);
+-        assertEquals("ab-CD eF", returnValue);
++        assertEquals("abÀàèÈÉÉÙÙÌÌÒÒÑÑäöüßcdEf", returnValue);
+     }
+ 
+ }

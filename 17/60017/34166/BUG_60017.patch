@@ -1,0 +1,29 @@
+Index: src/core/org/apache/jmeter/engine/PreCompiler.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/PreCompiler.java	(revision 1754657)
++++ src/core/org/apache/jmeter/engine/PreCompiler.java	(working copy)
+@@ -74,8 +74,10 @@
+         }
+         if(node instanceof TestElement)
+         {
++            TestElement element = (TestElement) node;
+             try {
+-                replacer.replaceValues((TestElement) node);
++                element.setComment(null);
++                replacer.replaceValues(element);
+             } catch (InvalidVariableException e) {
+                 log.error("invalid variables", e);
+             }
+Index: src/core/org/apache/jmeter/testelement/AbstractTestElement.java
+===================================================================
+--- src/core/org/apache/jmeter/testelement/AbstractTestElement.java	(revision 1754663)
++++ src/core/org/apache/jmeter/testelement/AbstractTestElement.java	(working copy)
+@@ -304,7 +304,7 @@
+         }
+         JMeterProperty prop = getProperty(property.getName());
+ 
+-        if (prop instanceof NullProperty || (prop instanceof StringProperty && prop.getStringValue().isEmpty())) {
++        if (prop instanceof NullProperty || (prop instanceof StringProperty && (prop.getStringValue()==null || prop.getStringValue().isEmpty()))) {
+             propMap.put(property.getName(), propertyToPut);
+         } else {
+             prop.mergeIn(propertyToPut);

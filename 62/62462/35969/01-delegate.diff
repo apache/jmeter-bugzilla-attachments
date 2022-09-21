@@ -1,0 +1,346 @@
+diff --git a/bin/jmeter.properties b/bin/jmeter.properties
+index 975fb7038..610f942cd 100644
+--- a/bin/jmeter.properties
++++ b/bin/jmeter.properties
+@@ -392,6 +392,10 @@ remote_hosts=127.0.0.1
+ # for SPNEGO authentication
+ #kerberos.spnego.strip_port=true
+ 
++# Should credentials be delegated to webservers when using
++# SPNEGO authentication
++#kerberos.spnego.delegate_cred=false
++
+ #---------------------------------------------------------------------------
+ # Apache HttpComponents HTTPClient configuration (HTTPClient4)
+ #---------------------------------------------------------------------------
+@@ -1294,4 +1298,4 @@ jmeter.reportgenerator.apdex_tolerated_threshold=1500
+ 
+ # Switch that allows using Local documentation opened in JMeter GUI
+ # By default we use Online documentation opened in Browser
+-#help.local=false
+\ No newline at end of file
++#help.local=false
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/DelegatingKerberosScheme.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/DelegatingKerberosScheme.java
+new file mode 100644
+index 000000000..82708b5f9
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/DelegatingKerberosScheme.java
+@@ -0,0 +1,66 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.control;
++
++import org.apache.http.auth.Credentials;
++import org.apache.http.auth.KerberosCredentials;
++import org.apache.http.impl.auth.KerberosScheme;
++import org.ietf.jgss.GSSContext;
++import org.ietf.jgss.GSSCredential;
++import org.ietf.jgss.GSSException;
++import org.ietf.jgss.GSSManager;
++import org.ietf.jgss.GSSName;
++import org.ietf.jgss.Oid;
++
++public class DelegatingKerberosScheme extends KerberosScheme {
++    public DelegatingKerberosScheme(final boolean stripPort, final boolean useCanonicalHostName) {
++        super(stripPort, useCanonicalHostName);
++    }
++
++    @Override
++    protected byte[] generateGSSToken(
++            final byte[] input, final Oid oid, final String authServer,
++            final Credentials credentials) throws GSSException {
++        final GSSManager manager = getManager();
++        final GSSName serverName = manager.createName("HTTP@" + authServer, GSSName.NT_HOSTBASED_SERVICE);
++
++        final GSSCredential gssCredential;
++        if (credentials instanceof KerberosCredentials) {
++            gssCredential = ((KerberosCredentials) credentials).getGSSCredential();
++        } else {
++            gssCredential = null;
++        }
++
++        final GSSContext gssContext = createDelegatingGSSContext(manager, oid, serverName, gssCredential);
++        if (input != null) {
++            return gssContext.initSecContext(input, 0, input.length);
++        } else {
++            return gssContext.initSecContext(new byte[] {}, 0, 0);
++        }
++    }
++
++    GSSContext createDelegatingGSSContext(final GSSManager manager, final Oid oid, final GSSName serverName,
++            final GSSCredential gssCredential) throws GSSException {
++        final GSSContext gssContext = manager.createContext(serverName.canonicalize(oid), oid, gssCredential,
++                GSSContext.DEFAULT_LIFETIME);
++        gssContext.requestMutualAuth(true);
++        gssContext.requestCredDeleg(true);
++        return gssContext;
++    }
++}
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/DelegatingSPNegoScheme.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/DelegatingSPNegoScheme.java
+new file mode 100644
+index 000000000..14b77b25a
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/DelegatingSPNegoScheme.java
+@@ -0,0 +1,66 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.control;
++
++import org.apache.http.auth.Credentials;
++import org.apache.http.auth.KerberosCredentials;
++import org.apache.http.impl.auth.SPNegoScheme;
++import org.ietf.jgss.GSSContext;
++import org.ietf.jgss.GSSCredential;
++import org.ietf.jgss.GSSException;
++import org.ietf.jgss.GSSManager;
++import org.ietf.jgss.GSSName;
++import org.ietf.jgss.Oid;
++
++public class DelegatingSPNegoScheme extends SPNegoScheme {
++    public DelegatingSPNegoScheme(final boolean stripPort, final boolean useCanonicalHostName) {
++        super(stripPort, useCanonicalHostName);
++    }
++
++    @Override
++    protected byte[] generateGSSToken(
++            final byte[] input, final Oid oid, final String authServer,
++            final Credentials credentials) throws GSSException {
++        final GSSManager manager = getManager();
++        final GSSName serverName = manager.createName("HTTP@" + authServer, GSSName.NT_HOSTBASED_SERVICE);
++
++        final GSSCredential gssCredential;
++        if (credentials instanceof KerberosCredentials) {
++            gssCredential = ((KerberosCredentials) credentials).getGSSCredential();
++        } else {
++            gssCredential = null;
++        }
++
++        final GSSContext gssContext = createDelegatingGSSContext(manager, oid, serverName, gssCredential);
++        if (input != null) {
++            return gssContext.initSecContext(input, 0, input.length);
++        } else {
++            return gssContext.initSecContext(new byte[] {}, 0, 0);
++        }
++    }
++
++    GSSContext createDelegatingGSSContext(final GSSManager manager, final Oid oid, final GSSName serverName,
++            final GSSCredential gssCredential) throws GSSException {
++        final GSSContext gssContext = manager.createContext(serverName.canonicalize(oid), oid, gssCredential,
++                GSSContext.DEFAULT_LIFETIME);
++        gssContext.requestMutualAuth(true);
++        gssContext.requestCredDeleg(true);
++        return gssContext;
++    }
++}
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/DynamicKerberosSchemeFactory.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/DynamicKerberosSchemeFactory.java
+index 34afc7373..3cf65e541 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/control/DynamicKerberosSchemeFactory.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/DynamicKerberosSchemeFactory.java
+@@ -22,6 +22,10 @@ import org.apache.http.auth.AuthScheme;
+ import org.apache.http.impl.auth.KerberosScheme;
+ import org.apache.http.impl.auth.KerberosSchemeFactory;
+ import org.apache.http.protocol.HttpContext;
++import org.apache.jmeter.util.JMeterUtils;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ 
+ /**
+  * Extends {@link KerberosSchemeFactory} to provide ability to customize stripPort
+@@ -30,6 +34,9 @@ import org.apache.http.protocol.HttpContext;
+  */
+ public class DynamicKerberosSchemeFactory extends KerberosSchemeFactory {
+     static final String CONTEXT_ATTRIBUTE_STRIP_PORT = "__jmeter.K_SP__";
++    static final String CONTEXT_ATTRIBUTE_DELEGATE_CRED = "__jmeter.K_DT__";
++    static final boolean DELEGATE_CRED = JMeterUtils.getPropDefault("kerberos.spnego.delegate_cred", false);
++    private static final Logger log = LoggerFactory.getLogger(DynamicKerberosSchemeFactory.class);
+ 
+     /**
+      * Constructor for DynamicKerberosSchemeFactory
+@@ -43,8 +50,19 @@ public class DynamicKerberosSchemeFactory extends KerberosSchemeFactory {
+ 
+     @Override
+     public AuthScheme create(final HttpContext context) {
+-        Boolean localStripPort = (Boolean) context.getAttribute(CONTEXT_ATTRIBUTE_STRIP_PORT);
+-        Boolean stripPort = localStripPort != null ? localStripPort : isStripPort();
++        boolean stripPort = isEnabled(context.getAttribute(CONTEXT_ATTRIBUTE_STRIP_PORT), isStripPort());
++        if (isEnabled(context.getAttribute(CONTEXT_ATTRIBUTE_DELEGATE_CRED), DELEGATE_CRED)) {
++            log.debug("Use DelegatingKerberosScheme");
++            return new DelegatingKerberosScheme(stripPort, isStripPort());
++        }
++        log.debug("Use KerberosScheme");
+         return new KerberosScheme(stripPort, isUseCanonicalHostname());
+     }
++
++    private boolean isEnabled(Object contextAttribute, boolean defaultValue) {
++        if (contextAttribute instanceof Boolean) {
++            return ((Boolean) contextAttribute).booleanValue();
++        }
++        return defaultValue;
++    }
+ }
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/control/DynamicSPNegoSchemeFactory.java b/src/protocol/http/org/apache/jmeter/protocol/http/control/DynamicSPNegoSchemeFactory.java
+new file mode 100644
+index 000000000..bb856c693
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/control/DynamicSPNegoSchemeFactory.java
+@@ -0,0 +1,68 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.control;
++
++import org.apache.http.auth.AuthScheme;
++import org.apache.http.impl.auth.SPNegoScheme;
++import org.apache.http.impl.auth.SPNegoSchemeFactory;
++import org.apache.http.protocol.HttpContext;
++import org.apache.jmeter.util.JMeterUtils;
++
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++
++/**
++ * Extends {@link SPNegoSchemeFactory} to provide ability to customize stripPort
++ * setting in {@link SPNegoScheme} based on {@link HttpContext}
++ * @since 4.1
++ */
++public class DynamicSPNegoSchemeFactory extends SPNegoSchemeFactory {
++    static final String CONTEXT_ATTRIBUTE_STRIP_PORT = "__jmeter.K_SP__";
++    static final String CONTEXT_ATTRIBUTE_DELEGATE_CRED = "__jmeter.K_DT__";
++    static final boolean DELEGATE_CRED = JMeterUtils.getPropDefault("kerberos.spnego.delegate_cred", false);
++    private static final Logger log = LoggerFactory.getLogger(DynamicSPNegoSchemeFactory.class);
++
++    /**
++     * Constructor for DynamicSPNegoSchemeFactory
++     * @param stripPort flag, whether port should be stripped from SPN
++     * @param useCanonicalHostname flag, whether SPN should use the canonical hostname
++     * @since 4.0
++     */
++    public DynamicSPNegoSchemeFactory(final boolean stripPort, final boolean useCanonicalHostname) {
++        super(stripPort, useCanonicalHostname);
++    }
++
++    @Override
++    public AuthScheme create(final HttpContext context) {
++        boolean stripPort = isEnabled(context.getAttribute(CONTEXT_ATTRIBUTE_STRIP_PORT), isStripPort());
++        if (isEnabled(context.getAttribute(CONTEXT_ATTRIBUTE_DELEGATE_CRED), DELEGATE_CRED)) {
++            log.debug("Use DelegatingSPNegoScheme");
++            return new DelegatingSPNegoScheme(stripPort, isStripPort());
++        }
++        log.debug("Use SPNegoScheme");
++        return new SPNegoScheme(stripPort, isUseCanonicalHostname());
++    }
++
++    private boolean isEnabled(Object contextAttribute, boolean defaultValue) {
++        if (contextAttribute instanceof Boolean) {
++            return ((Boolean) contextAttribute).booleanValue();
++        }
++        return defaultValue;
++    }
++}
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+index e92d60787..4566966e6 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+@@ -110,7 +110,6 @@ import org.apache.http.impl.auth.DigestScheme;
+ import org.apache.http.impl.auth.DigestSchemeFactory;
+ import org.apache.http.impl.auth.KerberosScheme;
+ import org.apache.http.impl.auth.NTLMSchemeFactory;
+-import org.apache.http.impl.auth.SPNegoSchemeFactory;
+ import org.apache.http.impl.client.BasicAuthCache;
+ import org.apache.http.impl.client.BasicCredentialsProvider;
+ import org.apache.http.impl.client.CloseableHttpClient;
+@@ -142,6 +141,7 @@ import org.apache.jmeter.protocol.http.control.Authorization;
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.DynamicKerberosSchemeFactory;
++import org.apache.jmeter.protocol.http.control.DynamicSPNegoSchemeFactory;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
+ import org.apache.jmeter.protocol.http.sampler.hc.LaxDeflateInputStream;
+ import org.apache.jmeter.protocol.http.sampler.hc.LazyLayeredConnectionSocketFactory;
+@@ -1030,7 +1030,8 @@ public class HTTPHC4Impl extends HTTPHCAbstractImpl {
+                         .register(AuthSchemes.BASIC, new BasicSchemeFactory())
+                         .register(AuthSchemes.DIGEST, new DigestSchemeFactory())
+                         .register(AuthSchemes.NTLM, new NTLMSchemeFactory())
+-                        .register(AuthSchemes.SPNEGO, new SPNegoSchemeFactory())
++                        .register(AuthSchemes.SPNEGO, new DynamicSPNegoSchemeFactory(
++                                AuthManager.STRIP_PORT, AuthManager.USE_CANONICAL_HOST_NAME))
+                         .register(AuthSchemes.KERBEROS, new DynamicKerberosSchemeFactory(
+                                 AuthManager.STRIP_PORT, AuthManager.USE_CANONICAL_HOST_NAME))
+                         .build();
+diff --git a/xdocs/usermanual/component_reference.xml b/xdocs/usermanual/component_reference.xml
+index 2aca4b1b2..37fb3c62f 100644
+--- a/xdocs/usermanual/component_reference.xml
++++ b/xdocs/usermanual/component_reference.xml
+@@ -3644,6 +3644,9 @@ Look at the two sample configuration files (<code>krb5.conf</code> and <code>jaa
+ for references to more documentation, and tweak them to match your Kerberos configuration.
+ </p>
+ <p>
++Delegation of credentials is disabled by default for SPNEGO. If you want to enable it, you can do so by setting the property <code>kerberos.spnego.delegate_cred</code> to <code>true</code>.
++</p>
++<p>
+ When generating a SPN for Kerberos SPNEGO authentication IE and Firefox will omit the port number
+ from the URL. Chrome has an option (<code>--enable-auth-negotiate-port</code>) to include the port
+ number if it differs from the standard ones (<code>80</code> and <code>443</code>). That behavior
+diff --git a/xdocs/usermanual/properties_reference.xml b/xdocs/usermanual/properties_reference.xml
+index f13885f65..db55d5f5a 100644
+--- a/xdocs/usermanual/properties_reference.xml
++++ b/xdocs/usermanual/properties_reference.xml
+@@ -463,6 +463,10 @@ JMETER-SERVER</source>
+     Should port be stripped from urls before constructing SPNs for SPNEGO authentication.
+     Defaults to: <code>true</code>
+ </property>
++<property name="kerberos.spnego.delegate_cred">
++    Should SPNEGO authentication should use delegation of credentials.
++    Defaults to: <code>false</code>
++</property>
+ </properties>
+ </section>
+ <section name="&sect-num;.12 Apache HttpClient logging examples" anchor="httpclient_logging_examples">

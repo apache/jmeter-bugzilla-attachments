@@ -1,0 +1,171 @@
+From 84360cd82d702fb0bad46e2ac124971506168dd5 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Thu, 3 Jun 2021 19:32:17 +0200
+Subject: [PATCH] Make percentile estimator configurable
+
+---
+ .../visualizers/backend/SamplerMetric.java    |  9 ++--
+ .../visualizers/backend/UserMetric.java       |  5 ++-
+ .../DescriptiveStatisticsFactory.java         | 43 +++++++++++++++++++
+ .../processor/PercentileAggregator.java       |  4 +-
+ xdocs/usermanual/properties_reference.xml     |  6 ++-
+ 5 files changed, 59 insertions(+), 8 deletions(-)
+ create mode 100644 src/core/src/main/java/org/apache/jmeter/report/processor/DescriptiveStatisticsFactory.java
+
+diff --git a/src/components/src/main/java/org/apache/jmeter/visualizers/backend/SamplerMetric.java b/src/components/src/main/java/org/apache/jmeter/visualizers/backend/SamplerMetric.java
+index a27931038c..0ae60fb88f 100644
+--- a/src/components/src/main/java/org/apache/jmeter/visualizers/backend/SamplerMetric.java
++++ b/src/components/src/main/java/org/apache/jmeter/visualizers/backend/SamplerMetric.java
+@@ -24,6 +24,7 @@ import java.util.Map;
+ 
+ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+ import org.apache.jmeter.control.TransactionController;
++import org.apache.jmeter.report.processor.DescriptiveStatisticsFactory;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.documentation.VisibleForTesting;
+@@ -41,15 +42,15 @@ public class SamplerMetric {
+     /**
+      * Response times for OK samples
+      */
+-    private DescriptiveStatistics okResponsesStats = new DescriptiveStatistics(LARGE_SLIDING_WINDOW_SIZE);
++    private DescriptiveStatistics okResponsesStats = DescriptiveStatisticsFactory.createDescriptiveStatistics(LARGE_SLIDING_WINDOW_SIZE);
+     /**
+      * Response times for KO samples
+      */
+-    private DescriptiveStatistics koResponsesStats = new DescriptiveStatistics(LARGE_SLIDING_WINDOW_SIZE);
++    private DescriptiveStatistics koResponsesStats = DescriptiveStatisticsFactory.createDescriptiveStatistics(LARGE_SLIDING_WINDOW_SIZE);
+     /**
+      * Response times for All samples
+      */
+-    private DescriptiveStatistics allResponsesStats = new DescriptiveStatistics(LARGE_SLIDING_WINDOW_SIZE);
++    private DescriptiveStatistics allResponsesStats = DescriptiveStatisticsFactory.createDescriptiveStatistics(LARGE_SLIDING_WINDOW_SIZE);
+     /**
+      *  OK, KO, ALL stats
+      */
+@@ -57,7 +58,7 @@ public class SamplerMetric {
+     /**
+      * Timeboxed percentiles don't makes sense
+      */
+-    private DescriptiveStatistics pctResponseStats = new DescriptiveStatistics(SLIDING_WINDOW_SIZE);
++    private DescriptiveStatistics pctResponseStats = DescriptiveStatisticsFactory.createDescriptiveStatistics(SLIDING_WINDOW_SIZE);
+     private int successes;
+     private int failures;
+     private int hits;
+diff --git a/src/components/src/main/java/org/apache/jmeter/visualizers/backend/UserMetric.java b/src/components/src/main/java/org/apache/jmeter/visualizers/backend/UserMetric.java
+index 1358962a88..1c847073ac 100644
+--- a/src/components/src/main/java/org/apache/jmeter/visualizers/backend/UserMetric.java
++++ b/src/components/src/main/java/org/apache/jmeter/visualizers/backend/UserMetric.java
+@@ -18,6 +18,7 @@
+ package org.apache.jmeter.visualizers.backend;
+ 
+ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
++import org.apache.jmeter.report.processor.DescriptiveStatisticsFactory;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.util.JMeterUtils;
+@@ -27,10 +28,12 @@ import org.apache.jmeter.util.JMeterUtils;
+  * @since 2.13
+  */
+ public class UserMetric {
++
+     private static final int SLIDING_WINDOW_SIZE = JMeterUtils.getPropDefault("backend_metrics_window", 100); //$NON-NLS-1$
+ 
+     // Limit to sliding window of SLIDING_WINDOW_SIZE values
+-    private DescriptiveStatistics usersStats = new DescriptiveStatistics(SLIDING_WINDOW_SIZE);
++    private DescriptiveStatistics usersStats = DescriptiveStatisticsFactory.createDescriptiveStatistics(SLIDING_WINDOW_SIZE);
++
+     /**
+      *
+      */
+diff --git a/src/core/src/main/java/org/apache/jmeter/report/processor/DescriptiveStatisticsFactory.java b/src/core/src/main/java/org/apache/jmeter/report/processor/DescriptiveStatisticsFactory.java
+new file mode 100644
+index 0000000000..7b034087fe
+--- /dev/null
++++ b/src/core/src/main/java/org/apache/jmeter/report/processor/DescriptiveStatisticsFactory.java
+@@ -0,0 +1,43 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to you under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.report.processor;
++
++import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
++import org.apache.commons.math3.stat.descriptive.rank.Percentile;
++import org.apache.commons.math3.stat.descriptive.rank.Percentile.EstimationType;
++import org.apache.jmeter.util.JMeterUtils;
++
++public class DescriptiveStatisticsFactory {
++    private static final int SLIDING_WINDOW_SIZE = JMeterUtils.getPropDefault("backend_metrics_window", 100); //$NON-NLS-1$
++    private static final EstimationType ESTIMATION_TYPE = EstimationType
++            .valueOf(JMeterUtils.getPropDefault("backend_metrics_percentile_estimator", "LEGACY")); //$NON-NLS-1$
++
++    private DescriptiveStatisticsFactory() {
++        // utility class -> hide the constructor
++    }
++
++    public static DescriptiveStatistics createDescriptiveStatistics() {
++        return createDescriptiveStatistics(SLIDING_WINDOW_SIZE);
++    }
++
++    public static DescriptiveStatistics createDescriptiveStatistics(int windowSize) {
++        DescriptiveStatistics statistics = new DescriptiveStatistics();
++        statistics.setPercentileImpl(new Percentile().withEstimationType(ESTIMATION_TYPE));
++        return statistics;
++    }
++}
+diff --git a/src/core/src/main/java/org/apache/jmeter/report/processor/PercentileAggregator.java b/src/core/src/main/java/org/apache/jmeter/report/processor/PercentileAggregator.java
+index 44fbe0efe9..ca81b2ebf7 100644
+--- a/src/core/src/main/java/org/apache/jmeter/report/processor/PercentileAggregator.java
++++ b/src/core/src/main/java/org/apache/jmeter/report/processor/PercentileAggregator.java
+@@ -42,7 +42,7 @@ public class PercentileAggregator implements Aggregator {
+      *            the index of the percentile
+      */
+     public PercentileAggregator(double index) {
+-        statistics = new DescriptiveStatistics(SLIDING_WINDOW_SIZE);
++        statistics = DescriptiveStatisticsFactory.createDescriptiveStatistics(SLIDING_WINDOW_SIZE);
+         percentileIndex = index;
+     }
+ 
+@@ -50,7 +50,7 @@ public class PercentileAggregator implements Aggregator {
+      * @param lastAggregator {@link PercentileAggregator}
+      */
+     public PercentileAggregator(PercentileAggregator lastAggregator) {
+-        statistics = new DescriptiveStatistics(SLIDING_WINDOW_SIZE);
++        statistics = DescriptiveStatisticsFactory.createDescriptiveStatistics(SLIDING_WINDOW_SIZE);
+         this.percentileIndex = lastAggregator.percentileIndex;
+     }
+ 
+diff --git a/xdocs/usermanual/properties_reference.xml b/xdocs/usermanual/properties_reference.xml
+index de95a86ff6..5e1565d4fd 100644
+--- a/xdocs/usermanual/properties_reference.xml
++++ b/xdocs/usermanual/properties_reference.xml
+@@ -1161,7 +1161,11 @@ JMETER-SERVER</source>
+     Setting this value too high can lead to OOM Backend metrics sliding window size
+     Defaults to: <code>5000</code>
+ </property>
+-
++<property name="backend_metrics_percentile_estimator">
++    Specify the <a href="https://commons.apache.org/proper/commons-math/javadocs/api-3.5/org/apache/commons/math3/stat/descriptive/rank/Percentile.EstimationType.html">Percentile Estimation Type</a> to use.<br/>
++    To make the values from the dashboard compatible with the Aggragate Report, use the value <code>R_3</code>.<br/>
++    Defaults to: <code>LEGACY</code>
++</property>
+ <property name="backend_metrics_window_mode">
+     Backend metrics window mode.
+     Possible values:
+-- 
+2.25.1
+

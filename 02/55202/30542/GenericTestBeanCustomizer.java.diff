@@ -1,0 +1,89 @@
+Index: src/core/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java
+===================================================================
+--- src/core/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java	(revision 1496951)
++++ src/core/org/apache/jmeter/testbeans/gui/GenericTestBeanCustomizer.java	(working copy)
+@@ -21,6 +21,7 @@
+ import java.awt.GridBagLayout;
+ import java.awt.Insets;
+ import java.beans.BeanInfo;
++import java.beans.PropertyChangeListener;
+ import java.beans.PropertyDescriptor;
+ import java.beans.PropertyEditor;
+ import java.beans.PropertyEditorManager;
+@@ -203,6 +204,8 @@
+ 
+         // Obtain the propertyEditors:
+         editors = new PropertyEditor[descriptors.length];
++        int scriptLanguageIndex=0;
++        int textAreaEditorIndex=0;
+         for (int i = 0; i < descriptors.length; i++) { // Index is also used for accessing editors array
+             PropertyDescriptor descriptor = descriptors[i];
+             String name = descriptor.getName();
+@@ -218,7 +221,7 @@
+             PropertyEditor propertyEditor;
+             Object guiType = descriptor.getValue(GUITYPE);
+             if (guiType instanceof TypeEditor) {
+-                propertyEditor = ((TypeEditor) guiType).getInstance(descriptor);            
++                propertyEditor = ((TypeEditor) guiType).getInstance(descriptor); 
+             } else {
+                 Class<?> editorClass = descriptor.getPropertyEditorClass();
+                 if (log.isDebugEnabled()) {
+@@ -267,6 +270,11 @@
+             {
+                 ((TestBeanPropertyEditor)propertyEditor).setDescriptor(descriptor);
+             }
++            
++            if (propertyEditor instanceof TextAreaEditor)
++            {
++            	textAreaEditorIndex = i;
++            }
+             if (propertyEditor.getCustomEditor() instanceof JScrollPane) {
+                 scrollerCount++;
+             }
+@@ -275,9 +283,19 @@
+ 
+             // Initialize the editor with the provided default value or null:
+             setEditorValue(i, descriptor.getValue(DEFAULT));
++            
++            if (name.equals("scriptLanguage")){
++            	scriptLanguageIndex=i;
++            }
+ 
+         }
+-
++        // In case of BSF and JSR elements i want to add textAreaEditor as a listener to scriptLanguage ComboBox.
++        String beanName = this.beanInfo.getBeanDescriptor().getName();
++        if (beanName.startsWith("BSF") || beanName.startsWith("JSR223")){
++        		WrapperEditor we = (WrapperEditor) editors[scriptLanguageIndex];
++        		TextAreaEditor tae = (TextAreaEditor) editors[textAreaEditorIndex];
++        		we.addChangeListener(tae);
++    	}
+         // Obtain message formats:
+         propertyFieldLabelMessage = new MessageFormat(JMeterUtils.getResString("property_as_field_label")); //$NON-NLS-1$
+         propertyToolTipMessage = new MessageFormat(JMeterUtils.getResString("property_tool_tip")); //$NON-NLS-1$
+@@ -350,7 +368,7 @@
+                 tags[j++] = additionalTag;
+             }
+         }
+-
++        
+         boolean notNull = notNull(descriptor);
+         boolean notExpression = notExpression(descriptor);
+         boolean notOther = notOther(descriptor);
+@@ -363,7 +381,7 @@
+             e.setNoUndefined(notNull);
+             e.setNoEdit(notExpression && notOther);
+             e.setTags(tags);
+-
++            
+             guiEditor = e;
+         }
+ 
+@@ -372,7 +390,6 @@
+                 !notExpression, // acceptsExpressions
+                 !notOther, // acceptsOther
+                 descriptor.getValue(DEFAULT));
+-
+         return wrapper;
+     }
+ 

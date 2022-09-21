@@ -1,0 +1,120 @@
+Index: src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(revision 1166194)
++++ src/components/org/apache/jmeter/visualizers/ViewResultsFullVisualizer.java	(working copy)
+@@ -28,6 +28,8 @@
+ import java.awt.Dimension;
+ import java.awt.event.ActionEvent;
+ import java.awt.event.ActionListener;
++import java.awt.event.ItemEvent;
++import java.awt.event.ItemListener;
+ import java.io.IOException;
+ import java.util.Collections;
+ import java.util.List;
+@@ -35,6 +37,7 @@
+ import javax.swing.ComboBoxModel;
+ import javax.swing.DefaultComboBoxModel;
+ import javax.swing.ImageIcon;
++import javax.swing.JCheckBox;
+ import javax.swing.JComboBox;
+ import javax.swing.JScrollPane;
+ import javax.swing.JSplitPane;
+@@ -62,7 +65,7 @@
+  *
+  */
+ public class ViewResultsFullVisualizer extends AbstractVisualizer
+-implements ActionListener, TreeSelectionListener, Clearable {
++implements ActionListener, TreeSelectionListener, Clearable, ItemListener {
+ 
+     private static final long serialVersionUID = 7338676747296593842L;
+ 
+@@ -108,6 +111,7 @@
+ 
+     private TreeSelectionEvent lastSelectionEvent;
+ 
++    private JCheckBox autoScrollCB;
+     /**
+      * Constructor
+      */
+@@ -144,7 +148,10 @@
+         if (root.getChildCount() == 1) {
+             jTree.expandPath(new TreePath(root));
+         }
+-    }
++        if (autoScrollCB.isSelected() && root.getChildCount() > 1) {
++            jTree.scrollRowToVisible(root.getChildCount() - 1);
++        }
++	}
+ 
+     private void addSubResults(DefaultMutableTreeNode currNode, SampleResult res) {
+         SampleResult[] subResults = res.getSubResults();
+@@ -252,18 +259,35 @@
+         jTree.addTreeSelectionListener(this);
+         jTree.setRootVisible(false);
+         jTree.setShowsRootHandles(true);
+-
+         JScrollPane treePane = new JScrollPane(jTree);
+         treePane.setPreferredSize(new Dimension(200, 300));
+ 
+         VerticalPanel leftPane = new VerticalPanel();
+         leftPane.add(treePane, BorderLayout.CENTER);
+-        leftPane.add(createComboRender(), BorderLayout.SOUTH);
+-
++        VerticalPanel leftDownPane = new VerticalPanel();
++        leftDownPane.add(createComboRender(), BorderLayout.NORTH);
++        autoScrollCB = createASCheckBox("view_results_autoscroll", Color.BLACK);
++        leftDownPane.add(autoScrollCB, BorderLayout.SOUTH);
++        leftPane.add(leftDownPane, BorderLayout.SOUTH);
+         return leftPane;
+     }
+ 
+     /**
++     * Create auto scroll checkbox
++     * @param labelResourceName
++     * @param color
++     * @return {@link JCheckBox}
++     */
++    private JCheckBox createASCheckBox(String labelResourceName, Color color) {
++    	JCheckBox checkBox = new JCheckBox(JMeterUtils
++    			.getResString(labelResourceName));
++    	checkBox.setSelected(false);
++    	checkBox.addItemListener(this);
++    	checkBox.setForeground(color);
++    	return checkBox;
++    }
++    
++    /**
+      * Create the drop-down list to changer render
+      * @return List of all render (implement ResultsRender)
+      */
+@@ -352,7 +376,6 @@
+     }
+ 
+     private static class ResultsNodeRenderer extends DefaultTreeCellRenderer {
+-
+         private static final long serialVersionUID = 4159626601097711565L;
+ 
+         @Override
+@@ -379,4 +402,10 @@
+         }
+     }
+ 
++    /**
++     * Handler for Checkbox
++     */
++    public void itemStateChanged(ItemEvent e) {
++         // NOOP state is held by component
++    }
+ }
+Index: src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	(revision 1166194)
++++ src/components/org/apache/jmeter/visualizers/AssertionVisualizer.java	(working copy)
+@@ -56,6 +56,7 @@
+         sb.append("\n"); // $NON-NLS-1$
+         synchronized (textArea) {
+             textArea.append(sb.toString());
++            textArea.setCaretPosition(textArea.getText().length());
+         }
+     }
+ 

@@ -1,0 +1,106 @@
+From 99fb900a3fe79b21d2973ab0dd557be6283ed556 Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Sun, 23 Aug 2015 16:38:24 +0200
+Subject: [PATCH] Try to work around the deprecations of BC
+
+---
+ .../apache/jmeter/assertions/SMIMEAssertion.java   | 34 +++++++++++++---------
+ 1 file changed, 20 insertions(+), 14 deletions(-)
+
+diff --git a/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java b/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+index 36efb5c..328bb42 100644
+--- a/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
++++ b/src/components/org/apache/jmeter/assertions/SMIMEAssertion.java
+@@ -27,7 +27,6 @@ import java.io.InputStream;
+ import java.math.BigInteger;
+ import java.security.GeneralSecurityException;
+ import java.security.Security;
+-import java.security.cert.CertStore;
+ import java.security.cert.CertificateException;
+ import java.security.cert.CertificateFactory;
+ import java.security.cert.X509Certificate;
+@@ -36,7 +35,6 @@ import java.util.Collection;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Properties;
+-import java.util.Vector;
+ 
+ import javax.mail.MessagingException;
+ import javax.mail.Session;
+@@ -49,18 +47,22 @@ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
++import org.bouncycastle.asn1.x500.RDN;
++import org.bouncycastle.asn1.x500.X500Name;
++import org.bouncycastle.asn1.x500.style.BCStyle;
+ import org.bouncycastle.asn1.x509.GeneralName;
+-import org.bouncycastle.asn1.x509.X509Name;
++import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+ import org.bouncycastle.cms.CMSException;
+ import org.bouncycastle.cms.SignerInformation;
+ import org.bouncycastle.cms.SignerInformationStore;
+-import org.bouncycastle.cms.jcajce.JcaX509CertSelectorConverter;
+-import org.bouncycastle.jce.PrincipalUtil;
+-import org.bouncycastle.jce.X509Principal;
++import org.bouncycastle.cms.SignerInformationVerifier;
++import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder;
+ import org.bouncycastle.jce.provider.BouncyCastleProvider;
+ import org.bouncycastle.mail.smime.SMIMEException;
+ import org.bouncycastle.mail.smime.SMIMESignedParser;
++import org.bouncycastle.operator.OperatorCreationException;
+ import org.bouncycastle.operator.bc.BcDigestCalculatorProvider;
++import org.bouncycastle.util.Store;
+ import org.bouncycastle.x509.extension.X509ExtensionUtil;
+ 
+ /**
+@@ -148,15 +150,14 @@ class SMIMEAssertion {
+         AssertionResult res = new AssertionResult(name);
+ 
+         try {
+-            CertStore certs = s.getCertificatesAndCRLs("Collection", "BC"); // $NON-NLS-1$  // $NON-NLS-2$
++            Store certs = s.getCertificates(); // $NON-NLS-1$  // $NON-NLS-2$
+             SignerInformationStore signers = s.getSignerInfos();
+             Iterator<?> signerIt = signers.getSigners().iterator();
+ 
+             if (signerIt.hasNext()) {
+ 
+                 SignerInformation signer = (SignerInformation) signerIt.next();
+-                Iterator<?> certIt = certs.getCertificates(
+-                        (new JcaX509CertSelectorConverter()).getCertSelector(signer.getSID())).iterator();
++                Iterator<?> certIt = certs.getMatches(signer.getSID()).iterator();
+ 
+                 if (certIt.hasNext()) {
+                     // the signer certificate
+@@ -164,7 +165,13 @@ class SMIMEAssertion {
+ 
+                     if (testElement.isVerifySignature()) {
+ 
+-                        if (!signer.verify(cert.getPublicKey(), "BC")) { // $NON-NLS-1$
++                        SignerInformationVerifier verifier = null;
++                        try {
++                            verifier = new JcaSimpleSignerInfoVerifierBuilder().setProvider("BC").build(cert.getPublicKey());
++                        } catch (OperatorCreationException e) {
++                            log.error("Can't create a provider", e);
++                        }
++                        if (verifier == null || !signer.verify(verifier)) { // $NON-NLS-1$
+                             res.setFailure(true);
+                             res.setFailureMessage("Signature is invalid");
+                         }
+@@ -325,10 +332,9 @@ class SMIMEAssertion {
+             throws CertificateException {
+         List<String> res = new ArrayList<>();
+ 
+-        X509Principal subject = PrincipalUtil.getSubjectX509Principal(cert);
+-        Vector<?> addresses = subject.getValues(X509Name.EmailAddress);
+-        for (Object address: addresses) {
+-            res.add((String) address);
++        X500Name subject = new JcaX509CertificateHolder(cert).getSubject();
++        for (RDN email : subject.getRDNs(BCStyle.EmailAddress)) {
++            res.add((String) email.toString());
+         }
+ 
+         Collection<?> subjectAltNames =
+-- 
+1.9.1
+

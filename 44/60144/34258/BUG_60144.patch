@@ -1,0 +1,246 @@
+Index: build.xml
+===================================================================
+--- build.xml	(revision 1761076)
++++ build.xml	(working copy)
+@@ -349,8 +349,8 @@
+   <!-- Compilation parameters -->
+   <property name="optimize" value="on"/>
+   <property name="deprecation" value="off"/>
+-  <property name="target.java.version" value="1.7"/>
+-  <property name="src.java.version" value="1.7"/>
++  <property name="target.java.version" value="1.8"/>
++  <property name="src.java.version" value="1.8"/>
+   <property name="encoding" value="UTF-8"/>
+   <!-- Set test encoding to the same default, but allow override -->
+   <property name="test.encoding" value="${encoding}"/>
+Index: src/components/org/apache/jmeter/visualizers/RenderInBrowser.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/RenderInBrowser.java	(revision 0)
++++ src/components/org/apache/jmeter/visualizers/RenderInBrowser.java	(revision 0)
+@@ -0,0 +1,198 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ *
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.visualizers;
++
++import java.awt.BorderLayout;
++import java.awt.Dimension;
++
++import javafx.application.Platform;
++import javafx.beans.value.ChangeListener;
++import javafx.beans.value.ObservableValue;
++import javafx.concurrent.Worker.State;
++import javafx.embed.swing.JFXPanel;
++import javafx.event.EventHandler;
++import javafx.scene.Scene;
++import javafx.scene.web.WebEngine;
++import javafx.scene.web.WebEvent;
++import javafx.scene.web.WebView;
++
++import javax.swing.BorderFactory;
++import javax.swing.JLabel;
++import javax.swing.JOptionPane;
++import javax.swing.JPanel;
++import javax.swing.JProgressBar;
++import javax.swing.SwingUtilities;
++
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * {@link ResultRenderer} implementation that uses JAVAFX WebEngine to render as browser do
++ */
++public class RenderInBrowser extends SamplerResultTab implements ResultRenderer {
++
++    private final JFXPanel jfxPanel = new JFXPanel();
++    private WebEngine engine;
++    private final JLabel lblStatus = new JLabel();
++    private final JProgressBar progressBar = new JProgressBar();
++
++    private JPanel browserPanel;
++
++    /** {@inheritDoc} */
++    @Override
++    public void renderResult(SampleResult sampleResult) {
++        String response = ViewResultsFullVisualizer
++                .getResponseAsString(sampleResult);
++        showRenderedResponse(response, sampleResult);
++    }
++
++    protected void showRenderedResponse(String response, SampleResult res) {
++        showRenderedResponse(response, res, false);
++    }
++
++    protected void showRenderedResponse(String response, SampleResult res,
++            boolean embedded) {
++        if (response == null) {
++            results.setText("");
++            return;
++        }
++
++        int htmlIndex = response.indexOf("<HTML"); // could be <HTML lang=""> //
++                                                   // $NON-NLS-1$
++
++        // Look for a case variation
++        if (htmlIndex < 0) {
++            htmlIndex = response.indexOf("<html"); // ditto // $NON-NLS-1$
++        }
++
++        // If we still can't find it, just try using all of the text
++        if (htmlIndex < 0) {
++            htmlIndex = 0;
++        }
++
++        final String html = response.substring(htmlIndex);
++
++        if (browserPanel == null) {
++            browserPanel = initComponents(html);
++        } 
++        browserPanel.setVisible(true);
++        resultsScrollPane.setViewportView(browserPanel);
++        Platform.runLater(new Runnable() {
++            @Override
++            public void run() {
++                engine.loadContent(html);
++            }
++        });
++    }
++
++    private JPanel initComponents(String htmlContent) {
++        createScene(htmlContent);
++
++        progressBar.setPreferredSize(new Dimension(150, 18));
++        progressBar.setStringPainted(true);
++
++        JPanel statusBar = new JPanel(new BorderLayout(5, 0));
++        statusBar.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5));
++        statusBar.add(lblStatus, BorderLayout.CENTER);
++        statusBar.add(progressBar, BorderLayout.WEST);
++
++        JPanel panel = new JPanel(new BorderLayout());
++        panel.setPreferredSize(new Dimension(1024, 600));
++        panel.add(statusBar, BorderLayout.NORTH);
++        panel.add(jfxPanel, BorderLayout.CENTER);
++        return panel;
++    }
++
++    private void createScene(final String htmlContent) {
++        Platform.setImplicitExit(false);
++        Platform.runLater(new Runnable() {
++            @Override
++            public void run() {
++
++                WebView view = new WebView();
++                engine = view.getEngine();
++
++                engine.setOnStatusChanged(new EventHandler<WebEvent<String>>() {
++                    @Override
++                    public void handle(final WebEvent<String> event) {
++                        SwingUtilities.invokeLater(new Runnable() {
++                            @Override
++                            public void run() {
++                                lblStatus.setText(event.getData());
++                            }
++                        });
++                    }
++                });
++
++                engine.getLoadWorker().workDoneProperty()
++                        .addListener(new ChangeListener<Number>() {
++                            @Override
++                            public void changed(
++                                    ObservableValue<? extends Number> observableValue,
++                                    Number oldValue, final Number newValue) {
++                                SwingUtilities.invokeLater(new Runnable() {
++                                    @Override
++                                    public void run() {
++                                        progressBar.setValue(newValue
++                                                .intValue());
++                                    }
++                                });
++                            }
++                        });
++
++                engine.getLoadWorker().exceptionProperty()
++                        .addListener(new ChangeListener<Throwable>() {
++
++                            @Override
++                            public void changed(
++                                    ObservableValue<? extends Throwable> o,
++                                    Throwable old, final Throwable value) {
++                                if (engine.getLoadWorker().getState() == State.FAILED) {
++                                    SwingUtilities.invokeLater(new Runnable() {
++                                        @Override
++                                        public void run() {
++                                            JOptionPane
++                                                    .showMessageDialog(
++                                                            resultsScrollPane,
++                                                            (value != null) ? engine
++                                                                    .getLocation()
++                                                                    + "\n"
++                                                                    + value.getMessage()
++                                                                    : engine.getLocation()
++                                                                            + "\nUnexpected error.",
++                                                            "Loading error...",
++                                                            JOptionPane.ERROR_MESSAGE);
++                                        }
++                                    });
++                                }
++                            }
++                        });
++                jfxPanel.setScene(new Scene(view));
++            }
++        });
++    }
++
++    /** {@inheritDoc} */
++    @Override
++    public String toString() {
++        return JMeterUtils.getResString("view_results_render_browser"); // $NON-NLS-1$
++    }
++
++}
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1761076)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -1246,7 +1246,8 @@
+ view_results_latency=Latency: 
+ view_results_connect_time=Connect Time: 
+ view_results_load_time=Load time: 
+-view_results_render=Render: 
++view_results_render=Render:
++view_results_render_browser=Browser 
+ view_results_render_document=Document
+ view_results_render_html=HTML
+ view_results_render_html_embedded=HTML (download resources)
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1761076)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -1231,7 +1231,8 @@
+ view_results_in_table=Tableau de r\u00E9sultats
+ view_results_latency=Latence \: 
+ view_results_load_time=Temps de r\u00E9ponse \: 
+-view_results_render=Rendu \: 
++view_results_render=Rendu \:
++view_results_render_browser=Navigateur 
+ view_results_render_document=Document
+ view_results_render_html=HTML
+ view_results_render_html_embedded=HTML et ressources

@@ -1,0 +1,220 @@
+From a3175a6c6b1be18235ec5f62e54ec206547327c4 Mon Sep 17 00:00:00 2001
+From: benoit <b.wiart@ubik-ingenierie.com>
+Date: Tue, 1 Oct 2013 10:16:57 +0200
+Subject: [PATCH] ListedHashTree needlessly override some of its parent
+ methods delete code that has been commented for 9 years do
+ not create a temporary HashTree just to get a new hashset
+ avoid double lookup in the map
+
+---
+ .../org/apache/jorphan/collections/HashTree.java   | 58 ++++------------------
+ .../apache/jorphan/collections/ListedHashTree.java | 45 -----------------
+ 2 files changed, 9 insertions(+), 94 deletions(-)
+
+diff --git a/src/jorphan/org/apache/jorphan/collections/HashTree.java b/src/jorphan/org/apache/jorphan/collections/HashTree.java
+index a6eee7e..124a1a9 100644
+--- a/src/jorphan/org/apache/jorphan/collections/HashTree.java
++++ b/src/jorphan/org/apache/jorphan/collections/HashTree.java
+@@ -25,6 +25,7 @@ import java.io.Serializable;
+ import java.util.Arrays;
+ import java.util.Collection;
+ import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.Iterator;
+ import java.util.Map;
+ import java.util.Set;
+@@ -51,8 +52,6 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+ 
+     private static final long serialVersionUID = 240L;
+ 
+-//    private static final Logger log = LoggingManager.getLoggerForClass();
+-    
+     // Used for the RuntimeException to short-circuit the traversal
+     private static final String FOUND = "found"; // $NON-NLS-1$
+ 
+@@ -185,8 +184,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+      *            sub tree to add to the node created for the first argument.
+      */
+     public void add(Object key, HashTree subTree) {
+-        add(key);
+-        getTree(key).add(subTree);
++        add(key).add(subTree);
+     }
+ 
+     /**
+@@ -197,8 +195,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+      */
+     public void add(HashTree newTree) {
+         for (Object item : newTree.list()) {
+-            add(item);
+-            getTree(item).add(newTree.getTree(item));
++            add(item).add(newTree.getTree(item));
+         }
+     }
+ 
+@@ -448,8 +445,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+      *            value to be added as a key in the secondary node
+      */
+     public HashTree add(Object key, Object value) {
+-        add(key);
+-        return getTree(key).add(value);
++        return add(key).add(value);
+     }
+ 
+     /**
+@@ -463,8 +459,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+      *            array of objects to be added as keys in the secondary node
+      */
+     public void add(Object key, Object[] values) {
+-        add(key);
+-        getTree(key).add(values);
++        add(key).add(values);
+     }
+ 
+     /**
+@@ -478,8 +473,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+      *            node
+      */
+     public void add(Object key, Collection<?> values) {
+-        add(key);
+-        getTree(key).add(values);
++        add(key).add(values);
+     }
+ 
+     /**
+@@ -576,8 +570,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+     protected HashTree addTreePath(Collection<?> treePath) {
+         HashTree tree = this;
+         for (Object temp : treePath) {
+-            tree.add(temp);
+-            tree = tree.getTree(temp);
++            tree = tree.add(temp);
+         }
+         return tree;
+     }
+@@ -716,7 +709,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+         if (temp != null) {
+             return temp.list();
+         }
+-        return new HashTree().list();
++        return new HashSet<Object>();
+     }
+ 
+     /**
+@@ -763,7 +756,7 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+         if (tree != null) {
+             return tree.list();
+         }
+-        return new HashTree().list();
++        return new HashSet<Object>();
+     }
+ 
+     /**
+@@ -881,39 +874,6 @@ public class HashTree implements Serializable, Map<Object, HashTree>, Cloneable
+             return false;
+         }
+         return data.equals(oo.data);
+-
+-        // boolean flag = true;
+-        // if (o instanceof HashTree)
+-        // {
+-        // HashTree oo = (HashTree) o;
+-        // Iterator it = data.keySet().iterator();
+-        // while (it.hasNext())
+-        // {
+-        // if (!oo.containsKey(it.next()))
+-        // {
+-        // flag = false;
+-        // break;
+-        // }
+-        // }
+-        // if (flag)
+-        // {
+-        // it = data.keySet().iterator();
+-        // while (it.hasNext())
+-        // {
+-        // Object temp = it.next();
+-        // flag = get(temp).equals(oo.get(temp));
+-        // if (!flag)
+-        // {
+-        // break;
+-        // }
+-        // }
+-        // }
+-        // }
+-        // else
+-        // {
+-        // flag = false;
+-        // }
+-        // return flag;
+     }
+ 
+     /**
+diff --git a/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java b/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java
+index e83d266..04f6fd3 100644
+--- a/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java
++++ b/src/jorphan/org/apache/jorphan/collections/ListedHashTree.java
+@@ -25,7 +25,6 @@ import java.io.Serializable;
+ import java.util.Collection;
+ import java.util.LinkedList;
+ import java.util.List;
+-import java.util.Set;
+ 
+ import org.apache.jorphan.util.JMeterError;
+ 
+@@ -206,52 +205,8 @@ public class ListedHashTree extends HashTree implements Serializable, Cloneable
+         }
+         ListedHashTree lht = (ListedHashTree) o;
+         return (super.equals(lht) && order.equals(lht.order));
+-
+-        // boolean flag = true;
+-        // if (o instanceof ListedHashTree)
+-        // {
+-        // ListedHashTree oo = (ListedHashTree) o;
+-        // Iterator it = order.iterator();
+-        // Iterator it2 = oo.order.iterator();
+-        // if (size() != oo.size())
+-        // {
+-        // flag = false;
+-        // }
+-        // while (it.hasNext() && it2.hasNext() && flag)
+-        // {
+-        // if (!it.next().equals(it2.next()))
+-        // {
+-        // flag = false;
+-        // }
+-        // }
+-        // if (flag)
+-        // {
+-        // it = order.iterator();
+-        // while (it.hasNext() && flag)
+-        // {
+-        // Object temp = it.next();
+-        // flag = get(temp).equals(oo.get(temp));
+-        // }
+-        // }
+-        // }
+-        // else
+-        // {
+-        // flag = false;
+-        // }
+-        // return flag;
+-    }
+-
+-    /** {@inheritDoc} */
+-    @Override
+-    public Set<Object> keySet() {
+-        return data.keySet();
+     }
+ 
+-    /** {@inheritDoc} */
+-    @Override
+-    public int size() {
+-        return data.size();
+-    }
+ 
+     private void readObject(ObjectInputStream ois) throws ClassNotFoundException, IOException {
+         ois.defaultReadObject();
+-- 
+1.7.12
+

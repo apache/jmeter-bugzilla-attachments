@@ -1,0 +1,707 @@
+diff --git a/LICENSE b/LICENSE
+index c45dae1..6cdb5f3 100644
+--- a/LICENSE
++++ b/LICENSE
+@@ -242,6 +242,7 @@ The following software is provided under the Apache License V 2.0 (as above):
+ - Software produced outside the ASF which is available under AL 2.0:
+ 
+ * accessors-smart-1.1.jar
++* caffeine-2.3.5.jar
+ * freemarker-2.3.23.jar (AL2.0, see licenses/bin for additional info)
+ * json-path-2.2.0.jar
+ * json-smart-2.2.1.jar
+diff --git a/build.properties b/build.properties
+index 713487d..a9f2c7f 100644
+--- a/build.properties
++++ b/build.properties
+@@ -85,6 +85,11 @@ bcpkix.jar                  = bcpkix-jdk15on-${bcprov.version}.jar
+ bcpkix.loc                  = ${maven2.repo}/org/bouncycastle/bcpkix-jdk15on/${bcprov.version}
+ bcpkix.md5                  = cb025ef84fb991e14fdf62f6bef7be53
+ 
++caffeine.version            = 2.3.5
++caffeine.jar                = caffeine-${caffeine.version}.jar
++caffeine.loc                = ${maven2.repo}/com/github/ben-manes/caffeine/caffeine/${caffeine.version}
++caffeine.md5                = 5ff5404cc94337fd6976a06ed6f1f023
++
+ commons-codec.version       = 1.10
+ commons-codec.jar           = commons-codec-${commons-codec.version}.jar
+ commons-codec.loc           = ${maven2.repo}/commons-codec/commons-codec/${commons-codec.version}
+diff --git a/build.xml b/build.xml
+index 06437c4..bbadf75 100644
+--- a/build.xml
++++ b/build.xml
+@@ -393,6 +393,7 @@
+     <include name="${lib.dir}/${asm.jar}"/>
+     <include name="${lib.dir}/${avalon-framework.jar}"/>
+     <include name="${lib.dir}/${beanshell.jar}"/>
++    <include name="${lib.dir}/${caffeine.jar}"/>
+     <include name="${lib.dir}/${commons-codec.jar}"/>
+     <include name="${lib.dir}/${commons-collections.jar}"/>
+     <include name="${lib.dir}/${commons-dbcp2.jar}"/>
+@@ -469,6 +470,7 @@
+     <pathelement location="${lib.dir}/${asm.jar}"/>
+     <pathelement location="${lib.dir}/${avalon-framework.jar}"/>
+     <pathelement location="${lib.dir}/${beanshell.jar}"/>
++    <pathelement location="${lib.dir}/${caffeine.jar}"/>
+     <pathelement location="${lib.dir}/${commons-codec.jar}"/>
+     <pathelement location="${lib.dir}/${commons-collections.jar}"/>
+     <pathelement location="${lib.dir}/${commons-dbcp2.jar}"/>
+@@ -3024,6 +3026,7 @@ run JMeter unless all the JMeter jars are added.
+     <process_jarfile jarname="bcprov" dest.dir="${lib.api}"/>
+     <process_jarfile jarname="bcpkix" dest.dir="${lib.api}"/>
+     <process_jarfile jarname="beanshell"/>
++    <process_jarfile jarname="caffeine"/>
+     <process_jarfile jarname="commons-codec"/>
+     <process_jarfile jarname="commons-collections"/>
+     <process_jarfile jarname="commons-dbcp2"/>
+diff --git a/eclipse.classpath b/eclipse.classpath
+index c622934..9a8d0a4 100644
+--- a/eclipse.classpath
++++ b/eclipse.classpath
+@@ -49,6 +49,7 @@
+ 	<classpathentry kind="lib" path="lib/avalon-framework-4.1.4.jar"/>
+ 	<classpathentry kind="lib" path="lib/bsf-2.4.0.jar"/>
+ 	<classpathentry kind="lib" path="lib/bsh-2.0b5.jar"/>
++	<classpathentry kind="lib" path="lib/caffeine-2.3.5.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-codec-1.10.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-collections-3.2.2.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-dbcp2-2.1.1.jar"/>
+diff --git a/licenses/bin/caffeine-2.3.5.txt b/licenses/bin/caffeine-2.3.5.txt
+new file mode 100644
+index 0000000..d645695
+--- /dev/null
++++ b/licenses/bin/caffeine-2.3.5.txt
+@@ -0,0 +1,202 @@
++
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "[]"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright [yyyy] [name of copyright owner]
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
+diff --git a/res/maven/ApacheJMeter_parent.pom b/res/maven/ApacheJMeter_parent.pom
+index 6e70d92..16b7b2d 100644
+--- a/res/maven/ApacheJMeter_parent.pom
++++ b/res/maven/ApacheJMeter_parent.pom
+@@ -60,6 +60,7 @@ under the License.
+       <bcmail.version>1.49</bcmail.version>
+       <bcprov.version>1.49</bcprov.version>
+       <bcpkix.version>1.49</bcpkix.version>
++      <caffeine.version>2.3.5</caffeine.version>
+       <commons-codec.version>1.10</commons-codec.version>
+       <commons-collections.version>3.2.2</commons-collections.version>
+       <commons-dbcp2.version>2.1.1</commons-dbcp2.version>
+@@ -153,6 +154,11 @@ under the License.
+         <version>${bcpkix.version}</version>
+       </dependency>
+       <dependency>
++      <groupId>com.github.ben-manes.caffeine</groupId>
++        <artifactId>caffeine</artifactId>
++        <version>${caffeine.version}</version>
++      </dependency>
++      <dependency>
+         <groupId>commons-codec</groupId>
+         <artifactId>commons-codec</artifactId>
+         <version>${commons-codec.version}</version>
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CSSParseExceptionCallback.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CSSParseExceptionCallback.java
+new file mode 100644
+index 0000000..889a577
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CSSParseExceptionCallback.java
+@@ -0,0 +1,58 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.parser;
++
++import java.net.URL;
++
++import org.apache.commons.lang3.Validate;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++import com.helger.css.handler.ICSSParseExceptionCallback;
++import com.helger.css.parser.ParseException;
++import com.helger.css.reader.errorhandler.LoggingCSSParseErrorHandler;
++
++public class CSSParseExceptionCallback implements ICSSParseExceptionCallback {
++
++    private static final long serialVersionUID = -4277276398858139449L;
++    private static final Logger LOG = LoggingManager.getLoggerForClass();
++    private static final boolean IGNORE_UNRECOVERABLE_PARSING_ERROR = JMeterUtils
++            .getPropDefault(
++                    "httpsampler.ignore_failed_embedded_resource", false); //$NON-NLS-1$
++
++    private final URL baseUrl;
++
++    public CSSParseExceptionCallback(URL baseUrl) {
++        this.baseUrl = Validate.notNull(baseUrl);
++    }
++
++    @Override
++    public void onException(ParseException ex) {
++        final String message = "Failed to parse CSS: " + baseUrl + ", "
++                + LoggingCSSParseErrorHandler.createLoggingStringParseError(ex);
++        if (IGNORE_UNRECOVERABLE_PARSING_ERROR) {
++            LOG.warn(message);
++        } else {
++            throw new IllegalArgumentException(message);
++        }
++
++    }
++
++}
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
+index dc87437..19cc630 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParser.java
+@@ -20,163 +20,63 @@ package org.apache.jmeter.protocol.http.parser;
+ 
+ import java.net.URL;
+ import java.nio.charset.Charset;
+-import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.Iterator;
+-import java.util.List;
+-import java.util.Map;
+ 
+-import org.apache.commons.codec.digest.DigestUtils;
+-import org.apache.commons.collections.map.LRUMap;
+-import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.lang3.Validate;
++import org.apache.commons.lang3.tuple.ImmutableTriple;
++import org.apache.commons.lang3.tuple.Triple;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+-import com.helger.css.ECSSVersion;
+-import com.helger.css.decl.CSSDeclaration;
+-import com.helger.css.decl.CSSExpressionMemberTermURI;
+-import com.helger.css.decl.CSSImportRule;
+-import com.helger.css.decl.CascadingStyleSheet;
+-import com.helger.css.decl.ICSSTopLevelRule;
+-import com.helger.css.decl.visit.CSSVisitor;
+-import com.helger.css.decl.visit.DefaultCSSUrlVisitor;
+-import com.helger.css.handler.LoggingCSSParseExceptionCallback;
+-import com.helger.css.parser.ParseException;
+-import com.helger.css.reader.CSSReader;
+-import com.helger.css.reader.CSSReaderSettings;
+-import com.helger.css.reader.errorhandler.DoNothingCSSInterpretErrorHandler;
+-import com.helger.css.reader.errorhandler.ICSSInterpretErrorHandler;
+-import com.helger.css.reader.errorhandler.LoggingCSSParseErrorHandler;
++import com.github.benmanes.caffeine.cache.Caffeine;
++import com.github.benmanes.caffeine.cache.LoadingCache;
+ 
+ /**
+  * CSS Parser used to extract from CSS files external urls
++ *
+  * @since 3.0
+  */
+ public class CssParser implements LinkExtractorParser {
+-    private static final boolean IGNORE_UNRECOVERABLE_PARSING_ERROR = JMeterUtils.getPropDefault("httpsampler.ignore_failed_embedded_resource", false); //$NON-NLS-1$
++    private static final URLCollection EMPTY_URL_COLLECTION = new URLCollection(Collections.emptyList());
+     private static final Logger LOG = LoggingManager.getLoggerForClass();
+ 
+     /**
+      *
+      */
+-    private static final int CSS_URL_CACHE_MAX_SIZE = JMeterUtils.getPropDefault("css.parser.cache.size", 400);
+-    private static final boolean IGNORE_ALL_CSS_ERRORS = JMeterUtils.getPropDefault("css.parser.ignore_all_css_errors", true);
+-
+-    /**
+-     *
+-     */
+-    @SuppressWarnings("unchecked")
+-    private static final Map<String, URLCollection> CSS_URL_CACHE =
+-            CSS_URL_CACHE_MAX_SIZE > 0 ? Collections.synchronizedMap(new LRUMap(CSS_URL_CACHE_MAX_SIZE)) : null;
+-
+-
+-    private static final class CustomLoggingCSSParseExceptionCallback extends LoggingCSSParseExceptionCallback {
+-        /**
+-         *
+-         */
+-        private static final long serialVersionUID = -9111232037888068394L;
+-        private URL cssUrl;
+-
+-        /**
+-         * @param cssUrl {@link URL}
+-         */
+-        public CustomLoggingCSSParseExceptionCallback(URL cssUrl) {
+-            this.cssUrl = cssUrl;
+-        }
+-        /**
+-         * @see com.helger.css.handler.LoggingCSSParseExceptionCallback#onException(com.helger.css.parser.ParseException)
+-         */
+-        @Override
+-        public void onException(ParseException ex) {
+-            if(IGNORE_UNRECOVERABLE_PARSING_ERROR) {
+-                LOG.warn("Failed to parse CSS: " + cssUrl + ", " + LoggingCSSParseErrorHandler.createLoggingStringParseError (ex));
+-            } else {
+-                throw new IllegalStateException("Failed to parse CSS: " + cssUrl + ", " + LoggingCSSParseErrorHandler.createLoggingStringParseError (ex));
+-            }
+-        }
+-    }
+-
+-    /**
+-     *
+-     */
+-    public CssParser() {
++    private static final LoadingCache<Triple<String, URL, Charset>, URLCollection> CSS_URL_CACHE;
++    static {
++        final int cacheSize = JMeterUtils.getPropDefault(
++                "css.parser.cache.size", 400);
++        CSS_URL_CACHE = Caffeine.newBuilder().maximumSize(cacheSize)
++                .build(new CssParserCacheLoader());
+     }
+ 
+     /**
+      *
+-     * @see
+-     * org.apache.jmeter.protocol.http.parser.LinkExtractorParser#getEmbeddedResourceURLs
+-     * (java.lang.String, byte[], java.net.URL, java.lang.String)
++     * @see org.apache.jmeter.protocol.http.parser.LinkExtractorParser#getEmbeddedResourceURLs
++     *      (java.lang.String, byte[], java.net.URL, java.lang.String)
+      */
+     @Override
+     public Iterator<URL> getEmbeddedResourceURLs(String userAgent, byte[] data,
+-            final URL baseUrl, String encoding) throws LinkExtractorParseException {
++            final URL baseUrl, String encoding)
++            throws LinkExtractorParseException {
+         try {
+-            boolean cacheEnabled = CSS_URL_CACHE_MAX_SIZE > 0;
+-            String md5Key = null;
+-            URLCollection urlCollection = null;
+-            if(cacheEnabled) {
+-                md5Key = DigestUtils.md5Hex(data);
+-                urlCollection = CSS_URL_CACHE.get(md5Key);
+-            }
+-
+-            if(urlCollection == null) {
+-                String cssContent = new String(data, encoding);
+-                final CSSReaderSettings cssSettings = new CSSReaderSettings()
+-                        .setBrowserCompliantMode(true)
+-                        .setFallbackCharset(Charset.forName(encoding))
+-                        .setCSSVersion(ECSSVersion.CSS30)
+-                        .setCustomErrorHandler(
+-                                new LoggingCSSParseErrorHandler())
+-                        .setCustomExceptionHandler(
+-                                new CustomLoggingCSSParseExceptionCallback(
+-                                        baseUrl));
+-                if (IGNORE_ALL_CSS_ERRORS) {
+-                    cssSettings
+-                            .setInterpretErrorHandler(new DoNothingCSSInterpretErrorHandler());
+-                }
+-                final CascadingStyleSheet aCSS = CSSReader
+-                        .readFromStringStream(cssContent, cssSettings);
+-                final List<URLString> list = new ArrayList<>();
+-                urlCollection = new URLCollection(list);
+-                final URLCollection localCollection = urlCollection;
+-                if(aCSS != null) {
+-                    CSSVisitor.visitCSSUrl(aCSS, new DefaultCSSUrlVisitor() {
+-                        @Override
+-                        public void onImport(final CSSImportRule importRule) {
+-                            String location = importRule.getLocationString();
+-                            if(!StringUtils.isEmpty(location)) {
+-                                localCollection.addURL(location, baseUrl);
+-                            }
+-                        }
+-                        // Call for URLs outside of URLs
+-                        @Override
+-                        public void onUrlDeclaration(
+-                                final ICSSTopLevelRule aTopLevelRule,
+-                                final CSSDeclaration aDeclaration,
+-                                final CSSExpressionMemberTermURI aURITerm) {
+-                            // NOOP
+-                            // Browser fetch such urls only when CSS rule matches
+-                            // so we disable this code
+-                            //urlCollection.addURL(aURITerm.getURIString(), baseUrl);
+-                        }
+-                    });
+-                    if(cacheEnabled) {
+-                        CSS_URL_CACHE.put(md5Key, urlCollection);
+-                    }
+-                } else {
+-                   LOG.warn("Failed parsing url:"+baseUrl+", got null CascadingStyleSheet");
+-                }
+-            }
++            final String cssContent = new String(data, encoding);
++            final Charset charset = Charset.forName(encoding);
++            final Triple<String, URL, Charset> triple = ImmutableTriple.of(
++                    cssContent, baseUrl, charset);
++            final URLCollection urlCollection = orDefault(CSS_URL_CACHE.get(triple), EMPTY_URL_COLLECTION);
+ 
+-            if(LOG.isDebugEnabled()) {
++            if (LOG.isDebugEnabled()) {
+                 StringBuilder builder = new StringBuilder();
+-                for (Iterator<URL> iterator = urlCollection.iterator(); iterator.hasNext();) {
++                for (Iterator<URL> iterator = urlCollection.iterator(); iterator
++                        .hasNext();) {
+                     URL urlString = iterator.next();
+                     builder.append(urlString).append(',');
+                 }
+-                LOG.debug("Parsed:"+baseUrl+", got:"+builder.toString());
++                LOG.debug("Parsed:" + baseUrl + ", got:" + builder.toString());
+             }
+ 
+             return urlCollection.iterator();
+@@ -185,6 +85,14 @@ public class CssParser implements LinkExtractorParser {
+         }
+     }
+ 
++    private URLCollection orDefault(URLCollection urlCollection,
++            URLCollection defaultValue) {
++        if (urlCollection == null) {
++            return Validate.notNull(defaultValue);
++        }
++        return urlCollection;
++    }
++
+     @Override
+     public boolean isReusable() {
+         return true;
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParserCacheLoader.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParserCacheLoader.java
+new file mode 100644
+index 0000000..aee4190
+--- /dev/null
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/CssParserCacheLoader.java
+@@ -0,0 +1,103 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.parser;
++
++import java.net.URL;
++import java.nio.charset.Charset;
++import java.util.ArrayList;
++
++import org.apache.commons.lang3.StringUtils;
++import org.apache.commons.lang3.tuple.Triple;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++import com.github.benmanes.caffeine.cache.CacheLoader;
++import com.helger.css.ECSSVersion;
++import com.helger.css.decl.CSSDeclaration;
++import com.helger.css.decl.CSSExpressionMemberTermURI;
++import com.helger.css.decl.CSSImportRule;
++import com.helger.css.decl.CascadingStyleSheet;
++import com.helger.css.decl.ICSSTopLevelRule;
++import com.helger.css.decl.visit.CSSVisitor;
++import com.helger.css.decl.visit.DefaultCSSUrlVisitor;
++import com.helger.css.reader.CSSReader;
++import com.helger.css.reader.CSSReaderSettings;
++import com.helger.css.reader.errorhandler.DoNothingCSSInterpretErrorHandler;
++import com.helger.css.reader.errorhandler.LoggingCSSParseErrorHandler;
++
++public class CssParserCacheLoader implements
++        CacheLoader<Triple<String, URL, Charset>, URLCollection> {
++
++    private static final Logger LOG = LoggingManager.getLoggerForClass();
++    private static final boolean IGNORE_ALL_CSS_ERRORS = JMeterUtils
++            .getPropDefault("css.parser.ignore_all_css_errors", true);
++
++    @Override
++    public URLCollection load(Triple<String, URL, Charset> triple)
++            throws Exception {
++        final String cssContent = triple.getLeft();
++        final URL baseUrl = triple.getMiddle();
++        final Charset charset = triple.getRight();
++        final CSSReaderSettings readerSettings = new CSSReaderSettings()
++                .setBrowserCompliantMode(true)
++                .setFallbackCharset(charset)
++                .setCSSVersion(ECSSVersion.CSS30)
++                .setCustomErrorHandler(new LoggingCSSParseErrorHandler())
++                .setCustomExceptionHandler(
++                        new CSSParseExceptionCallback(baseUrl));
++        if (IGNORE_ALL_CSS_ERRORS) {
++            readerSettings
++                    .setInterpretErrorHandler(new DoNothingCSSInterpretErrorHandler());
++        }
++        final CascadingStyleSheet aCSS = CSSReader.readFromStringReader(
++                cssContent, readerSettings);
++
++        final URLCollection urls = new URLCollection(new ArrayList<URLString>());
++
++        if (aCSS == null) {
++            LOG.warn("Failed parsing CSS: " + baseUrl
++                    + ", got null CascadingStyleSheet");
++            return urls;
++        }
++
++        CSSVisitor.visitCSSUrl(aCSS, new DefaultCSSUrlVisitor() {
++            @Override
++            public void onImport(CSSImportRule rule) {
++                final String location = rule.getLocationString();
++                if (!StringUtils.isEmpty(location)) {
++                    urls.addURL(location, baseUrl);
++                }
++            }
++
++            // Call for URLs outside of URLs
++            @Override
++            public void onUrlDeclaration(final ICSSTopLevelRule aTopLevelRule,
++                    final CSSDeclaration aDeclaration,
++                    final CSSExpressionMemberTermURI aURITerm) {
++                // NOOP
++                // Browser fetch such urls only when CSS rule matches
++                // so we disable this code
++            }
++        });
++
++        return urls;
++    }
++
++}
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java b/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java
+index fb04184..fb913c8 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/parser/URLCollection.java
+@@ -24,6 +24,7 @@ import java.util.Collection;
+ import java.util.Iterator;
+ 
+ import org.apache.commons.lang3.StringEscapeUtils;
++import org.apache.commons.lang3.Validate;
+ import org.apache.jmeter.protocol.http.util.ConversionUtils;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -45,10 +46,10 @@ public class URLCollection {
+     /**
+      * Creates a new URLCollection from an existing Collection
+      *
+-     * @param c collection to start with
++     * @param c collection to start with (Must not be {@code null})
+      */
+     public URLCollection(Collection<URLString> c) {
+-        coll = c;
++        coll = Validate.notNull(c);
+     }
+ 
+     /**

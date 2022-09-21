@@ -1,0 +1,1214 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1540858)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -445,6 +445,11 @@
+ jms_msg_content=Contenu
+ jms_object_message=Message Object
+ jms_point_to_point=Requ\u00EAte JMS Point-\u00E0-point
++jms_properties=Propri\u00E9t\u00E9s JMS
++jms_properties_title=Propri\u00E9t\u00E9s JMS
++jms_properties_type=Classe de la Valeur
++jms_properties_name=Nom
++jms_properties_value=Valeur
+ jms_props=Propri\u00E9t\u00E9s JMS
+ jms_provider_url=URL du fournisseur
+ jms_publisher=Requ\u00EAte JMS Publication
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1542821)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -451,6 +451,11 @@
+ jms_msg_content=Content
+ jms_object_message=Object Message
+ jms_point_to_point=JMS Point-to-Point
++jms_properties=JMS Properties
++jms_properties_title=JMS Properties
++jms_properties_name=Name
++jms_properties_type=Class of value
++jms_properties_value=Value
+ jms_props=JMS Properties
+ jms_provider_url=Provider URL
+ jms_publisher=JMS Publisher
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(revision 1539658)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPublisherGui.java	(working copy)
+@@ -28,13 +28,12 @@
+ import javax.swing.event.ChangeEvent;
+ import javax.swing.event.ChangeListener;
+ 
+-import org.apache.jmeter.config.Arguments;
+-import org.apache.jmeter.config.gui.ArgumentsPanel;
+ import org.apache.jmeter.gui.util.FilePanel;
+ import org.apache.jmeter.gui.util.JLabeledRadioI18N;
+ import org.apache.jmeter.gui.util.JSyntaxTextArea;
+ import org.apache.jmeter.gui.util.JTextScrollPane;
+ import org.apache.jmeter.gui.util.VerticalPanel;
++import org.apache.jmeter.protocol.jms.sampler.JMSProperties;
+ import org.apache.jmeter.protocol.jms.sampler.PublisherSampler;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -118,7 +117,7 @@
+     private final JLabeledRadioI18N destSetup =
+         new JLabeledRadioI18N("jms_dest_setup", DEST_SETUP_ITEMS, DEST_SETUP_STATIC); // $NON-NLS-1$
+ 
+-    private ArgumentsPanel jmsPropertiesPanel;
++    private JMSPropertiesPanel jmsPropertiesPanel;
+ 
+     public JMSPublisherGui() {
+         init();
+@@ -177,7 +176,7 @@
+       sampler.setUseAuth(useAuth.isSelected());
+       sampler.setUseNonPersistentDelivery(useNonPersistentDelivery.isSelected());
+      
+-      Arguments args = (Arguments) jmsPropertiesPanel.createTestElement();
++      JMSProperties args = (JMSProperties) jmsPropertiesPanel.createTestElement();
+       sampler.setJMSProperties(args);
+     }
+ 
+@@ -201,7 +200,7 @@
+         mainPanel.add(createAuthPane());
+         mainPanel.add(iterations);
+ 
+-        jmsPropertiesPanel = new ArgumentsPanel(JMeterUtils.getResString("jms_props")); //$NON-NLS-1$
++        jmsPropertiesPanel = new JMSPropertiesPanel(); //$NON-NLS-1$
+         mainPanel.add(jmsPropertiesPanel);
+ 
+         configChoice.setLayout(new BoxLayout(configChoice, BoxLayout.X_AXIS));
+@@ -245,7 +244,7 @@
+         jmsPwd.setEnabled(false);
+         destSetup.setText(DEST_SETUP_STATIC);
+         useNonPersistentDelivery.setSelected(false);
+-        jmsPropertiesPanel.clear();
++        jmsPropertiesPanel.clearGui();
+     }
+ 
+     /**
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java	(revision 1539658)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSSamplerGui.java	(working copy)
+@@ -33,6 +33,7 @@
+ import org.apache.jmeter.gui.util.HorizontalPanel;
+ import org.apache.jmeter.gui.util.JSyntaxTextArea;
+ import org.apache.jmeter.gui.util.JTextScrollPane;
++import org.apache.jmeter.protocol.jms.sampler.JMSProperties;
+ import org.apache.jmeter.protocol.jms.sampler.JMSSampler;
+ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
+ import org.apache.jmeter.testelement.TestElement;
+@@ -72,7 +73,7 @@
+ 
+     private JLabeledChoice oneWay = new JLabeledChoice(JMeterUtils.getResString("jms_communication_style"), labels); //$NON-NLS-1$
+ 
+-    private ArgumentsPanel jmsPropertiesPanel;
++    private JMSPropertiesPanel jmsPropertiesPanel;
+ 
+     private ArgumentsPanel jndiPropertiesPanel;
+ 
+@@ -101,7 +102,7 @@
+         messageContent.setInitialText(""); // $NON-NLS-1$
+         initialContextFactory.setText(""); // $NON-NLS-1$
+         providerUrl.setText(""); // $NON-NLS-1$
+-        jmsPropertiesPanel.clear();
++        jmsPropertiesPanel.clearGui();
+         jndiPropertiesPanel.clear();
+     }
+ 
+@@ -133,7 +134,7 @@
+         Arguments jndiArgs = (Arguments) jndiPropertiesPanel.createTestElement();
+         element.setJNDIProperties(jndiArgs);
+ 
+-        Arguments args = (Arguments) jmsPropertiesPanel.createTestElement();
++        JMSProperties args = (JMSProperties) jmsPropertiesPanel.createTestElement();
+         element.setJMSProperties(args);
+ 
+     }
+@@ -250,7 +251,7 @@
+         messageContent.setPreferredSize(pref);
+         messagePanel.add(messageContentPanel, BorderLayout.CENTER);
+ 
+-        jmsPropertiesPanel = new ArgumentsPanel(JMeterUtils.getResString("jms_props")); //$NON-NLS-1$
++        jmsPropertiesPanel = new JMSPropertiesPanel(); //$NON-NLS-1$
+         messagePanel.add(jmsPropertiesPanel, BorderLayout.SOUTH);
+ 
+         Box mainPanel = Box.createVerticalBox();
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPropertiesPanel.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPropertiesPanel.java	(revision 0)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/control/gui/JMSPropertiesPanel.java	(revision 0)
+@@ -0,0 +1,369 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.jms.control.gui;
++
++import java.awt.BorderLayout;
++import java.awt.Dimension;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++
++import javax.swing.BorderFactory;
++import javax.swing.DefaultCellEditor;
++import javax.swing.JButton;
++import javax.swing.JComboBox;
++import javax.swing.JPanel;
++import javax.swing.JScrollPane;
++import javax.swing.JTable;
++import javax.swing.ListSelectionModel;
++import javax.swing.table.AbstractTableModel;
++import javax.swing.table.TableCellEditor;
++import javax.swing.table.TableColumn;
++
++import org.apache.jmeter.config.gui.AbstractConfigGui;
++import org.apache.jmeter.gui.util.HeaderAsPropertyRenderer;
++import org.apache.jmeter.protocol.jms.sampler.JMSProperties;
++import org.apache.jmeter.protocol.jms.sampler.JMSProperty;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.GuiUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++/**
++ * Handles input for Jms Properties
++ * @since 2.10.1
++ */
++public class JMSPropertiesPanel extends AbstractConfigGui implements ActionListener {
++
++    private static final long serialVersionUID = -2893899384410289131L;
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    private static final String ADD_COMMAND = "Add"; //$NON-NLS-1$
++
++    private static final String DELETE_COMMAND = "Delete"; //$NON-NLS-1$
++
++    private static final int COL_NAME = 0;
++    private static final int COL_VALUE = 1;
++    private static final int COL_TYPE = 2;
++
++    private InnerTableModel tableModel;
++
++    private JTable jmsPropertiesTable;
++
++    private JButton addButton;
++
++    private JButton deleteButton;
++
++
++    /**
++     * Default Constructor.
++     */
++    public JMSPropertiesPanel() {
++        tableModel = new InnerTableModel();
++        init();
++    }
++
++    @Override
++    public TestElement createTestElement() {
++        JMSProperties jmsProperties = tableModel.jmsProperties;
++        configureTestElement(jmsProperties);
++        return (TestElement) jmsProperties.clone();
++    }
++
++    /**
++     * Modifies a given TestElement to mirror the data in the gui components.
++     *
++     * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++     */
++    @Override
++    public void modifyTestElement(TestElement el) {
++        GuiUtils.stopTableEditing(jmsPropertiesTable);
++        JMSProperties jmsProperties = (JMSProperties) el;
++        jmsProperties.clear();
++        jmsProperties.addTestElement((TestElement) tableModel.jmsProperties.clone());
++        configureTestElement(el);
++    }
++
++    /**
++     * Clear GUI
++     */
++    @Override
++    public void clearGui() {
++        super.clearGui();
++
++        tableModel.clearData();
++        deleteButton.setEnabled(false);
++    }
++
++    /**
++     * Configures GUI from el
++     * @param el {@link TestElement}
++     */
++    @Override
++    public void configure(TestElement el) {
++        super.configure(el);
++        tableModel.jmsProperties.clear();
++        tableModel.jmsProperties.addTestElement((JMSProperties) el.clone());
++        if (tableModel.getRowCount() != 0) {
++            deleteButton.setEnabled(true);
++        }
++    }
++
++    @Override
++    public String getLabelResource() {
++        return "jms_properties_title"; //$NON-NLS-1$
++    }
++
++    /**
++     * Shows the main properties panel for this object.
++     */
++    private void init() {// called from ctor, so must not be overridable
++        setLayout(new BorderLayout());
++        setBorder(makeBorder());
++        add(createPropertiesPanel(), BorderLayout.CENTER);
++    }
++
++    @Override
++    public void actionPerformed(ActionEvent e) {
++        String action = e.getActionCommand();
++
++        if (action.equals(DELETE_COMMAND)) {
++            if (tableModel.getRowCount() > 0) {
++                // If a table cell is being edited, we must cancel the editing
++                // before deleting the row.
++                if (jmsPropertiesTable.isEditing()) {
++                    TableCellEditor cellEditor = jmsPropertiesTable.getCellEditor(jmsPropertiesTable.getEditingRow(), jmsPropertiesTable
++                            .getEditingColumn());
++                    cellEditor.cancelCellEditing();
++                }
++
++                int rowSelected = jmsPropertiesTable.getSelectedRow();
++
++                if (rowSelected != -1) {
++                    tableModel.removeRow(rowSelected);
++                    tableModel.fireTableDataChanged();
++
++                    // Disable the DELETE and SAVE buttons if no rows remaining
++                    // after delete.
++                    if (tableModel.getRowCount() == 0) {
++                        deleteButton.setEnabled(false);
++                    }
++
++                    // Table still contains one or more rows, so highlight
++                    // (select) the appropriate one.
++                    else {
++                        int rowToSelect = rowSelected;
++
++                        if (rowSelected >= tableModel.getRowCount()) {
++                            rowToSelect = rowSelected - 1;
++                        }
++
++                        jmsPropertiesTable.setRowSelectionInterval(rowToSelect, rowToSelect);
++                    }
++                }
++            }
++        } else if (action.equals(ADD_COMMAND)) {
++            // If a table cell is being edited, we should accept the current
++            // value and stop the editing before adding a new row.
++            GuiUtils.stopTableEditing(jmsPropertiesTable);
++
++            tableModel.addNewRow();
++            tableModel.fireTableDataChanged();
++
++            // Enable the DELETE and SAVE buttons if they are currently
++            // disabled.
++            if (!deleteButton.isEnabled()) {
++                deleteButton.setEnabled(true);
++            }
++
++            // Highlight (select) the appropriate row.
++            int rowToSelect = tableModel.getRowCount() - 1;
++            jmsPropertiesTable.setRowSelectionInterval(rowToSelect, rowToSelect);
++        } 
++    }
++
++    public JPanel createPropertiesPanel() {
++        // create the JTable that holds JMSProperty per row
++        jmsPropertiesTable = new JTable(tableModel);
++        jmsPropertiesTable.getTableHeader().setDefaultRenderer(new HeaderAsPropertyRenderer());
++        jmsPropertiesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
++        jmsPropertiesTable.setPreferredScrollableViewportSize(new Dimension(100, 70));
++
++        
++        TableColumn mechanismColumn = jmsPropertiesTable.getColumnModel().getColumn(COL_TYPE);
++        mechanismColumn.setCellEditor(new TypeCellEditor());
++
++        JPanel panel = new JPanel(new BorderLayout(0, 5));
++        panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                JMeterUtils.getResString("jms_props"))); //$NON-NLS-1$
++        panel.add(new JScrollPane(jmsPropertiesTable));
++        panel.add(createButtonPanel(), BorderLayout.SOUTH);
++        return panel;
++    }
++
++    private JButton createButton(String resName, char mnemonic, String command, boolean enabled) {
++        JButton button = new JButton(JMeterUtils.getResString(resName));
++        button.setMnemonic(mnemonic);
++        button.setActionCommand(command);
++        button.setEnabled(enabled);
++        button.addActionListener(this);
++        return button;
++    }
++
++    private JPanel createButtonPanel() {
++        boolean tableEmpty = (tableModel.getRowCount() == 0);
++
++        addButton = createButton("add", 'A', ADD_COMMAND, true); //$NON-NLS-1$
++        deleteButton = createButton("delete", 'D', DELETE_COMMAND, !tableEmpty); //$NON-NLS-1$
++       
++        // Button Panel
++        JPanel buttonPanel = new JPanel();
++        buttonPanel.add(addButton);
++        buttonPanel.add(deleteButton);
++        return buttonPanel;
++    }
++
++    private static class InnerTableModel extends AbstractTableModel {
++        private static final long serialVersionUID = 4638155137475747946L;
++        final JMSProperties jmsProperties;
++
++        public InnerTableModel() {
++            jmsProperties = new JMSProperties();
++        }
++
++        public void addNewRow() {
++            jmsProperties.addJmsProperty(new JMSProperty("","",String.class.getName()));
++        }
++
++        public void clearData() {
++            jmsProperties.clear();
++            fireTableDataChanged();
++        }
++
++        public void removeRow(int row) {
++            jmsProperties.removeJmsProperty(row);
++        }
++
++        @Override
++        public boolean isCellEditable(int row, int column) {
++            // all table cells are editable
++            return true;
++        }
++
++        @Override
++        public Class<?> getColumnClass(int column) {
++            return getValueAt(0, column).getClass();
++        }
++
++        /**
++         * Required by table model interface.
++         */
++        @Override
++        public int getRowCount() {
++            return jmsProperties.getJmsPropertyCount();
++        }
++
++        /**
++         * Required by table model interface.
++         */
++        @Override
++        public int getColumnCount() {
++            return 3;
++        }
++
++        /**
++         * Required by table model interface.
++         */
++        @Override
++        public String getColumnName(int column) {
++            switch(column) {
++                case COL_NAME:
++                    return "name";
++                case COL_VALUE:
++                    return "value";
++                case COL_TYPE:
++                    return "jms_properties_type";
++                default:
++                    return null;
++            }
++        }
++
++        /**
++         * Required by table model interface.
++         */
++        @Override
++        public Object getValueAt(int row, int column) {
++            JMSProperty property = jmsProperties.getJmsProperty(row);
++
++            switch (column){
++                case COL_NAME:
++                    return property.getName();
++                case COL_VALUE:
++                    return property.getValue();
++                case COL_TYPE:
++                    return property.getType();
++                default:
++                    return null;
++            }
++        }
++
++        @Override
++        public void setValueAt(Object value, int row, int column) {
++            JMSProperty property = jmsProperties.getJmsProperty(row);
++            if(log.isDebugEnabled()) {
++                log.debug("Setting jms property value: " + value);
++            }
++            switch (column){
++                case COL_NAME:
++                    property.setName((String)value);
++                    break;
++                case COL_VALUE:
++                    property.setValue((String) value);
++                    break;
++                case COL_TYPE:
++                    property.setType((String) value);
++                    break;
++                default:
++                    break;
++            }
++        }
++    }
++    
++    private static class TypeCellEditor extends DefaultCellEditor {
++
++        /**
++         * 
++         */
++        private static final long serialVersionUID = 1L;
++
++        public TypeCellEditor() {
++            super(new JComboBox(new Object[]{
++                    Boolean.class.getName(),
++                    Byte.class.getName(),
++                    Short.class.getName(),
++                    Integer.class.getName(),
++                    Long.class.getName(),
++                    Float.class.getName(),
++                    Double.class.getName(),
++                    String.class.getName()
++            }));
++        }
++    }
++}
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java	(revision 1539658)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/PublisherSampler.java	(working copy)
+@@ -165,24 +165,26 @@
+         int loop = getIterationCount();
+         result.sampleStart();
+         String type = getMessageChoice();
++        
+         try {
++            Map<String, Object> msgProperties = getJMSProperties().getJmsPropertysAsMap();
+             for (int idx = 0; idx < loop; idx++) {
+                 if (JMSPublisherGui.TEXT_MSG_RSC.equals(type)){
+                     String tmsg = getMessageContent();
+-                    Message msg = publisher.publish(tmsg, getDestination(), getJMSProperties().getArgumentsAsMap());
++                    Message msg = publisher.publish(tmsg, getDestination(), msgProperties);
+                     buffer.append(tmsg);
+                     Utils.messageProperties(propBuffer, msg);
+                 } else if (JMSPublisherGui.MAP_MSG_RSC.equals(type)){
+                     Map<String, Object> m = getMapContent();
+-                    Message msg = publisher.publish(m, getDestination(), getJMSProperties().getArgumentsAsMap());
++                    Message msg = publisher.publish(m, getDestination(), msgProperties);
+                     Utils.messageProperties(propBuffer, msg);
+                 } else if (JMSPublisherGui.OBJECT_MSG_RSC.equals(type)){
+                     Serializable omsg = getObjectContent();
+-                    Message msg = publisher.publish(omsg, getDestination(), getJMSProperties().getArgumentsAsMap());
++                    Message msg = publisher.publish(omsg, getDestination(), msgProperties);
+                     Utils.messageProperties(propBuffer, msg);
+                 } else if (JMSPublisherGui.BYTES_MSG_RSC.equals(type)){
+                     byte[] bmsg = getBytesContent();
+-                    Message msg = publisher.publish(bmsg, getDestination(), getJMSProperties().getArgumentsAsMap());
++                    Message msg = publisher.publish(bmsg, getDestination(), msgProperties);
+                     Utils.messageProperties(propBuffer, msg);
+                 } else {
+                     throw new JMSException(type+ " is not recognised");                    
+@@ -202,7 +204,6 @@
+         return result;
+     }
+ 
+-
+     private Map<String, Object> getMapContent() throws ClassNotFoundException, SecurityException, NoSuchMethodException, IllegalArgumentException, IllegalAccessException, InvocationTargetException {
+         Map<String,Object> m = new HashMap<String,Object>();
+         String text = getMessageContent();
+@@ -502,31 +503,30 @@
+     public boolean getUseNonPersistentDelivery() {
+         return getPropertyAsBoolean(NON_PERSISTENT_DELIVERY, false);
+     }
+-    
+-    public void setArguments(Arguments args) {
+-        setProperty(new TestElementProperty(JMS_PROPERTIES, args));
+-    }
+-    
+-    public Arguments getArguments(String name) {
+-        return (Arguments) getProperty(name).getObjectValue();
+-    }
+ 
+     /** 
+-     * @return Arguments JMS Properties
++     * @return {@link JMSProperties} JMS Properties
+      */
+-    public Arguments getJMSProperties() {
+-        Arguments arguments = getArguments(JMS_PROPERTIES);
+-        if(arguments == null) {
+-            arguments = new Arguments();
+-            setArguments(arguments);
++    public JMSProperties getJMSProperties() {
++        Object o = getProperty(JMS_PROPERTIES).getObjectValue();
++        JMSProperties jmsProperties = null;
++        // Backward compatibility with versions <= 2.10
++        if(o instanceof Arguments) {
++            jmsProperties = Utils.convertArgumentsToJmsProperties((Arguments)o);
++        } else {
++            jmsProperties = (JMSProperties) o;
++        }
++        if(jmsProperties == null) {
++            jmsProperties = new JMSProperties();
++            setJMSProperties(jmsProperties);
+         }
+-        return arguments;
++        return jmsProperties;
+     }
+-
++    
+     /**
+-     * @param args Arguments JMS Properties
++     * @param jmsProperties JMS Properties
+      */
+-    public void setJMSProperties(Arguments args) {
+-        setProperty(new TestElementProperty(JMS_PROPERTIES, args));
++    public void setJMSProperties(JMSProperties jmsProperties) {
++        setProperty(new TestElementProperty(JMS_PROPERTIES, jmsProperties));
+     }
+ }
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSProperty.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSProperty.java	(revision 0)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSProperty.java	(revision 0)
+@@ -0,0 +1,171 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.jms.sampler;
++
++import java.io.Serializable;
++
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.property.StringProperty;
++
++/**
++ * JMS Property with type
++ * @since 2.10.1
++ */
++public class JMSProperty extends AbstractTestElement implements Serializable {
++
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = 6371090992800805753L;
++
++    /** Name used to store the JmsProperty's name. */
++    public static final String PROP_NAME = "JMSProperty.name"; // $NON-NLS-1$
++
++    /** Name used to store the JmsProperty's value. */
++    public static final String PROP_VALUE = "JMSProperty.value"; // $NON-NLS-1$
++
++    /** Name used to store the JmsProperty's description. */
++    public static final String PROP_TYPE = "JMSProperty.type"; // $NON-NLS-1$
++
++    private static final String DFLT_TYPE = String.class.getName();
++
++    /**
++     * Create a new JmsProperty without a name, value, or metadata.
++     */
++    public JMSProperty() {
++    }
++
++    /**
++     * Create a new JmsProperty with the specified name and value, and String type.
++     *
++     * @param name
++     *            the prop name
++     * @param value
++     *            the prop value
++     */
++    public JMSProperty(String name, String value) {
++        this(name, value, DFLT_TYPE);
++    }
++
++    /**
++     * Create a new JmsProperty with the specified name and value, and String type.
++     *
++     * @param name
++     *            the prop name
++     * @param value
++     *            the prop value
++     * @param type
++     *            the type type
++     */
++    public JMSProperty(String name, String value, String type) {
++        setProperty(new StringProperty(PROP_NAME, name));
++        setProperty(new StringProperty(PROP_VALUE, value));
++        setProperty(new StringProperty(PROP_TYPE, type));
++    }
++    
++    /**
++     * Set the name of the JmsProperty.
++     *
++     * @param newName
++     *            the new name
++     */
++    @Override
++    public void setName(String newName) {
++        setProperty(new StringProperty(PROP_NAME, newName));
++    }
++
++    /**
++     * Get the name of the JmsProperty.
++     *
++     * @return the attribute's name
++     */
++    @Override
++    public String getName() {
++        return getPropertyAsString(PROP_NAME);
++    }
++
++    /**
++     * Sets the value of the JmsProperty.
++     *
++     * @param newValue
++     *            the new value
++     */
++    public void setValue(String newValue) {
++        setProperty(new StringProperty(PROP_VALUE, newValue));
++    }
++
++    /**
++     * Gets the value of the JmsProperty object.
++     *
++     * @return the attribute's value
++     */
++    public String getValue() {
++        return getPropertyAsString(PROP_VALUE);
++    }
++    
++    /**
++     * Sets the Meta Data attribute of the JmsProperty.
++     *
++     * @param newMetaData
++     *            the new metadata
++     */
++    public void setType(String type) {
++        setProperty(new StringProperty(PROP_TYPE, type));
++    }
++
++    /**
++     * Gets the Meta Data attribute of the JmsProperty.
++     *
++     * @return the MetaData value
++     */
++    public String getType() {
++        return getPropertyAsString(PROP_TYPE);
++    }
++
++    @Override
++    public String toString() {
++        return getName() + "," + getValue()+","+getType();
++    }
++
++    public Object getValueAsObject() {
++        String type = getType();
++        String value = getValue();
++        
++        if(type.equals(Boolean.class.getName())) {
++            return Boolean.valueOf(value);
++        } else if(type.equals(Byte.class.getName())) {
++            return Byte.valueOf(value);
++        } else if(type.equals(Short.class.getName())) {
++            return Short.valueOf(value);
++        } else if(type.equals(Integer.class.getName())) {
++            return Integer.valueOf(value);
++        } else if(type.equals(Long.class.getName())) {
++            return Long.valueOf(value);
++        } else if(type.equals(Float.class.getName())) {
++            return Float.valueOf(value);
++        } else if(type.equals(Double.class.getName())) {
++            return Double.valueOf(value);
++        } else if(type.equals(String.class.getName())) {
++            return value;
++        } else {
++            return null;
++        }
++    }
++}
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSProperties.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSProperties.java	(revision 0)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSProperties.java	(revision 0)
+@@ -0,0 +1,268 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.jms.sampler;
++
++import java.io.Serializable;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++
++import org.apache.jmeter.config.ConfigElement;
++import org.apache.jmeter.config.ConfigTestElement;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.CollectionProperty;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.testelement.property.TestElementProperty;
++
++/**
++ * A set of JMSProperty objects.
++ * @since 2.10.1
++ */
++public class JMSProperties extends ConfigTestElement implements Serializable {
++
++    /**
++     * 
++     */
++    private static final long serialVersionUID = -2896138201054314563L;
++    /** The name of the property used to store the JmsProperties. */
++    public static final String JMS_PROPERTIES = "JMSProperties.properties"; //$NON-NLS-1$
++
++    /**
++     * Create a new JmsPropertys object with no JmsProperties
++     */
++    public JMSProperties() {
++        setProperty(new CollectionProperty(JMS_PROPERTIES, new ArrayList<JMSProperty>()));
++    }
++
++    /**
++     * Get the JmsPropertiess.
++     *
++     * @return the JmsProperties
++     */
++    public CollectionProperty getProperties() {
++        return (CollectionProperty) getProperty(JMS_PROPERTIES);
++    }
++
++    /**
++     * Clear the JmsProperties.
++     */
++    @Override
++    public void clear() {
++        super.clear();
++        setProperty(new CollectionProperty(JMS_PROPERTIES, new ArrayList<JMSProperty>()));
++    }
++
++    /**
++     * Set the list of JmsProperties. Any existing JmsProperties will be lost.
++     *
++     * @param jmsProperties
++     *            the new JmsProperties
++     */
++    public void setProperties(List<JMSProperty> jmsProperties) {
++        setProperty(new CollectionProperty(JMS_PROPERTIES, jmsProperties));
++    }
++
++    /**
++     * Get the JmsProperties as a Map. Each JMSProperty name is used as the key, and
++     * its value as the value.
++     *
++     * @return a new Map with String keys and values containing the JmsProperties
++     */
++    public Map<String, Object> getJmsPropertysAsMap() {
++        PropertyIterator iter = getProperties().iterator();
++        Map<String, Object> argMap = new LinkedHashMap<String, Object>();
++        while (iter.hasNext()) {
++            JMSProperty arg = (JMSProperty) iter.next().getObjectValue();
++            // Because CollectionProperty.mergeIn will not prevent adding two
++            // properties of the same name, we need to select the first value so
++            // that this element's values prevail over defaults provided by
++            // configuration
++            // elements:
++            if (!argMap.containsKey(arg.getName())) {
++                argMap.put(arg.getName(), arg.getValueAsObject());
++            }
++        }
++        return argMap;
++    }
++
++    /**
++     * Add a new JMSProperty with the given name and value.
++     *
++     * @param name
++     *            the name of the JMSProperty
++     * @param value
++     *            the value of the JMSProperty
++     */
++    public void addJmsProperty(String name, String value) {
++        addJmsProperty(new JMSProperty(name, value));
++    }
++
++    /**
++     * Add a new argument.
++     *
++     * @param arg
++     *            the new argument
++     */
++    public void addJmsProperty(JMSProperty arg) {
++        TestElementProperty newArg = new TestElementProperty(arg.getName(), arg);
++        if (isRunningVersion()) {
++            this.setTemporary(newArg);
++        }
++        getProperties().addItem(newArg);
++    }
++
++    /**
++     * Add a new argument with the given name, value, and metadata.
++     *
++     * @param name
++     *            the name of the argument
++     * @param value
++     *            the value of the argument
++     * @param metadata
++     *            the metadata for the argument
++     */
++    public void addJmsProperty(String name, String value, String type) {
++        addJmsProperty(new JMSProperty(name, value, type));
++    }
++
++    /**
++     * Get a PropertyIterator of the JmsProperties.
++     *
++     * @return an iteration of the JmsProperties
++     */
++    public PropertyIterator iterator() {
++        return getProperties().iterator();
++    }
++
++    /**
++     * Create a string representation of the JmsProperties.
++     *
++     * @return the string representation of the JmsProperties
++     */
++    @Override
++    public String toString() {
++        StringBuilder str = new StringBuilder();
++        PropertyIterator iter = getProperties().iterator();
++        while (iter.hasNext()) {
++            JMSProperty arg = (JMSProperty) iter.next().getObjectValue();
++            str.append(arg.toString());
++            if (iter.hasNext()) {
++                str.append(","); //$NON-NLS-1$
++            }
++        }
++        return str.toString();
++    }
++
++    /**
++     * Remove the specified argument from the list.
++     *
++     * @param row
++     *            the index of the argument to remove
++     */
++    public void removeJmsProperty(int row) {
++        if (row < getProperties().size()) {
++            getProperties().remove(row);
++        }
++    }
++
++    /**
++     * Remove the specified argument from the list.
++     *
++     * @param arg
++     *            the argument to remove
++     */
++    public void removeJmsProperty(JMSProperty arg) {
++        PropertyIterator iter = getProperties().iterator();
++        while (iter.hasNext()) {
++            JMSProperty item = (JMSProperty) iter.next().getObjectValue();
++            if (arg.equals(item)) {
++                iter.remove();
++            }
++        }
++    }
++
++    /**
++     * Remove the argument with the specified name.
++     *
++     * @param argName
++     *            the name of the argument to remove
++     */
++    public void removeJmsProperty(String argName) {
++        PropertyIterator iter = getProperties().iterator();
++        while (iter.hasNext()) {
++            JMSProperty arg = (JMSProperty) iter.next().getObjectValue();
++            if (arg.getName().equals(argName)) {
++                iter.remove();
++            }
++        }
++    }
++
++    /**
++     * Remove all JmsProperties from the list.
++     */
++    public void removeAllJmsPropertys() {
++        getProperties().clear();
++    }
++
++    /**
++     * Get the number of JmsProperties in the list.
++     *
++     * @return the number of JmsProperties
++     */
++    public int getJmsPropertyCount() {
++        return getProperties().size();
++    }
++
++    /**
++     * Get a single JMSProperty.
++     *
++     * @param row
++     *            the index of the JMSProperty to return.
++     * @return the JMSProperty at the specified index, or null if no JMSProperty
++     *         exists at that index.
++     */
++    public JMSProperty getJmsProperty(int row) {
++        JMSProperty argument = null;
++
++        if (row < getProperties().size()) {
++            argument = (JMSProperty) getProperties().get(row).getObjectValue();
++        }
++
++        return argument;
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.config.ConfigTestElement#addTestElement(org.apache.jmeter.testelement.TestElement)
++     */
++    @Override
++    public void addTestElement(TestElement parm1) {
++        // TODO Auto-generated method stub
++        super.addTestElement(parm1);
++    }
++
++    /* (non-Javadoc)
++     * @see org.apache.jmeter.config.ConfigTestElement#addConfigElement(org.apache.jmeter.config.ConfigElement)
++     */
++    @Override
++    public void addConfigElement(ConfigElement config) {
++        // TODO Auto-generated method stub
++        super.addConfigElement(config);
++    }
++}
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(revision 1539658)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/sampler/JMSSampler.java	(working copy)
+@@ -185,16 +185,33 @@
+     }
+ 
+     private void addJMSProperties(TextMessage msg) throws JMSException {
+-        Map<String, String> map = getArguments(JMSSampler.JMS_PROPERTIES).getArgumentsAsMap();
+-        Utils.addJMSProperties(msg, map);
++        Utils.addJMSProperties(msg, getJMSProperties().getJmsPropertysAsMap());
+     }
+ 
+-    public Arguments getJMSProperties() {
+-        return getArguments(JMSSampler.JMS_PROPERTIES);
++    /** 
++     * @return {@link JMSProperties} JMS Properties
++     */
++    public JMSProperties getJMSProperties() {
++        Object o = getProperty(JMS_PROPERTIES).getObjectValue();
++        JMSProperties jmsProperties = null;
++        // Backward compatibility with versions <= 2.10
++        if(o instanceof Arguments) {
++            jmsProperties = Utils.convertArgumentsToJmsProperties((Arguments)o);
++        } else {
++            jmsProperties = (JMSProperties) o;
++        }
++        if(jmsProperties == null) {
++            jmsProperties = new JMSProperties();
++            setJMSProperties(jmsProperties);
++        }
++        return jmsProperties;
+     }
+-
+-    public void setJMSProperties(Arguments args) {
+-        setProperty(new TestElementProperty(JMSSampler.JMS_PROPERTIES, args));
++    
++    /**
++     * @param jmsProperties JMS Properties
++     */
++    public void setJMSProperties(JMSProperties jmsProperties) {
++        setProperty(new TestElementProperty(JMS_PROPERTIES, jmsProperties));
+     }
+ 
+     public Arguments getJNDIProperties() {
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java	(revision 1539658)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/client/Publisher.java	(working copy)
+@@ -157,7 +157,7 @@
+         return publish(text, destinationName, null);
+     }
+     
+-    public Message publish(String text, String destinationName, Map<String, String> properties)
++    public Message publish(String text, String destinationName, Map<String, Object> properties)
+             throws JMSException, NamingException {
+         TextMessage msg = session.createTextMessage(text);
+         return setPropertiesAndSend(destinationName, properties, msg);
+@@ -173,13 +173,13 @@
+         return publish(contents, destinationName, null);
+     }
+     
+-    public Message publish(Serializable contents, String destinationName, Map<String, String> properties)
++    public Message publish(Serializable contents, String destinationName, Map<String, Object> properties)
+             throws JMSException, NamingException {
+         ObjectMessage msg = session.createObjectMessage(contents);
+         return setPropertiesAndSend(destinationName, properties, msg);
+     }
+     
+-    public Message publish(byte[] bytes, String destinationName, Map<String, String> properties)
++    public Message publish(byte[] bytes, String destinationName, Map<String, Object> properties)
+             throws JMSException, NamingException {
+         BytesMessage msg = session.createBytesMessage();
+         msg.writeBytes(bytes);
+@@ -196,7 +196,7 @@
+         return publish(map, destinationName, null);
+     }
+     
+-    public MapMessage publish(Map<String, Object> map, String destinationName, Map<String, String> properties)
++    public MapMessage publish(Map<String, Object> map, String destinationName, Map<String, Object> properties)
+             throws JMSException, NamingException {
+         MapMessage msg = session.createMapMessage();
+         for (Entry<String, Object> me : map.entrySet()) {
+@@ -214,7 +214,7 @@
+      * @throws NamingException
+      */
+     private Message setPropertiesAndSend(String destinationName,
+-            Map<String, String> properties, Message msg)
++            Map<String, Object> properties, Message msg)
+             throws JMSException, NamingException {
+         Utils.addJMSProperties(msg, properties);
+         if (staticDest || destinationName == null) {
+Index: src/protocol/jms/org/apache/jmeter/protocol/jms/Utils.java
+===================================================================
+--- src/protocol/jms/org/apache/jmeter/protocol/jms/Utils.java	(revision 1539658)
++++ src/protocol/jms/org/apache/jmeter/protocol/jms/Utils.java	(working copy)
+@@ -31,6 +31,8 @@
+ import javax.naming.Context;
+ import javax.naming.NamingException;
+ 
++import org.apache.jmeter.config.Arguments;
++import org.apache.jmeter.protocol.jms.sampler.JMSProperties;
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+ 
+@@ -171,23 +173,39 @@
+      * @param map Map<String, String>
+      * @throws JMSException
+      */
+-    public static void addJMSProperties(Message msg, Map<String, String> map) throws JMSException {
++    public static void addJMSProperties(Message msg, Map<String, Object> map) throws JMSException {
+         if(map == null) {
+             return;
+         }
+-        for (Map.Entry<String, String> me : map.entrySet()) {
++        for (Map.Entry<String, Object> me : map.entrySet()) {
+             String name = me.getKey();
+-            String value = me.getValue();
++            Object value = me.getValue();
+             if (log.isDebugEnabled()) {
+                 log.debug("Adding property [" + name + "=" + value + "]");
+             }
+ 
+             // WebsphereMQ does not allow corr. id. to be set using setStringProperty()
+             if("JMSCorrelationID".equalsIgnoreCase(name)) { // $NON-NLS-1$
+-                msg.setJMSCorrelationID(value);
++                msg.setJMSCorrelationID((String)value);
+             } else {
+-                msg.setStringProperty(name, value);
++                msg.setObjectProperty(name, value);
+             }
+         }
+     }
++
++
++    /**
++     * Converts {@link Arguments} to {@link JmsProperties} defaulting to String type
++     * Used to convert version <= 2.10 test plans
++     * @param args {@link Arguments}
++     * @return jmsProperties {@link JmsProperties}
++     */
++    public static final JMSProperties convertArgumentsToJmsProperties(Arguments args) {
++        JMSProperties jmsProperties = new JMSProperties();
++        Map<String,String>  map = args.getArgumentsAsMap();
++        for (Map.Entry<String, String> entry : map.entrySet()) {
++            jmsProperties.addJmsProperty(entry.getKey(), entry.getValue());
++        }
++        return jmsProperties;
++    }
+ }
+Index: bin/saveservice.properties
+===================================================================
+--- bin/saveservice.properties	(revision 1539658)
++++ bin/saveservice.properties	(working copy)
+@@ -167,6 +167,8 @@
+ JDBCSampler=org.apache.jmeter.protocol.jdbc.sampler.JDBCSampler
+ # Renamed to JMSSamplerGui; keep original entry for backwards compatibility
+ JMSConfigGui=org.apache.jmeter.protocol.jms.control.gui.JMSConfigGui
++JMSProperties=org.apache.jmeter.protocol.jms.sampler.JMSProperties
++JMSProperty=org.apache.jmeter.protocol.jms.sampler.JMSProperty
+ JMSPublisherGui=org.apache.jmeter.protocol.jms.control.gui.JMSPublisherGui
+ JMSSampler=org.apache.jmeter.protocol.jms.sampler.JMSSampler
+ JMSSamplerGui=org.apache.jmeter.protocol.jms.control.gui.JMSSamplerGui

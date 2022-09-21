@@ -1,0 +1,34 @@
+Index: src/core/org/apache/jmeter/samplers/DataStrippingSampleSender.java
+===================================================================
+--- src/core/org/apache/jmeter/samplers/DataStrippingSampleSender.java	(revision 1651525)
++++ src/core/org/apache/jmeter/samplers/DataStrippingSampleSender.java	(working copy)
+@@ -76,8 +76,11 @@
+         SampleResult result = event.getResult();
+         if(result.isSuccessful()) {
+             // Compute bytes before stripping
+-            result.setBytes(result.getBytes());
+-            result.setResponseData(new byte[0]);
++            stipResponse(result);
++            // see Bug 57449
++            for (SampleResult subResult : result.getSubResults()) {
++                stipResponse(subResult);                
++            }
+         }
+         if(decoratedSender == null)
+         {
+@@ -94,6 +97,15 @@
+     }
+ 
+     /**
++     * Strip response but fill in bytes field.
++     * @param result {@link SampleResult}
++     */
++    protected void stipResponse(SampleResult result) {
++        result.setBytes(result.getBytes());
++        result.setResponseData(SampleResult.EMPTY_BA);
++    }
++
++    /**
+      * Processed by the RMI server code; acts as testStarted().
+      *
+      * @return this

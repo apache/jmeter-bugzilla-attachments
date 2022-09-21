@@ -1,0 +1,432 @@
+Index: bin/report-template/content/js/dashboard-commons.js
+===================================================================
+--- bin/report-template/content/js/dashboard-commons.js	(revision 1754657)
++++ bin/report-template/content/js/dashboard-commons.js	(working copy)
+@@ -73,6 +73,13 @@
+     return "Elapsed Time (granularity: " + formatDuration(granularity) + ")";
+ }
+ 
++/*
++ * Gets axis label for the specified granularity
++ */
++function getConnectTimeLabel(granularity) {
++    return "Connect Time (granularity: " + formatDuration(granularity) + ")";
++}
++
+ //Get the property value of an object using the specified key
+ //Returns the property value if all properties in the key exist; undefined
+ //otherwise.
+Index: bin/report-template/content/js/graph.js.fmkr
+===================================================================
+--- bin/report-template/content/js/graph.js.fmkr	(revision 1758870)
++++ bin/report-template/content/js/graph.js.fmkr	(working copy)
+@@ -402,7 +402,7 @@
+                         return yval + " " + label;
+                     }
+                 },
+-                colors: ["green", "yellow", "orange", "red"]                
++                colors: ["#9ACD32", "yellow", "orange", "#FF6347"]                
+             };
+         },
+         createGraph: function() {
+@@ -806,6 +806,83 @@
+     }
+ };
+ 
++var connectTimeOverTimeInfos = {
++        data: ${connectTimeOverTime!"{}"},
++        getOptions: function() {
++            return {
++                series: {
++                    lines: {
++                        show: true
++                    },
++                    points: {
++                        show: true
++                    }
++                },
++                xaxis: {
++                    mode: "time",
++                    timeformat: "%H:%M:%S",
++                    axisLabel: getConnectTimeLabel(this.data.result.granularity),
++                    axisLabelUseCanvas: true,
++                    axisLabelFontSizePixels: 12,
++                    axisLabelFontFamily: 'Verdana, Arial',
++                    axisLabelPadding: 20,
++                },
++                yaxis: {
++                    axisLabel: "Average Connect Time in ms",
++                    axisLabelUseCanvas: true,
++                    axisLabelFontSizePixels: 12,
++                    axisLabelFontFamily: 'Verdana, Arial',
++                    axisLabelPadding: 20,
++                },
++                legend: {
++                    noColumns: 2,
++                    show: true,
++                    container: '#legendConnectTimeOverTime'
++                },
++                selection: {
++                    mode: 'xy'
++                },
++                grid: {
++                    hoverable: true // IMPORTANT! this is needed for tooltip to
++                                    // work
++                },
++                tooltip: true,
++                tooltipOpts: {
++                    content: "%s : at %x Average connect time was %y ms"
++                }
++            };
++        },
++        createGraph: function () {
++            var data = this.data;
++            var dataset = prepareData(data.result.series, $("#choicesConnectTimeOverTime"));
++            var options = this.getOptions();
++            prepareOptions(options, data);
++            $.plot($("#flotConnectTimeOverTime"), dataset, options);
++            // setup overview
++            $.plot($("#overviewConnectTimeOverTime"), dataset, prepareOverviewOptions(options));
++        }
++};
++
++// Connect Time Over Time
++function refreshConnectTimeOverTime(fixTimestamps) {
++    var infos = connectTimeOverTimeInfos;
++    prepareSeries(infos.data);
++    if(fixTimestamps) {
++        fixTimeStamps(infos.data.result.series, ${(timeZoneOffset?c)!0});
++    }
++    if(isGraph($("#flotConnectTimeOverTime"))) {
++        infos.createGraph();
++    }else {
++        var choiceContainer = $("#choicesConnectTimeOverTime");
++        createLegend(choiceContainer, infos);
++        infos.createGraph();
++        setGraphZoomable("#flotConnectTimeOverTime", "#overviewConnectTimeOverTime");
++        $('#footerConnectTimeOverTime .legendColorBox > div').each(function(i){
++            $(this).clone().prependTo(choiceContainer.find("li").eq(i));
++        });
++    }
++};
++
+ var responseTimeVsRequestInfos = {
+     data: ${responseTimeVsRequest!"{}"},
+     getOptions: function() {
+@@ -1189,11 +1266,16 @@
+                 refreshBytesThroughputOverTime(true);
+             }
+             document.location.href="#responseTimesOverTime";
+-        } else if (elem.id == "bodyLantenciesOverTime") {
++        } else if (elem.id == "bodyLatenciesOverTime") {
+             if (isGraph($(elem).find('.flot-chart-content')) == false) {
+                 refreshLatenciesOverTime(true);
+             }
+             document.location.href="#latenciesOverTime";
++        } else if (elem.id == "bodyConnectTimeOverTime") {
++            if (isGraph($(elem).find('.flot-chart-content')) == false) {
++                refreshConnectTimeOverTime(true);
++            }
++            document.location.href="#connectTimeOverTime";
+         } else if (elem.id == "bodyResponseTimeDistribution") {
+             if (isGraph($(elem).find('.flot-chart-content')) == false) {
+                 refreshResponseTimeDistribution();
+@@ -1277,6 +1359,9 @@
+     } else if ( id == "choicesLatenciesOverTime"){
+         choiceContainer = $("#choicesLatenciesOverTime");
+         refreshLatenciesOverTime(false);
++    } else if ( id == "choicesConnectTimeOverTime"){
++        choiceContainer = $("#choicesConnectTimeOverTime");
++        refreshConnectTimeOverTime(false);
+     } else if ( id == "choicesResponseTimePercentiles"){
+         choiceContainer = $("#choicesResponseTimePercentiles");
+         refreshResponseTimePercentiles();
+Index: bin/report-template/content/pages/OverTime.html.fmkr
+===================================================================
+--- bin/report-template/content/pages/OverTime.html.fmkr	(revision 1755398)
++++ bin/report-template/content/pages/OverTime.html.fmkr	(working copy)
+@@ -78,11 +78,15 @@
+                                             </a>
+                                         </li>
+                                         <li>
+-                                            <a href="OverTime.html#latenciesOverTime" onclick="$('#bodyLantenciesOverTime').collapse('show');">
++                                            <a href="OverTime.html#latenciesOverTime" onclick="$('#bodyLatenciesOverTime').collapse('show');">
+                                                 Latencies Over Time
+                                             </a>
+                                         </li>
+-
++                                        <li>
++                                            <a href="OverTime.html#connectTimeOverTime" onclick="$('#bodyConnectTimeOverTime').collapse('show');">
++                                                Connect Time Over Time
++                                            </a>
++                                        </li>
+                                     </ul>
+                                 </li>
+                                 <li>
+@@ -262,7 +266,7 @@
+                     <div class="panel panel-default">
+                         <div class="panel-heading portlet-header">
+                             <i class="fa fa-bar-chart-o fa-fw"></i>
+-                            <span type="button" class="dropdown-toggle click-title span-title" data-toggle="collapse" href="#bodyLantenciesOverTime" aria-expanded="true" aria-controls="bodyLantenciesOverTime">Latencies Over Time</span>
++                            <span type="button" class="dropdown-toggle click-title span-title" data-toggle="collapse" href="#bodyLatenciesOverTime" aria-expanded="true" aria-controls="bodyLatenciesOverTime">Latencies Over Time</span>
+                             <div class="pull-right">
+                                 <div class="btn-group">
+                                     <a class="btn btn-link btn-xs">
+@@ -278,14 +282,14 @@
+                                         </li>
+                                         <li><a href="#latenciesOverTime" onclick="exportToPNG('flotLatenciesOverTime', this);">Save as PNG</a></li>
+                                     </ul>
+-                                    <button type="button" class="btn btn-link btn-xs dropdown-toggle" data-toggle="collapse" href="#bodyLantenciesOverTime" aria-expanded="true" aria-controls="bodyLantenciesOverTime">
++                                    <button type="button" class="btn btn-link btn-xs dropdown-toggle" data-toggle="collapse" href="#bodyLatenciesOverTime" aria-expanded="true" aria-controls="bodyLatenciesOverTime">
+                                         <i class="fa fa-chevron-down"></i>
+                                     </button>
+                                 </div>
+                             </div>
+                         </div>
+                         <!-- /.panel-heading -->
+-                        <div class="collapse out portlet-content" id="bodyLantenciesOverTime">
++                        <div class="collapse out portlet-content" id="bodyLatenciesOverTime">
+                             <div class="panel-body" id="collapseLatencies">
+                                 <div class="flot-chart">
+                                     <div class="flot-chart-content" id="flotLatenciesOverTime" style="float: left; width:80%;"></div>
+@@ -306,6 +310,55 @@
+                     <!-- /.panel -->
+                 </div>
+ 
++                <!-- /.col-lg-6 -->
++                <div class="col-lg-12 portlet" id="connectTimeOverTime">
++                    <div class="panel panel-default">
++                        <div class="panel-heading portlet-header">
++                            <i class="fa fa-bar-chart-o fa-fw"></i>
++                            <span type="button" class="dropdown-toggle click-title span-title" data-toggle="collapse" href="#bodyConnectTimeOverTime" aria-expanded="true" aria-controls="bodyConnectTimeOverTime">Connect Time Over Time</span>
++                            <div class="pull-right">
++                                <div class="btn-group">
++                                    <a class="btn btn-link btn-xs">
++                                        <i class="glyphicon glyphicon-resize-vertical"></i>
++                                    </a>
++                                    <button type="button" class="btn btn-link btn-xs dropdown-toggle" data-toggle="dropdown">
++                                        <i class="fa fa-wrench"></i>
++                                    </button>
++                                    <ul class="dropdown-menu dropdown-user">
++                                        <li><a href="#connectTimeOverTime" onClick="checkAll('choicesConnectTimeOverTime');">Display all samples</a>
++                                        </li>
++                                        <li><a href="#connectTimeOverTime" onClick="uncheckAll('choicesConnectTimeOverTime');">Hide all samples</a>
++                                        </li>
++                                        <li><a href="#connectTimeOverTime" onclick="exportToPNG('flotConnectTimeOverTime', this);">Save as PNG</a></li>
++                                    </ul>
++                                    <button type="button" class="btn btn-link btn-xs dropdown-toggle" data-toggle="collapse" href="#bodyConnectTimeOverTime" aria-expanded="true" aria-controls="bodyConnectTimeOverTime">
++                                        <i class="fa fa-chevron-down"></i>
++                                    </button>
++                                </div>
++                            </div>
++                        </div>
++                        <!-- /.panel-heading -->
++                        <div class="collapse out portlet-content" id="bodyConnectTimeOverTime">
++                            <div class="panel-body" id="collapseConnectTime">
++                                <div class="flot-chart">
++                                    <div class="flot-chart-content" id="flotConnectTimeOverTime" style="float: left; width:80%;"></div>
++                                    <div style="float:left;margin-left:5px">
++                                        <p>Zoom :</p>
++                                        <div id="overviewConnectTimeOverTime" style="width:190px;height:100px;"></div>
++                                    </div>
++                                </div>
++                            </div>
++                            <div class="panel-footer" id="footerConnectTimeOverTime">
++                                    <p id="legendConnectTimeOverTime" hidden></p>
++                                    <ul id="choicesConnectTimeOverTime" class="legend"></ul>
++                            </div>
++                        </div>
++                        <!-- /.panel-body -->
++
++                    </div>
++                    <!-- /.panel -->
++                </div>
++                <!-- /.col-lg-6 -->
+ 
+                 <!-- /.col-lg-6 -->
+             </div>
+Index: bin/reportgenerator.properties
+===================================================================
+--- bin/reportgenerator.properties	(revision 1758867)
++++ bin/reportgenerator.properties	(working copy)
+@@ -100,6 +100,11 @@
+ jmeter.reportgenerator.graph.latenciesOverTime.title=Latencies Over Time
+ jmeter.reportgenerator.graph.latenciesOverTime.property.set_granularity=${jmeter.reportgenerator.overall_granularity}
+ 
++# Connect Time Over Time graph definition
++jmeter.reportgenerator.graph.connectTimeOverTime.classname=org.apache.jmeter.report.processor.graph.impl.ConnectTimeOverTimeGraphConsumer
++jmeter.reportgenerator.graph.connectTimeOverTime.title=Connect Time Over Time
++jmeter.reportgenerator.graph.connectTimeOverTime.property.set_granularity=${jmeter.reportgenerator.overall_granularity}
++
+ # Response Time Vs Request graph definition
+ jmeter.reportgenerator.graph.responseTimeVsRequest.classname=org.apache.jmeter.report.processor.graph.impl.ResponseTimeVSRequestGraphConsumer
+ jmeter.reportgenerator.graph.responseTimeVsRequest.title=Response Time Vs Request
+Index: src/core/org/apache/jmeter/report/core/Sample.java
+===================================================================
+--- src/core/org/apache/jmeter/report/core/Sample.java	(revision 1754657)
++++ src/core/org/apache/jmeter/report/core/Sample.java	(working copy)
+@@ -234,6 +234,15 @@
+     public long getLatency() {
+         return getData(long.class, CSVSaveService.CSV_LATENCY).longValue();
+     }
++    
++    /**
++     * Gets the connect time stored in the sample.
++     *
++     * @return the connect time stored in the sample
++     */
++    public long getConnectTime() {
++        return getData(long.class, CSVSaveService.CSV_CONNECT_TIME).longValue();
++    }
+ 
+     /**
+      * Gets the success status stored in the sample.
+Index: src/core/org/apache/jmeter/report/processor/graph/ConnectTimeValueSelector.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/ConnectTimeValueSelector.java	(revision 0)
++++ src/core/org/apache/jmeter/report/processor/graph/ConnectTimeValueSelector.java	(revision 0)
+@@ -0,0 +1,41 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.processor.graph;
++
++import org.apache.jmeter.report.core.Sample;
++
++/**
++ * The class ConnectTimeValueSelector provides a projection from a sample to its
++ * connect time.
++ *
++ * @since 3.1
++ */
++public class ConnectTimeValueSelector implements GraphValueSelector {
++    /*
++     * (non-Javadoc)
++     * 
++     * @see
++     * org.apache.jmeter.report.csv.processor.GraphValueSelector#select(java
++     * .lang.String, java.lang.Object, org.apache.jmeter.report.csv.core.Sample)
++     */
++    @Override
++    public double select(String series, Sample sample) {
++        return sample.getConnectTime();
++    }
++
++}
+Index: src/core/org/apache/jmeter/report/processor/graph/impl/ConnectTimeOverTimeGraphConsumer.java
+===================================================================
+--- src/core/org/apache/jmeter/report/processor/graph/impl/ConnectTimeOverTimeGraphConsumer.java	(revision 0)
++++ src/core/org/apache/jmeter/report/processor/graph/impl/ConnectTimeOverTimeGraphConsumer.java	(revision 0)
+@@ -0,0 +1,74 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++package org.apache.jmeter.report.processor.graph.impl;
++
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.Map;
++
++import org.apache.jmeter.report.processor.MeanAggregatorFactory;
++import org.apache.jmeter.report.processor.graph.AbstractGraphConsumer;
++import org.apache.jmeter.report.processor.graph.AbstractOverTimeGraphConsumer;
++import org.apache.jmeter.report.processor.graph.ConnectTimeValueSelector;
++import org.apache.jmeter.report.processor.graph.GroupInfo;
++import org.apache.jmeter.report.processor.graph.NameSeriesSelector;
++import org.apache.jmeter.report.processor.graph.TimeStampKeysSelector;
++import org.apache.jmeter.util.JMeterUtils;
++
++/**
++ * The class ConnectTimeOverTimeGraphConsumer provides a graph to visualize Connection time
++ * over time.
++ *
++ * @since 3.1
++ */
++public class ConnectTimeOverTimeGraphConsumer extends AbstractOverTimeGraphConsumer {
++    private static final boolean CONNECT_TIME_SAVED =
++            JMeterUtils.getPropDefault("jmeter.save.saveservice.connect_time", false); //$NON-NLS-1$
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see
++     * org.apache.jmeter.report.csv.processor.impl.AbstractOverTimeGraphConsumer
++     * #createTimeStampKeysSelector()
++     */
++    @Override
++    protected TimeStampKeysSelector createTimeStampKeysSelector() {
++        TimeStampKeysSelector keysSelector = new TimeStampKeysSelector();
++        keysSelector.setSelectBeginTime(false);
++        return keysSelector;
++    }
++
++    /*
++     * (non-Javadoc)
++     * 
++     * @see org.apache.jmeter.report.csv.processor.impl.AbstractGraphConsumer#
++     * createGroupInfos()
++     */
++    @Override
++    protected Map<String, GroupInfo> createGroupInfos() {
++        if(!CONNECT_TIME_SAVED) {
++            return Collections.emptyMap();
++        }
++        HashMap<String, GroupInfo> groupInfos = new HashMap<>();
++        groupInfos.put(AbstractGraphConsumer.DEFAULT_GROUP, new GroupInfo(
++                new MeanAggregatorFactory(), new NameSeriesSelector(),
++                new ConnectTimeValueSelector(), false, false));
++        return groupInfos;
++    }
++}
+Index: xdocs/usermanual/generating-dashboard.xml
+===================================================================
+--- xdocs/usermanual/generating-dashboard.xml	(revision 1759023)
++++ xdocs/usermanual/generating-dashboard.xml	(working copy)
+@@ -74,6 +74,7 @@
+ jmeter.save.saveservice.thread_counts = true
+ jmeter.save.saveservice.thread_name = true
+ jmeter.save.saveservice.time = true
++jmeter.save.saveservice.connect_time = true
+ # the timestamp format must include the time and should include the date.
+ # For example the default, which is milliseconds since the epoch: 
+ jmeter.save.saveservice.timestamp_format = ms
+@@ -584,6 +585,11 @@
+                             <td>True</td>
+                         </tr>
+                         <tr>
++                            <td>ConnectTimeOverTimeGraphConsumer</td>
++                            <td>This graph represents the connection time over time.</td>
++                            <td>True</td>
++                        </tr>
++                        <tr>
+                             <td>LatencyVSRequestGraphConsumer</td>
+                             <td>This graph represents the median and average latency time
+                                 depending on the number of current requests.</td>

@@ -1,0 +1,343 @@
+Index: src/core/org/apache/jmeter/util/SSLManager.java
+===================================================================
+--- src/core/org/apache/jmeter/util/SSLManager.java    (revision 1176617)
++++ src/core/org/apache/jmeter/util/SSLManager.java    (working copy)
+@@ -75,6 +75,14 @@
+     protected String defaultpw = System.getProperty(KEY_STORE_PASSWORD);
+ 
+     /**
++     * Load jks on startup jmeter
++     */
++    static {
++         JmeterKeyStore key = getInstance().getKeyStore();
++         log.info("Start keystore. Total: " + key.getAliases().length + " aliase(s)");
++    }
++    
++    /**
+      * Resets the SSLManager so that we can create a new one with a new keystore
+      */
+     public static synchronized void reset() {
+@@ -97,7 +105,7 @@
+      * not set, this method will prompt you to enter it. Unfortunately, there is
+      * no PasswordEntryField available from JOptionPane.
+      */
+-    protected JmeterKeyStore getKeyStore() {
++    protected synchronized JmeterKeyStore getKeyStore() {
+         if (null == this.keyStore) {
+             String defaultName = JMeterUtils.getJMeterProperties()
+                 .getProperty("user.home")  // $NON-NLS-1$
+@@ -124,9 +132,13 @@
+                 File initStore = new File(fileName);
+ 
+                 if (initStore.exists()) {
+-                    fileInputStream = new FileInputStream(initStore);
++                    fileInputStream = new FileInputStream(initStore);
++                    
+                     this.keyStore.load(fileInputStream, getPassword());
+-                    log.info("Keystore loaded OK from file, found alias: "+keyStore.getAlias());
++            
++                    String[] names = keyStore.getAliases();            
++                    
++                    log.info("Total of " + names.length + " aliases loaded OK from keystore");
+                 } else {
+                     log.warn("Keystore file not found, loading empty keystore");
+                     this.defaultpw = ""; // Ensure not null
+Index: src/core/org/apache/jmeter/util/JsseSSLManager.java
+===================================================================
+--- src/core/org/apache/jmeter/util/JsseSSLManager.java    (revision 1176617)
++++ src/core/org/apache/jmeter/util/JsseSSLManager.java    (working copy)
+@@ -70,6 +70,11 @@
+ 
+     private static final int cps;
+ 
++    private static int last_user = 0;
++    private static String[] names = null;
++    private static X509Certificate[][] chains = null;
++    private static PrivateKey[] keys = null;
++    
+     static {
+         log.info("Using default SSL protocol: "+DEFAULT_SSL_PROTOCOL);
+         log.info("SSL session context: "+(SHARED_SESSION_CONTEXT ? "shared" : "per-thread"));
+@@ -154,8 +159,13 @@
+  * So we leave it to the defaults set up in the SSL Context
+  *
+  */
+-//          HttpsURLConnection secureConn = (HttpsURLConnection) conn;
+-//          secureConn.setSSLSocketFactory(this.getContext().getSocketFactory());
++            try {
++                HttpsURLConnection secureConn = (HttpsURLConnection) conn;
++                secureConn.setSSLSocketFactory(this.getContext()
++                        .getSocketFactory());
++            } catch (Exception e) {
++                log.error("Error setting ssl context.");
++            }
+         } else {
+             log.warn("Unexpected HttpURLConnection class: "+conn.getClass().getName());
+         }
+@@ -313,9 +323,13 @@
+          * @return the ClientAliases value
+          */
+         public String[] getClientAliases(String keyType, Principal[] issuers) {
+-            log.debug("WrappedX509Manager: getClientAliases: ");
+-            log.debug(this.store.getAlias());
+-            return new String[] { this.store.getAlias() };
++            if (names == null)
++                names = this.store.getAliases();
++
++            for (int i = 0; i < names.length; i++)
++                log.debug(names[i]);
++
++            return names;
+         }
+ 
+         /**
+@@ -342,8 +356,20 @@
+          * @return The CertificateChain value
+          */
+         public X509Certificate[] getCertificateChain(String alias) {
+-            log.debug("WrappedX509Manager: getCertificateChain(" + alias + ")");
+-            return this.store.getCertificateChain();
++            log.info("WrappedX509Manager: getCertificateChain(" + alias + ")");
++
++            if (chains == null)
++                chains = this.store.getCertificateChains();
++
++            if (names == null)
++                names = this.store.getAliases();
++
++            for (int i = 0; i < names.length; i++) {
++                if (names[i] == alias)
++                    return chains[i];
++            }
++
++            return null;
+         }
+ 
+         /**
+@@ -354,8 +380,20 @@
+          * @return The PrivateKey value
+          */
+         public PrivateKey getPrivateKey(String alias) {
+-            log.debug("WrappedX509Manager: getPrivateKey: " + this.store.getPrivateKey());
+-            return this.store.getPrivateKey();
++            if (keys == null)
++                keys = this.store.getPrivateKeys();
++
++            if (names == null)
++                names = this.store.getAliases();
++
++            for (int i = 0; i < names.length; i++) {
++                if (names[i] == alias) {
++                    log.debug("WrappedX509Manager: getPrivateKey: " + keys[i]);
++                    return keys[i];
++                }
++            }
++
++            return null;
+         }
+ 
+         /**
+@@ -372,12 +410,19 @@
+          * @see javax.net.ssl.X509KeyManager#chooseClientAlias(String[], Principal[], Socket)
+          */
+         public String chooseClientAlias(String[] keyType, Principal[] issuers, Socket socket) {
+-            String alias = this.store.getAlias();
+-            log.debug("ClientAlias: " + alias);
+-            if (alias == null || alias.length() == 0) {
+-                log.debug("ClientAlias not found.");
+-            }
+-            return alias;
++            if (names == null)    
++                names = this.store.getAliases();
++
++            log.debug("keyType: " + keyType[0]);
++
++            if (last_user >= names.length)
++                last_user = 0;
++
++            log.debug("ClientAlias: " + names[last_user]);
++            if (names[last_user] == null || names[last_user].length() == 0)
++                log.debug("ClientAlias not found.");
++
++            return names[last_user++];
+         }
+ 
+         /**
+Index: src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java
+===================================================================
+--- src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java    (revision 1176617)
++++ src/core/org/apache/jmeter/util/keystore/JmeterKeyStore.java    (working copy)
+@@ -36,14 +36,14 @@
+     /**
+      * Get the ordered certificate chain.
+      */
+-    public abstract X509Certificate[] getCertificateChain();
++    public abstract X509Certificate[][] getCertificateChains();
+ 
+-    public abstract String getAlias();
++    public abstract String[] getAliases();
+ 
+     /**
+      * Return the private Key
+      */
+-    public abstract PrivateKey getPrivateKey();
++    public abstract PrivateKey[] getPrivateKeys();
+ 
+     public static final JmeterKeyStore getInstance(String type) throws Exception {
+         // JAVA 1.4 now handles all keystore types, so just use default
+Index: src/core/org/apache/jmeter/util/keystore/DefaultKeyStore.java
+===================================================================
+--- src/core/org/apache/jmeter/util/keystore/DefaultKeyStore.java    (revision 1176617)
++++ src/core/org/apache/jmeter/util/keystore/DefaultKeyStore.java    (working copy)
+@@ -23,6 +23,7 @@
+ import java.security.PrivateKey;
+ import java.security.cert.Certificate;
+ import java.security.cert.X509Certificate;
++import java.util.ArrayList;
+ import java.util.Enumeration;
+ 
+ /**
+@@ -30,41 +31,84 @@
+  *
+  */
+ public class DefaultKeyStore extends JmeterKeyStore {
+-    private X509Certificate[] certChain;
++    private X509Certificate[][] certChains;
++    @SuppressWarnings("rawtypes")
++    private ArrayList v_certChains = new ArrayList();
+ 
+-    private PrivateKey key;
++    private PrivateKey[] keys;
++    @SuppressWarnings("rawtypes")
++    private ArrayList v_keys = new ArrayList();
+ 
+-    private String alias;
++    private String[] names;
++    @SuppressWarnings("rawtypes")
++    private ArrayList v_names = new ArrayList();
+ 
+     private final KeyStore store;
+ 
++    private static final String KEY_STORE_START_INDEX = "javax.net.ssl.keyStoreStartIndex"; // $NON-NLS-1$
++    private static final String KEY_STORE_END_INDEX = "javax.net.ssl.keyStoreEndIndex"; // $NON-NLS-1$
++    protected int startIndex = 0;
++    protected int endIndex = 0;
++    
+     public DefaultKeyStore(String type) throws Exception {
+         this.store = KeyStore.getInstance(type);
++        
++        try {
++            startIndex = Integer.parseInt(System
++                    .getProperty(KEY_STORE_START_INDEX));
++            endIndex = Integer
++                    .parseInt(System.getProperty(KEY_STORE_END_INDEX));
++        } catch (Exception e) {
++        }
+     }
+ 
+     /** {@inheritDoc} */
+     @Override
++    @SuppressWarnings({ "unchecked", "unused" })
+     public void load(InputStream is, String pword) throws Exception {
+-        store.load(is, pword.toCharArray());
+-        PrivateKey _key = null;
+-        X509Certificate[] _certChain = null;
++        store.load(is, pword.toCharArray());
++        PrivateKey _key = null;
++        X509Certificate[] _certChain = null;
++        String cur_name = null;
+ 
+         if (null != is){ // No point checking an empty keystore
+ 
++            int index = 0;
++            
+             Enumeration<String> aliases = store.aliases();
+             while (aliases.hasMoreElements()) {
+-                this.alias = aliases.nextElement();
+-                if (store.isKeyEntry(alias)) {
+-                    _key = (PrivateKey) store.getKey(alias, pword.toCharArray());
+-                    Certificate[] chain = store.getCertificateChain(alias);
+-                    _certChain = new X509Certificate[chain.length];
++                
++                cur_name = (String) aliases.nextElement();
++                
++                if (store.isKeyEntry(cur_name)) {
++                    
++                    if ((index >= startIndex && index < endIndex) || (startIndex == 0 && endIndex == 0)) {
++                    
++                        _key = (PrivateKey) store.getKey(cur_name,
++                                pword.toCharArray());
++                        Certificate[] chain = store
++                                .getCertificateChain(cur_name);
++                        _certChain = new X509Certificate[chain.length];
++
++                        for (int i = 0; i < chain.length; i++) {
++                            _certChain[i] = (X509Certificate) chain[i];
++                        }
++
++                        if (null == _key) {
++                            throw new Exception("No key found");
++                        }
++
++                        if (null == _certChain) {
++                            throw new Exception("No certificate chain found");
++                        }
+ 
+-                    for (int i = 0; i < chain.length; i++) {
+-                        _certChain[i] = (X509Certificate) chain[i];
+-                    }
++                        this.v_names.add(cur_name);
++                        this.v_keys.add(_key);
++                        this.v_certChains.add(_certChain);
+ 
+-                    break;
++                    }
+                 }
++                index++;
+             }
+ 
+             if (null == _key) {
+@@ -75,25 +119,34 @@
+             }
+         }
+ 
+-        this.key = _key;
+-        this.certChain = _certChain;
++        int v_size = this.v_names.size();
++
++        this.names = new String[v_size];
++        this.names = (String[]) v_names.toArray(names);
++
++        this.keys = new PrivateKey[v_size];
++        this.keys = (PrivateKey[]) v_keys.toArray(keys);
++
++        this.certChains = new X509Certificate[v_size][];
++        this.certChains = (X509Certificate[][]) v_certChains
++                .toArray(certChains);
+     }
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public final X509Certificate[] getCertificateChain() {
+-        return this.certChain;
++    public final X509Certificate[][] getCertificateChains() {
++        return this.certChains;
+     }
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public final PrivateKey getPrivateKey() {
+-        return this.key;
++    public final PrivateKey[] getPrivateKeys() {
++        return this.keys;
+     }
+ 
+     /** {@inheritDoc} */
+     @Override
+-    public final String getAlias() {
+-        return this.alias;
++    public final String[] getAliases() {
++        return this.names;
+     }
+ }
+ 

@@ -1,0 +1,56 @@
+Index: C:/Documents and Settings/alf/workspace/Jmeter 2.2 writable/src/core/org/apache/jmeter/control/TransactionController.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter 2.2 writable/src/core/org/apache/jmeter/control/TransactionController.java	(revision 552122)
++++ C:/Documents and Settings/alf/workspace/Jmeter 2.2 writable/src/core/org/apache/jmeter/control/TransactionController.java	(working copy)
+@@ -39,7 +39,7 @@
+ 	public Sampler next() {
+         // Check if transaction is done
+         if(transactionSampler != null && transactionSampler.isTransactionDone()) {
+-            log.debug("End of transaction");
++            log.debug("End of transaction " + getName());
+             // This transaction is done
+             transactionSampler = null;
+             return null;
+@@ -48,7 +48,7 @@
+         // Check if it is the start of a new transaction
+ 		if (isFirst()) // must be the start of the subtree
+ 		{
+-		    log.debug("Start of transaction");
++		    log.debug("Start of transaction " + getName());
+ 		    transactionSampler = new TransactionSampler(this, getName());
+ 		}
+ 
+@@ -61,4 +61,19 @@
+         }
+         return transactionSampler;
+ 	}
++	
++	protected Sampler nextIsAController(Controller controller) throws NextIsNullException {
++		Sampler returnValue;
++		Sampler sampler = controller.next();
++		if (sampler == null) {
++			currentReturnedNull(controller);
++			// We need to call the super.next, instead of this.next, which is done in GenericController,
++			// because if we call this.next(), it will return the TransactionSampler, and we do not want that.
++			// We need to get the next real sampler or controller
++			returnValue = super.next();
++		} else {
++			returnValue = sampler;
++		}
++		return returnValue;
++	}
+ }
+Index: C:/Documents and Settings/alf/workspace/Jmeter 2.2 writable/src/core/org/apache/jmeter/control/TransactionSampler.java
+===================================================================
+--- C:/Documents and Settings/alf/workspace/Jmeter 2.2 writable/src/core/org/apache/jmeter/control/TransactionSampler.java	(revision 552122)
++++ C:/Documents and Settings/alf/workspace/Jmeter 2.2 writable/src/core/org/apache/jmeter/control/TransactionSampler.java	(working copy)
+@@ -50,7 +50,8 @@
+ 	}
+ 
+ 	public TransactionSampler(TransactionController controller, String name) {
+-        transactionController = controller;
++		transactionController = controller;
++		setName(name);
+ 		transactionSampleResult = new SampleResult();
+ 		transactionSampleResult.setSampleLabel(name);
+ 		// Assume success

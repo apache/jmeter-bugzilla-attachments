@@ -1,0 +1,108 @@
+Index: HTTPHC4Impl.java
+===================================================================
+--- HTTPHC4Impl.java	(revision 1632695)
++++ HTTPHC4Impl.java	(working copy)
+@@ -73,7 +73,6 @@
+ import org.apache.http.client.params.ClientPNames;
+ import org.apache.http.client.params.CookiePolicy;
+ import org.apache.http.client.protocol.ResponseContentEncoding;
+-import org.apache.http.conn.ConnectionKeepAliveStrategy;
+ import org.apache.http.conn.DnsResolver;
+ import org.apache.http.conn.params.ConnRoutePNames;
+ import org.apache.http.conn.scheme.Scheme;
+@@ -84,6 +83,7 @@
+ import org.apache.http.entity.mime.FormBodyPart;
+ import org.apache.http.entity.mime.HttpMultipartMode;
+ import org.apache.http.entity.mime.MultipartEntity;
++import org.apache.http.entity.mime.MultipartEntityBuilder;
+ import org.apache.http.entity.mime.content.FileBody;
+ import org.apache.http.entity.mime.content.StringBody;
+ import org.apache.http.impl.client.AbstractHttpClient;
+@@ -108,6 +108,7 @@
+ import org.apache.jmeter.protocol.http.control.CacheManager;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.util.ConversionUtils;
+ import org.apache.jmeter.protocol.http.util.EncoderCache;
+ import org.apache.jmeter.protocol.http.util.HC4TrustAllSSLSocketFactory;
+ import org.apache.jmeter.protocol.http.util.HTTPArgument;
+@@ -970,9 +971,8 @@
+             }
+ 
+             // Write the request to our own stream
+-            MultipartEntity multiPart = new MultipartEntity(
+-                    getDoBrowserCompatibleMultipart() ? HttpMultipartMode.BROWSER_COMPATIBLE : HttpMultipartMode.STRICT,
+-                            null, charset);
++            MultipartEntityBuilder mep = MultipartEntityBuilder.create();
++            
+             // Create the parts
+             // Add any parameters
+             PropertyIterator args = getArguments().iterator();
+@@ -982,32 +982,32 @@
+                if (arg.isSkippable(parameterName)){
+                    continue;
+                }
++               
+                FormBodyPart formPart;
+-               StringBody stringBody = new StringBody(arg.getValue(), charset);
+-               formPart = new FormBodyPart(arg.getName(), stringBody);                   
+-               multiPart.addPart(formPart);
++               mep.addBinaryBody(arg.getName(), arg.getValue().getBytes("ASCII"));
++               mep.setLaxMode();
+             }
+ 
+             // Add any files
+             // Cannot retrieve parts once added to the MultiPartEntity, so have to save them here.
+-            ViewableFileBody[] fileBodies = new ViewableFileBody[files.length];
++            FileBody[] fileBodies = new FileBody[files.length];
+             for (int i=0; i < files.length; i++) {
+                 HTTPFileArg file = files[i];
+-                fileBodies[i] = new ViewableFileBody(new File(file.getPath()), file.getMimeType());
+-                multiPart.addPart(file.getParamName(),fileBodies[i]);
++                fileBodies[i] = new FileBody(new File(file.getPath()));
++                
++                mep.addPart(file.getParamName(), fileBodies[i] );
+             }
+-
+-            post.setEntity(multiPart);
+-
+-            if (multiPart.isRepeatable()){
++            
++            HttpEntity pst = mep.build();
++            post.setEntity(pst);
++           
++            if (pst.isRepeatable()){
+                 ByteArrayOutputStream bos = new ByteArrayOutputStream();
+-                for(ViewableFileBody fileBody : fileBodies){
+-                    fileBody.hideFileData = true;
++                for(FileBody fileBody : fileBodies){
++                   // fileBody.hideFileData = true;
+                 }
+-                multiPart.writeTo(bos);
+-                for(ViewableFileBody fileBody : fileBodies){
+-                    fileBody.hideFileData = false;
+-                }
++                pst.writeTo(bos);
++              
+                 bos.flush();
+                 // We get the posted bytes using the encoding used to create it
+                 postedBody.append(new String(bos.toByteArray(),
+@@ -1018,9 +1018,6 @@
+                 postedBody.append("<Multipart was not repeatable, cannot view what was sent>"); // $NON-NLS-1$
+             }
+ 
+-//            // Set the content type TODO - needed?
+-//            String multiPartContentType = multiPart.getContentType().getValue();
+-//            post.setHeader(HEADER_CONTENT_TYPE, multiPartContentType);
+ 
+         } else { // not multipart
+             // Check if the header manager had a content type header
+@@ -1042,7 +1039,7 @@
+                     }
+                 }
+ 
+-                FileEntity fileRequestEntity = new FileEntity(new File(file.getPath()),(ContentType) null);// TODO is null correct?
++                FileEntity fileRequestEntity = new FileEntity(new File(file.getPath()),  (ContentType) null);// TODO is null correct?
+                 post.setEntity(fileRequestEntity);
+ 
+                 // We just add placeholder text for file content

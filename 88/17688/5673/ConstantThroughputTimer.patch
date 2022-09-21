@@ -1,0 +1,42 @@
+Index: ConstantThroughputTimer.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/components/org/apache/jmeter/timers/ConstantThroughputTimer.java,v
+retrieving revision 1.5
+diff -u -r1.5 ConstantThroughputTimer.java
+--- ConstantThroughputTimer.java	7 Apr 2003 14:35:19 -0000	1.5
++++ ConstantThroughputTimer.java	7 Apr 2003 17:26:26 -0000
+@@ -60,7 +60,9 @@
+ import java.util.List;
+ 
+ import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.testelement.property.LongProperty;
++import org.apache.jmeter.threads.JMeterVariables;
+ import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+@@ -74,7 +76,7 @@
+  */
+ public class ConstantThroughputTimer
+         extends AbstractTestElement
+-        implements Timer, Serializable
++        implements Timer, Serializable, ThreadListener
+ {
+     public final static String THROUGHPUT= "ConstantThroughputTimer.throughput";
+     private static List addableList= new LinkedList();
+@@ -98,6 +100,15 @@
+     public ConstantThroughputTimer()
+     {
+     }
++
++    public void setJMeterVariables(JMeterVariables jmVars)
++    {
++        delay= 60000/getThroughput();
++    }
++
++    public void iterationStarted(int iterationCount)  // Needed for interface; not used
++   {
++   }
+ 
+     /**
+      * Sets the desired throughput.

@@ -1,0 +1,61 @@
+Index: sampler/FTPSampler.java
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/org/apache/jmeter/protocol/ftp/sampler/FTPSampler.java,v
+retrieving revision 1.8
+diff -r1.8 FTPSampler.java
+55c55
+<  package org.apache.jmeter.protocol.ftp.sampler;
+---
+> package org.apache.jmeter.protocol.ftp.sampler;
+75a76
+> 
+94a96
+>         boolean isSuccessful = false;
+96c98,99
+< 		LoginConfig loginConfig = (LoginConfig)e.getConfigElement(LoginConfig.class);
+---
+>         res.putValue(SampleResult.SAMPLE_LABEL,ftpConfig.getLabel());
+>         LoginConfig loginConfig = (LoginConfig)e.getConfigElement(LoginConfig.class);
+100,101c103,106
+< 			System.out.println("Connecting to "+ftpConfig.getServer()+" trying to get "+ftpConfig.getFilename());
+< 			System.out.println("Username = "+loginConfig.getUsername());
+---
+>             // removed the next two lines - System.out.println is a resource DOG, and putting this in the middle
+>             // of a timed operation skews the results big time. -- jkb
+> //			System.out.println("Connecting to "+ftpConfig.getServer()+" trying to get "+ftpConfig.getFilename());
+> //			System.out.println("Username = "+loginConfig.getUsername());
+105c110
+< 			ftp.setPassive(true);
+---
+> 			ftp.setPassive(true); // this should probably come from the setup dialog
+108c113
+< 			res.putValue(SampleResult.SAMPLE_LABEL,ftpConfig.getServer()+"/"+ftpConfig.getFilename());
+---
+>             // set the response code here somewhere
+109a115
+>             isSuccessful = true;
+112c118
+< 		catch (Exception ex)
+---
+> 		catch (java.net.ConnectException cex)
+114c120,121
+< 			//System.out.println(ex.toString());
+---
+>             // java.net.ConnectException -- 502 error code?
+>             res.putValue(SampleResult.TEXT_RESPONSE, cex.toString());
+116c123,128
+< 		// Calculate response time
+---
+>         catch (Exception ex) {
+>             // general exception
+>             res.putValue(SampleResult.TEXT_RESPONSE, ex.toString());
+>         }
+> 
+>         // Calculate response time
+117a130,133
+>         res.setTime(end - start);
+> 
+>         // Set if we were successful or not
+>         res.putValue(SampleResult.SUCCESS, new Boolean(isSuccessful));
+119d134
+< 		res.setTime(end - start);

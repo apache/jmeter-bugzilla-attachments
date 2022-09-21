@@ -1,0 +1,891 @@
+Index: bin/saveservice.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- bin/saveservice.properties	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ bin/saveservice.properties	(revision )
+@@ -111,6 +111,8 @@
+ CriticalSectionControllerGui=org.apache.jmeter.control.gui.CriticalSectionControllerGui
+ CounterConfigGui=org.apache.jmeter.modifiers.gui.CounterConfigGui
+ CSVDataSet=org.apache.jmeter.config.CSVDataSet
++DNSCacheManager=org.apache.jmeter.protocol.http.control.DNSCacheManager
++DNSCachePanel=org.apache.jmeter.protocol.http.gui.DNSCachePanel
+ DebugPostProcessor=org.apache.jmeter.extractor.DebugPostProcessor
+ DebugSampler=org.apache.jmeter.sampler.DebugSampler
+ DistributionGraphVisualizer=org.apache.jmeter.visualizers.DistributionGraphVisualizer
+Index: xdocs/usermanual/component_reference.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ xdocs/usermanual/component_reference.xml	(revision )
+@@ -153,7 +153,7 @@
+          </li>
+          <li>It does not support virtual hosts.</li>
+          </ul>
+-         <p>Note: the FILE protocol is intended for testing purposes only. 
++         <p>Note: the FILE protocol is intended for testing purposes only.
+          It is handled by the same code regardless of which HTTP Sampler is used.</p>
+         <p>If the request requires server or proxy login authorization (i.e. where a browser would create a pop-up dialog box),
+          you will also have to add an <complink name="HTTP Authorization Manager"/> Configuration Element.
+@@ -2521,11 +2521,11 @@
+ 
+ <component name="Critical Section Controller" index="&sect-num;.2.17" width="469" height="129" screenshot="logic-controller/critical-section-controller.png">
+ <description>
+-<p>The Critical Section Controller ensures that its children elements (samplers/controllers, etc) will be executed 
++<p>The Critical Section Controller ensures that its children elements (samplers/controllers, etc) will be executed
+ by only one thread as a named lock will be taken before executing children of controller.</p>
+ </description>
+ <p>
+-    The figure below shows an example of using Critical Section Controller, in the figure below 2 Critical Section Controllers ensure 
++    The figure below shows an example of using Critical Section Controller, in the figure below 2 Critical Section Controllers ensure
+     that:
+     <ul>
+         <li>DS2-${__threadNum} is executed only by one thread at a time</li>
+@@ -3556,7 +3556,7 @@
+ <ul>
+ <li>kerberos.spnego.strip_port=false</li>
+ </ul>
+-</pre> 
++</pre>
+ </p>
+ <br></br>
+ <b>Controls:</b>
+@@ -3637,6 +3637,26 @@
+ </properties>
+ </component>
+ 
++<component name="DNS Cache Manager" index="&sect-num;.4.4"  width="513" height="383" screenshot="http-config/dns-cache-manager.png">
++    <note>DNS Cache Manager is designed for using in the root of Thread Group or Test Plan. Do not place it as child element of particular HTTP Sampler
++    </note>
++    <description><p>The DNS Cache Manager element allows to test applications, which have several servers behind load balancers(CDN,etc), when user receives content from different IP's. By default JMeter uses JVM DNS cache. That's why
++    only one server from the cluster receives load. DNS Cache Manager resolves name for each thread separately each iteration and
++    saves results of resolving to its internal DNS Cache, which independent from both JVM and OS DNS caches.
++    </p>
++    </description>
++    <properties>
++    <property name="Name" required="No">Descriptive name for this element that is shown in the tree. </property>
++    <property name="Clear cache each Iteration" required="Yes">If selected, DNS cache of every  Thread is cleared each time new iteration is started.</property>
++    <property name="Use system DNS resolver" required="N/A">System DNS resolver will be used. For correct work edit
++        $JAVA_HOME/jre/lib/security/java.security: add "networkaddress.cache.ttl=0"
++    </property>
++    <property name="Use custom DNS resolver" required="N/A">Custom DNS resolver(from dnsjava library) will be used.</property>
++    <property name="Add Button" required="N/A">Add an entry to the DNS servers table.</property>
++    <property name="Delete Button" required="N/A">Delete the currently selected table entry.</property>
++    </properties>
++</component>
++
+ <component name="HTTP Cookie Manager" index="&sect-num;.4.4"  width="513" height="383" screenshot="http-config/http-cookie-manager.png">
+ 
+ <note>If there is more than one Cookie Manager in the scope of a Sampler,
+@@ -4756,7 +4776,7 @@
+ Only a forced stop will stop it. Setting Timeout in milliseconds is an option to consider in this case.
+ </note>
+ <note>
+-Synchronizing timer blocks only within one JVM, so if using Distributed testing ensure you never set "Number of Simultaneous Users to Group by" to a value superior to the number of users 
++Synchronizing timer blocks only within one JVM, so if using Distributed testing ensure you never set "Number of Simultaneous Users to Group by" to a value superior to the number of users
+ of its containing Thread group considering 1 injector only.
+ </note>
+ 
+Index: build.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- build.properties	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ build.properties	(revision )
+@@ -347,3 +347,9 @@
+ commons-lang.jar            = commons-lang-${commons-lang.version}.jar
+ commons-lang.loc            = ${maven2.repo}/commons-lang/commons-lang/${commons-lang.version}
+ commons-lang.md5            = 4d5c1693079575b362edf41500630bbd
++
++# dnsjava for DNSCacheManager
++dnsjava.version             = 2.1.6
++dnsjava.jar                 = dnsjava-${dnsjava.version}.jar
++dnsjava.loc                 = ${maven2.repo}/dnsjava/dnsjava/${dnsjava.version}
++dnsjava.md5                 = 4f95b291e738bb7c5a8773b22749afc3
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision )
+@@ -74,6 +74,7 @@
+ import org.apache.http.client.params.CookiePolicy;
+ import org.apache.http.client.protocol.ResponseContentEncoding;
+ import org.apache.http.conn.ConnectionKeepAliveStrategy;
++import org.apache.http.conn.DnsResolver;
+ import org.apache.http.conn.params.ConnRoutePNames;
+ import org.apache.http.conn.scheme.Scheme;
+ import org.apache.http.conn.scheme.SchemeRegistry;
+@@ -89,6 +90,9 @@
+ import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
+ import org.apache.http.impl.client.DefaultHttpClient;
+ import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
++import org.apache.http.impl.conn.PoolingClientConnectionManager;
++import org.apache.http.impl.conn.SchemeRegistryFactory;
++import org.apache.http.impl.conn.SystemDefaultDnsResolver;
+ import org.apache.http.message.BasicNameValuePair;
+ import org.apache.http.params.BasicHttpParams;
+ import org.apache.http.params.CoreConnectionPNames;
+@@ -633,8 +637,15 @@
+         if (httpClient == null){ // One-time init for this client
+ 
+             HttpParams clientParams = new DefaultedHttpParams(new BasicHttpParams(), DEFAULT_HTTP_PARAMS);
+-            
++
+-            httpClient = new DefaultHttpClient(clientParams){
++            DnsResolver resolver= this.testElement.getDNSResolver();
++            if(resolver==null){
++                resolver= new SystemDefaultDnsResolver();
++            }
++            PoolingClientConnectionManager poolingClientConnectionManager=
++                    new PoolingClientConnectionManager(SchemeRegistryFactory.createDefault(),resolver);
++
++            httpClient = new DefaultHttpClient(poolingClientConnectionManager, clientParams) {
+                 @Override
+                 protected HttpRequestRetryHandler createHttpRequestRetryHandler() {
+                     return new DefaultHttpRequestRetryHandler(RETRY_COUNT, false); // set retry count
+Index: src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java	(revision )
++++ src/protocol/http/org/apache/jmeter/protocol/http/control/DNSCacheManager.java	(revision )
+@@ -0,0 +1,221 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.control;
++
++import org.apache.http.conn.DnsResolver;
++import org.apache.http.impl.conn.SystemDefaultDnsResolver;
++import org.apache.jmeter.config.ConfigTestElement;
++import org.apache.jmeter.engine.event.LoopIterationEvent;
++import org.apache.jmeter.testelement.TestIterationListener;
++import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.CollectionProperty;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++import org.xbill.DNS.Cache;
++import org.xbill.DNS.Lookup;
++import org.xbill.DNS.Resolver;
++import org.xbill.DNS.ExtendedResolver;
++import org.xbill.DNS.Record;
++import org.xbill.DNS.Type;
++import org.xbill.DNS.TextParseException;
++import org.xbill.DNS.SimpleResolver;
++import org.xbill.DNS.ARecord;
++
++import java.io.Serializable;
++import java.net.InetAddress;
++import java.net.UnknownHostException;
++import java.util.*;
++
++/**
++ * This config element provides ability to have flexible control over DNS caching function.
++ * Depending on option from @see {@link org.apache.jmeter.protocol.http.gui.DNSCachePanel},
++ * either system or custom resolver can be used. Custom resolver uses dnsjava library, and gives
++ * ability to bypass both OS and JVM cache. It allows to use paradigm
++ * "1 virtual user - 1 DNS cache" in performance tests.
++ *
++ * @since 2.12
++ */
++
++public class DNSCacheManager extends ConfigTestElement implements TestIterationListener, Serializable,
++        DnsResolver {
++    private static final long serialVersionUID = 233L;
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    private SystemDefaultDnsResolver systemDefaultDnsResolver=null;
++    private Map<String,InetAddress[]> cache = null;
++    private Resolver resolver = null;
++    //++ JMX tag values
++    private static final String CLEAR = "JMeterDNSResolver.clearEachIteration";// $NON-NLS-1$
++    //-- JMX tag values
++    private static final String SERVERS = "JMeterDNSResolver.servers";// $NON-NLS-1$
++    private static final String IS_CUSTOM_RESOLVER = "isCustomResolver";// $NON-NLS-1$
++    private final transient Cache lookupCache;
++
++    // ensure that the initial DNSServers are copied to the per-thread instances
++
++    public DNSCacheManager() {
++        setProperty(new CollectionProperty(SERVERS, new ArrayList<String>()));
++        //disabling cache
++        lookupCache = new Cache();
++        lookupCache.setMaxCache(0);
++        lookupCache.setMaxEntries(0);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public Object clone() {
++        DNSCacheManager clone = (DNSCacheManager) super.clone();
++        clone.systemDefaultDnsResolver=new SystemDefaultDnsResolver();
++        clone.cache=new LinkedHashMap<String,InetAddress[]>();
++        CollectionProperty dnsServers = getServers();
++        try {
++            clone.resolver=new ExtendedResolver();
++            PropertyIterator dnsServIt = dnsServers.iterator();
++            while (dnsServIt.hasNext()) {
++                String dnsServer = dnsServIt.next().getStringValue();
++                ((ExtendedResolver) clone.resolver).addResolver(new SimpleResolver(dnsServer));
++            }
++            // resolvers will be chosen via round-robin
++            ((ExtendedResolver) clone.resolver).setLoadBalance(true);
++        } catch (UnknownHostException uhe) {
++            log.warn("Failed to create Extended resolver: " + uhe.getMessage());
++        }
++        return clone;
++    }
++
++    /**
++     * Clean DNS cache each iteration
++     * @return
++     */
++    public boolean getClearEachIteration() {
++        return getPropertyAsBoolean(CLEAR);
++    }
++
++    /**
++     * Clean DNS cache each iteration
++     *
++     */
++    public void setClearEachIteration(boolean clear) {
++        setProperty(new BooleanProperty(CLEAR, clear));
++    }
++
++
++    /**
++     *
++     * Resolves address using system or custom DNS resolver
++     */
++
++    public InetAddress[] resolve(String host) throws UnknownHostException {
++        if(cache.containsKey(host)){
++            if(log.isDebugEnabled()){
++                log.debug("Cache hit thr#" + JMeterContextService.getContext().getThreadNum() + ": " + host + "=>" + Arrays.toString(cache.get(host)));
++            }
++           return cache.get(host);
++        }else{
++            InetAddress[] addresses = requestLookup(host);
++            if(log.isDebugEnabled()){
++                log.debug("Cache miss thr#" + JMeterContextService.getContext().getThreadNum() + ": " + host + "=>" + Arrays.toString(addresses));
++            }
++            cache.put(host,addresses);
++            return addresses;
++        }
++    }
++
++    /**
++     * Sends DNS request via system or custom DNS resolver
++
++     */
++    private InetAddress[] requestLookup(String host) throws UnknownHostException {
++        InetAddress[] addresses = null;
++        if (getIsCustResolver() && ((ExtendedResolver) resolver).getResolvers().length > 1) {
++            try {
++                Lookup lookup = new Lookup(host, Type.A);
++                lookup.setCache(lookupCache);
++                lookup.setResolver(resolver);
++                Record[] records = lookup.run();
++                if (records.length == 0) {
++                    throw new UnknownHostException("Failed to resolve host name: " + host);
++                }
++                addresses = new InetAddress[records.length];
++                for (int i = 0; i < records.length; i++) {
++                    addresses[i] = ((ARecord) records[i]).getAddress();
++                }
++            } catch (TextParseException tpe) {
++                log.debug("Failed to create Lookup object: " + tpe);
++            }
++        } else {
++            addresses = systemDefaultDnsResolver.resolve(host);
++            if (log.isDebugEnabled()) {
++                log.debug("Cache miss: " + host + " Thread #" + JMeterContextService.getContext().getThreadNum()
++                        + ", resolved with system resolver into " + Arrays.toString(addresses));
++            }
++        }
++        return addresses;
++    }
++
++    /**
++     * {@inheritDoc}
++     * Clean DNS cache if appropriate check-box was selected
++     */
++    @Override
++    public void testIterationStart(LoopIterationEvent event) {
++        if (getClearEachIteration()) {
++            this.cache.clear();
++        }
++    }
++
++    public CollectionProperty getServers() {
++        return (CollectionProperty) getProperty(SERVERS);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void clear() {
++        super.clear();
++        clearServers(); // ensure data is set up OK initially
++    }
++
++
++    public boolean getIsCustResolver() {
++        return this.getPropertyAsBoolean(IS_CUSTOM_RESOLVER, true);
++    }
++
++    public void setIsCustomResolver(boolean isCustomResolver) {
++        this.setProperty(IS_CUSTOM_RESOLVER, isCustomResolver);
++    }
++
++
++    /**
++     * Remove all the servers.
++     */
++    private void clearServers() {
++        log.debug("Clear all servers from store");
++        setProperty(new CollectionProperty(SERVERS, new ArrayList<String>()));
++    }
++
++    public void addServer(String dnsServer) {
++        getServers().addItem(dnsServer);
++    }
++
++}
+\ No newline at end of file
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(revision )
+@@ -208,6 +208,7 @@
+ csvread_file_file_name=Fichier CSV pour obtenir les valeurs de | *alias
+ cut=Couper
+ cut_paste_function=Fonction de copier/coller de cha\u00EEne de caract\u00E8re
++clear_cache_each_iteration=Clear cache each iteration
+ database_conn_pool_max_usage=Utilisation max pour chaque connexion\:
+ database_conn_pool_props=Pool de connexions \u221A\u2020 la base de donn\u221A\u00A9es
+ database_conn_pool_size=Nombre de Connexions dans le Pool\:
+@@ -240,6 +241,8 @@
+ distribution_graph_title=Graphique de distribution (alpha)
+ distribution_note1=Ce graphique se mettra \u00E0 jour tous les 10 \u00E9chantillons
+ dn=Racine DN \:
++dns_cache_manager_title=Gestionnaire de cache DNS
++dns_cache_manager=DNS Cache Manager
+ domain=Domaine \:
+ done=Fait
+ down=Descendre
+@@ -1146,6 +1149,8 @@
+ url_multipart_config_title=Requ\u00EAte HTTP Multipart par d\u00E9faut
+ urldecode_string=Cha\u00EEne de style URL \u00E0 d\u00E9coder
+ urlencode_string=Cha\u00EEne de caract\u00E8res \u00E0 encoder en style URL
++use_system_dns_resolver=Use system DNS resolver
++use_custom_dns_resolver=Use custom DNS resolver
+ use_expires=Utiliser les ent\u00EAtes Cache-Control/Expires lors du traitement des requ\u00EAtes GET
+ use_keepalive=Connexion persist.
+ use_multipart_for_http_post=Multipart/form-data
+Index: src/core/org/apache/jmeter/resources/messages.properties
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ src/core/org/apache/jmeter/resources/messages.properties	(revision )
+@@ -214,6 +214,7 @@
+ csvread_file_file_name=CSV file to get values from | *alias
+ cut=Cut
+ cut_paste_function=Copy and paste function string
++clear_cache_each_iteration=Clear cache each iteration
+ database_conn_pool_max_usage=Max Usage For Each Connection\:
+ database_conn_pool_props=Database Connection Pool
+ database_conn_pool_size=Number of Connections in Pool\:
+@@ -246,6 +247,8 @@
+ distribution_graph_title=Distribution Graph (alpha)
+ distribution_note1=The graph will update every 10 samples
+ dn=DN
++dns_cache_manager_title=DNS Cache Manager
++dns_cache_manager=DNS Cache Manager
+ domain=Domain
+ done=Done
+ down=Down
+@@ -1153,6 +1156,8 @@
+ url_multipart_config_title=HTTP Multipart Request Defaults
+ urldecode_string=String with URL encoded chars to decode
+ urlencode_string=String to encode in URL encoded chars
++use_system_dns_resolver=Use system DNS resolver
++use_custom_dns_resolver=Use custom DNS resolver
+ use_expires=Use Cache-Control/Expires header when processing GET requests
+ use_keepalive=Use KeepAlive
+ use_multipart_for_http_post=Use multipart/form-data for POST
+Index: src/protocol/http/org/apache/jmeter/protocol/http/gui/DNSCachePanel.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/gui/DNSCachePanel.java	(revision )
++++ src/protocol/http/org/apache/jmeter/protocol/http/gui/DNSCachePanel.java	(revision )
+@@ -0,0 +1,308 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.protocol.http.gui;
++
++import org.apache.jmeter.config.gui.AbstractConfigGui;
++import org.apache.jmeter.gui.util.PowerTableModel;
++import org.apache.jmeter.protocol.http.control.DNSCacheManager;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.testelement.property.PropertyIterator;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.GuiUtils;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++
++import javax.swing.*;
++import javax.swing.table.TableCellEditor;
++import java.awt.*;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++
++/**
++ * This gui part of @see {@link org.apache.jmeter.protocol.http.control.DNSCacheManager}.
++ * Using radiobuttons, user can switch between using system DNS resolver and custom
++ * resolver. Custom resolver functionality is provided by dnsjava library.
++ * "DNS servers" may contain one or more IP/Name of dns server for resolving name
++ * DNS servers are chosen via round-robin.
++ * If table is empty - system resolver is used.
++ *
++ * @since 2.12
++ */
++public class DNSCachePanel extends AbstractConfigGui implements ActionListener{
++    public static final String CLEAR_CACHE_EACH_ITER = JMeterUtils.getResString("clear_cache_each_iteration");
++    public static final String OPTIONS = JMeterUtils.getResString("option");
++    private static final long serialVersionUID = 240L;
++    private static final String ADD_COMMAND = JMeterUtils.getResString("add"); // $NON-NLS-1$
++    private static final String DELETE_COMMAND = JMeterUtils.getResString("delete"); // $NON-NLS-1$
++    private static final String SYS_RES_COMMAND = JMeterUtils.getResString("use_system_dns_resolver"); // $NON-NLS-1$
++    private static final String CUST_RES_COMMAND = JMeterUtils.getResString("use_custom_dns_resolver"); // $NON-NLS-1$
++
++
++    private static final Logger log = LoggingManager.getLoggerForClass();
++    private JTable dnsServersTable;
++    private JPanel dnsServersPanel;
++    private JPanel dnsServButPanel;
++    private PowerTableModel dnsServersTableModel;
++    private JRadioButton sysResButton;
++    private JRadioButton custResButton;
++    private JButton deleteButton;
++    private JButton addButton;
++
++
++    private static final String[] COLUMN_RESOURCE_NAMES = {
++            ("NAME/IP"),   //$NON-NLS-1$
++            };
++    private static final Class<?>[] columnClasses = {
++            String.class };
++
++
++    private JCheckBox clearEachIteration;
++    private String DNS_SERVERS_TABLE_NAME="DNS Servers";
++    /**
++     * Default constructor.
++     */
++    public DNSCachePanel() {
++        init();
++    }
++
++
++    @Override
++    public String getLabelResource() {
++        return "dns_cache_manager_title";
++    }
++
++
++
++    /**
++     * Modifies a given TestElement to mirror the data in the gui components.
++     *
++     * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(org.apache.jmeter.testelement.TestElement)
++     */
++    @Override
++    public void modifyTestElement(TestElement dnsRes) {
++        GuiUtils.stopTableEditing(dnsServersTable);
++        dnsRes.clear();
++        configureTestElement(dnsRes);
++        if (dnsRes instanceof DNSCacheManager) {
++            DNSCacheManager dnsCacheManager = (DNSCacheManager) dnsRes;
++            for (int i = 0; i < dnsServersTableModel.getRowCount(); i++) {
++                String server = (String) dnsServersTableModel.getRowData(i)[0];
++                dnsCacheManager.addServer(server);
++            }
++            dnsCacheManager.setClearEachIteration(clearEachIteration.isSelected());
++            dnsCacheManager.setIsCustomResolver(custResButton.isSelected());
++        }
++
++    }
++
++    /**
++     * Implements JMeterGUIComponent.clearGui
++     */
++    @Override
++    public void clearGui() {
++        super.clearGui();
++        clearEachIteration.setSelected(true);
++        dnsServersTableModel.clearData();
++        deleteButton.setEnabled(custResButton.isSelected()&&dnsServersTable.getColumnCount()>0);
++
++    }
++
++    private void populateTable(DNSCacheManager resolver) {
++        dnsServersTableModel.clearData();
++        PropertyIterator iter = resolver.getServers().iterator();
++        while (iter.hasNext()) {
++            addServerToTable((String) iter.next().getObjectValue());
++        }
++    }
++
++    @Override
++    public TestElement createTestElement() {
++        DNSCacheManager dnsCacheManager = new DNSCacheManager();
++        modifyTestElement(dnsCacheManager);
++        return dnsCacheManager;
++    }
++
++    @Override
++    public void configure(TestElement el) {
++        super.configure(el);
++
++        DNSCacheManager dnsCacheManager = (DNSCacheManager) el;
++        populateTable(dnsCacheManager);
++        clearEachIteration.setSelected((dnsCacheManager).getClearEachIteration());
++        custResButton.setSelected((dnsCacheManager).getIsCustResolver());
++    }
++
++    private void init() {
++        dnsServersTableModel = new PowerTableModel(COLUMN_RESOURCE_NAMES, columnClasses);
++
++        clearEachIteration =
++                new JCheckBox(CLEAR_CACHE_EACH_ITER, true); //$NON-NLS-1$
++        setLayout(new BorderLayout());
++        setBorder(makeBorder());
++        JPanel northPanel = new JPanel();
++        northPanel.setLayout(new VerticalLayout(5, VerticalLayout.BOTH));
++        northPanel.add(makeTitlePanel());
++        JPanel optionsPane = new JPanel();
++        optionsPane.setBorder(BorderFactory.createTitledBorder(
++                BorderFactory.createEtchedBorder(), OPTIONS)); // $NON-NLS-1$
++        optionsPane.setLayout(new VerticalLayout(5, VerticalLayout.BOTH));
++        optionsPane.add(clearEachIteration, BorderLayout.WEST);
++        optionsPane.add(createChooseResPanel(), BorderLayout.SOUTH);
++        northPanel.add(optionsPane);
++        add(northPanel, BorderLayout.NORTH);
++
++        dnsServersPanel=createDnsServersTablePanel();
++        add(dnsServersPanel, BorderLayout.CENTER);
++
++    }
++
++    public JPanel createDnsServersTablePanel() {
++        // create the JTable that holds header per row
++        dnsServersTable = new JTable(dnsServersTableModel);
++        dnsServersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
++        dnsServersTable.setPreferredScrollableViewportSize(new Dimension(400, 100));
++
++        JPanel panel = new JPanel(new BorderLayout(0, 5));
++        panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
++                DNS_SERVERS_TABLE_NAME)); // $NON-NLS-1$
++        JScrollPane dnsServScrollPane=new JScrollPane(dnsServersTable);
++        panel.add(dnsServScrollPane, BorderLayout.CENTER);
++        dnsServButPanel=createButtonPanel();
++        panel.add(dnsServButPanel, BorderLayout.SOUTH);
++        return panel;
++    }
++
++
++    private JPanel createChooseResPanel(){
++        JPanel chooseResPanel = new JPanel(new BorderLayout(0, 5));
++        sysResButton = new JRadioButton();
++        sysResButton.setSelected(true);
++        sysResButton.setText(SYS_RES_COMMAND);
++        sysResButton.setToolTipText("Use system DNS resolver");
++        sysResButton.setEnabled(true);
++        sysResButton.addActionListener(this);
++
++        custResButton = new JRadioButton();
++        custResButton.setSelected(false);
++        custResButton.setText(CUST_RES_COMMAND);
++        custResButton.setToolTipText("Use custom DNS resolver");
++        custResButton.setEnabled(true);
++        custResButton.addActionListener(this);
++
++        ButtonGroup buttonGroup;
++        buttonGroup = new ButtonGroup();
++        buttonGroup.add(sysResButton);
++        buttonGroup.add(custResButton);
++
++        chooseResPanel.add(sysResButton,BorderLayout.WEST);
++        chooseResPanel.add(custResButton,BorderLayout.CENTER);
++        return chooseResPanel;
++    }
++
++    private JPanel createButtonPanel() {
++        boolean tableEmpty = (dnsServersTableModel.getRowCount() == 0);
++
++        addButton = createButton("add", 'A', ADD_COMMAND, custResButton.isSelected()); // $NON-NLS-1$
++        deleteButton = createButton("delete", 'D', DELETE_COMMAND, !tableEmpty); // $NON-NLS-1$
++
++        JPanel buttonPanel = new JPanel();
++        buttonPanel.add(addButton, BorderLayout.WEST);
++        buttonPanel.add(deleteButton, BorderLayout.LINE_END);
++        return buttonPanel;
++    }
++
++    private JButton createButton(String resName, char mnemonic, String command, boolean enabled) {
++        JButton button = new JButton(JMeterUtils.getResString(resName));
++        button.setMnemonic(mnemonic);
++        button.setActionCommand(command);
++        button.setEnabled(enabled);
++        button.addActionListener(this);
++        return button;
++    }
++
++    private void addServerToTable(String dnsServer) {
++        dnsServersTableModel.addRow(new Object[]{dnsServer});
++    }
++
++    @Override
++    public void actionPerformed(ActionEvent e) {
++        String action = e.getActionCommand();
++        dnsServersTable.setEnabled(custResButton.isSelected());
++        Color greyColor=new Color(240, 240, 240);
++        Color blueColor=new Color(184, 207, 229);
++        dnsServersTable.setBackground(sysResButton.isSelected()?greyColor:Color.WHITE);
++        dnsServersTable.setSelectionBackground(sysResButton.isSelected() ? greyColor :blueColor);
++        addButton.setEnabled(custResButton.isSelected());
++        deleteButton.setEnabled(custResButton.isSelected());
++        if (custResButton.isSelected()&&(dnsServersTableModel.getRowCount() > 0)) {
++            deleteButton.setEnabled(true);
++            addButton.setEnabled(true);
++        }
++
++        if (action.equals(DELETE_COMMAND)) {
++            if (dnsServersTableModel.getRowCount() > 0) {
++                // If a table cell is being edited, we must cancel the editing
++                // before deleting the row.
++                if (dnsServersTable.isEditing()) {
++                    TableCellEditor cellEditor = dnsServersTable.getCellEditor(dnsServersTable.getEditingRow(),
++                            dnsServersTable.getEditingColumn());
++                    cellEditor.cancelCellEditing();
++                }
++
++                int rowSelected = dnsServersTable.getSelectedRow();
++
++                if (rowSelected != -1) {
++                    dnsServersTableModel.removeRow(rowSelected);
++                    dnsServersTableModel.fireTableDataChanged();
++
++                    if (dnsServersTableModel.getRowCount() == 0) {
++                        deleteButton.setEnabled(false);
++                    }
++
++                    else {
++                        int rowToSelect = rowSelected;
++
++                        if (rowSelected >= dnsServersTableModel.getRowCount()) {
++                            rowToSelect = rowSelected - 1;
++                        }
++
++                        dnsServersTable.setRowSelectionInterval(rowToSelect, rowToSelect);
++                    }
++                }
++            }
++        } else if (action.equals(ADD_COMMAND)) {
++            // If a table cell is being edited, we should accept the current
++            // value and stop the editing before adding a new row.
++            GuiUtils.stopTableEditing(dnsServersTable);
++
++            dnsServersTableModel.addNewRow();
++            dnsServersTableModel.fireTableDataChanged();
++
++            if (!deleteButton.isEnabled()) {
++                deleteButton.setEnabled(true);
++            }
++
++            // Highlight (select) the appropriate row.
++            int rowToSelect = dnsServersTableModel.getRowCount() - 1;
++            dnsServersTable.setRowSelectionInterval(rowToSelect, rowToSelect);
++        }
++    }
++}
++
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision )
+@@ -55,6 +55,7 @@
+ import org.apache.jmeter.protocol.http.control.Cookie;
+ import org.apache.jmeter.protocol.http.control.CookieManager;
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.control.DNSCacheManager;
+ import org.apache.jmeter.protocol.http.parser.HTMLParseException;
+ import org.apache.jmeter.protocol.http.parser.HTMLParser;
+ import org.apache.jmeter.protocol.http.util.ConversionUtils;
+@@ -105,6 +106,8 @@
+                     "org.apache.jmeter.protocol.http.config.gui.HttpDefaultsGui",
+                     "org.apache.jmeter.config.gui.SimpleConfigGui",
+                     "org.apache.jmeter.protocol.http.gui.HeaderPanel",
++                    "org.apache.jmeter.protocol.http.control.DNSCacheManager",
++                    "org.apache.jmeter.protocol.http.gui.DNSCachePanel",
+                     "org.apache.jmeter.protocol.http.gui.AuthPanel",
+                     "org.apache.jmeter.protocol.http.gui.CacheManagerGui",
+                     "org.apache.jmeter.protocol.http.gui.CookiePanel"}));
+@@ -120,6 +123,8 @@
+ 
+     public static final String HEADER_MANAGER = "HTTPSampler.header_manager"; // $NON-NLS-1$
+ 
++    public static final String DNS_CACHE_MANAGER = "HTTPSampler.dns_cache_manager"; // $NON-NLS-1$
++
+     public static final String DOMAIN = "HTTPSampler.domain"; // $NON-NLS-1$
+ 
+     public static final String PORT = "HTTPSampler.port"; // $NON-NLS-1$
+@@ -622,6 +627,8 @@
+             setHeaderManager((HeaderManager) el);
+         } else if (el instanceof AuthManager) {
+             setAuthManager((AuthManager) el);
++        } else if (el instanceof DNSCacheManager) {
++            setDNSResolver((DNSCacheManager) el);
+         } else {
+             super.addTestElement(el);
+         }
+@@ -834,6 +841,19 @@
+     public CacheManager getCacheManager() {
+         return (CacheManager) getProperty(CACHE_MANAGER).getObjectValue();
+     }
++
++    public DNSCacheManager getDNSResolver() {
++        return (DNSCacheManager) getProperty(DNS_CACHE_MANAGER).getObjectValue();
++    }
++
++    public void setDNSResolver(DNSCacheManager cacheManager) {
++        DNSCacheManager mgr = getDNSResolver();
++        if (mgr != null) {
++            log.warn("Existing DNSCacheManager " + mgr.getName() + " superseded by " + cacheManager.getName());
++        }
++        setProperty(new TestElementProperty(DNS_CACHE_MANAGER, cacheManager));
++    }
++
+ 
+     public boolean isImageParser() {
+         return getPropertyAsBoolean(IMAGE_PARSER, false);
+Index: res/maven/ApacheJMeter_parent.pom
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- res/maven/ApacheJMeter_parent.pom	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ res/maven/ApacheJMeter_parent.pom	(revision )
+@@ -106,6 +106,7 @@
+       <javamail.version>1.5.0-b01</javamail.version>
+       <jms.version>1.1.1</jms.version>
+       <velocity.version>1.7</velocity.version>
++      <dnsjava.version>2.1.6</dnsjava.version>
+     </properties>
+ 
+     <dependencies>
+@@ -393,6 +394,12 @@
+         <version>${velocity.version}</version>
+       </dependency>
+        -->
++<dependency>
++	<groupId>dnsjava</groupId>
++	<artifactId>dnsjava</artifactId>
++	<version>${dnsjava.version}</version>
++</dependency>
++
+     </dependencies>
+ 
+     <repositories>
+Index: eclipse.classpath
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- eclipse.classpath	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ eclipse.classpath	(revision )
+@@ -56,6 +56,7 @@
+ 	<classpathentry kind="lib" path="lib/commons-lang3-3.3.2.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-logging-1.2.jar"/>
+ 	<classpathentry kind="lib" path="lib/commons-net-3.3.jar"/>
++	<classpathentry kind="lib" path="lib/dnsjava-2.1.6.jar"/>
+ 	<classpathentry kind="lib" path="lib/excalibur-datasource-2.1.jar"/>
+ 	<classpathentry kind="lib" path="lib/excalibur-instrument-1.0.jar"/>
+ 	<classpathentry kind="lib" path="lib/excalibur-logger-1.1.jar"/>
+Index: build.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- build.xml	(revision 8cc1d5bc47884454d9aa71f89e8a5fff1c768fd3)
++++ build.xml	(revision )
+@@ -438,6 +438,7 @@
+     <pathelement location="${lib.dir}/${commons-lang3.jar}"/>
+     <pathelement location="${lib.dir}/${commons-logging.jar}"/>
+     <pathelement location="${lib.dir}/${commons-net.jar}"/>
++    <pathelement location="${lib.dir}/${dnsjava.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-datasource.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-instrument.jar}"/>
+     <pathelement location="${lib.dir}/${excalibur-logger.jar}"/>
+@@ -2889,6 +2890,7 @@
+     conditional execution (it would be a lot easier if antcall supported if/unless).
+     -->
+     <target name="_process_all_jars">
++        <process_jarfile jarname="dnsjava"/>
+         <process_jarfile jarname="apache-bsf"/>
+         <process_jarfile jarname="avalon-framework"/>
+         <process_jarfile jarname="bcmail" dest.dir="${lib.api}"/>

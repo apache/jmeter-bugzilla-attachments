@@ -1,0 +1,43 @@
+Index: jmeter-server.bat
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/bin/jmeter-server.bat,v
+retrieving revision 1.8
+diff -u -r1.8 jmeter-server.bat
+--- jmeter-server.bat	20 Jun 2003 14:33:46 -0000	1.8
++++ jmeter-server.bat	21 Jun 2003 10:46:41 -0000
+@@ -1,10 +1,26 @@
+-echo off
++@echo off
++
++REM Protect environment against changes if possible:
++if "%OS%"=="Windows_NT" setlocal
++
++if exist %JMETER_HOME%\lib\ext\ApacheJMeter_core.jar goto setCP
++echo Could not find ApacheJmeter_cor.jar ...
++REM Try to work out JMETER_HOME
++echo ... Trying JMETER_HOME=..
++set JMETER_HOME=..
++if exist %JMETER_HOME%\lib\ext\ApacheJMeter_core.jar goto setCP
++echo ... trying JMETER_HOME=.
++set JMETER_HOME=.
++if exist %JMETER_HOME%\lib\ext\ApacheJMeter_core.jar goto setCP
++echo Cannot determine JMETER_HOME !
++goto exit
++
++:setCP
+ set CLASSPATH=%JMETER_HOME%\lib\ext\ApacheJMeter_core.jar;%JMETER_HOME%\lib\jorphan.jar;%JMETER_HOME%\lib\logkit-1.2.jar
+ START rmiregistry
+ 
+ if not "%OS%"=="Windows_NT" goto win9xStart
+ :winNTStart
+-@setlocal
+ 
+ rem Need to check if we are using the 4NT shell...
+ if "%eval[2+2]" == "4" goto setup4NT
+@@ -34,3 +50,5 @@
+ rem and for NT handling to skip to.
+ 
+ jmeter -s %JMETER_CMD_LINE_ARGS%
++
++:exit
+\ No newline at end of file

@@ -1,0 +1,57 @@
+Index: src/core/org/apache/jmeter/JMeter.java
+===================================================================
+--- src/core/org/apache/jmeter/JMeter.java	(revision 1480665)
++++ src/core/org/apache/jmeter/JMeter.java	(working copy)
+@@ -821,6 +821,7 @@
+                 log.info("Remote engines have been started");
+             }
+             startUdpDdaemon(engines);
++            Runtime.getRuntime().addShutdownHook(new Thread(new JMeterShutdownHook(engines)));
+         } catch (Exception e) {
+             System.out.println("Error in NonGUIDriver " + e.toString());
+             log.error("Error in NonGUIDriver", e);
+@@ -828,6 +829,28 @@
+             JOrphanUtils.closeQuietly(reader);
+         }
+     }
++    
++    private static final class JMeterShutdownHook implements Runnable {
++        private static final Logger log = LoggingManager.getLoggerFor(JMeterShutdownHook.class.getName());
++        private List<JMeterEngine> engines;
++
++        public JMeterShutdownHook(List<JMeterEngine> engines) {
++            this.engines = engines;
++        }
++
++        @Override
++        public void run() {
++            log.warn("Shutdown hook started");
++            for(JMeterEngine engine : engines) {
++                if(engine.isActive()) {
++                    log.warn("Shutdown hook is stopping engine:"+engine);
++                    engine.stopTest(true);
++                    log.warn("Shutdown hook has stopped engine:"+engine);
++                }
++            }
++            log.warn("Shutdown hook ended");
++        }     
++    }
+ 
+     /**
+      * Refactored from AbstractAction.java
+Index: src/core/org/apache/jmeter/engine/StandardJMeterEngine.java
+===================================================================
+--- src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(revision 1480665)
++++ src/core/org/apache/jmeter/engine/StandardJMeterEngine.java	(working copy)
+@@ -258,6 +258,11 @@
+         shutdown = !now;
+         Thread stopThread = new Thread(new StopTest(now));
+         stopThread.start();
++        try {
++            stopThread.join();
++        } catch (InterruptedException e) {
++            log.warn("Stop thread was interrupted", e);
++        }
+     }
+ 
+     private class StopTest implements Runnable {

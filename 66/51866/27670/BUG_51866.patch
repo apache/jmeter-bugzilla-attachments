@@ -1,0 +1,102 @@
+Index: src/core/org/apache/jmeter/threads/JMeterContext.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterContext.java	(revision 1178131)
++++ src/core/org/apache/jmeter/threads/JMeterContext.java	(working copy)
+@@ -49,6 +49,8 @@
+ 
+     private boolean isReinitSubControllers = false;
+ 
++    private boolean isWithinRestartNextLoop = false;
++
+     JMeterContext() {
+         clear0();
+     }
+@@ -66,6 +68,7 @@
+         threadNum = 0;
+         thread = null;
+         isReinitSubControllers = false;
++        isWithinRestartNextLoop = false;
+     }
+ 
+     /**
+@@ -187,4 +190,36 @@
+     public boolean isReinitializingSubControllers() {
+         return isReinitSubControllers;
+     }
++
++    /**
++     * unset flag indicating that JMeterThread has met an error.
++     * And is restarting next loop, for example IfController 
++     * should not evaluate Condition, See bug 50032 
++     */
++    public void unsetIsWithinRestartNextLoop() {
++        if (isWithinRestartNextLoop) {
++            isWithinRestartNextLoop = false;
++        }
++    }
++    
++    /**
++     * @return true if JMeterThread is restarting next loop
++     */
++    public boolean isWithinRestartNextLoop() {
++        return isWithinRestartNextLoop;
++    }
++    
++    /**
++     * Set flag indicating that JMeterThread has met an error.
++     * And is restarting next loop, for example IfController 
++     * should not evaluate Condition, See bug 50032 
++     * @return true if it is the first one to set
++     */
++    public boolean setIsWithinRestartNextLoop() {
++        if (!isWithinRestartNextLoop) {
++            isWithinRestartNextLoop = true;
++            return true;
++        }
++        return false;
++    }
+ }
+Index: src/core/org/apache/jmeter/threads/JMeterThread.java
+===================================================================
+--- src/core/org/apache/jmeter/threads/JMeterThread.java	(revision 1178131)
++++ src/core/org/apache/jmeter/threads/JMeterThread.java	(working copy)
+@@ -285,13 +285,18 @@
+                             process_sampler(sam, null, threadContext);
+                             sam = controller.next();
+                         } else {
+-                            // Last not ok. start get the begining of the tree
+-                            sam = controller.next(); // need perfom a until loop for special case (tc as parent)
+-                            while (sam != null && !sam.equals(firstSampler)) { // while the thread is NOT on the begining of the tree
+-                                sam = controller.next();
++                            try{
++                                JMeterContextService.getContext().setIsWithinRestartNextLoop();
++                                // Last not ok. start get the begining of the tree
++                                sam = controller.next(); // need perfom a until loop for special case (tc as parent)
++                                while (sam != null && !sam.equals(firstSampler)) { // while the thread is NOT on the begining of the tree
++                                    sam = controller.next();
++                                }
++                                // At this point: begining tree, thus Last must Ok
++                                threadContext.getVariables().put(LAST_SAMPLE_OK, TRUE);
++                            } finally {
++                                JMeterContextService.getContext().unsetIsWithinRestartNextLoop();                                
+                             }
+-                            // At this point: begining tree, thus Last must Ok
+-                            threadContext.getVariables().put(LAST_SAMPLE_OK, TRUE);
+                         }
+                     } else {
+                         process_sampler(sam, null, threadContext);
+Index: src/components/org/apache/jmeter/modifiers/CounterConfig.java
+===================================================================
+--- src/components/org/apache/jmeter/modifiers/CounterConfig.java	(revision 1177675)
++++ src/components/org/apache/jmeter/modifiers/CounterConfig.java	(working copy)
+@@ -81,6 +81,10 @@
+     public synchronized void iterationStart(LoopIterationEvent event) {
+         // Cannot use getThreadContext() as not cloned per thread
+         JMeterVariables variables = JMeterContextService.getContext().getVariables();
++        if(JMeterContextService.getContext().isWithinRestartNextLoop())
++        {
++            return;
++        }
+         long start = getStart(), end = getEnd(), increment = getIncrement();
+         if (!isPerUser()) {
+             if (globalCounter == Long.MIN_VALUE || globalCounter > end) {

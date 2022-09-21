@@ -1,0 +1,40 @@
+ .../org/apache/jmeter/protocol/http/util/HTTPArgument.java   | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java b/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java
+index fa82dce9a..ea37ed521 100644
+--- a/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java
++++ b/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java
+@@ -28,6 +28,8 @@ import org.apache.jmeter.config.Argument;
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.testelement.property.BooleanProperty;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
++import org.apache.commons.codec.DecoderException;
++import org.apache.commons.codec.net.URLCodec;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -148,15 +150,21 @@ public class HTTPArgument extends Argument implements Serializable {
+                 if(log.isDebugEnabled()) {
+                     log.debug("Decoding name, calling URLDecoder.decode with '"+name+"' and contentEncoding:"+EncoderCache.URL_ARGUMENT_ENCODING);
+                 }
+-                name = URLDecoder.decode(name, EncoderCache.URL_ARGUMENT_ENCODING);
++                //name = URLDecoder.decode(name, EncoderCache.URL_ARGUMENT_ENCODING);
++                URLCodec urlCodec = new URLCodec(contentEncoding); 
++                name = urlCodec.decode(name,contentEncoding);
+                 // The value is encoded in the specified encoding
+                 if(log.isDebugEnabled()) {
+                     log.debug("Decoding value, calling URLDecoder.decode with '"+value+"' and contentEncoding:"+contentEncoding);
+                 }
+-                value = URLDecoder.decode(value, contentEncoding);
++                //value = URLDecoder.decode(value, contentEncoding);
++                value = urlCodec.decode(value,contentEncoding);
+             } catch (UnsupportedEncodingException e) {
+                 log.error(contentEncoding + " encoding not supported!");
+                 throw new Error(e.toString(), e);
++            } catch (DecoderException e) {
++                log.error(contentEncoding + " exception in decoder!");
++                throw new Error(e.toString(), e);
+             }
+         }
+         setName(name);

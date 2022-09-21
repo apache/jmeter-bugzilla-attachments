@@ -1,0 +1,27 @@
+Index: src/components/org/apache/jmeter/visualizers/Spline3.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/Spline3.java	(revision 1044207)
++++ src/components/org/apache/jmeter/visualizers/Spline3.java	(working copy)
+@@ -224,10 +224,8 @@
+         }
+         // main iteration
+         while ((this.precision(oldX, newX) > this._minPrecision) && (iterations < this._maxIterations)) {
++            System.arraycopy(oldX, 0, newX, 0, _n);
+             for (i = 0; i < _n; i++) {
+-                oldX[i] = newX[i];
+-            }
+-            for (i = 0; i < _n; i++) {
+                 newX[i] = _B[i];
+                 for (j = 0; j < i; j++) {
+                     newX[i] = newX[i] - (_A[i][j] * oldX[j]);
+@@ -254,9 +252,7 @@
+                 log.debug(", divergence is possible");
+             }
+         }
+-        for (i = 0; i < _n; i++) {
+-            _rS[i + 1] = newX[i];
+-        }
++        System.arraycopy(newX, 0, _rs, 1, _n);
+     }
+ 
+     /**

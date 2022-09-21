@@ -1,0 +1,113 @@
+From b306bca704c5a8c643315be8c08524b4dbe9b36d Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Wed, 30 Dec 2020 12:34:08 +0100
+Subject: [PATCH] Bug 65027 - detect mime-type for files automatically
+
+---
+ .../protocol/http/util/HTTPFileArg.java       | 28 ++++++++++++++++++-
+ .../protocol/http/util/TestHTTPFileArg.java   |  2 +-
+ .../protocol/http/util/TestHTTPFileArgs.java  | 10 +++----
+ 3 files changed, 33 insertions(+), 7 deletions(-)
+
+diff --git a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/util/HTTPFileArg.java b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/util/HTTPFileArg.java
+index 220e718207..ea3eb71c2e 100644
+--- a/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/util/HTTPFileArg.java
++++ b/src/protocol/http/src/main/java/org/apache/jmeter/protocol/http/util/HTTPFileArg.java
+@@ -17,11 +17,15 @@
+ 
+ package org.apache.jmeter.protocol.http.util;
+ 
++import java.io.File;
++import java.io.IOException;
+ import java.io.Serializable;
+ 
++import org.apache.commons.lang3.StringUtils;
+ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.property.JMeterProperty;
+ import org.apache.jmeter.testelement.property.StringProperty;
++import org.apache.tika.Tika;
+ 
+ /**
+  * Class representing a file parameter for http upload.
+@@ -46,6 +50,8 @@ public class HTTPFileArg extends AbstractTestElement implements Serializable {
+     /** temporary storage area for the body header. */
+     private String header;
+ 
++    private static Tika tika = new Tika();
++
+     /**
+      * Constructor for an empty HTTPFileArg object
+      */
+@@ -82,7 +88,26 @@ public class HTTPFileArg extends AbstractTestElement implements Serializable {
+         }
+         setPath(path);
+         setParamName(paramname);
+-        setMimeType(mimetype);
++        setMimeType(detectMimeType(path, mimetype));
++    }
++
++    private String detectMimeType(String path, String mimetype) {
++        if (StringUtils.isNotBlank(mimetype)) {
++            return mimetype;
++        }
++        mimetype = StringUtils.defaultString(mimetype, "");
++        if (StringUtils.isBlank(path)) {
++            return mimetype;
++        }
++        File file = new File(path);
++        if (file.canRead()) {
++            try {
++                return tika.detect(file);
++            } catch (IOException e) {
++                // do nothing, we will detect it later by name
++            }
++        }
++        return tika.detect(path);
+     }
+ 
+     /**
+@@ -171,6 +196,7 @@ public class HTTPFileArg extends AbstractTestElement implements Serializable {
+      *  the new path
+      */
+     public void setPath(String newPath) {
++        setMimeType(detectMimeType(newPath, getMimeType()));
+         setProperty(new StringProperty(FILEPATH, newPath));
+     }
+ 
+diff --git a/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArg.java b/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArg.java
+index fbfb3561b8..849926676e 100644
+--- a/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArg.java
++++ b/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArg.java
+@@ -32,7 +32,7 @@ public class TestHTTPFileArg {
+         file = new HTTPFileArg("path");
+         assertEquals("single parameter failure", "path", file.getPath());
+         assertEquals("single parameter failure", "", file.getParamName());
+-        assertEquals("single parameter failure", "", file.getMimeType());
++        assertEquals("single parameter failure", "application/octet-stream", file.getMimeType());
+         file = new HTTPFileArg("path", "param", "mimetype");
+         assertEquals("three parameter failure", "path", file.getPath());
+         assertEquals("three parameter failure", "param", file.getParamName());
+diff --git a/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArgs.java b/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArgs.java
+index 8b11327360..9d6e30c427 100644
+--- a/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArgs.java
++++ b/src/protocol/http/src/test/java/org/apache/jmeter/protocol/http/util/TestHTTPFileArgs.java
+@@ -114,11 +114,11 @@ public class TestHTTPFileArgs {
+     public void testToString() throws Exception {
+         HTTPFileArgs files = new HTTPFileArgs();
+         files.addHTTPFileArg("file1");
+-        files.addHTTPFileArg("file2");
+-        files.addHTTPFileArg("file3");
+-        assertEquals("path:'file1'|param:''|mimetype:''\n"
+-                    +"path:'file2'|param:''|mimetype:''\n"
+-                    +"path:'file3'|param:''|mimetype:''",
++        files.addHTTPFileArg("file2.jpg");
++        files.addHTTPFileArg("file3.jar");
++        assertEquals("path:'file1'|param:''|mimetype:'application/octet-stream'\n"
++                    +"path:'file2.jpg'|param:''|mimetype:'image/jpeg'\n"
++                    +"path:'file3.jar'|param:''|mimetype:'application/java-archive'",
+                     files.toString());
+     }
+ }
+-- 
+2.25.1
+

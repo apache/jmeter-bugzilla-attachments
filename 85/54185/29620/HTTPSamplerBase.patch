@@ -1,0 +1,21 @@
+--- HTTPSamplerBase.java	2012-05-24 15:16:39.000000000 -0400
++++ HTTPSamplerBase-ky.java	2012-11-21 09:18:12.555413728 -0500
+@@ -400,7 +400,10 @@
+     public void setPath(String path, String contentEncoding) {
+         if (GET.equals(getMethod()) || DELETE.equals(getMethod())) {
+             int index = path.indexOf(QRY_PFX);
+-            if (index > -1) {
++            if (path.startsWith(HTTP_PREFIX)
++                 || path.startsWith(HTTPS_PREFIX)){
++                setProperty(PATH, path);
++            } else if (index > -1) {
+                 setProperty(PATH, path.substring(0, index));
+                 // Parse the arguments in querystring, assuming specified encoding for values
+                 parseArguments(path.substring(index + 1), contentEncoding);
+@@ -1859,4 +1862,4 @@
+         String guiClass = configElement.getProperty(TestElement.GUI_CLASS).getStringValue();
+         return APPLIABLE_CONFIG_CLASSES.contains(guiClass);
+     }
+-}
+\ No newline at end of file
++}

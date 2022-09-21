@@ -1,0 +1,207 @@
+From a02359a6a227426e5b49131ebae0c3cca5b4419f Mon Sep 17 00:00:00 2001
+From: Felix Schumacher <felix.schumacher@internetallee.de>
+Date: Mon, 20 Aug 2018 13:17:15 +0200
+Subject: [PATCH] Add a BlockingTimer interface
+
+---
+ .../org/apache/jmeter/timers/SyncTimer.java   | 22 ++++++++--
+ .../apache/jmeter/threads/BlockingTimer.java  | 44 +++++++++++++++++++
+ .../apache/jmeter/threads/JMeterThread.java   |  9 +++-
+ .../apache/jmeter/timers/SyncTimerTest.java   | 36 +++++++++++++++
+ 4 files changed, 107 insertions(+), 4 deletions(-)
+ create mode 100644 src/core/org/apache/jmeter/threads/BlockingTimer.java
+ create mode 100644 test/src/org/apache/jmeter/timers/SyncTimerTest.java
+
+diff --git a/src/components/org/apache/jmeter/timers/SyncTimer.java b/src/components/org/apache/jmeter/timers/SyncTimer.java
+index d80ba2f7a..0ac22d966 100644
+--- a/src/components/org/apache/jmeter/timers/SyncTimer.java
++++ b/src/components/org/apache/jmeter/timers/SyncTimer.java
+@@ -29,6 +29,7 @@ import org.apache.jmeter.testelement.AbstractTestElement;
+ import org.apache.jmeter.testelement.TestStateListener;
+ import org.apache.jmeter.testelement.ThreadListener;
+ import org.apache.jmeter.threads.JMeterContextService;
++import org.apache.jmeter.threads.BlockingTimer;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -38,7 +39,7 @@ import org.slf4j.LoggerFactory;
+  * thus create large instant loads at various points of the test plan.
+  *
+  */
+-public class SyncTimer extends AbstractTestElement implements Timer, Serializable, TestBean, TestStateListener, ThreadListener {
++public class SyncTimer extends AbstractTestElement implements BlockingTimer, Serializable, TestBean, TestStateListener, ThreadListener {
+     private static final Logger log = LoggerFactory.getLogger(SyncTimer.class);
+ 
+     /**
+@@ -142,6 +143,8 @@ public class SyncTimer extends AbstractTestElement implements Timer, Serializabl
+     
+     private long timeoutInMs;
+ 
++    private long endTime;
++
+     // Ensure transient object is created by the server
+     private Object readResolve(){
+         createBarrier();
+@@ -172,13 +175,17 @@ public class SyncTimer extends AbstractTestElement implements Timer, Serializabl
+             int arrival = 0;
+             try {
+                 if(timeoutInMs==0) {
+-                    arrival = this.barrier.await();                    
++                    long forcedTimeoutInMs = endTime - System.currentTimeMillis();
++                    arrival = this.barrier.await(forcedTimeoutInMs, TimeUnit.MILLISECONDS);
+                 } else if(timeoutInMs > 0){
+                     arrival = this.barrier.await(timeoutInMs, TimeUnit.MILLISECONDS);
+                 } else {
+                     throw new IllegalArgumentException("Negative value for timeout:"+timeoutInMs+" in Synchronizing Timer "+getName());
+                 }
+-            } catch (InterruptedException | BrokenBarrierException e) {
++            } catch (InterruptedException e) {
++                Thread.currentThread().interrupt();
++                return 0;
++            } catch (BrokenBarrierException e) {
+                 return 0;
+             } catch (TimeoutException e) {
+                 if (log.isWarnEnabled()) {
+@@ -242,6 +249,10 @@ public class SyncTimer extends AbstractTestElement implements Timer, Serializabl
+      *
+      */
+     private void createBarrier() {
++        if (this.barrier != null) {
++            log.debug("Reset old barrier before creating new one.");
++            this.barrier.reset();
++        }
+         if(getGroupSize() == 0) {
+             // Lazy init
+             this.barrier = new BarrierWrapper();
+@@ -277,4 +288,9 @@ public class SyncTimer extends AbstractTestElement implements Timer, Serializabl
+     public void setTimeoutInMs(long timeoutInMs) {
+         this.timeoutInMs = timeoutInMs;
+     }
++
++    @Override
++    public void setMaxEndTime(long endTime) {
++        this.endTime = endTime;
++    }
+ }
+diff --git a/src/core/org/apache/jmeter/threads/BlockingTimer.java b/src/core/org/apache/jmeter/threads/BlockingTimer.java
+new file mode 100644
+index 000000000..c280e1dbf
+--- /dev/null
++++ b/src/core/org/apache/jmeter/threads/BlockingTimer.java
+@@ -0,0 +1,44 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
++ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
++ * License for the specific language governing permissions and limitations
++ * under the License.
++ *
++ */
++
++package org.apache.jmeter.threads;
++
++import org.apache.jmeter.timers.Timer;
++
++/**
++ * If a {@link Timer} can block while calculating its delay, we need a
++ * way to stop it early, if it is used with a scheduled Test plan.
++ * <p>
++ * A Class implementing this interface specifies that it can block while
++ * calculating the delay and will stop calculating the delay, when the specified
++ * end time has been reached.
++ *
++ */
++public interface BlockingTimer extends Timer {
++
++    /**
++     * Indicate the max end time before the delay for this Timer has to be
++     * calculated and returned.
++     * 
++     * @param endTime
++     *            the max end time for the {@link JMeterThread} for which the
++     *            delay should be calculated
++     */
++    void setMaxEndTime(long endTime);
++
++}
+diff --git a/src/core/org/apache/jmeter/threads/JMeterThread.java b/src/core/org/apache/jmeter/threads/JMeterThread.java
+index e56716786..ba3a9dd5d 100644
+--- a/src/core/org/apache/jmeter/threads/JMeterThread.java
++++ b/src/core/org/apache/jmeter/threads/JMeterThread.java
+@@ -940,7 +940,7 @@ public class JMeterThread implements Runnable, Interruptible {
+         long totalDelay = 0;
+         for (Timer timer : timers) {
+             TestBeanHelper.prepare((TestElement) timer);
+-            long delay = timer.delay();
++            long delay = calculateDelay(timer);
+             if (APPLY_TIMER_FACTOR && timer.isModifiable()) {
+                 if (log.isDebugEnabled()) {
+                     log.debug("Applying TIMER_FACTOR:{} on timer:{} for thread:{}", TIMER_FACTOR,
+@@ -965,6 +965,13 @@ public class JMeterThread implements Runnable, Interruptible {
+         }
+     }
+ 
++    private long calculateDelay(Timer timer) {
++        if (timer instanceof BlockingTimer) {
++            ((BlockingTimer) timer).setMaxEndTime(getEndTime());
++        }
++        return timer.delay();
++    }
++
+     void notifyTestListeners() {
+         threadVars.incIteration();
+         for (TestIterationListener listener : testIterationStartListeners) {
+diff --git a/test/src/org/apache/jmeter/timers/SyncTimerTest.java b/test/src/org/apache/jmeter/timers/SyncTimerTest.java
+new file mode 100644
+index 000000000..ab4ad2348
+--- /dev/null
++++ b/test/src/org/apache/jmeter/timers/SyncTimerTest.java
+@@ -0,0 +1,36 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
++ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
++ * License for the specific language governing permissions and limitations
++ * under the License.
++ *
++ */
++
++package org.apache.jmeter.timers;
++
++import org.hamcrest.CoreMatchers;
++import org.junit.Assert;
++import org.junit.Test;
++
++public class SyncTimerTest {
++
++    @Test
++    public void testMaxEndTime() {
++        SyncTimer timer = new SyncTimer();
++        timer.setGroupSize(2);
++        timer.setMaxEndTime(System.currentTimeMillis() + 200L);
++        timer.testStarted();
++        Assert.assertThat(timer.delay(), CoreMatchers.is(0L));
++    }
++
++}
+-- 
+2.17.1
+

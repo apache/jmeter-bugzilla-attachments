@@ -1,0 +1,136 @@
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java	(revision 1388814)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/processor/AbstractJDBCProcessor.java	(working copy)
+@@ -31,7 +31,7 @@
+  * As pre- and post-processors essentially do the same this class provides the implmentation.
+  */
+ public abstract class AbstractJDBCProcessor extends AbstractJDBCTestElement {
+-    
++
+     private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     private static final long serialVersionUID = 232L;
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(revision 1388814)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/AbstractJDBCTestElement.java	(working copy)
+@@ -31,13 +31,13 @@
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Collection;
+-import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -128,20 +128,13 @@
+      *  cache is another Map mapping the statement string to the actual PreparedStatement.
+      *  The cache has a fixed size of MAX_ENTRIES and it will throw away all PreparedStatements
+      *  from the least recently used connections.
++     *
++     *  Fixed by Haixing Hu: The prepredStatement or callableStatement should
++     *  NOT be shared between threads, therefore we use a cache per thread per
++     *  connection.
+      */
+-    private static final Map<Connection, Map<String, PreparedStatement>> perConnCache =
+-        Collections.synchronizedMap(new LinkedHashMap<Connection, Map<String, PreparedStatement>>(MAX_ENTRIES){
+-        private static final long serialVersionUID = 1L;
+-        @Override
+-        protected boolean removeEldestEntry(Map.Entry<Connection, Map<String, PreparedStatement>> arg0) {
+-            if (size() > MAX_ENTRIES) {
+-                final  Map<String, PreparedStatement> value = arg0.getValue();
+-                closeAllStatements(value.values());
+-                return true;
+-            }
+-            return false;
+-        }
+-    });
++    private static final Map<Thread, Map<Connection, Map<String, PreparedStatement>>> perConnCache =
++        new ConcurrentHashMap<Thread, Map<Connection, Map<String, PreparedStatement>>>();
+ 
+     /**
+      * Creates a JDBCSampler.
+@@ -340,10 +333,16 @@
+     }
+ 
+     private PreparedStatement getPreparedStatement(Connection conn, boolean callable) throws SQLException {
+-        Map<String, PreparedStatement> preparedStatementMap = perConnCache.get(conn);
++        Thread thread = Thread.currentThread();
++        Map<Connection, Map<String, PreparedStatement>> cache = perConnCache.get(thread);
++        if (cache == null) {
++          cache = new HashMap<Connection, Map<String, PreparedStatement>>();
++          perConnCache.put(thread, cache);
++        }
++        Map<String, PreparedStatement> preparedStatementMap = cache.get(conn);
+         if (null == preparedStatementMap ) {
+             // MRU PreparedStatements cache.
+-            preparedStatementMap = Collections.synchronizedMap(new LinkedHashMap<String, PreparedStatement>(MAX_ENTRIES) {
++            preparedStatementMap = new LinkedHashMap<String, PreparedStatement>(MAX_ENTRIES) {
+                 private static final long serialVersionUID = 240L;
+ 
+                 @Override
+@@ -359,8 +358,8 @@
+                     }
+                     return false;
+                 }
+-            });
+-            perConnCache.put(conn, preparedStatementMap);
++            };
++            cache.put(conn, preparedStatementMap);
+         }
+         PreparedStatement pstmt = preparedStatementMap.get(getQuery());
+         if (null == pstmt) {
+@@ -649,9 +648,12 @@
+ 	 * Clean cache of PreparedStatements
+ 	 */
+ 	private static final void cleanCache() {
+-		for (Map.Entry<Connection, Map<String, PreparedStatement>> element : perConnCache.entrySet()) {
+-			closeAllStatements(element.getValue().values());
++	    for (Map<Connection, Map<String, PreparedStatement>> cache : perConnCache.values()) {
++		for (Map<String, PreparedStatement> element : cache.values()) {
++		    closeAllStatements(element.values());
+ 		}
++		cache.clear();
++	    }
+ 		perConnCache.clear();
+ 	}
+ 
+Index: src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java
+===================================================================
+--- src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(revision 1388814)
++++ src/protocol/jdbc/org/apache/jmeter/protocol/jdbc/sampler/JDBCSampler.java	(working copy)
+@@ -84,12 +84,14 @@
+             res.setResponseHeaders(conn.toString());
+             res.setResponseData(execute(conn));
+         } catch (SQLException ex) {
++            log.error("SQL Problem in  "+ getName() + ": " + ex.toString());
+             final String errCode = Integer.toString(ex.getErrorCode());
+             res.setResponseMessage(ex.toString());
+             res.setResponseCode(ex.getSQLState()+ " " +errCode);
+             res.setResponseData(ex.getMessage().getBytes());
+             res.setSuccessful(false);
+         } catch (Exception ex) {
++            log.error("Unknown Problem in  "+ getName() + ": " + ex.toString());
+             res.setResponseMessage(ex.toString());
+             res.setResponseCode("000");
+             res.setResponseData(ex.getMessage().getBytes());
+Index: build.properties
+===================================================================
+--- build.properties	(revision 1388814)
++++ build.properties	(working copy)
+@@ -165,7 +165,7 @@
+ 
+ jcharts.version             = 0.7.5
+ jcharts.jar                 = jcharts-${jcharts.version}.jar
+-jcharts.loc                 = http://www.mvnsearch.org/maven2/jcharts/jcharts/${jcharts.version}
++jcharts.loc                 = ${maven2.repo}/jcharts/jcharts/${jcharts.version}
+ jcharts.md5                 = 13927D8077C991E7EBCD8CB284746A7A
+ 
+ jdom.version                = 1.1.2

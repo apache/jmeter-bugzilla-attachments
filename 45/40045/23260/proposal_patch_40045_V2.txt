@@ -1,0 +1,144 @@
+Index: /Workspaces-JMeter/Jmeter/bin/jmeter.properties
+===================================================================
+--- /Workspaces-JMeter/Jmeter/bin/jmeter.properties	(revision 744592)
++++ /Workspaces-JMeter/Jmeter/bin/jmeter.properties	(working copy)
+@@ -443,8 +443,17 @@
+ #num_sample_threshold=100
+ #time_threshold=60000
+ 
++#---------------------------------------------------------------------------
++# Monitor configuration
++#---------------------------------------------------------------------------
+ # To set the Monitor Health Visualiser buffer size, enter the desired value
+ # monitor.buffer.size=800
++#
++# To select a specific connector (if tomcat have several connector)
++# The type are start of string in connector name
++# monitor.connector.startwith=ajp
++# or
++# monitor.connector.startwith=http-servername%2F192.168.1.2-8080
+ 
+ #---------------------------------------------------------------------------
+ # TCP Sampler configuration
+Index: /Workspaces-JMeter/Jmeter/src/monitor/components/org/apache/jmeter/monitor/util/Stats.java
+===================================================================
+--- /Workspaces-JMeter/Jmeter/src/monitor/components/org/apache/jmeter/monitor/util/Stats.java	(revision 744592)
++++ /Workspaces-JMeter/Jmeter/src/monitor/components/org/apache/jmeter/monitor/util/Stats.java	(working copy)
+@@ -18,6 +18,9 @@
+ 
+ import org.apache.jmeter.monitor.model.Connector;
+ import org.apache.jmeter.monitor.model.Status;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ /**
+  *
+@@ -37,6 +40,8 @@
+  * memory (50) and threads (50). The sum of the factors must equal 100.
+  */
+ public class Stats {
++	
++	private static final Logger log = LoggingManager.getLoggerForClass();
+ 
+     public static final int DEAD = 0;
+ 
+@@ -55,6 +60,9 @@
+     public static final double ACTIVE_PER = 0.25;
+ 
+     public static final double WARNING_PER = 0.67;
++    
++    private static final String MONITOR_CONNECTOR_START_WITH = "monitor.connector.startwith"; // $NON-NLS-1$ jmeter.properties
++
+ 
+     /**
+      * The method is responsible for taking a status object and calculating an
+@@ -63,6 +71,7 @@
+      * <p>
+      *
+      * @param stat
++     * @param connectorType
+      * @return calculated load value
+      */
+     public static int calculateLoad(Status stat) {
+@@ -82,7 +91,7 @@
+             // of the list. Peter 12.22.04
+             double threadWeight = 0;
+             if (stat.getConnector().size() > 0) {
+-                Connector cntr = (Connector) stat.getConnector().get(0);
++            	Connector cntr = fetchConnector(stat);
+                 int maxThread = cntr.getThreadInfo().getMaxThreads();
+                 int curThread = cntr.getThreadInfo().getCurrentThreadsBusy();
+                 double thdiv = (double) curThread / (double) maxThread;
+@@ -109,7 +118,7 @@
+      */
+     public static int calculateStatus(Status stat) {
+         if (stat != null && stat.getConnector().size() > 0) {
+-            Connector cntr = (Connector) stat.getConnector().get(0);
++        	Connector cntr = fetchConnector(stat);
+             int max = cntr.getThreadInfo().getMaxThreads();
+             int current = cntr.getThreadInfo().getCurrentThreadsBusy();
+             // int spare = cntr.getThreadInfo().getMaxSpareThreads();
+@@ -157,7 +166,7 @@
+     public static int calculateThreadLoad(Status stat) {
+         int load = 0;
+         if (stat != null && stat.getConnector().size() > 0) {
+-            Connector cntr = (Connector) stat.getConnector().get(0);
++            Connector cntr = fetchConnector(stat);
+             double max = cntr.getThreadInfo().getMaxThreads();
+             double current = cntr.getThreadInfo().getCurrentThreadsBusy();
+             load = (int) ((current / max) * 100);
+@@ -164,5 +173,31 @@
+         }
+         return load;
+     }
++    
++    /**
++     * Method to get connector to use for calculate server status
++     * 
++     * @param stat
++     * @return connector
++     */
++    private static Connector fetchConnector(Status stat) {
++    	Connector cntr = null;
++    	// Get property to find connector "type" (start string of connector name)
++    	String connectorType = JMeterUtils.getProperty(MONITOR_CONNECTOR_START_WITH);
++    	if (connectorType != null && !connectorType.equals("")) {
++	    	// loop to fetch desired connector
++	        for (int connectorIterator = 0; connectorIterator < stat.getConnector().size(); connectorIterator++) {
++	        	cntr = (Connector) stat.getConnector().get(connectorIterator);
++	        	if (cntr.getName().startsWith(connectorType)) {
++	        		return cntr;
++	        	}
++	        }	        
++    	}
++   		// if no connectorType or connector not found
++    	// return default : get first connector
++   		cntr = (Connector) stat.getConnector().get(0);
++    	log.debug("No connectorType or connector not found, use default first connector: " + cntr.getName());
++    	return cntr;
++    }
+ 
+ }
+Index: /Workspaces-JMeter/Jmeter/xdocs/usermanual/component_reference.xml
+===================================================================
+--- /Workspaces-JMeter/Jmeter/xdocs/usermanual/component_reference.xml	(revision 744592)
++++ /Workspaces-JMeter/Jmeter/xdocs/usermanual/component_reference.xml	(working copy)
+@@ -2152,6 +2152,16 @@
+ The monitor requires Tomcat 5 or above. 
+ Use a browser to check that you can access the Tomcat status servlet OK.
+ </note>
++<p>You can select a specific connector of servlet container with parameter
++<i>monitor.connector.startwith</i> in properties file. For example, if Tomcat have
++two connectors: AJP and HTTP, you can select AJP with :
++<pre>
++monitor.connector.startwith=ajp-servername%2F192.168.1.2-8009
++</pre>
++If you have several servers, you can monitor each AJP connector with:
++<pre>
++monitor.connector.startwith=ajp
++</pre></p>
+ <p>
+ For a detailed description of how to use the monitor, please refer to
+ <a href="build-monitor-test-plan.html">Building a Monitor Test Plan</a>
+

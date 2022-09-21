@@ -1,0 +1,807 @@
+Index: src/core/org/apache/jmeter/resources/messages_fr.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages_fr.properties	(revision 1311123)
++++ src/core/org/apache/jmeter/resources/messages_fr.properties	(working copy)
+@@ -25,17 +25,16 @@
+ add_value=Ajouter valeur
+ addtest=Ajout
+ aggregate_graph=Graphique des statistiques
+-aggregate_graph_choose_bar_color=Couleur barre
+ aggregate_graph_choose_color=Choisir couleur
+ aggregate_graph_choose_foreground_color=Couleur valeur
+ aggregate_graph_color_bar=Couleur \:
+ aggregate_graph_column=Colonne
+ aggregate_graph_column_selection=S\u00E9lection de colonnes par libell\u00E9 \:
+ aggregate_graph_column_settings=Param\u00E8tres colonne
+-aggregate_graph_current_colors=Couleurs courantes
++aggregate_graph_columns_to_display=Colonnes \u00E0 afficher \:
+ aggregate_graph_dimension=Taille graphique
+ aggregate_graph_display=G\u00E9n\u00E9rer le graphique
+-aggregate_graph_draw_outlines=Bordures barre ?
++aggregate_graph_draw_outlines=Bordure de barre ?
+ aggregate_graph_dynamic_size=Taille de graphique dynamique
+ aggregate_graph_font=Police \:
+ aggregate_graph_height=Hauteur \:
+@@ -47,6 +46,7 @@
+ aggregate_graph_legend_placement=Position \:
+ aggregate_graph_max_length_xaxis_label=Longueur maximum du libell\u00E9 de l'axe des abscisses \:
+ aggregate_graph_ms=Millisecondes
++aggregate_graph_no_values_to_graph=Pas de valeurs pour le graphique
+ aggregate_graph_number_grouping=S\u00E9parateur de milliers ?
+ aggregate_graph_reload_data=Recharger les donn\u00E9es
+ aggregate_graph_response_time=Temps de r\u00E9ponse
+@@ -62,6 +62,8 @@
+ aggregate_graph_title_group=Titre
+ aggregate_graph_use_group_name=Ajouter le nom du groupe aux libell\u00E9s
+ aggregate_graph_user_title=Titre du graphique \:
++aggregate_graph_value_font=Police de la valeur \:
++aggregate_graph_value_labels_vertical=Libell\u00E9 de valeurs vertical ?
+ aggregate_graph_width=Largeur \:
+ aggregate_graph_xaxis_group=Abscisses
+ aggregate_graph_yaxis_group=Ordonn\u00E9es
+@@ -159,7 +161,7 @@
+ comparison_regex_string=Expression r\u00E9guli\u00E8re
+ comparison_regex_substitution=Substitution
+ comparison_response_time=Temps de r\u00E9ponse \: 
+-comparison_unit= ms
++comparison_unit=ms
+ comparison_visualizer_title=R\u00E9cepteur d'assertions de comparaison
+ config_element=El\u00E9ment de configuration
+ config_save_settings=Configurer
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+--- src/core/org/apache/jmeter/resources/messages.properties	(revision 1311123)
++++ src/core/org/apache/jmeter/resources/messages.properties	(working copy)
+@@ -31,31 +31,31 @@
+ add_value=Add Value
+ addtest=Add test
+ aggregate_graph=Statistical Graphs
+-aggregate_graph_choose_bar_color=Bar color
+ aggregate_graph_choose_color=Choose color
+ aggregate_graph_choose_foreground_color=Foreground color
+ aggregate_graph_color_bar=Color\:
+ aggregate_graph_column=Column\:
+ aggregate_graph_column_selection=Column label selection\:
+ aggregate_graph_column_settings=Column settings
+-aggregate_graph_current_colors=Current colors
++aggregate_graph_columns_to_display=Columns to display\:
+ aggregate_graph_dimension=Graph size
++aggregate_graph_display=Display Graph
+ aggregate_graph_draw_outlines=Draw outlines bar?
+ aggregate_graph_dynamic_size=Dynamic graph size
+-aggregate_graph_display=Display Graph
+ aggregate_graph_font=Font\:
+ aggregate_graph_height=Height\:
+ aggregate_graph_legend=Legend
+-aggregate_graph_legend_placement=Placement\:
+ aggregate_graph_legend.placement.bottom=Bottom
+-aggregate_graph_legend.placement.right=Right
+ aggregate_graph_legend.placement.left=Left
++aggregate_graph_legend.placement.right=Right
+ aggregate_graph_legend.placement.top=Top
++aggregate_graph_legend_placement=Placement\:
+ aggregate_graph_max_length_xaxis_label=Max length of x-axis label\:
+ aggregate_graph_ms=Milliseconds
++aggregate_graph_no_values_to_graph=No values to graph
+ aggregate_graph_number_grouping=Show number grouping?
+-aggregate_graph_response_time=Response Time
+ aggregate_graph_reload_data=Reload data
++aggregate_graph_response_time=Response Time
+ aggregate_graph_save=Save Graph
+ aggregate_graph_save_table=Save Table Data
+ aggregate_graph_save_table_header=Save Table Header
+@@ -68,6 +68,8 @@
+ aggregate_graph_title_group=Title
+ aggregate_graph_use_group_name=Include group name in label?
+ aggregate_graph_user_title=Graph title\:
++aggregate_graph_value_font=Value font\:
++aggregate_graph_value_labels_vertical=Value labels vertical?
+ aggregate_graph_width=Width\:
+ aggregate_graph_xaxis_group=X Axis
+ aggregate_graph_yaxis_group=Y Axis
+Index: src/components/org/apache/jmeter/visualizers/AxisGraph.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/AxisGraph.java	(revision 1311123)
++++ src/components/org/apache/jmeter/visualizers/AxisGraph.java	(working copy)
+@@ -38,8 +38,8 @@
+ import org.jCharts.chartData.ChartDataException;
+ import org.jCharts.chartData.DataSeries;
+ import org.jCharts.properties.AxisProperties;
+-import org.jCharts.properties.BarChartProperties;
+ import org.jCharts.properties.ChartProperties;
++import org.jCharts.properties.ClusteredBarChartProperties;
+ import org.jCharts.properties.DataAxisProperties;
+ import org.jCharts.properties.LabelAxisProperties;
+ import org.jCharts.properties.LegendProperties;
+@@ -67,19 +67,25 @@
+     protected String[] xAxisLabels;
+     protected int width, height;
+     
++    protected String[] legendLabels = { JMeterUtils.getResString("aggregate_graph_legend") };
++    
+     protected int maxYAxisScale;
+ 
+     protected Font titleFont;
+ 
+     protected Font legendFont;
+ 
+-    protected Color color;
++    protected Font valueFont = new Font("SansSerif", Font.PLAIN, 8);
++
++    protected Color[] color = { Color.YELLOW };
+ 
+-    protected Color foreColor;
++    protected Color foreColor = Color.BLACK;
+ 
+     protected boolean outlinesBarFlag = false;
+ 
+     protected boolean showGrouping = true;
++    
++    protected boolean valueOrientation = true;
+ 
+     protected int legendPlacement = LegendProperties.BOTTOM;
+ 
+@@ -133,6 +139,10 @@
+         this.yAxisLabel = label;
+     }
+ 
++    public void setLegendLabels(String[] labels) {
++        this.legendLabels = labels;
++    }
++
+     public void setWidth(int w) {
+         this.width = w;
+     }
+@@ -158,14 +168,14 @@
+     /**
+      * @return the color
+      */
+-    public Color getColor() {
++    public Color[] getColor() {
+         return color;
+     }
+ 
+     /**
+      * @param color the color to set
+      */
+-    public void setColor(Color color) {
++    public void setColor(Color[] color) {
+         this.color = color;
+     }
+ 
+@@ -212,6 +222,20 @@
+     }
+ 
+     /**
++     * @return the valueFont
++     */
++    public Font getValueFont() {
++        return valueFont;
++    }
++
++    /**
++     * @param valueFont the valueFont to set
++     */
++    public void setValueFont(Font valueFont) {
++        this.valueFont = valueFont;
++    }
++
++    /**
+      * @return the legendPlacement
+      */
+     public int getLegendPlacement() {
+@@ -240,6 +264,20 @@
+     }
+ 
+     /**
++     * @return the valueOrientation
++     */
++    public boolean isValueOrientation() {
++        return valueOrientation;
++    }
++
++    /**
++     * @param valueOrientation the valueOrientation to set
++     */
++    public void setValueOrientation(boolean valueOrientation) {
++        this.valueOrientation = valueOrientation;
++    }
++
++    /**
+      * @return the showGrouping
+      */
+     public boolean isShowGrouping() {
+@@ -258,8 +296,10 @@
+         if (data != null && this.title != null && this.xAxisLabels != null &&
+                 this.xAxisTitle != null && this.yAxisLabel != null &&
+                 this.yAxisTitle != null) {
+-            drawSample(this.title,this.maxLength,this.xAxisLabels,this.xAxisTitle,
+-                this.yAxisTitle,this.data,this.width,this.height,this.color,this.legendFont,graphics);
++            drawSample(this.title, this.maxLength, this.xAxisLabels,
++                    this.xAxisTitle, this.yAxisTitle, this.legendLabels,
++                    this.data, this.width, this.height, this.color,
++                    this.legendFont, graphics);
+         }
+     }
+ 
+@@ -285,7 +325,7 @@
+     }
+ 
+     private void drawSample(String _title, int _maxLength, String[] _xAxisLabels, String _xAxisTitle,
+-            String _yAxisTitle, double[][] _data, int _width, int _height, Color color, Font font, Graphics g) {
++            String _yAxisTitle, String[] _legendLabels, double[][] _data, int _width, int _height, Color[] _color, Font font, Graphics g) {
+         double max = maxYAxisScale > 0 ? maxYAxisScale : findMax(_data); // define max scale y axis
+         try {
+             /** These controls are already done in StatGraphVisualizer
+@@ -309,25 +349,26 @@
+                 _xAxisLabels[i]=squeeze(label, _maxLength);
+             }
+             this.setPreferredSize(new Dimension(_width,_height));
+-            DataSeries dataSeries = new DataSeries( _xAxisLabels, _xAxisTitle, _yAxisTitle, _title );
++            DataSeries dataSeries = new DataSeries( _xAxisLabels, null, _yAxisTitle, _title ); // replace _xAxisTitle to null (don't display x axis title)
+ 
+-            String[] legendLabels= { yAxisLabel };
+-
+-            BarChartProperties barChartProperties= new BarChartProperties();
+-            barChartProperties.setShowOutlinesFlag(outlinesBarFlag);
++            ClusteredBarChartProperties clusteredBarChartProperties= new ClusteredBarChartProperties();
++            clusteredBarChartProperties.setShowOutlinesFlag(outlinesBarFlag);
+             ValueLabelRenderer valueLabelRenderer = new ValueLabelRenderer(false, false, showGrouping, 0);
+             valueLabelRenderer.setValueLabelPosition(ValueLabelPosition.AT_TOP);
+-            valueLabelRenderer.useVerticalLabels(true);
+-            if (legendFont != null) {
+-                valueLabelRenderer.setValueChartFont(new ChartFont(legendFont, new Color(foreColor.getRGB())));
++
++            valueLabelRenderer.setValueChartFont(new ChartFont(valueFont, foreColor));
++            valueLabelRenderer.useVerticalLabels(valueOrientation);
++
++            clusteredBarChartProperties.addPostRenderEventListener(valueLabelRenderer);
++
++            Paint[] paints = new Paint[_color.length];
++            for (int i = 0; i < _color.length; i++) {
++                paints[i] =  _color[i];
+             }
+             
+-            barChartProperties.addPostRenderEventListener(valueLabelRenderer);
+-
+-            Paint[] paints = new Paint[] { color };
+             AxisChartDataSet axisChartDataSet =
+                 new AxisChartDataSet(
+-                        _data, legendLabels, paints, ChartType.BAR, barChartProperties );
++                        _data, _legendLabels, paints, ChartType.BAR_CLUSTERED, clusteredBarChartProperties );
+             dataSeries.addIAxisPlotDataSet( axisChartDataSet );
+ 
+             ChartProperties chartProperties= new ChartProperties();
+Index: docs/images/screenshots/aggregate_graph_settings.png
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = image/png
+Index: docs/images/screenshots/aggregate_graph.png
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = application/octet-stream
+Index: src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(revision 1311123)
++++ src/components/org/apache/jmeter/visualizers/StatGraphVisualizer.java	(working copy)
+@@ -46,6 +46,7 @@
+ import javax.swing.JComponent;
+ import javax.swing.JFileChooser;
+ import javax.swing.JLabel;
++import javax.swing.JOptionPane;
+ import javax.swing.JPanel;
+ import javax.swing.JScrollPane;
+ import javax.swing.JSplitPane;
+@@ -110,6 +111,8 @@
+         JMeterUtils.getResString("aggregate_report_total_label");       //$NON-NLS-1$
+     
+     private final Border MARGIN = new EmptyBorder(0, 5, 0, 5);
++    
++    private Font FONT_SMALL = new Font("SansSerif", Font.PLAIN, 10);
+ 
+     private JTable myJTable;
+ 
+@@ -144,9 +147,6 @@
+     private JButton saveTable =
+         new JButton(JMeterUtils.getResString("aggregate_graph_save_table"));            //$NON-NLS-1$
+ 
+-    private JButton chooseBarColor =
+-        new JButton(JMeterUtils.getResString("aggregate_graph_choose_bar_color"));            //$NON-NLS-1$
+-
+     private JButton chooseForeColor =
+         new JButton(JMeterUtils.getResString("aggregate_graph_choose_foreground_color"));            //$NON-NLS-1$
+ 
+@@ -185,10 +185,10 @@
+ 
+     private int defaultHeight = 300;
+ 
+-    private JLabel currentColor = new JLabel(JMeterUtils.getResString("aggregate_graph_current_colors"));   //$NON-NLS-1$
+-
+     private JComboBox columnsList = new JComboBox(GRAPH_COLUMNS);
+ 
++    private List<BarGraph> eltList = new ArrayList<BarGraph>();
++
+     private JCheckBox columnSelection = new JCheckBox(JMeterUtils.getResString("aggregate_graph_column_selection"), false); //$NON-NLS-1$
+ 
+     private JTextField columnMatchLabel = new JTextField();
+@@ -205,6 +205,12 @@
+ 
+     private JComboBox titleFontStyleList = new JComboBox(StatGraphProperties.getFontStyleMap().keySet().toArray());
+ 
++    private JComboBox valueFontNameList = new JComboBox(StatGraphProperties.getFontNameMap().keySet().toArray());
++
++    private JComboBox valueFontSizeList = new JComboBox(StatGraphProperties.fontSize);
++
++    private JComboBox valueFontStyleList = new JComboBox(StatGraphProperties.getFontStyleMap().keySet().toArray());
++
+     private JComboBox fontNameList = new JComboBox(StatGraphProperties.getFontNameMap().keySet().toArray());
+ 
+     private JComboBox fontSizeList = new JComboBox(StatGraphProperties.fontSize);
+@@ -216,10 +222,14 @@
+     private JCheckBox drawOutlinesBar = new JCheckBox(JMeterUtils.getResString("aggregate_graph_draw_outlines"), true); // Default checked // $NON-NLS-1$
+ 
+     private JCheckBox numberShowGrouping = new JCheckBox(JMeterUtils.getResString("aggregate_graph_number_grouping"), true); // Default checked // $NON-NLS-1$
++    
++    private JCheckBox valueLabelsVertical = new JCheckBox(JMeterUtils.getResString("aggregate_graph_value_labels_vertical"), true); // Default checked // $NON-NLS-1$
+ 
+     private Color colorBarGraph = Color.YELLOW;
+ 
+     private Color colorForeGraph = Color.BLACK;
++    
++    private int nbColToGraph = 1;
+ 
+     public StatGraphVisualizer() {
+         super();
+@@ -240,6 +250,11 @@
+                 new Functor[] { null, null, null, null, null, null, null, null,    null, null },
+                 new Class[] { String.class, Long.class, Long.class, Long.class, Long.class, Long.class,
+                 Long.class, String.class, String.class, String.class });
++        eltList.add(new BarGraph("average", true, new Color(202, 0, 0)));
++        eltList.add(new BarGraph("aggregate_report_median", false, new Color(49, 49, 181)));
++        eltList.add(new BarGraph("aggregate_report_90%_line", false, new Color(42, 121, 42)));
++        eltList.add(new BarGraph("aggregate_report_min", false, Color.LIGHT_GRAY));
++        eltList.add(new BarGraph("aggregate_report_max", false, Color.DARK_GRAY));
+         clearData();
+         init();
+     }
+@@ -357,18 +372,23 @@
+     }
+ 
+     public void makeGraph() {
++        nbColToGraph = getNbColumns();
+         Dimension size = graphPanel.getSize();
+-        String wstr = graphWidth.getText();
+-        String hstr = graphHeight.getText();
+         String lstr = maxLengthXAxisLabel.getText();
++        // canvas size
+         int width = (int) size.getWidth();
+-        if (wstr.length() != 0) {
+-            width = Integer.parseInt(wstr);
+-        }
+         int height = (int) size.getHeight();
+-        if (hstr.length() != 0) {
+-            height = Integer.parseInt(hstr);
++        if (!dynamicGraphSize.isSelected()) {
++            String wstr = graphWidth.getText();
++            String hstr = graphHeight.getText();
++            if (wstr.length() != 0) {
++                width = Integer.parseInt(wstr);
++            }
++            if (hstr.length() != 0) {
++                height = Integer.parseInt(hstr);
++            }
+         }
++
+         if (lstr.length() == 0) {
+             lstr = "20";//$NON-NLS-1$
+         }
+@@ -384,10 +404,12 @@
+         graphPanel.setXAxisTitle((String) columnsList.getSelectedItem());
+         graphPanel.setYAxisLabels(this.yAxisLabel);
+         graphPanel.setYAxisTitle(this.yAxisTitle);
+-        graphPanel.setColor(colorBarGraph);
++        graphPanel.setLegendLabels(getLegendLabels());
++        graphPanel.setColor(getBackColors());
+         graphPanel.setForeColor(colorForeGraph);
+         graphPanel.setOutlinesBarFlag(drawOutlinesBar.isSelected());
+         graphPanel.setShowGrouping(numberShowGrouping.isSelected());
++        graphPanel.setValueOrientation(valueLabelsVertical.isSelected());
+         graphPanel.setLegendPlacement(StatGraphProperties.getPlacementNameMap()
+                 .get(legendPlacementList.getSelectedItem()).intValue());
+ 
+@@ -397,6 +419,9 @@
+         graphPanel.setLegendFont(new Font(StatGraphProperties.getFontNameMap().get(fontNameList.getSelectedItem()),
+                 StatGraphProperties.getFontStyleMap().get(fontStyleList.getSelectedItem()).intValue(),
+                 Integer.parseInt((String) fontSizeList.getSelectedItem())));
++        graphPanel.setValueFont(new Font(StatGraphProperties.getFontNameMap().get(valueFontNameList.getSelectedItem()),
++                StatGraphProperties.getFontStyleMap().get(valueFontStyleList.getSelectedItem()).intValue(),
++                Integer.parseInt((String) valueFontSizeList.getSelectedItem())));
+ 
+         graphPanel.setHeight(height);
+         graphPanel.setWidth(width);
+@@ -406,14 +431,24 @@
+     public double[][] getData() {
+         if (model.getRowCount() > 1) {
+             int count = model.getRowCount() -1;
+-            int col = model.findColumn((String) columnsList.getSelectedItem());
+-            double[][] data = new double[1][count];
+-            for (int idx=0; idx < count; idx++) {
+-                data[0][idx] = ((Number)model.getValueAt(idx,col)).doubleValue();
++            
++            int size = nbColToGraph;
++            double[][] data = new double[size][count];
++            int s = 0;
++            int cpt = 0;
++            for (BarGraph bar : eltList) {
++                if (bar.getChkBox().isSelected()) {
++                    int col = model.findColumn((String) columnsList.getItemAt(cpt));
++                    for (int idx=0; idx < count; idx++) {
++                        data[s][idx] = ((Number)model.getValueAt(idx,col)).doubleValue();
++                    }
++                    s++;
++                }
++                cpt++;
+             }
+             return data;
+         }
+-        return new double[][]{ { 250, 45, 36, 66, 145, 80, 55  } };
++        return null;
+     }
+ 
+     public String[] getAxisLabels() {
+@@ -425,9 +460,43 @@
+             }
+             return labels;
+         }
+-        return new String[]{ "/", "/samples", "/jsp-samples", "/manager", "/manager/status", "/hello", "/world" };
++        return null;
++    }
++
++    private String[] getLegendLabels() {
++        String[] legends = new String[nbColToGraph];
++        int i = 0;
++        for (BarGraph bar : eltList) {
++            if (bar.getChkBox().isSelected()) {
++                legends[i] = bar.getLabel();
++                i++;
++            }
++        }
++        return legends;
++    }
++
++    private Color[] getBackColors() {
++        Color[] backColors = new Color[nbColToGraph];
++        int i = 0;
++        for (BarGraph bar : eltList) {
++            if (bar.getChkBox().isSelected()) {
++                backColors[i] = bar.getBackColor();
++                i++;
++            }
++        }
++        return backColors;
+     }
+ 
++    private int getNbColumns() {
++        int i = 0;
++        for (BarGraph bar : eltList) {
++            if (bar.getChkBox().isSelected()) {
++                i++;
++            }
++        }
++        return i;
++    }
++    
+     /**
+      * We use this method to get the data, since we are using
+      * ObjectTableModel, so the calling getDataVector doesn't
+@@ -453,8 +522,15 @@
+     public void actionPerformed(ActionEvent event) {
+         final Object eventSource = event.getSource();
+         if (eventSource == displayButton) {
+-            makeGraph();
+-            tabbedGraph.setSelectedIndex(1);
++            if (model.getRowCount() > 1) {
++                makeGraph();
++                tabbedGraph.setSelectedIndex(1);
++            } else {
++                JOptionPane.showMessageDialog(null, JMeterUtils
++                        .getResString("aggregate_graph_no_values_to_graph"), // $NON-NLS-1$
++                        JMeterUtils.getResString("aggregate_graph_no_values_to_graph"), // $NON-NLS-1$
++                        JOptionPane.WARNING_MESSAGE);
++            }
+         } else if (eventSource == saveGraph) {
+             saveGraphToFile = true;
+             try {
+@@ -480,18 +556,14 @@
+             } finally {
+                 JOrphanUtils.closeQuietly(writer);
+             }
+-        } else if (eventSource == chooseBarColor) {
+-            colorBarGraph = JColorChooser.showDialog(
+-                    null,
+-                    JMeterUtils.getResString("aggregate_graph_choose_color"), //$NON-NLS-1$
+-                    colorBarGraph);
+-            currentColor.setBackground(colorBarGraph);
+         } else if (eventSource == chooseForeColor) {
+-            colorForeGraph = JColorChooser.showDialog(
++            Color color = JColorChooser.showDialog(
+                     null,
+                     JMeterUtils.getResString("aggregate_graph_choose_color"), //$NON-NLS-1$
+                     colorBarGraph);
+-            currentColor.setForeground(colorForeGraph);
++            if (color != null) {
++                colorForeGraph = color;
++            }
+         } else if (eventSource == syncWithName) {
+             graphTitle.setText(namePanel.getName());
+         } else if (eventSource == dynamicGraphSize) {
+@@ -521,6 +593,19 @@
+                 FilePanel filePanel = (FilePanel) getFilePanel();
+                 filePanel.actionPerformed(event);
+             }
++        } else if (eventSource instanceof JButton) {
++            // Changing color for column
++            JButton btn = ((JButton) eventSource);
++            if (btn.getName() != null) {
++                try {
++                    BarGraph bar = eltList.get(Integer.parseInt(btn.getName()));
++                    Color color = JColorChooser.showDialog(null, bar.getLabel(), bar.getBackColor());
++                    if (color != null) {
++                        bar.setBackColor(color);
++                        btn.setBackground(bar.getBackColor());
++                    }
++                } catch (NumberFormatException nfe) { } // nothing to do
++            }
+         }
+     }
+ 
+@@ -555,44 +640,58 @@
+     }
+ 
+     private JPanel createGraphColumnPane() {
+-        JPanel barPanel = new JPanel();
+-        barPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
+-
+-        barPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_column"), //$NON-NLS-1$
+-                columnsList));
++        JPanel colPanel = new JPanel();
++        colPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 5, 0));
+ 
+-        currentColor.setBorder(new EmptyBorder(2, 5, 2, 5));
+-        currentColor.setOpaque(true);
+-        currentColor.setBackground(colorBarGraph);
+-
+-        barPanel.add(Box.createRigidArea(new Dimension(5,0)));
+-        barPanel.add(currentColor);
+-        barPanel.add(Box.createRigidArea(new Dimension(5,0)));
+-        barPanel.add(chooseBarColor);
+-        chooseBarColor.addActionListener(this);
+-        barPanel.add(Box.createRigidArea(new Dimension(5,0)));
+-        barPanel.add(chooseForeColor);
++        JLabel label = new JLabel(JMeterUtils.getResString("aggregate_graph_columns_to_display")); //$NON-NLS-1$
++        colPanel.add(label);
++        for (BarGraph bar : eltList) {
++            colPanel.add(bar.getChkBox());
++            colPanel.add(createColorBarButton(bar, eltList.indexOf(bar)));
++        }
++        colPanel.add(Box.createRigidArea(new Dimension(5,0)));
++        chooseForeColor.setFont(FONT_SMALL);
++        colPanel.add(chooseForeColor);
+         chooseForeColor.addActionListener(this);
+ 
+-        barPanel.add(drawOutlinesBar);
+-        barPanel.add(numberShowGrouping);
++        JPanel optionsPanel = new JPanel();
++        optionsPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++        optionsPanel.add(createGraphFontValuePane());
++        optionsPanel.add(drawOutlinesBar);
++        optionsPanel.add(numberShowGrouping);
++        optionsPanel.add(valueLabelsVertical);
++        
++        JPanel barPane = new JPanel(new BorderLayout());
++        barPane.add(colPanel, BorderLayout.NORTH);
++        barPane.add(Box.createRigidArea(new Dimension(0,3)), BorderLayout.CENTER);
++        barPane.add(optionsPanel, BorderLayout.SOUTH);
+ 
+         JPanel columnPane = new JPanel(new BorderLayout());
+         columnPane.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(),
+                 JMeterUtils.getResString("aggregate_graph_column_settings"))); // $NON-NLS-1$
+-        columnPane.add(barPanel, BorderLayout.NORTH);
+-        columnPane.add(Box.createRigidArea(new Dimension(5,0)), BorderLayout.CENTER);
++        columnPane.add(barPane, BorderLayout.NORTH);
++        columnPane.add(Box.createRigidArea(new Dimension(0,3)), BorderLayout.CENTER);
+         columnPane.add(createGraphSelectionSubPane(), BorderLayout.SOUTH);
+         
+         return columnPane;
+     }
+-    
++
++    private JButton createColorBarButton(BarGraph barGraph, int index) {
++        // Button
++        JButton colorBtn = new JButton();
++        colorBtn.setName(String.valueOf(index));
++        colorBtn.setFont(FONT_SMALL);
++        colorBtn.addActionListener(this);
++        colorBtn.setBackground(barGraph.getBackColor());
++        return colorBtn;
++    }
++
+     private JPanel createGraphSelectionSubPane() {
+         Font font = new Font("SansSerif", Font.PLAIN, 10);
+         // Search field
+         JPanel searchPanel = new JPanel();
+         searchPanel.setLayout(new BoxLayout(searchPanel, BoxLayout.X_AXIS));
+-        searchPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
++        searchPanel.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+ 
+         searchPanel.add(columnSelection);
+         columnMatchLabel.setEnabled(false);
+@@ -644,6 +743,22 @@
+         return titlePane;
+     }
+ 
++    private JPanel createGraphFontValuePane() {       
++        JPanel fontValueStylePane = new JPanel();
++        fontValueStylePane.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
++        fontValueStylePane.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_value_font"), //$NON-NLS-1$
++                valueFontNameList));
++        valueFontNameList.setSelectedIndex(0); // default: sans serif
++        fontValueStylePane.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_size"), //$NON-NLS-1$
++                valueFontSizeList));
++        valueFontSizeList.setSelectedItem(StatGraphProperties.fontSize[2]); // default: 10
++        fontValueStylePane.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_style"), //$NON-NLS-1$
++                valueFontStyleList));
++        valueFontStyleList.setSelectedItem(JMeterUtils.getResString("fontstyle.normal")); // default: normal //$NON-NLS-1$
++
++        return fontValueStylePane;
++    }
++
+     private JPanel createGraphDimensionPane() {
+         JPanel dimensionPane = new JPanel();
+         dimensionPane.setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
+@@ -704,7 +819,7 @@
+ 
+         legendPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_legend_placement"), //$NON-NLS-1$
+                 legendPlacementList));
+-        legendPlacementList.setSelectedItem(JMeterUtils.getResString("aggregate_graph_legend.placement.right")); // default: right
++        legendPlacementList.setSelectedItem(JMeterUtils.getResString("aggregate_graph_legend.placement.bottom")); // default: bottom
+         legendPanel.add(createLabelCombo(JMeterUtils.getResString("aggregate_graph_font"), //$NON-NLS-1$
+                 fontNameList));
+         fontNameList.setSelectedIndex(0); // default: sans serif
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+--- xdocs/usermanual/component_reference.xml	(revision 1311123)
++++ xdocs/usermanual/component_reference.xml	(working copy)
+@@ -2644,14 +2644,14 @@
+ </description>
+ </component>
+ 
+-<component name="Aggregate Graph" index="&sect-num;.3.12"  width="905" height="657" screenshot="aggregate_graph.png">
++<component name="Aggregate Graph" index="&sect-num;.3.12"  width="914" height="684" screenshot="aggregate_graph.png">
+ <description>The aggregate graph is similar to the aggregate report. The primary
+ difference is the aggregate graph provides an easy way to generate bar graphs and save
+ the graph as a PNG file.</description>
+ <div align="center">
+ <p>
+     The figure below shows an example of settings to draw this graph.
+-<figure width="903" height="653" image="aggregate_graph_settings.png">Aggregate graph settings</figure>
++<figure width="913" height="443" image="aggregate_graph_settings.png">Aggregate graph settings</figure>
+ </p>
+ </div>
+ </component>
+Index: xdocs/images/screenshots/aggregate_graph.png
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = application/octet-stream
+Index: xdocs/images/screenshots/aggregate_graph_settings.png
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = image/png
+Index: xdocs/changes.xml
+===================================================================
+--- xdocs/changes.xml	(revision 1311123)
++++ xdocs/changes.xml	(working copy)
+@@ -173,6 +173,7 @@
+ <ul>
+ <li>Bug 52603 - MailerVisualizer : Enable SSL , TLS and Authentication</li>
+ <li>Bug 52698 - Remove Graph Full Results Listener</li>
++<li>Bug 53070 - Change Aggregate graph to Clustered Bar chart, add more columns (median, 90% line, min, max) and options, fixed some bugs</li>
+ </ul>
+ 
+ <h3>Timers, Assertions, Config, Pre- &amp; Post-Processors</h3>
+Index: src/components/org/apache/jmeter/visualizers/BarGraph.java
+===================================================================
+--- src/components/org/apache/jmeter/visualizers/BarGraph.java	(revision 0)
++++ src/components/org/apache/jmeter/visualizers/BarGraph.java	(revision 0)
+@@ -0,0 +1,90 @@
++/* 
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ * 
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ * 
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed  under the  License is distributed on an "AS IS" BASIS,
++ * WITHOUT  WARRANTIES OR CONDITIONS  OF ANY KIND, either  express  or
++ * implied.
++ * 
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.jmeter.visualizers;
++
++import java.awt.Color;
++
++import javax.swing.JCheckBox;
++
++import org.apache.jmeter.util.JMeterUtils;
++
++public class BarGraph {
++    
++    private String label;
++    
++    private JCheckBox chkBox;
++    
++    private Color backColor;
++
++    /**
++     * @param resString
++     * @param checked
++     * @param backColor
++     */
++    public BarGraph(String resString, boolean checked, Color backColor) {
++        super();
++        this.label = JMeterUtils.getResString(resString);
++        this.chkBox = new JCheckBox(this.label, checked);
++        this.backColor = backColor;
++    }
++
++    /**
++     * @return the label
++     */
++    public String getLabel() {
++        return label;
++    }
++
++    /**
++     * @param label the label to set
++     */
++    public void setLabel(String label) {
++        this.label = label;
++    }
++
++    /**
++     * @return the chkBox
++     */
++    public JCheckBox getChkBox() {
++        return chkBox;
++    }
++
++    /**
++     * @param chkBox the chkBox to set
++     */
++    public void setChkBox(JCheckBox chkBox) {
++        this.chkBox = chkBox;
++    }
++
++    /**
++     * @return the backColor
++     */
++    public Color getBackColor() {
++        return backColor;
++    }
++
++    /**
++     * @param backColor the backColor to set
++     */
++    public void setBackColor(Color backColor) {
++        this.backColor = backColor;
++    }
++    
++}
+

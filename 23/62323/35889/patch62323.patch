@@ -1,0 +1,191 @@
+Index: src/functions/org/apache/jmeter/functions/AbstractFunctionByKey.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/AbstractFunctionByKey.java	(nonexistent)
++++ src/functions/org/apache/jmeter/functions/AbstractFunctionByKey.java	(working copy)
+@@ -0,0 +1,69 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import java.util.Collection;
++import java.util.LinkedList;
++import java.util.List;
++
++import org.apache.jmeter.engine.util.CompoundVariable;
++/**
++ * 
++ * Abstract Function initialized by key and parameters count
++ * 
++ * @since 4.1
++ *
++ */
++abstract class AbstractFunctionByKey extends AbstractFunction {
++
++	protected static final List<String> DESC = new LinkedList<>();
++
++	protected final String key;
++	protected final int parametersCount;
++
++	protected Object[] values;
++
++	public AbstractFunctionByKey(String key, int parametersCount) {
++		this.key = key;
++		this.parametersCount = parametersCount;
++	}
++
++	public void setParameters(Collection<CompoundVariable> parameters, Integer min, Integer max) throws InvalidVariableException {
++		checkParameterCount(parameters, min, max);
++		values = parameters.toArray();
++	}
++
++	/** {@inheritDoc} */
++	@Override
++	public List<String> getArgumentDesc() {
++		return DESC;
++	}
++
++	/** {@inheritDoc} */
++	@Override
++	public String getReferenceKey() {
++		return key;
++	}
++
++	/** {@inheritDoc} */
++	@Override
++	public void setParameters(Collection<CompoundVariable> parameters) throws InvalidVariableException {
++		checkParameterCount(parameters, parametersCount);
++	}
++}
+Index: src/functions/org/apache/jmeter/functions/ThreadGroupName.java
+===================================================================
+--- src/functions/org/apache/jmeter/functions/ThreadGroupName.java	(nonexistent)
++++ src/functions/org/apache/jmeter/functions/ThreadGroupName.java	(working copy)
+@@ -0,0 +1,42 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++package org.apache.jmeter.functions;
++
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.samplers.Sampler;
++
++/**
++ * Returns Thread Group Name
++ * 
++ * @since 4.1
++ */
++public class ThreadGroupName extends AbstractFunctionByKey {
++
++	public ThreadGroupName() {
++		super("__ThreadGroupName", 0); //$NON-NLS-1$
++	}
++
++	@Override
++	/**
++	 * Get current thread group using sampler's context
++	 */
++	public String execute(SampleResult previousResult, Sampler currentSampler) throws InvalidVariableException {
++		return currentSampler.getThreadContext().getThreadGroup().getName();
++	}
++}
+Index: test/src/org/apache/jmeter/functions/TestSimpleFunctions.java
+===================================================================
+--- test/src/org/apache/jmeter/functions/TestSimpleFunctions.java	(revision 1829961)
++++ test/src/org/apache/jmeter/functions/TestSimpleFunctions.java	(working copy)
+@@ -26,11 +26,13 @@
+ 
+ import org.apache.jmeter.engine.util.CompoundVariable;
+ import org.apache.jmeter.junit.JMeterTestCase;
++import org.apache.jmeter.protocol.http.sampler.HTTPSamplerProxy;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.services.FileServer;
+ import org.apache.jmeter.threads.JMeterContext;
+ import org.apache.jmeter.threads.JMeterContextService;
+ import org.apache.jmeter.threads.JMeterVariables;
++import org.apache.jmeter.threads.ThreadGroup;
+ import org.junit.Before;
+ import org.junit.Test;
+ 
+@@ -43,7 +45,7 @@
+ 
+     @Before
+     public void setUp() {
+-        result = new SampleResult();
++        result = new SampleResult();        
+         jmctx = JMeterContextService.getContext();
+         String data = "The quick brown fox";
+         result.setResponseData(data, null);
+@@ -170,4 +172,27 @@
+             FileServer.getFileServer().setScriptName(null);
+         }
+     }
++
++    @Test
++	public void testThreadGroupName() throws Exception {
++		AbstractFunctionByKey function = new ThreadGroupName();
++		try {
++			HTTPSamplerProxy httpRequest = new HTTPSamplerProxy();
++			ThreadGroup threadGroup = new ThreadGroup();
++			threadGroup.setName("ThreadGroup-1");
++			JMeterContext context = JMeterContextService.getContext();
++			context.setCurrentSampler(httpRequest);
++			context.setThreadGroup(threadGroup);
++			String ret = function.execute(result, httpRequest);
++			assertEquals("ThreadGroup-1", ret);
++		} finally {
++			FileServer.getFileServer().setScriptName(null);
++		}
++	}
++
++    @Test
++    public void testThreadGroupNameParameterCount() throws Exception {
++        AbstractFunctionByKey function = new ThreadGroupName();
++        checkInvalidParameterCounts(function, 0, 0);
++    }
+ }
+Index: xdocs/changes.xml
+===================================================================
+--- xdocs/changes.xml	(revision 1829961)
++++ xdocs/changes.xml	(working copy)
+@@ -122,7 +122,9 @@
+ <ul>
+     <li><bug>62178</bug>Add default value to <code>__V</code> function. Contributed by orimarko at gmail.com</li>
+ </ul>
+-
++<ul>
++    <li><bug>62178</bug>Add function <code>__ThreadGroupName</code> function. Contributed by orimarko at gmail.com</li>
++</ul>
+ <h3>I18N</h3>
+ <ul>
+ </ul>

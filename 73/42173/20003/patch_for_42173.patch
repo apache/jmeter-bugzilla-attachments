@@ -1,0 +1,1507 @@
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	(revision 530282)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/test/src/org/apache/jmeter/protocol/http/proxy/TestHttpRequestHdr.java	(working copy)
+@@ -20,6 +20,10 @@
+ 
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
++import java.net.URLEncoder;
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.Map;
+ 
+ import org.apache.jmeter.config.Arguments;
+ import org.apache.jmeter.junit.JMeterTestCase;
+@@ -32,126 +36,538 @@
+     }
+ 
+     public void testRepeatedArguments() throws Exception {
++        String url = "http://localhost/matrix.html";
+         // A HTTP GET request
+-        String TEST_GET_REQ = 
+-            "GET http://localhost/matrix.html" 
++        String contentEncoding = "UTF-8";
++        String testGetRequest = 
++            "GET " + url
+             + "?update=yes&d=1&d=2&d=&d=&d=&d=&d=&d=1&d=2&d=1&d=&d= "
+-            + "HTTP/1.0\n\n";
+-        HTTPSamplerBase s = getSamplerForRequest(TEST_GET_REQ, "UTF-8");
++            + "HTTP/1.0\r\n\r\n";
++        HTTPSamplerBase s = getSamplerForRequest(url, testGetRequest, contentEncoding);
+         assertEquals(HTTPSamplerBase.GET, s.getMethod());
+-
++        assertEquals(contentEncoding, s.getContentEncoding());
+         // Check arguments
+         Arguments arguments = s.getArguments();
+         assertEquals(13, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", false);
+-        // I see that the value gets trimmed, not sure if that is correct
+-        checkArgument((HTTPArgument)arguments.getArgument(12), "d", "", false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", "yes", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", "1", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", "2", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", "1", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", "2", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", "1", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(12), "d", "", "", contentEncoding, false);
+ 
+         // A HTTP POST request
+-        String postBody = "update=yes&d=1&d=2&d=&d=&d=&d=&d=&d=1&d=2&d=1&d=&d= ";
+-        String TEST_POST_REQ = "POST http://localhost/matrix.html HTTP/1.0\n"
++        contentEncoding = "UTF-8";
++        String postBody = "update=yes&d=1&d=2&d=&d=&d=&d=&d=&d=1&d=2&d=1&d=&d=";
++        String testPostRequest = "POST " + url + " HTTP/1.0\n"
+                 + "Content-type: "
+-                + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED
+-                + "; charset=UTF-8\n"
++                + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED + "\r\n"
++                + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++                + "\r\n"
+                 + postBody;
+-        s = getSamplerForRequest(TEST_POST_REQ, "UTF-8");
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
+         assertEquals(HTTPSamplerBase.POST, s.getMethod());
+-
++        assertFalse(s.getDoMultipartPost());
++        assertEquals(contentEncoding, s.getContentEncoding());
+         // Check arguments
+         arguments = s.getArguments();
+         assertEquals(13, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(12), "d", " ", false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "update", "yes", "yes", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "d", "1", "1", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "d", "2", "2", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(3), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(4), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(5), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(6), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(7), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(8), "d", "1", "1", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(9), "d", "2", "2", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(10), "d", "1", "1", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(11), "d", "", "", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(12), "d", "", "", contentEncoding, false);
+ 
+         // A HTTP POST request, with content-type text/plain
+-        TEST_POST_REQ = "POST http://localhost/matrix.html HTTP/1.0\n"
+-                + "Content-type: text/plain; charset=UTF-8\n"
++        contentEncoding = "UTF-8";
++        postBody = "update=yes&d=1&d=2&d=&d=&d=&d=&d=&d=1&d=2&d=1&d=\uc385&d=";
++        testPostRequest = "POST " + url + " HTTP/1.1\r\n"
++                + "Content-type: text/plain\r\n"
++                + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++                + "\r\n"
+                 + postBody;
+-        s = getSamplerForRequest(TEST_POST_REQ, "UTF-8");
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
+         assertEquals(HTTPSamplerBase.POST, s.getMethod());
+-
++        assertFalse(s.getDoMultipartPost());
++        assertEquals(contentEncoding, s.getContentEncoding());
+         // Check arguments
+         // We should have one argument, with the value equal to the post body
+         arguments = s.getArguments();
+         assertEquals(1, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "", postBody, false);
++        checkArgument((HTTPArgument)arguments.getArgument(0), "", postBody, postBody, contentEncoding, false);
++        
++        // A HTTP POST request, with content-type text/plain; charset=UTF-8
++        // The encoding should be picked up from the header we send with the request
++        contentEncoding = "UTF-8";
++        postBody = "update=yes&d=1&d=2&d=&d=&d=&d=&d=&d=1&d=2&d=1&d=\uc385&d=";
++        testPostRequest = "POST " + url + " HTTP/1.1\r\n"
++                + "Content-type: text/plain; charset=" + contentEncoding + "\r\n"
++                + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++                + "\r\n"
++                + postBody;
++        // Use null for url to simulate that HttpRequestHdr do not
++        // know the encoding for the page. Specify contentEncoding, so the
++        // request is "sent" using that encoding
++        s = getSamplerForRequest(null, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertFalse(s.getDoMultipartPost());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        // Check arguments
++        // We should have one argument, with the value equal to the post body
++        arguments = s.getArguments();
++        assertEquals(1, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "", postBody, postBody, contentEncoding, false);
+     }
+-        
+-    // TODO: will need changing if arguments can be saved in decoded form 
++
+     public void testEncodedArguments() throws Exception {
+-            // A HTTP GET request
+-        String TEST_GET_REQ = "GET http://localhost:80/matrix.html"
+-            + "?abc"
+-            + "?SPACE=a+b"
+-            + "&space=a%20b"
+-            + "&query=What?"
+-            + " HTTP/1.1\n\n";
+-        HTTPSamplerBase s = getSamplerForRequest(TEST_GET_REQ, "UTF-8");
++        String url = "http://localhost/matrix.html";
++        // A HTTP GET request, with encoding not known 
++        String contentEncoding = "";
++        String queryString = "abc%3FSPACE=a+b&space=a%20b&query=What%3F"; 
++        String testGetRequest = "GET " + url
++            + "?" + queryString
++            + " HTTP/1.1\r\n\r\n";
++        // Use null for url and contentEncoding, to simulate that HttpRequestHdr do not
++        // know the encoding for the page
++        HTTPSamplerBase s = getSamplerForRequest(null, testGetRequest, null);
+         assertEquals(HTTPSamplerBase.GET, s.getMethod());
++        assertEquals(queryString, s.getQueryString());
++        assertEquals(contentEncoding, s.getContentEncoding());
+ 
+         // Check arguments
+         Arguments arguments = s.getArguments();
+         assertEquals(3, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a+b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", false);
++        // When the encoding is not known, the argument will get the encoded value, and the "encode?" set to false
++        checkArgument((HTTPArgument)arguments.getArgument(0), "abc%3FSPACE", "a+b", "a+b", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", "a%20b", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What%3F", "What%3F", contentEncoding, false);
+ 
+-        // A HTTP POST request
+-        String postBody = "abc?SPACE=a+b&space=a%20b&query=What?";
+-        String TEST_POST_REQ = "POST http://localhost:80/matrix.html HTTP/1.1\n"
++        // A HTTP GET request, with UTF-8 encoding 
++        contentEncoding = "UTF-8";
++        queryString = "abc%3FSPACE=a+b&space=a%20b&query=What%3F"; 
++        testGetRequest = "GET " + url
++            + "?" + queryString
++            + " HTTP/1.1\r\n\r\n";
++        s = getSamplerForRequest(url, testGetRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.GET, s.getMethod());
++        String expectedQueryString = "abc%3FSPACE=a+b&space=a+b&query=What%3F";
++        assertEquals(expectedQueryString, s.getQueryString());
++        assertEquals(contentEncoding, s.getContentEncoding());
++
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(3, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a b", "a+b", contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a b", "a+b", contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", "What%3F", contentEncoding, true);
++        
++        // A HTTP POST request, with unknown encoding
++        contentEncoding = "";
++        String postBody = "abc%3FSPACE=a+b&space=a%20b&query=What%3F";
++        String testPostRequest = "POST " + url + " HTTP/1.1\r\n"
+             + "Content-type: "
+-            + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED
+-            + "; charset=UTF-8\n"
++            + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED + "\r\n"
++            + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++            + "\r\n"
+             + postBody;
+-        s = getSamplerForRequest(TEST_POST_REQ, "UTF-8");
++        // Use null for url and contentEncoding, to simulate that HttpRequestHdr do not
++        // know the encoding for the page
++        s = getSamplerForRequest(null, testPostRequest, null);
+         assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(queryString, s.getQueryString());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        assertFalse(s.getDoMultipartPost());
+         
+         // Check arguments
+         arguments = s.getArguments();
+         assertEquals(3, arguments.getArgumentCount());
+-        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a+b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", false);
+-        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", false);
++        // When the encoding is not known, the argument will get the encoded value, and the "encode?" set to false
++        checkArgument((HTTPArgument)arguments.getArgument(0), "abc%3FSPACE", "a+b", "a+b", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a%20b", "a%20b", contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What%3F", "What%3F", contentEncoding, false);
++
++        // A HTTP POST request, with UTF-8 encoding
++        contentEncoding = "UTF-8";
++        postBody = "abc?SPACE=a+b&space=a%20b&query=What?";
++        testPostRequest = "POST " + url + " HTTP/1.1\n"
++            + "Content-type: "
++            + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED + "\r\n"
++            + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++            + "\r\n"
++            + postBody;
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        expectedQueryString = "abc%3FSPACE=a+b&space=a+b&query=What%3F";
++        assertEquals(expectedQueryString, s.getQueryString());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        assertFalse(s.getDoMultipartPost());
++        
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(3, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "abc?SPACE", "a b", "a+b", contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "space", "a b", "a+b", contentEncoding, true);
++        checkArgument((HTTPArgument)arguments.getArgument(2), "query", "What?", "What%3F", contentEncoding, true);
+     }
+ 
+-    private HTTPSamplerBase getSamplerForRequest(String request, String contentEncoding)
++    public void testGetRequestEncodings() throws Exception {
++        String url = "http://localhost/matrix.html";
++        // A HTTP GET request, with encoding not known
++        String contentEncoding = "";
++        String param1Value = "yes";
++        String param2Value = "0+5 -\u00c5\uc385%C3%85";
++        String param2ValueEncoded = URLEncoder.encode(param2Value);
++        String testGetRequest = 
++            "GET " + url
++            + "?param1=" + param1Value + "&param2=" + param2ValueEncoded + " "
++            + "HTTP/1.1\r\n\r\n";
++        // Use null for url and contentEncoding, to simulate that HttpRequestHdr do not
++        // know the encoding for the page
++        HTTPSamplerBase s = getSamplerForRequest(null, testGetRequest, null);
++        assertEquals(HTTPSamplerBase.GET, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        // Check arguments
++        Arguments arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "param1", param1Value, param1Value, contentEncoding, false);
++        // When the encoding is not known, the argument will get the encoded value, and the "encode?" set to false
++        checkArgument((HTTPArgument)arguments.getArgument(1), "param2", param2ValueEncoded, param2ValueEncoded, contentEncoding, false);
++
++        // A HTTP GET request, with UTF-8 encoding
++        contentEncoding = "UTF-8";
++        param1Value = "yes";
++        param2Value = "0+5 -\u007c\u2aa1\u266a\u0153\u20a1\u0115\u0364\u00c5\u2052\uc385%C3%85";
++        param2ValueEncoded = URLEncoder.encode(param2Value, contentEncoding);
++        testGetRequest = 
++            "GET " + url
++            + "?param1=" + param1Value + "&param2=" + param2ValueEncoded + " "
++            + "HTTP/1.1\r\n\r\n";
++        s = getSamplerForRequest(url, testGetRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.GET, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "param1", param1Value, param1Value, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "param2", param2Value, param2ValueEncoded, contentEncoding, true);
++
++        // A HTTP GET request, with ISO-8859-1 encoding
++        contentEncoding = "ISO-8859-1";
++        param1Value = "yes";
++        param2Value = "0+5 -\u00c5%C3%85";
++        param2ValueEncoded = URLEncoder.encode(param2Value, contentEncoding);
++        testGetRequest = 
++            "GET " + url
++            + "?param1=" + param1Value + "&param2=" + param2ValueEncoded + " "
++            + "HTTP/1.1\r\n\r\n";
++        s = getSamplerForRequest(url, testGetRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.GET, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "param1", param1Value, param1Value, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "param2", param2Value, param2ValueEncoded, contentEncoding, true);
++    }
++
++    public void testPostRequestEncodings() throws Exception {
++        String url = "http://localhost/matrix.html";
++        // A HTTP POST request, with encoding not known
++        String contentEncoding = "";
++        String param1Value = "yes";
++        String param2Value = "0+5 -\u00c5%C3%85";
++        String param2ValueEncoded = URLEncoder.encode(param2Value);
++        String postBody = "param1=" + param1Value + "&param2=" + param2ValueEncoded + "\r\n"; 
++        String testPostRequest = 
++            "POST " + url + " HTTP/1.1\r\n"
++            + "Content-type: "
++            + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED + "\r\n"
++            + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++            + "\r\n"
++            + postBody;
++        
++        // Use null for url and contentEncoding, to simulate that HttpRequestHdr do not
++        // know the encoding for the page
++        HTTPSamplerBase s = getSamplerForRequest(null, testPostRequest, null);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        // Check arguments
++        Arguments arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "param1", param1Value, param1Value, contentEncoding, false);
++        // When the encoding is not known, the argument will get the encoded value, and the "encode?" set to false
++        checkArgument((HTTPArgument)arguments.getArgument(1), "param2", param2ValueEncoded, param2ValueEncoded, contentEncoding, false);
++
++        // A HTTP POST request, with UTF-8 encoding
++        contentEncoding = "UTF-8";
++        param1Value = "yes";
++        param2Value = "0+5 -\u007c\u2aa1\u266a\u0153\u20a1\u0115\u0364\u00c5\u2052\uc385%C3%85";
++        param2ValueEncoded = URLEncoder.encode(param2Value, contentEncoding);
++        postBody = "param1=" + param1Value + "&param2=" + param2ValueEncoded + "\r\n"; 
++        testPostRequest = 
++            "POST " + url + " HTTP/1.1\r\n"
++            + "Content-type: "
++            + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED + "\r\n"
++            + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++            + "\r\n"
++            + postBody;
++
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "param1", param1Value, param1Value, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "param2", param2Value, param2ValueEncoded, contentEncoding, true);
++
++        // A HTTP POST request, with ISO-8859-1 encoding
++        contentEncoding = "ISO-8859-1";
++        param1Value = "yes";
++        param2Value = "0+5 -\u00c5%C3%85";
++        param2ValueEncoded = URLEncoder.encode(param2Value, contentEncoding);
++        postBody = "param1=" + param1Value + "&param2=" + param2ValueEncoded + "\r\n"; 
++        testPostRequest = 
++            "POST " + url + " HTTP/1.1\r\n"
++            + "Content-type: "
++            + HTTPSamplerBase.APPLICATION_X_WWW_FORM_URLENCODED + "\r\n"
++            + "Content-length: " + getBodyLength(postBody, contentEncoding) + "\r\n"
++            + "\r\n"
++            + postBody;
++
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "param1", param1Value, param1Value, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "param2", param2Value, param2ValueEncoded, contentEncoding, true);
++    }
++
++    public void testPostMultipartFormData() throws Exception {
++        String url = "http://localhost/matrix.html";
++        // A HTTP POST request, multipart/form-data, simple values,
++        String contentEncoding = "UTF-8";
++        String boundary = "xf8SqlDNvmn6mFYwrioJaeUR2_Z4cLRXOSmB";
++        String endOfLine = "\r\n";
++        String titleValue = "mytitle";
++        String descriptionValue = "mydescription";
++        String postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        String testPostRequest = createMultipartFormRequest(url, postBody, contentEncoding, boundary, endOfLine);
++
++        HTTPSamplerBase s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        Arguments arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, titleValue, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, descriptionValue, contentEncoding, false);
++        
++        // A HTTP POST request, multipart/form-data, simple values,
++        // with \r\n as end of line, which is according to spec,
++        // and with more headers in each multipart
++        endOfLine = "\r\n";
++        titleValue = "mytitle";
++        descriptionValue = "mydescription";
++        postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        testPostRequest = createMultipartFormRequest(url, postBody, contentEncoding, boundary, endOfLine);
++
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, titleValue, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, descriptionValue, contentEncoding, false);
++
++        // A HTTP POST request, multipart/form-data, simple values,
++        // with \n as end of line, which should also be handled,
++        // and with more headers in each multipart
++        endOfLine = "\n";
++        titleValue = "mytitle";
++        descriptionValue = "mydescription";
++        postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        testPostRequest = createMultipartFormRequest(url, postBody, contentEncoding, boundary, endOfLine);
++
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, titleValue, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, descriptionValue, contentEncoding, false);
++        
++        // A HTTP POST request, multipart/form-data, with value that will change
++        // if they are url encoded
++        // Values are similar to __VIEWSTATE parameter that .net uses
++        endOfLine = "\r\n";
++        titleValue = "/wEPDwULLTE2MzM2OTA0NTYPZBYCAgMPZ/rA+8DZ2dnZ2dnZ2d/GNDar6OshPwdJc=";
++        descriptionValue = "mydescription";
++        postBody = createMultipartFormBody(titleValue, descriptionValue, contentEncoding, true, boundary, endOfLine);
++        testPostRequest = createMultipartFormRequest(url, postBody, contentEncoding, boundary, endOfLine);
++
++        s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        assertTrue(s.getDoMultipartPost());
++        
++        // Check arguments
++        arguments = s.getArguments();
++        assertEquals(2, arguments.getArgumentCount());
++        checkArgument((HTTPArgument)arguments.getArgument(0), "title", titleValue, titleValue, contentEncoding, false);
++        checkArgument((HTTPArgument)arguments.getArgument(1), "description", descriptionValue, descriptionValue, contentEncoding, false);
++    }
++
++    public void testPostMultipartFileUpload() throws Exception {
++        String url = "http://localhost/matrix.html";
++        // A HTTP POST request, multipart/form-data, simple values,
++        String contentEncoding = "UTF-8";
++        String boundary = "xf8SqlDNvmn6mFYwrioJaeUR2_Z4cLRXOSmB";
++        String endOfLine = "\r\n";
++        String fileFieldValue = "test_file";
++        String fileName = "somefilename.txt";
++        String mimeType = "text/plain";
++        String fileContent = "somedummycontent\n\ndfgdfg\r\nfgdgdg\nContent-type:dfsfsfds";
++        String postBody = createMultipartFileUploadBody(fileFieldValue, fileName, mimeType, fileContent, boundary, endOfLine);
++        String testPostRequest = createMultipartFormRequest(url, postBody, contentEncoding, boundary, endOfLine);
++        
++        HTTPSamplerBase s = getSamplerForRequest(url, testPostRequest, contentEncoding);
++        assertEquals(HTTPSamplerBase.POST, s.getMethod());
++        assertEquals(contentEncoding, s.getContentEncoding());
++        assertEquals("", s.getQueryString());
++        assertTrue(s.getDoMultipartPost());
++
++        // Check arguments
++        Arguments arguments = s.getArguments();
++        assertEquals(0, arguments.getArgumentCount());
++        assertEquals(fileFieldValue, s.getFileField());
++        assertEquals(fileName, s.getFilename());
++        assertEquals(mimeType, s.getMimetype());
++    }        
++
++    private String createMultipartFormBody(String titleValue, String descriptionValue, String contentEncoding, boolean includeExtraHeaders, String boundary, String endOfLine) {
++        // Title multipart
++        String postBody = "--" + boundary + endOfLine
++            + "Content-Disposition: form-data; name=\"title\"" + endOfLine;
++        if(includeExtraHeaders) {
++            postBody += "Content-Type: text/plain; charset=" + contentEncoding + endOfLine
++            + "Content-Transfer-Encoding: 8bit" + endOfLine;
++        }
++        postBody += endOfLine
++            + titleValue + endOfLine
++            + "--" + boundary + endOfLine;
++        // Description multipart
++        postBody += "Content-Disposition: form-data; name=\"description\"" + endOfLine;
++        if(includeExtraHeaders) {
++            postBody += "Content-Type: text/plain; charset=" + contentEncoding + endOfLine
++                + "Content-Transfer-Encoding: 8bit" + endOfLine;
++        }
++        postBody += endOfLine
++            + descriptionValue + endOfLine
++            + "--" + boundary + "--" + endOfLine;
++
++        return postBody;
++    }
++
++    private String createMultipartFileUploadBody(String fileField, String fileName, String fileMimeType, String fileContent, String boundary, String endOfLine) {
++        // File upload multipart
++        String postBody = "--" + boundary + endOfLine
++            + "Content-Disposition: form-data; name=\"" + fileField + "\" filename=\"" + fileName + "\"" + endOfLine
++            + "Content-Type: " + fileMimeType + endOfLine
++            + "Content-Transfer-Encoding: binary" + endOfLine
++            + endOfLine
++            + fileContent + endOfLine
++            + "--" + boundary + "--" + endOfLine;
++        return postBody;
++    }
++    
++    private String createMultipartFormRequest(String url, String postBody, String contentEncoding, String boundary, String endOfLine)
+             throws IOException {
++        String postRequest = "POST " + url + " HTTP/1.1" + endOfLine
++            + "Content-type: "
++            + HTTPSamplerBase.MULTIPART_FORM_DATA
++            + "; boundary=" + boundary + endOfLine
++            + "Content-length: " + getBodyLength(postBody, contentEncoding) + endOfLine
++            + endOfLine
++            + postBody;
++        return postRequest;
++    }
++
++    private HTTPSamplerBase getSamplerForRequest(String url, String request, String contentEncoding)
++            throws IOException {
+         HttpRequestHdr req = new HttpRequestHdr();
+-        ByteArrayInputStream bis = new ByteArrayInputStream(request.getBytes(contentEncoding));
++        ByteArrayInputStream bis = null;
++        if(contentEncoding != null) {
++            bis = new ByteArrayInputStream(request.getBytes(contentEncoding));
++            
++        }
++        else {
++            // Most browsers use ISO-8859-1 as default encoding, even if spec says UTF-8
++            bis = new ByteArrayInputStream(request.getBytes("ISO-8859-1"));
++        }
+         req.parse(bis);
+         bis.close();
+-        return req.getSampler();
++        Map pageEncodings = Collections.synchronizedMap(new HashMap());
++        Map formEncodings = Collections.synchronizedMap(new HashMap());
++        if(url != null && contentEncoding != null) {
++            pageEncodings.put(url, contentEncoding);
++        }
++        return req.getSampler(pageEncodings, formEncodings);
+     }
+     
+     private void checkArgument(
+             HTTPArgument arg,
+             String expectedName,
+             String expectedValue,
+-            boolean expectedEncoded) {
++            String expectedEncodedValue,
++            String contentEncoding,
++            boolean expectedEncoded) throws IOException {
+         assertEquals(expectedName, arg.getName());
++//        System.out.println("expect " + URLEncoder.encode(expectedValue, "UTF-8"));
++//        System.out.println("actual " + URLEncoder.encode(arg.getValue(), "UTF-8"));
+         assertEquals(expectedValue, arg.getValue());
++        if(contentEncoding != null && contentEncoding.length() > 0) {
++            assertEquals(expectedEncodedValue, arg.getEncodedValue(contentEncoding));
++        }
++        else {
++            // Most browsers use ISO-8859-1 as default encoding, even if spec says UTF-8
++            assertEquals(expectedEncodedValue, arg.getEncodedValue("ISO-8859-1"));
++        }
+         assertEquals(expectedEncoded, arg.isAlwaysEncoded());
+     }
++    
++    private int getBodyLength(String postBody, String contentEncoding) throws IOException {
++        if(contentEncoding != null && contentEncoding.length() > 0) {
++            return postBody.getBytes(contentEncoding).length;            
++        }
++        else {
++            // Most browsers use ISO-8859-1 as default encoding, even if spec says UTF-8
++            return postBody.getBytes().length;
++        }
++    }
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(revision 530282)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Proxy.java	(working copy)
+@@ -25,8 +25,11 @@
+ import java.io.OutputStream;
+ import java.net.Socket;
+ import java.net.UnknownHostException;
++import java.net.URL;
++import java.util.Map;
+ 
+ import org.apache.jmeter.protocol.http.control.HeaderManager;
++import org.apache.jmeter.protocol.http.parser.HTMLParseException;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
+ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerFactory;
+ import org.apache.jmeter.samplers.SampleResult;
+@@ -61,6 +64,11 @@
+ 	/** Whether to try to spoof as https **/
+ 	private boolean httpsSpoof;
+ 
++    /** Reference to Deamon's Map of url string to page character encoding of that page */
++    private Map pageEncodings;
++    /** Reference to Deamon's Map of url string to character encoding for the form */
++    private Map formEncodings;
++
+ 	/**
+ 	 * Default constructor - used by newInstance call in Daemon
+ 	 */
+@@ -88,11 +96,29 @@
+ 	 *            the ProxyControl which will receive the generated sampler
+ 	 */
+ 	void configure(Socket _clientSocket, ProxyControl _target) {
+-		this.target = _target;
+-		this.clientSocket = _clientSocket;
+-		this.captureHttpHeaders = _target.getCaptureHttpHeaders();
+-		this.httpsSpoof = target.getHttpsSpoof();
+-	}
++        configure(_clientSocket, _target, null, null);
++    }
++    
++    /**
++     * Configure the Proxy.
++     * 
++     * @param clientSocket
++     *            the socket connection to the client
++     * @param target
++     *            the ProxyControl which will receive the generated sampler
++     * @param pageEncodings
++     *            reference to the Map of Deamon, with mappings from page urls to encoding used
++     * @param formEncodingsEncodings
++     *            reference to the Map of Deamon, with mappings from form action urls to encoding used
++     */
++    void configure(Socket clientSocket, ProxyControl target, Map pageEncodings, Map formEncodings) {
++        this.target = target;
++        this.clientSocket = clientSocket;
++        this.captureHttpHeaders = target.getCaptureHttpHeaders();
++        this.httpsSpoof = target.getHttpsSpoof();
++        this.pageEncodings = pageEncodings;
++        this.formEncodings = formEncodings;
++    }
+ 
+ 	/**
+ 	 * Main processing method for the Proxy object
+@@ -118,7 +144,7 @@
+ 
+ 			// Populate the sampler. It is the same sampler as we sent into
+ 			// the constructor of the HttpRequestHdr instance above 
+-			request.getSampler();
++            request.getSampler(pageEncodings, formEncodings);
+ 
+ 			/*
+ 			 * Create a Header Manager to ensure that the browsers headers are
+@@ -145,7 +171,12 @@
+ 				String noHttpsResult = new String(result.getResponseData());
+ 				result.setResponseData(noHttpsResult.replaceAll("https", "http").getBytes());
+ 			}
+-				
++
++            // Find the page encoding and possibly encodings for forms in the page
++            // in the response from the web server
++            String pageEncoding = addPageEncoding(result);
++            addFormEncodings(result, pageEncoding);
++
+ 			writeToClient(result, new BufferedOutputStream(clientSocket.getOutputStream()));
+ 			/*
+ 			 * We don't want to store any cookies in the generated test plan
+@@ -241,4 +272,73 @@
+ 			log.warn("Exception while writing error", e);
+ 		}
+ 	}
+-}
+\ No newline at end of file
++
++    /**
++     * Add the page encoding of the sample result to the Map with page encodings
++     * 
++     * @param result the sample result to check
++     * @return the page encoding found for the sample result, or null
++     */
++    private String addPageEncoding(SampleResult result) {
++        String pageEncoding = getContentEncoding(result);
++        if(pageEncoding != null) {
++            String urlWithoutQuery = getUrlWithoutQuery(result.getURL());
++            synchronized(pageEncodings) {
++                pageEncodings.put(urlWithoutQuery, pageEncoding);
++            }
++        }
++        return pageEncoding;
++    }
++    
++    /**
++     * Add the form encodings for all forms in the sample result
++     * 
++     * @param result the sample result to check
++     * @param pageEncoding the encoding used for the sample result page
++     */
++    private void addFormEncodings(SampleResult result, String pageEncoding) {
++        FormCharSetFinder finder = new FormCharSetFinder();
++        try {
++            finder.addFormActionsAndCharSet(result.getResponseDataAsString(), formEncodings, pageEncoding);
++        }
++        catch (HTMLParseException parseException) {
++            log.debug("Unable to parse response, could not find any form character set encodings");
++        }
++    }
++
++    /**
++     * Get the value of the charset of the content-type header of the sample result
++     * 
++     * @param res the sample result to find the charset for
++     * @return the charset found, or null
++     */
++    private String getContentEncoding(SampleResult res) {
++        String contentTypeHeader = res.getContentType();
++        String charSet = null;
++        if (contentTypeHeader != null) {
++            int charSetStartPos = contentTypeHeader.toLowerCase().indexOf("charset=");
++            if (charSetStartPos > 0) {
++                charSet = contentTypeHeader.substring(charSetStartPos + "charset=".length());
++                if (charSet != null) {
++                    if (charSet.trim().length() > 0) {
++                        charSet = charSet.trim();
++                    } else {
++                        charSet = null;
++                    }
++                }
++            }
++        }
++        return charSet;
++    }
++
++    private String getUrlWithoutQuery(URL url) {
++        String fullUrl = url.toString();
++        String urlWithoutQuery = fullUrl;
++        String query = url.getQuery();
++        if(query != null) {
++            // Get rid of the query and the ?
++            urlWithoutQuery = urlWithoutQuery.substring(0, urlWithoutQuery.length() - query.length() - 1);
++        }
++        return urlWithoutQuery;
++    }
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java	(revision 530282)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/Daemon.java	(working copy)
+@@ -22,6 +22,9 @@
+ import java.io.InterruptedIOException;
+ import java.net.ServerSocket;
+ import java.net.Socket;
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.Map;
+ 
+ import org.apache.jorphan.logging.LoggingManager;
+ import org.apache.log.Logger;
+@@ -67,6 +70,11 @@
+ 	 */
+ 	private Class proxyClass = Proxy.class;
+ 
++    /** A Map of url string to page character encoding of that page */
++    private Map pageEncodings;
++    /** A Map of url string to character encoding for the form */
++    private Map formEncodings;
++
+ 	/**
+ 	 * Default constructor.
+ 	 */
+@@ -161,6 +169,10 @@
+ 		running = true;
+ 		ServerSocket mainSocket = null;
+ 
++		// Maps to contain page and form encodings
++		pageEncodings = Collections.synchronizedMap(new HashMap());
++		formEncodings = Collections.synchronizedMap(new HashMap());
++        
+ 		try {
+ 			log.info("Creating Daemon Socket... on port " + daemonPort);
+ 			mainSocket = new ServerSocket(daemonPort);
+@@ -174,7 +186,7 @@
+ 					if (running) {
+ 						// Pass request to new proxy thread
+ 						Proxy thd = (Proxy) proxyClass.newInstance();
+-						thd.configure(clientSocket, target);
++						thd.configure(clientSocket, target, pageEncodings, formEncodings);
+ 						thd.start();
+ 					} else {
+ 						// The socket was accepted after we were told to stop.
+@@ -199,6 +211,10 @@
+ 			} catch (Exception exc) {
+ 			}
+ 		}
++ 
++		// Clear maps
++		pageEncodings = null;
++		formEncodings = null;
+ 	}
+ 
+ 	/**
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/FormCharSetFinder.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/FormCharSetFinder.java	(revision 0)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/FormCharSetFinder.java	(revision 0)
+@@ -0,0 +1,131 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.protocol.http.proxy;
++
++import java.util.Map;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
++import org.apache.log.Logger;
++import org.apache.jmeter.protocol.http.parser.HTMLParseException;
++import org.htmlparser.Node;
++import org.htmlparser.Parser;
++import org.htmlparser.Tag;
++import org.htmlparser.tags.CompositeTag;
++import org.htmlparser.tags.FormTag;
++import org.htmlparser.util.NodeIterator;
++import org.htmlparser.util.ParserException;
++
++/**
++ * A parser for html, to find the form tags, and their accept-charset value
++ */
++class FormCharSetFinder {
++    private static final Logger log = LoggingManager.getLoggerForClass();
++
++    protected FormCharSetFinder() {
++		super();
++        log.info("Using htmlparser version: "+Parser.getVersion());
++	}
++
++    /**
++     * Add form action urls and their corresponding encodings for all forms on the page
++     * 
++     * @param html the html to parse for form encodings
++     * @param formEncodings the Map where form encodings should be added
++     * @param pageEncoding the encoding used for the whole page
++     * @throws HTMLParseException
++     */
++	public void addFormActionsAndCharSet(String html, Map formEncodings, String pageEncoding)
++            throws HTMLParseException {
++        if (log.isDebugEnabled()) {
++            log.debug("Parsing html of: " + html);
++        }
++        
++        Parser htmlParser = null;
++		try {
++			htmlParser = new Parser();
++            htmlParser.setInputHTML(html);
++		} catch (Exception e) {
++			throw new HTMLParseException(e);
++		}
++
++		// Now parse the DOM tree
++		try {
++			// we start to iterate through the elements
++			parseNodes(htmlParser.elements(), formEncodings, pageEncoding);
++			log.debug("End   : parseNodes");
++		} catch (ParserException e) {
++			throw new HTMLParseException(e);
++		}
++	}
++    
++    /**
++     * Recursively parse all nodes to pick up all form encodings
++     * 
++     * @param e the nodes to be parsed
++     * @param formEncodings the Map where we should add form encodings found
++     * @param pageEncoding the encoding used for the page where the nodes are present
++     */
++    private void parseNodes(final NodeIterator e, Map formEncodings, String pageEncoding)
++        throws HTMLParseException, ParserException {
++        while(e.hasMoreNodes()) {
++            Node node = e.nextNode();
++            // a url is always in a Tag.
++            if (!(node instanceof Tag)) {
++                continue;
++            }
++            Tag tag = (Tag) node;
++
++            // Only check form tags
++            if (tag instanceof FormTag) {
++                // Find the action / form url
++                String action = tag.getAttribute("action");
++                String acceptCharSet = tag.getAttribute("accept-charset");
++                if(action != null && action.length() > 0) {
++                    // We use the page encoding where the form resides, as the
++                    // default encoding for the form
++                    String formCharSet = pageEncoding;
++                    // Check if we found an accept-charset attribute on the form
++                    if(acceptCharSet != null) {
++                        String[] charSets = JOrphanUtils.split(acceptCharSet, ",");
++                        // Just use the first one of the possible many charsets
++                        if(charSets.length > 0) {
++                            formCharSet = charSets[0].trim();
++                            if(formCharSet.length() == 0) {
++                                formCharSet = null;
++                            }
++                        }
++                    }
++                    if(formCharSet != null) {
++                        synchronized (formEncodings) {
++                            formEncodings.put(action, formCharSet);
++                        }
++                    }
++                }
++            }
++
++            // second, if the tag was a composite tag,
++            // recursively parse its children.
++            if (tag instanceof CompositeTag) {
++                CompositeTag composite = (CompositeTag) tag;
++                parseNodes(composite.elements(), formEncodings, pageEncoding);
++            }
++        }
++    }
++}
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(revision 530282)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/proxy/HttpRequestHdr.java	(working copy)
+@@ -21,8 +21,10 @@
+ import java.io.ByteArrayOutputStream;
+ import java.io.IOException;
+ import java.io.InputStream;
++import java.io.UnsupportedEncodingException;
+ import java.net.MalformedURLException;
+ import java.net.ProtocolException;
++import java.net.URL;
+ import java.util.HashMap;
+ import java.util.Iterator;
+ import java.util.Map;
+@@ -40,6 +42,7 @@
+ import org.apache.jmeter.testelement.TestElement;
+ import org.apache.jmeter.util.JMeterUtils;
+ import org.apache.jorphan.logging.LoggingManager;
++import org.apache.jorphan.util.JOrphanUtils;
+ import org.apache.log.Logger;
+ 
+ //For unit tests, @see TestHttpRequestHdr
+@@ -73,7 +76,7 @@
+ 	 */
+ 	private String version = ""; // NOTREAD // $NON-NLS-1$
+ 
+-	private String postData = ""; // $NON-NLS-1$
++	private byte[] rawPostData;
+ 
+ 	private Map headers = new HashMap();
+ 
+@@ -136,9 +139,11 @@
+ 				readLength++;
+ 			}
+ 		}
+-		postData = line.toString();
++		// Keep the raw post data
++		rawPostData = line.toByteArray();
++
+         if (log.isDebugEnabled()){
+-    		log.debug("postData: " + postData);
++    		log.debug("rawPostData in default JRE encoding: " + new String(rawPostData));
+     		log.debug("Request: " + clientRequest.toString());
+         }
+ 		return clientRequest.toByteArray();
+@@ -200,7 +205,8 @@
+ 		return headerManager;
+ 	}
+ 
+-	public HTTPSamplerBase getSampler() throws MalformedURLException, IOException, ProtocolException {
++    public HTTPSamplerBase getSampler(Map pageEncodings, Map formEncodings)
++            throws MalformedURLException, IOException, ProtocolException {
+ 		// Damn! A whole new GUI just to instantiate a test element?
+ 		// Isn't there a beter way?
+ 		HttpTestSampleGui tempGui = null;
+@@ -212,7 +218,9 @@
+ 			tempGui = new HttpTestSampleGui();
+ 		}
+ 		sampler.setProperty(TestElement.GUI_CLASS, tempGui.getClass().getName());
+-		populateSampler();
++
++        // Populate the sampler
++        populateSampler(pageEncodings, formEncodings);
+ 		
+ 		tempGui.configure(sampler);
+ 		tempGui.modifyTestElement(sampler);
+@@ -224,6 +232,19 @@
+     		log.debug("getSampler: sampler path = " + sampler.getPath());
+ 		return sampler;
+ 	}
++    
++    /**
++     * 
++     * @return
++     * @throws MalformedURLException
++     * @throws IOException
++     * @throws ProtocolException
++     * @deprecated use the getSampler(HashMap pageEncodings, HashMap formEncodings) instead, since
++     * that properly handles the encodings of the page
++     */
++    public HTTPSamplerBase getSampler() throws MalformedURLException, IOException, ProtocolException {
++        return getSampler(null, null);
++    }
+ 
+ 	private String getContentType() {
+ 		Header contentTypeHeader = (Header) headers.get(CONTENT_TYPE);
+@@ -233,6 +254,24 @@
+         return null;
+ 	}
+ 
++    private String getContentEncoding() {
++        String contentType = getContentType();
++        if(contentType != null) {
++            int charSetStartPos = contentType.toLowerCase().indexOf("charset="); 
++            if(charSetStartPos >= 0) {
++                String charSet = contentType.substring(charSetStartPos + "charset=".length());
++                if(charSet != null && charSet.length() > 0) {
++                    // Remove quotes if present 
++                    charSet = JOrphanUtils.replaceAllChars(charSet, '"', "");
++                    if(charSet.length() > 0) {
++                        return charSet;
++                    }
++                }
++            }
++        }
++        return null;
++    }
++
+     private boolean isMultipart(String contentType) {
+         if (contentType != null && contentType.startsWith(HTTPSamplerBase.MULTIPART_FORM_DATA)) {
+             return true;
+@@ -252,30 +291,22 @@
+         }
+     }
+ 
+-	private void populateSampler() {
+-		sampler.setDomain(serverName());
++    private void populateSampler(Map pageEncodings, Map formEncodings) 
++            throws MalformedURLException, UnsupportedEncodingException {        
++        sampler.setDomain(serverName());
+         if (log.isDebugEnabled())
+     		log.debug("Proxy: setting server: " + sampler.getDomain());
+ 		sampler.setMethod(method);
+ 		log.debug("Proxy: method server: " + sampler.getMethod());
+ 		sampler.setPath(serverUrl());
+         if (log.isDebugEnabled())
+-    		log.debug("Proxy: setting path: " + sampler.getPath());
+-		if (numberRequests) {
+-			requestNumber++;
+-			sampler.setName(requestNumber + " " + sampler.getPath());
+-		} else {
+-			sampler.setName(sampler.getPath());
+-		}
+-		sampler.setPort(serverPort());
+-        if (log.isDebugEnabled())
+             log.debug("Proxy: setting port: " + sampler.getPort());
+ 		if (url.indexOf("//") > -1) {
+ 			String protocol = url.substring(0, url.indexOf(":"));
+             if (log.isDebugEnabled())
+     			log.debug("Proxy: setting protocol to : " + protocol);
+ 			sampler.setProtocol(protocol);
+-		} else if (sampler.getPort() == 443) {
++		} else if (sampler.getPort() == HTTPSamplerBase.DEFAULT_HTTPS_PORT) {
+ 			sampler.setProtocol(HTTPS);
+             if (log.isDebugEnabled())
+     			log.debug("Proxy: setting protocol to https");
+@@ -285,6 +316,82 @@
+ 			sampler.setProtocol(HTTP);
+ 		}
+         
++        URL pageUrl = null;
++        if(sampler.isProtocolDefaultPort()) {            
++            pageUrl = new URL(sampler.getProtocol(), sampler.getDomain(), serverUrl());
++        }
++        else {
++            pageUrl = new URL(sampler.getProtocol(), sampler.getDomain(), sampler.getPort(), serverUrl());
++        }
++        String urlWithoutQuery = getUrlWithoutQuery(pageUrl);
++        
++
++        // Check if the request itself tells us what the encoding is
++        String contentEncoding = null;
++        String requestContentEncoding = getContentEncoding();
++        if(requestContentEncoding != null) {
++            contentEncoding = requestContentEncoding;
++        }
++        else {        
++            // Check if we know the encoding of the page
++            if (pageEncodings != null) {
++                synchronized (pageEncodings) {
++                    contentEncoding = (String) pageEncodings.get(urlWithoutQuery);
++                }
++            }
++            // Check if we know the encoding of the form
++            if (formEncodings != null) {
++                synchronized (formEncodings) {
++                    String formEncoding = (String) formEncodings.get(urlWithoutQuery);
++                    // Form encoding has priority over page encoding
++                    if (formEncoding != null) {
++                        contentEncoding = formEncoding;
++                    }
++                }
++            }
++        }
++
++        // Get the post data using the content encoding of the request
++        String postData = null;
++        if (log.isDebugEnabled()) {
++            if(contentEncoding != null) {
++                log.debug("Using encoding " + contentEncoding + " for request body");
++            }
++            else {
++                log.debug("No encoding found, using JRE default encoding for request body");
++            }
++        }
++        if (contentEncoding != null) {
++            postData = new String(rawPostData, contentEncoding);
++        } else {
++            // Use default encoding
++            postData = new String(rawPostData);
++        }
++
++        if(contentEncoding != null) {
++            sampler.setPath(serverUrl(), contentEncoding);
++        }
++        else {
++            // Although the spec says UTF-8 should be used for encoding URL parameters,
++            // most browser use ISO-8859-1 for default if encoding is not known.
++            // We use null for contentEncoding, then the url parameters will be added
++            // with the value in the URL, and the "encode?" flag set to false
++            sampler.setPath(serverUrl(), null);
++        }
++        if (log.isDebugEnabled())
++            log.debug("Proxy: setting path: " + sampler.getPath());
++        if (numberRequests) {
++            requestNumber++;
++            sampler.setName(requestNumber + " " + sampler.getPath());
++        } else {
++            sampler.setName(sampler.getPath());
++        }
++        
++        // Set the content encoding
++        if(contentEncoding != null) {
++            sampler.setContentEncoding(contentEncoding);
++        }
++        
+         // If it was a HTTP GET request, then all parameters in the URL
+         // has been handled by the sampler.setPath above, so we just need
+         // to do parse the rest of the request if it is not a GET request
+@@ -318,7 +425,7 @@
+                 // It is the most common post request, with parameter name and values
+                 // We also assume this if no content type is present, to be most backwards compatible,
+                 // but maybe we should only parse arguments if the content type is as expected
+-                sampler.parseArguments(postData); //standard name=value postData
++                sampler.parseArguments(postData.trim(), contentEncoding); //standard name=value postData
+             } else if (postData != null && postData.length() > 0) {
+                 // Just put the whole postbody as the value of a parameter
+                 sampler.addNonEncodedArgument("", postData, ""); //used when postData is pure xml (ex. an xml-rpc call)
+@@ -433,4 +540,14 @@
+ 		return strBuff.toString();
+ 	}
+ 
++    private String getUrlWithoutQuery(URL url) {
++        String fullUrl = url.toString();
++        String urlWithoutQuery = fullUrl;
++        String query = url.getQuery();
++        if(query != null) {
++            // Get rid of the query and the ?
++            urlWithoutQuery = urlWithoutQuery.substring(0, urlWithoutQuery.length() - query.length() - 1);
++        }
++        return urlWithoutQuery;
++    }
+ }
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 530282)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -354,18 +354,33 @@
+ 	 *            The new Path value
+ 	 */
+ 	public void setPath(String path) {
+-		if (GET.equals(getMethod())) {
+-			int index = path.indexOf(QRY_PFX);
+-			if (index > -1) {
+-				setProperty(PATH, path.substring(0, index));
+-				parseArguments(path.substring(index + 1));
+-			} else {
+-				setProperty(PATH, path);
+-			}
+-		} else {
+-			setProperty(PATH, path);
+-		}
+-	}
++        // We know that URL arguments should always be encoded in UTF-8 according to spec
++        setPath(path, EncoderCache.URL_ARGUMENT_ENCODING);
++    }
++    
++    /**
++     * Sets the Path attribute of the UrlConfig object Also calls parseArguments
++     * to extract and store any query arguments
++     * 
++     * @param path
++     *            The new Path value
++     * @param contentEncoding
++     *            The encoding used for the querystring parameter values
++     */
++    public void setPath(String path, String contentEncoding) {
++        if (GET.equals(getMethod())) {
++            int index = path.indexOf(QRY_PFX);
++            if (index > -1) {
++                setProperty(PATH, path.substring(0, index));
++                // Parse the arguments in querystring, assuming specified encoding for values
++                parseArguments(path.substring(index + 1), contentEncoding);
++            } else {
++                setProperty(PATH, path);
++            }
++        } else {
++            setProperty(PATH, path);
++        }
++    }
+ 
+ 	public String getPath() {
+ 		String p = getPropertyAsString(PATH);
+@@ -456,20 +471,38 @@
+         this.addEncodedArgument(name, value, ARG_VAL_SEP);
+     }
+ 
+-	public void addEncodedArgument(String name, String value, String metaData) {
++	public void addEncodedArgument(String name, String value, String metaData, String contentEncoding) {
+         if (log.isDebugEnabled()){
+-		    log.debug("adding argument: name: " + name + " value: " + value + " metaData: " + metaData);
++		    log.debug("adding argument: name: " + name + " value: " + value + " metaData: " + metaData + " contentEncoding: " + contentEncoding);
+         }
+-
+         
+-		HTTPArgument arg = new HTTPArgument(name, value, metaData, true);
++		HTTPArgument arg = new HTTPArgument(name, value, metaData, true, contentEncoding);
+ 
+-		if (arg.getName().equals(arg.getEncodedName()) && arg.getValue().equals(arg.getEncodedValue())) {
++        // Check if there are any difference between name and value and their encoded name and value
++        String valueEncoded = null;
++        if(contentEncoding != null) {
++            try {
++                valueEncoded = arg.getEncodedValue(contentEncoding);
++            }
++            catch (UnsupportedEncodingException e) {
++                log.warn("Unable to get encoded value using encoding " + contentEncoding);
++                valueEncoded = arg.getEncodedValue();
++            }
++        }
++        else {
++            valueEncoded = arg.getEncodedValue();
++        }
++        // If there is no difference, we mark it as not needing encoding
++		if (arg.getName().equals(arg.getEncodedName()) && arg.getValue().equals(valueEncoded)) {
+ 			arg.setAlwaysEncoded(false);
+ 		}
+ 		this.getArguments().addArgument(arg);
+ 	}
+-    
++
++    public void addEncodedArgument(String name, String value, String metaData) {
++        this.addEncodedArgument(name, value, metaData, null);
++    }
++
+     public void addNonEncodedArgument(String name, String value, String metadata) {
+         HTTPArgument arg = new HTTPArgument(name, value, metadata, false);
+         arg.setAlwaysEncoded(false);
+@@ -751,22 +784,24 @@
+ 		return buf.toString();
+ 	}
+ 
+-	// Mark Walsh 2002-08-03, modified to also parse a parameter name value
+-	// string, where string contains only the parameter name and no equal sign.
+-	/**
+-	 * This method allows a proxy server to send over the raw text from a
+-	 * browser's output stream to be parsed and stored correctly into the
+-	 * UrlConfig object.
+-	 * 
+-	 * For each name found, addArgument() is called
+-	 * 
+-	 * @param queryString -
+-	 *            the query string
+-	 * 
+-	 */
+-	public void parseArguments(String queryString) {
+-		String[] args = JOrphanUtils.split(queryString, QRY_SEP);
+-		for (int i = 0; i < args.length; i++) {
++    // Mark Walsh 2002-08-03, modified to also parse a parameter name value
++    // string, where string contains only the parameter name and no equal sign.
++    /**
++     * This method allows a proxy server to send over the raw text from a
++     * browser's output stream to be parsed and stored correctly into the
++     * UrlConfig object.
++     * 
++     * For each name found, addArgument() is called
++     * 
++     * @param queryString -
++     *            the query string
++     * @param contentEncoding -
++     *            the content encoding of the query string. The query string might
++     *            actually be the post body of a http post request.
++     */
++    public void parseArguments(String queryString, String contentEncoding) {
++        String[] args = JOrphanUtils.split(queryString, QRY_SEP);
++        for (int i = 0; i < args.length; i++) {
+ 			// need to handle four cases: 
+             // - string contains name=value
+ 			// - string contains name=
+@@ -787,20 +822,27 @@
+ 				metaData = "";
+                 name=args[i];
+                 value="";
+-			}
+-			if (name.length() > 0) {
+-                // The browser has already done the encoding, so save the values as is 
+-                HTTPArgument arg = new HTTPArgument(name, value, metaData, false);
+-                // and make sure they stay that way:
+-                arg.setAlwaysEncoded(false);
+-                // Note that URL.encode()/decode() do not follow RFC3986 entirely
+-				this.getArguments().addArgument(arg);
+-				// TODO: this leaves the arguments in encoded form, which may be difficult to read
+-                // if we can find proper coding methods, this could be tidied up 
+             }
+-		}
+-	}
++            if (name.length() > 0) {
++                // If we know the encoding, we can decode the argument value,
++                // to make it easier to read for the user
++                if(contentEncoding != null) {
++                    addEncodedArgument(name, value, metaData, contentEncoding);
++                }
++                else {
++                    // If we do not know the encoding, we just use the encoded value
++                    // The browser has already done the encoding, so save the values as is
++                    addNonEncodedArgument(name, value, metaData);
++                }
++            }
++        }
++    }
+ 
++    public void parseArguments(String queryString) {
++        // We do not know the content encoding of the query string
++        parseArguments(queryString, null);
++    }
++
+ 	public String toString() {
+ 		try {
+ 			return this.getUrl().toString() + ((POST.equals(getMethod())) ? "\nQuery Data: " + getQueryString() : "");
+Index: C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java
+===================================================================
+--- C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java	(revision 530282)
++++ C:/Documents and Settings/alf.hogemark/workspace/JMeter 2.2 official_2/src/protocol/http/org/apache/jmeter/protocol/http/util/HTTPArgument.java	(working copy)
+@@ -88,38 +88,66 @@
+ 		this(name, value, false);
+ 	}
+ 
+-	public HTTPArgument(String name, String value, boolean alreadyEncoded) {
+-		setAlwaysEncoded(true);
+-		if (alreadyEncoded) {
+-			try {
+-				name = URLDecoder.decode(name, EncoderCache.URL_ARGUMENT_ENCODING);
+-				value = URLDecoder.decode(value, EncoderCache.URL_ARGUMENT_ENCODING);
+-			} catch (UnsupportedEncodingException e) {
+-				// UTF-8 unsupported? You must be joking!
+-				log.error("UTF-8 encoding not supported!");
+-				throw new Error(e.toString());
+-			}
+-		}
+-		setName(name);
+-		setValue(value);
+-		setMetaData("=");
+-	}
++    public HTTPArgument(String name, String value, boolean alreadyEncoded) {
++        // We assume the argument value is encoded according to the HTTP spec, i.e. UTF-8
++        this(name, value, alreadyEncoded, EncoderCache.URL_ARGUMENT_ENCODING);
++    }
+ 
+-	public HTTPArgument(String name, String value, String metaData, boolean alreadyEncoded) {
+-		this(name, value, alreadyEncoded);
+-		setMetaData(metaData);
+-	}
++    /**
++     * Construct a new HTTPArgument instance
++     * 
++     * @param name the name of the parameter
++     * @param value the value of the parameter
++     * @param alreadyEncoded true if the name and value is already encoded
++     * @param contentEncoding the encoding used for the parameter value
++     */
++    public HTTPArgument(String name, String value, boolean alreadyEncoded, String contentEncoding) {
++        setAlwaysEncoded(true);
++        if (alreadyEncoded) {
++            try {
++                // We assume the name is always encoded according to spec
++                name = URLDecoder.decode(name, EncoderCache.URL_ARGUMENT_ENCODING);
++                // The value is encoded in the specified encoding
++                value = URLDecoder.decode(value, contentEncoding);
++            } catch (UnsupportedEncodingException e) {
++                log.error(contentEncoding + " encoding not supported!");
++                throw new Error(e.toString());
++            }
++        }
++        setName(name);
++        setValue(value);
++        setMetaData("=");
++    }
+ 
+-	public HTTPArgument(Argument arg) {
+-		this(arg.getName(), arg.getValue(), arg.getMetaData());
+-	}
++    public HTTPArgument(String name, String value, String metaData, boolean alreadyEncoded) {
++        // We assume the argument value is encoded according to the HTTP spec, i.e. UTF-8
++        this(name, value, metaData, alreadyEncoded, EncoderCache.URL_ARGUMENT_ENCODING);
++    }
+ 
+-	/**
+-	 * Constructor for the Argument object
+-	 */
+-	public HTTPArgument() {
+-	}
++    /**
++     * Construct a new HTTPArgument instance
++     * 
++     * @param name the name of the parameter
++     * @param value the value of the parameter
++     * @param metaData the separator to use between name and value
++     * @param alreadyEncoded true if the name and value is already encoded
++     * @param contentEncoding the encoding used for the parameter value
++     */
++    public HTTPArgument(String name, String value, String metaData, boolean alreadyEncoded, String contentEncoding) {
++        this(name, value, alreadyEncoded, contentEncoding);
++        setMetaData(metaData);
++    }
+ 
++    public HTTPArgument(Argument arg) {
++        this(arg.getName(), arg.getValue(), arg.getMetaData());
++    }
++
++    /**
++     * Constructor for the Argument object
++     */
++    public HTTPArgument() {
++    }
++
+ 	/**
+ 	 * Sets the Name attribute of the Argument object.
+ 	 * 

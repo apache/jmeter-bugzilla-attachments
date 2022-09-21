@@ -1,0 +1,398 @@
+Index: /src/components/org/apache/jmeter/assertions/CompareAssertion.java
+===================================================================
+--- /src/components/org/apache/jmeter/assertions/CompareAssertion.java	(revision 818668)
++++ /src/components/org/apache/jmeter/assertions/CompareAssertion.java	(working copy)
+@@ -20,9 +20,7 @@
+ 
+ import java.io.Serializable;
+ import java.util.Collection;
+-import java.util.Iterator;
+ import java.util.LinkedList;
+-import java.util.List;
+ 
+ import org.apache.jmeter.engine.event.LoopIterationEvent;
+ import org.apache.jmeter.engine.event.LoopIterationListener;
+@@ -38,7 +36,11 @@
+ 
+     private static final long serialVersionUID = 240L;
+     
+-	private transient List<SampleResult> responses;
++    private static final String NL = "\n"; // $NON-NLS-1$
++    
++    private static final String NL2 = "\n\n"; // $NON-NLS-1$
++
++	private transient LinkedList<SampleResult> responses;
+ 
+ 	private transient final StringSubstitution emptySub = new StringSubstitution("");
+ 
+@@ -53,79 +55,97 @@
+ 	}
+ 
+ 	public AssertionResult getResult(SampleResult response) {
+-		responses.add(response);
++		responses.addLast(response);
+ 		if (responses.size() > 1) {
+ 			CompareAssertionResult result = new CompareAssertionResult(getName());
+-			compareContent(result);
+-			compareTime(result);
++			if (compareTime >= 0) {
++			    compareTime(result);
++            }
++			if (compareContent) {
++                compareContent(result);
++            }
+ 			return result;
+-		} else
+-			return new AssertionResult(getName());
++		} else {
++		    CompareAssertionResult assRes = new CompareAssertionResult(getName());
++		    assRes.setFailure(false);
++		    assRes.addToBaseResult("No previous");
++
++	        SampleResult firstResult = responses.getFirst();
++	        long prevTime = responses.getFirst().getTime();
++	        StringBuffer buf = new StringBuffer();
++	        appendResultDetails(buf, firstResult);
++	        buf.append("Response Time (ms): ").append(prevTime + NL2);
++	        buf.append(filterString(firstResult.getResponseDataAsString()));
++	        assRes.addToSecondaryResult(buf.toString());
++		    
++			return assRes;
++		}
+ 	}
+ 
+ 	private void compareTime(CompareAssertionResult result) {
+-		if (compareTime >= 0) {
+-			Iterator<SampleResult> iter = responses.iterator();
+-			long prevTime = -1;
+-			SampleResult prevResult = null;
+-			boolean success = true;
+-			while (iter.hasNext()) {
+-				SampleResult sResult = iter.next();
+-				long currentTime = sResult.getTime();
+-				if (prevTime != -1) {
+-					success = Math.abs(prevTime - currentTime) <= compareTime;
+-					prevResult = sResult;
+-				}
+-				if (!success) {
+-					result.setFailure(true);
+-                    StringBuffer buf = new StringBuffer();
+-                    appendResultDetails(buf, prevResult);
+-                    buf.append("Response Time: ").append(prevTime);
+-					result.addToBaseResult(buf.toString());
+-					buf = new StringBuffer();
+-                    appendResultDetails(buf, sResult);
+-					buf.append("Response Time: ").append(currentTime);
+-					result.addToSecondaryResult(buf.toString());
+-					result.setFailureMessage("Responses differ in response time by more than "+compareTime+" ms");
+-					break;
+-				}
+-				prevResult = sResult;
+-				prevTime = currentTime;
+-			}
+-		}
+-	}
++        SampleResult prevResult = responses.getFirst();
++        long prevTime = prevResult.getTime();
++        StringBuffer buf = new StringBuffer();
++        appendResultDetails(buf, prevResult);
++        buf.append("Response Time (ms): ").append(prevTime);
++        result.addToBaseResult(buf.toString());
++        
++        boolean success = true;
++        SampleResult sResult = responses.getLast();
++        if (sResult != null) {
++            long currentTime = sResult.getTime();
++            success = Math.abs(prevTime - currentTime) <= compareTime;
++            if (!success) {
++                result.setFailure(true);
++                buf = new StringBuffer();
++                appendResultDetails(buf, sResult);
++                buf.append("Response Time (ms): ").append(currentTime);
++                result.addToSecondaryResult(buf.toString());
++                result.setFailureMessage("Responses differ in response time by more than "
++                                + compareTime + " ms");
++            } else {
++                buf = new StringBuffer();
++                buf.append("Compare time less than " + compareTime + " ms" + NL);
++                buf.append(NL2 + "Response Time (ms): ").append(currentTime);
++                result.addToSecondaryResult(buf.toString());
++            }
++        }
++    }
+ 
+     private void compareContent(CompareAssertionResult result) {
+-		if (compareContent) {
+-			Iterator<SampleResult> iter = responses.iterator();
+-			String prevContent = null;
+-			SampleResult prevResult = null;
+-			boolean success = true;
+-			while (iter.hasNext()) {
+-				SampleResult sResult = iter.next();
+-				String currentContent = sResult.getResponseDataAsString();
+-				currentContent = filterString(currentContent);
+-				if (prevContent != null) {
+-					success = prevContent.equals(currentContent);
+-				}
+-				if (!success) {
+-					result.setFailure(true);
+-                    StringBuffer buf = new StringBuffer();
+-                    appendResultDetails(buf, prevResult);
+-					buf.append(prevContent);
+-					result.addToBaseResult(buf.toString());
+-					buf = new StringBuffer();
+-					appendResultDetails(buf, sResult);
+-					buf.append(currentContent);
+-					result.addToSecondaryResult(buf.toString());
+-					result.setFailureMessage("Responses differ in content");
+-					break;
+-				}
+-				prevResult = sResult;
+-				prevContent = currentContent;
+-			}
+-		}
+-	}
++        SampleResult prevResult = responses.getFirst();
++        String prevContent = filterString(prevResult.getResponseDataAsString());
++        StringBuffer buf = new StringBuffer();
++        // no append if compare time already pass
++        if (compareTime < 0) {
++            appendResultDetails(buf, prevResult);
++        } else {
++            buf.append(NL2);
++        }
++        buf.append(prevContent);
++        result.addToBaseResult(buf.toString());
++        
++        SampleResult sResult = responses.getLast();
++        if (sResult != null) {
++            String currentContent = sResult.getResponseDataAsString();
++            currentContent = filterString(currentContent);
++            if (!prevContent.equals(currentContent)) {
++                result.setFailure(true);
++                buf = new StringBuffer();
++                // no append if compare time already pass
++                if (compareTime < 0) {
++                    appendResultDetails(buf, sResult);
++                } else {
++                    buf.append(NL2);
++                }
++                buf.append(currentContent);
++                result.addToSecondaryResult(buf.toString());
++                result.setFailureMessage("Responses differ in content");
++            } else {
++                result.addToSecondaryResult("Same content");
++            }
++        }
++    }
+ 
+     private void appendResultDetails(StringBuffer buf, SampleResult result) {
+         final String samplerData = result.getSamplerData();
+@@ -132,7 +152,7 @@
+         if (samplerData != null){
+             buf.append(samplerData.trim());
+         }
+-        buf.append("\n");
++        buf.append(NL);
+         final String requestHeaders = result.getRequestHeaders();
+         if (requestHeaders != null){
+             buf.append(requestHeaders);
+@@ -137,7 +157,7 @@
+         if (requestHeaders != null){
+             buf.append(requestHeaders);
+         }
+-        buf.append("\n\n");        
++        buf.append(NL2);
+     }
+ 
+ 	private String filterString(String content) {
+
+Index: /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java
+===================================================================
+--- /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(revision 818668)
++++ /src/components/org/apache/jmeter/visualizers/ComparisonVisualizer.java	(working copy)
+@@ -40,9 +40,14 @@
+ import org.apache.jmeter.samplers.Clearable;
+ import org.apache.jmeter.samplers.SampleResult;
+ import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
+ 
+ public class ComparisonVisualizer extends AbstractVisualizer implements Clearable {
+-	private JTree resultsTree;
++	
++    private static final long serialVersionUID = 240L;
++
++    private JTree resultsTree;
+ 
+ 	private DefaultTreeModel treeModel;
+ 
+@@ -65,7 +70,7 @@
+ 	}
+ 
+ 	public String getLabelResource() {
+-		return "comparison_visualizer_title";
++		return "comparison_visualizer_title"; // $NON-NLS-1$
+ 	}
+ 
+ 	private void init() {
+@@ -91,21 +96,23 @@
+ 	}
+ 
+ 	private JTextPane getBaseTextPane() {
+-		base = new JTextPane();
+-		return base;
+-	}
++        base = new JTextPane();
++        base.setEditable(false);
++        base.setBackground(getBackground());
++        return base;
++    }
+ 
+ 	private JTextPane getSecondaryTextPane() {
+-		secondary = new JTextPane();
+-		return secondary;
+-	}
++        secondary = new JTextPane();
++        secondary.setEditable(false);
++        return secondary;
++    }
+ 
+ 	private JComponent getTreePanel() {
+-		root = new DefaultMutableTreeNode("Root");
++		root = new DefaultMutableTreeNode("Root"); // $NON-NLS-1$
+ 		treeModel = new DefaultTreeModel(root);
+ 		resultsTree = new JTree(treeModel);
+-		resultsTree.setCellRenderer(new TreeNodeRenderer());
+-		resultsTree.setCellRenderer(new TreeNodeRenderer());
++        resultsTree.setCellRenderer(new TreeNodeRenderer());
+ 		resultsTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+ 		resultsTree.addTreeSelectionListener(new Selector());
+ 		resultsTree.setRootVisible(false);
+@@ -130,14 +137,15 @@
+ 				SampleResult sr = (SampleResult) node.getUserObject();
+ 				AssertionResult[] results = sr.getAssertionResults();
+ 				CompareAssertionResult result = null;
+-				for (AssertionResult r : results) {
+-					if (r instanceof CompareAssertionResult) {
+-						result = (CompareAssertionResult) r;
++				for (AssertionResult assRes : results) {
++					if (assRes instanceof CompareAssertionResult) {
++						result = (CompareAssertionResult) assRes;
+ 						break;
+ 					}
+ 				}
+-				if (result == null)
++				if (result == null) {
+ 					result = new CompareAssertionResult();
++				}
+ 				base.setText(result.getBaseResult());
+ 				secondary.setText(result.getSecondaryResult());
+ 			} catch (Exception err) {
+@@ -155,8 +163,8 @@
+ 			// the child to be removed will always be 0 'cos as the nodes are
+ 			// removed the nth node will become (n-1)th
+ 			treeModel.removeNodeFromParent((DefaultMutableTreeNode) root.getChildAt(0));
+-			base.setText("");
+-			secondary.setText("");
++			base.setText(""); // $NON-NLS-1$
++			secondary.setText(""); // $NON-NLS-1$
+ 		}
+ 	}
+ 
+Index: /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java
+===================================================================
+--- /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java	(revision 818668)
++++ /src/components/org/apache/jmeter/visualizers/TreeNodeRenderer.java	(working copy)
+@@ -21,6 +21,7 @@
+ import java.awt.Color;
+ import java.awt.Component;
+ 
++import javax.swing.ImageIcon;
+ import javax.swing.JTree;
+ import javax.swing.tree.DefaultMutableTreeNode;
+ import javax.swing.tree.DefaultTreeCellRenderer;
+@@ -26,6 +27,7 @@
+ import javax.swing.tree.DefaultTreeCellRenderer;
+ 
+ import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.util.JMeterUtils;
+ 
+ /**
+  * Tree cell renderer used by ComparisonVisualizer.
+@@ -32,6 +34,17 @@
+  */
+ public class TreeNodeRenderer extends DefaultTreeCellRenderer {
+ 
++    private static final long serialVersionUID = 240L;
++
++    // Same ViewResultsTree
++    private static final ImageIcon imageSuccess = JMeterUtils.getImage(
++            JMeterUtils.getPropDefault("viewResultsTree.success",  //$NON-NLS-1$
++                    "icon_success_sml.gif")); //$NON-NLS-1$
++
++    private static final ImageIcon imageFailure = JMeterUtils.getImage(
++            JMeterUtils.getPropDefault("viewResultsTree.failure",  //$NON-NLS-1$
++                    "icon_warning_sml.gif")); //$NON-NLS-1$
++
+ 	public TreeNodeRenderer() {
+ 		super();
+ 	}
+@@ -41,11 +54,13 @@
+ 			boolean leaf, int row, boolean focus) {
+ 		super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, focus);
+ 		Object obj = ((DefaultMutableTreeNode) value).getUserObject();
+-		if(obj instanceof SampleResult)
+-		{
+-			if (!((SampleResult) obj).isSuccessful()) {
+-				this.setForeground(Color.red);
+-			}
++		if (obj instanceof SampleResult) {
++            if (!((SampleResult) obj).isSuccessful()) {
++                this.setForeground(Color.red);
++                this.setIcon(imageFailure);
++            } else {
++                this.setIcon(imageSuccess);
++            }
+ 		}
+ 		return this;
+ 	}
+Index: /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java
+===================================================================
+--- /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java	(revision 818668)
++++ /src/core/org/apache/jmeter/assertions/CompareAssertionResult.java	(working copy)
+@@ -75,7 +75,7 @@
+ 			}
+ 			else
+ 			{
+-				baseResult = baseResult + "\n\n" + r;
++				baseResult = baseResult + "\n\n" + r; // $NON-NLS-1$
+ 			}
+ 		}
+ 		
+@@ -87,7 +87,7 @@
+ 			}
+ 			else
+ 			{
+-				secondaryResult = secondaryResult + "\n\n" + r;
++				secondaryResult = secondaryResult + "\n\n" + r; // $NON-NLS-1$
+ 			}
+ 		}
+ 	}
+
+Index: /xdocs/usermanual/component_reference.xml
+===================================================================
+--- /xdocs/usermanual/component_reference.xml	(revision 818668)
++++ /xdocs/usermanual/component_reference.xml	(working copy)
+@@ -3413,8 +3413,8 @@
+ <properties>
+     <property name="Name" required="No">Descriptive name for this element that is shown in the tree.</property>
+     <property name="Compare Content" required="Yes">Whether or not to compare the content (response data)</property>
+-    <property name="Compare Time" required="Yes">If the value is >=0, then check if the time difference is no greater than the value. 
+-    I.e. if the value is 0, then the times must be exactly equal.</property>
++    <property name="Compare Time" required="Yes">If the value is >=0, then check if the response time difference is no greater than the value. 
++    I.e. if the value is 0, then the response times must be exactly equal.</property>
+     <property name="Comparison Filters" required="No">Filters can be used to remove strings from the content comparison.
+     For example, if the page has a time-stamp, it might be matched with: "Time: \d\d:\d\d:\d\d" and replaced with a dummy fixed time "Time: HH:MM:SS".
+     </property>
+

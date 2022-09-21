@@ -1,0 +1,701 @@
+Index: src/core/org/apache/jmeter/resources/messages.properties
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/src/core/org/apache/jmeter/resources/messages.properties,v
+retrieving revision 1.133
+diff -u -r1.133 messages.properties
+--- src/core/org/apache/jmeter/resources/messages.properties	10 Dec 2004 21:32:53 -0000	1.133
++++ src/core/org/apache/jmeter/resources/messages.properties	7 Jan 2005 22:36:11 -0000
+@@ -656,3 +656,16 @@
+ deref=Dereference aliases
+ ldapext_testing_title= LDAP Extended Request
+ ldap_argument_list=LDAPArgument List
++xpath_assertion_label=XPath
++xpath_assertion_option=XML Parsing Options
++xpath_assertion_validation=Validate the XML against the DTD
++xpath_assertion_whitespace=Ignore whitespace
++xpath_assertion_title=XPath Assertion
++xpath_assertion_error=Error with XPath
++xpath_assertion_test=XPath Assertion 
++xpath_assertion_tidy=Try and tidy up the input
++xpath_assertion_check=Check XPath Expression
++xpath_assertion_valid=Valid XPath Expression
++xpath_assertion_button=Validate
++xpath_assertion_failed=Invalid XPath Expression
++xpath_assertion_negate=True if nothing matches
+\ No newline at end of file
+Index: xdocs/usermanual/component_reference.xml
+===================================================================
+RCS file: /home/cvspublic/jakarta-jmeter/xdocs/usermanual/component_reference.xml,v
+retrieving revision 1.101
+diff -u -r1.101 component_reference.xml
+--- xdocs/usermanual/component_reference.xml	10 Dec 2004 21:32:53 -0000	1.101
++++ xdocs/usermanual/component_reference.xml	7 Jan 2005 22:36:14 -0000
+@@ -1678,6 +1678,7 @@
+ </properties>
+ </component>
+ 
++
+ <component index="16.5.5" name="BeanShell Assertion" screenshot="bsh_assertion.png">
+ <description><p>The BeanShell Assertion allows the user to perform assertion checking using a BeanShell script.</p></description>
+ 
+@@ -1735,6 +1736,26 @@
+ 
+ </properties>
+ </component>
++<component index="16.5.8" name="XPath Assertion" screenshot="xpath_assertion.png">
++<description><p>The XPath Assertion tests a document for well formedness, has the option
++of validating against a DTD, or putting the document through tidy and testing for an
++XPath.  If that XPath exists, the Assertion is true.  Using "/" will match any well formed
++document, and is the default XPath Expression.
++see <a href="http://www.w3.org/TR/xpath">http://www.w3.org/TR/xpath</a> for more information
++on XPath.
++</p></description>
++
++<properties>
++<property name="Name"		required="">Descriptive name for this element that is shown in the tree.</property>
++<property name="Tidy"		required="No">Send the returning document through JTidy.</property>
++<property name="Validation"	required="No">Check the document against its schema.</property>
++<property name="XPath"		required="Yes">XPath to match in the document.</property>
++<property name="Whitespace"	required="No">Ignore Element Whitespace.</property>
++<property name="Negation"	required="No">True if a XPath expression is not matched</property>
++
++</properties>
++</component>
++
+ 
+ </section>
+ 
+Index: src/components/org/apache/jmeter/assertions/XPathAssertion.java
+===================================================================
+RCS file: src/components/org/apache/jmeter/assertions/XPathAssertion.java
+diff -N src/components/org/apache/jmeter/assertions/XPathAssertion.java
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ src/components/org/apache/jmeter/assertions/XPathAssertion.java	1 Jan 1970 00:00:00 -0000
+@@ -0,0 +1,327 @@
++/*
++ * Copyright 2003-2004 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++ */
++
++package org.apache.jmeter.assertions;
++
++import java.io.ByteArrayInputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.Serializable;
++
++import javax.xml.parsers.DocumentBuilder;
++import javax.xml.parsers.DocumentBuilderFactory;
++import javax.xml.parsers.ParserConfigurationException;
++import javax.xml.transform.TransformerException;
++
++import org.apache.jmeter.samplers.SampleResult;
++import org.apache.jmeter.testelement.AbstractTestElement;
++import org.apache.jmeter.testelement.property.BooleanProperty;
++import org.apache.jmeter.testelement.property.StringProperty;
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++import org.apache.xpath.XPathAPI;
++import org.w3c.dom.Document;
++import org.w3c.dom.NodeList;
++import org.w3c.tidy.Tidy;
++import org.xml.sax.ErrorHandler;
++import org.xml.sax.SAXException;
++import org.xml.sax.SAXParseException;
++
++
++
++/**
++ * Checks if the result is a well-formed XML content.
++ * and weather it matches an XPath 
++ * 
++ * @author <a href="mailto:jspears@astrology.com">Justin Spears </a>
++ */
++public class XPathAssertion extends AbstractTestElement implements
++		Serializable, Assertion {
++	private static final Logger log = LoggingManager.getLoggerForClass();
++
++	private static XPathAPI xpath = null;
++
++	// one builder for all requests
++	private static DocumentBuilder builder = null;
++	// one factory for all requests
++	private static DocumentBuilderFactory factory = null;
++
++	
++	private static final String XPATH_KEY = "XPath.xpath";
++	private static final String WHITESPACE_KEY = "XPath.whitespace";
++	private static final String VALIDATE_KEY = "XPath.validate";
++	private static final String JTIDY_KEY = "XPath.jtidy";
++	private static final String NEGATE_KEY = "XPath.negate";
++	
++
++	/**
++	 * Returns the result of the Assertion. Here it checks wether the Sample
++	 * took to long to be considered successful. If so an AssertionResult
++	 * containing a FailureMessage will be returned. Otherwise the returned
++	 * AssertionResult will reflect the success of the Sample.
++	 */
++	public AssertionResult getResult(SampleResult response) {
++		// no error as default
++		AssertionResult result = new AssertionResult();
++		if (response.getResponseData() == null) {
++			return setResultForNull(result);
++		}
++		result.setFailure(false);
++
++		
++
++		/*
++		 * create a new builder if something changes and/or the builder has not
++		 * been set
++		 */
++
++		
++		if (log.isDebugEnabled()){
++			log.debug(new StringBuffer("Validation is set to ").append(isValidating()).toString());
++			log.debug(new StringBuffer("Whitespace is set to ").append(isWhitespace()).toString());
++			log.debug(new StringBuffer("Jtidy is set to ").append(isJTidy()).toString());
++		}
++		Document doc = null;
++
++		try {
++			if (isJTidy()) {
++				doc = makeTidyParser().parseDOM(
++						new ByteArrayInputStream(response.getResponseData()),
++						null);
++				if (log.isDebugEnabled()) {
++					log.debug("node : " + doc);
++				}
++				doc.normalize();
++				//remove the document declaration cause I think it causes
++				// issues  this is only needed for JDOM, since I am not
++				// using it... But in case we change.
++				// Node name = doc.getDoctype();
++				// doc.removeChild(name);
++
++			} else {
++				doc = parse(isValidating(), isWhitespace(), true, new ByteArrayInputStream(response.getResponseData()));
++			}
++		}catch (SAXException e) {
++			result.setFailure(true);
++			result.setFailureMessage(e.getMessage());
++			return result;
++		} catch (IOException e) {
++			log.warn("Cannot parse result content", e);
++			result.setError(true);
++			result.setFailureMessage(e.getMessage());
++			return result;
++		} catch (ParserConfigurationException e) {
++			log.warn("Cannot parse result content", e);
++			result.setError(true);
++			result.setFailureMessage(e.getMessage());
++			return result;
++		}
++		
++		if ( doc == null ){
++			result.setError(true);
++			result.setFailureMessage("Document is null, probable not parsable");
++			return result;
++			
++		}
++
++		NodeList nodeList = null;
++
++		try {
++			nodeList = XPathAPI.selectNodeList(doc, getXPathString());
++		} catch (TransformerException e) {
++			result.setError(true);
++			result.setFailureMessage(e.getLocalizedMessage());
++			return result;
++		}
++			
++		if ( nodeList == null || nodeList.getLength() == 0  ) {
++			if (isNegated()){
++				result.setFailure(false);
++				return result;
++			}else{
++				log.debug(new StringBuffer("nodeList null no match  ").append(getXPathString()).toString());
++				result.setFailure(true);
++				result.setFailureMessage("No Nodes Matched " + getXPathString());
++				return result;
++			}
++		}
++		if (log.isDebugEnabled()){
++			if (!isNegated())
++			for (int i=0; i< nodeList.getLength(); i++)
++				log.debug(new StringBuffer("nodeList[").append(i).append("] ").append(nodeList.item(i)).toString());
++		}
++		return result;
++	}
++
++	protected AssertionResult setResultForNull(AssertionResult result) {
++		result.setError(false);
++		result.setFailure(true);
++		result.setFailureMessage("Response was null");
++		return result;
++	}
++	/**
++	 * Get The XPath String that will be used in matching the document
++	 * 
++	 * @return String xpath String
++	 */
++	public String getXPathString() {
++		return  getPropertyAsString(XPATH_KEY, "/");
++	}
++	/**
++	 * Get a Property or return the defualt string
++	 * @param key Property Key
++	 * @param defaultValue Default Value
++	 * @return String property
++	 */
++	public String getPropertyAsString(String key, String defaultValue){
++		String str = getPropertyAsString(XPATH_KEY);
++		return (str == null || str.length() == 0) ? defaultValue : str;
++	
++	}
++	/**
++	 * Set the XPath String this will be used as an xpath
++	 * @param String xpath
++	 */
++	public void setXPathString(String xpath) {
++
++		if (xpath != null || xpath.length() != 0)
++			setProperty(new StringProperty(XPATH_KEY, xpath));
++	}
++	/**
++	 * Set whether to ignore element whitespace
++	 * @param boolean whitespace
++	 */
++	public void setWhitespace(boolean whitespace) {
++		setProperty(new BooleanProperty(WHITESPACE_KEY, whitespace));
++	}
++	/**
++	 * Set use validation 
++	 * @param boolean validate
++	 */
++	public void setValidating(boolean validate) {
++		setProperty(new BooleanProperty(VALIDATE_KEY, validate));
++	}
++
++	/**
++	 * Feed Document through JTidy.  In order to use xpath against
++	 * XML.
++	 * @param jtidy
++	 */
++	public void setJTidy(boolean jtidy) {
++		setProperty(new BooleanProperty(JTIDY_KEY, jtidy));
++	}
++
++	public void setNegated(boolean negate){
++		setProperty(new BooleanProperty(NEGATE_KEY, negate));
++	}
++	/**
++	 * Is this whitepsace ignored.
++	 * @return boolean
++	 */
++	public boolean isWhitespace() {
++		return getPropertyAsBoolean(WHITESPACE_KEY, false);
++	}
++	/**
++	 * Is this validating 
++	 * @return boolean
++	 */
++	public boolean isValidating() {
++		return getPropertyAsBoolean(VALIDATE_KEY, false);
++	}
++
++	/**
++	 * Is this using JTidy
++	 * @return boolean
++	 */
++	public boolean isJTidy() {
++		return getPropertyAsBoolean(JTIDY_KEY, false);
++	}
++	/**
++	 * Negate the XPath test, that is return true if something
++	 * is not found.
++	 * @return boolean negated
++	 */
++	public boolean isNegated() {
++		return getPropertyAsBoolean(NEGATE_KEY, false);
++	}
++
++	private Tidy makeTidyParser() {
++		log.debug("Start : getParser");
++		Tidy tidy = new Tidy();
++		tidy.setCharEncoding(org.w3c.tidy.Configuration.UTF8);
++		tidy.setQuiet(true);
++		tidy.setShowWarnings(false);
++		tidy.setMakeClean(true);
++		tidy.setXmlTags(true);
++	
++	
++		return tidy;
++	}
++	public static synchronized Document parse(boolean validating, boolean whitespace, boolean namespace, InputStream is) throws SAXException, IOException, ParserConfigurationException{
++		return makeDocumentBuilder(validating,whitespace, namespace).parse(is);
++	}
++	private static synchronized DocumentBuilderFactory makeDocumentFactory(boolean validating, boolean whitespace, boolean namespace )
++	  {
++	    if( factory == null || factory.isValidating() != validating
++    			|| factory.isIgnoringElementContentWhitespace() != whitespace
++    			|| factory.isNamespaceAware() != namespace)
++	    {
++	      // configure the document builder factory
++	      factory = DocumentBuilderFactory.newInstance();
++	      factory.setValidating(validating);
++	      factory.setNamespaceAware(namespace);
++	      factory.setIgnoringElementContentWhitespace(whitespace);
++	      builder = null;
++	    }
++	    return factory;
++	  }
++	
++	public static synchronized DocumentBuilder makeDocumentBuilder(boolean validating, boolean whitespace, boolean namespace ) throws ParserConfigurationException
++	  {
++		factory = makeDocumentFactory(validating, whitespace, namespace);
++		
++	    if( builder == null ){
++	    	builder  = factory.newDocumentBuilder();
++	    	if (validating){
++	    	builder.setErrorHandler(new ErrorHandler() {
++	    		
++	    								public void warning(SAXParseException exception)
++	    										throws SAXException {
++	    //									throw new SAXException(exception);
++	    		
++	    								}
++	    		
++	    								public void error(SAXParseException exception)
++	    										throws SAXException {
++	    									throw new SAXException(exception);
++	    		
++	    								}
++	    		
++	    								public void fatalError(SAXParseException exception)
++	    										throws SAXException {
++	    	//											throw new SAXException(exception);
++	    								}
++	    							});
++	    	}
++	    }
++	    return builder;
++	  }
++
++	
++
++}
++
+Index: src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java
+===================================================================
+RCS file: src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java
+diff -N src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ src/components/org/apache/jmeter/assertions/gui/XPathAssertionGui.java	1 Jan 1970 00:00:00 -0000
+@@ -0,0 +1,267 @@
++/*
++ * Copyright 2001-2004 The Apache Software Foundation.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ * 
++*/
++
++package org.apache.jmeter.assertions.gui;
++import java.awt.BorderLayout;
++import java.awt.event.ActionEvent;
++import java.awt.event.ActionListener;
++import java.awt.event.FocusEvent;
++import java.awt.event.FocusListener;
++
++import javax.swing.BorderFactory;
++import javax.swing.JButton;
++import javax.swing.JCheckBox;
++import javax.swing.JOptionPane;
++import javax.swing.JPanel;
++import javax.swing.JTextField;
++import javax.xml.parsers.DocumentBuilderFactory;
++import javax.xml.parsers.ParserConfigurationException;
++import javax.xml.transform.TransformerException;
++
++import org.apache.jmeter.assertions.XPathAssertion;
++import org.apache.jmeter.testelement.TestElement;
++import org.apache.jmeter.util.JMeterUtils;
++import org.apache.jorphan.gui.layout.VerticalLayout;
++
++import org.apache.jorphan.logging.LoggingManager;
++import org.apache.log.Logger;
++import org.apache.xpath.XPathAPI;
++import org.w3c.dom.Document;
++import org.w3c.dom.Element;
++
++/**
++ * 
++ * @author <a href="mailto:jspears@astrology.com">Justin Spears </a>
++ *
++ */
++
++public class XPathAssertionGui extends AbstractAssertionGui  implements FocusListener, ActionListener
++{
++	private JTextField xpath;
++	private JCheckBox validation, whitespace, tidy,negated;
++	private JButton checkXPath;
++	private static Document testDoc = null;
++	
++	/**
++     * The constructor.
++     */
++    public XPathAssertionGui()
++    {
++        init();
++    }
++
++    /**
++     * Returns the label to be shown within the JTree-Component.
++     */
++    public String getLabelResource()
++    {
++    	return "xpath_assertion_title";
++    }
++    /**
++     * Create test element
++     */
++    public TestElement createTestElement()
++    {
++
++    	XPathAssertion el = new XPathAssertion();
++        modifyTestElement(el);
++        return el;
++    }
++
++    
++
++   
++	public String getXPathAttributesTitle()
++	{
++	    return JMeterUtils.getResString("xpath_assertion_test");
++	}
++	 
++	
++	public void focusGained(FocusEvent e)
++	{
++		 log.debug("XPathAssertionGui.focusGained() called");
++	}
++
++	public void focusLost(FocusEvent e)
++	{
++	    
++	}
++
++	private static transient Logger log = LoggingManager.getLoggerForClass();
++	private static final String OPERATOR_KEY = null;
++	private int execState;
++	public void configure(TestElement el)
++	{
++	    super.configure(el);
++	    XPathAssertion assertion = (XPathAssertion) el;
++	    xpath.setText(assertion.getXPathString());
++	    whitespace.setSelected(assertion.isWhitespace());
++	    validation.setSelected(assertion.isValidating());
++	    negated.setSelected(assertion.isNegated());
++	    tidy.setSelected(assertion.isJTidy());
++	    tidySelected();
++	}
++
++	private void init()
++	{
++	    setLayout(
++	        new VerticalLayout(5, VerticalLayout.LEFT, VerticalLayout.TOP));
++	    setBorder(makeBorder());
++	
++	    add(makeTitlePanel());
++	
++	    // USER_INPUT
++	    JPanel sizePanel = new JPanel(new BorderLayout());
++	    sizePanel.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
++	    sizePanel.setBorder(
++	        BorderFactory.createTitledBorder(
++	            BorderFactory.createEtchedBorder(),
++	            getXPathAttributesTitle()));
++	
++	    negated	   = new JCheckBox(JMeterUtils.getResString("xpath_assertion_negate"), false);
++	    xpath = new JTextField(50);
++	    checkXPath = new JButton(JMeterUtils.getResString("xpath_assertion_button"));
++	    checkXPath.addActionListener(new ActionListener() {
++	    	public void actionPerformed(ActionEvent e) {
++				validXPath(xpath.getText(), true);
++			}});
++	    
++	    
++	    xpath.addFocusListener(this);
++	    sizePanel.add(xpath, BorderLayout.WEST);
++	    sizePanel.add(checkXPath, BorderLayout.EAST);
++	    sizePanel.add(negated, BorderLayout.PAGE_END);
++	    
++	    JPanel optionPanel = new JPanel();
++	    optionPanel.setBorder(
++		        BorderFactory.createTitledBorder(
++		            BorderFactory.createEtchedBorder(),
++		            JMeterUtils.getResString("xpath_assertion_option")));
++	    
++	    validation = new JCheckBox(JMeterUtils.getResString("xpath_assertion_validation"),false);
++	    whitespace = new JCheckBox(JMeterUtils.getResString("xpath_assertion_whitespace"), false);
++	    tidy	   = new JCheckBox(JMeterUtils.getResString("xpath_assertion_tidy"), false);
++	    tidy.addActionListener(new ActionListener() {	public void actionPerformed(ActionEvent e) {	
++			tidySelected();
++		}});
++
++	
++	    
++	    optionPanel.add(validation);
++	    optionPanel.add(whitespace);
++	    optionPanel.add(tidy);
++	    
++	
++	    add(sizePanel);
++	    add(optionPanel);
++	}
++
++	public void actionPerformed(ActionEvent e)
++	{
++	  
++	}
++
++	/**
++	 * Modifies a given TestElement to mirror the data in the gui components.
++	 * @see org.apache.jmeter.gui.JMeterGUIComponent#modifyTestElement(TestElement)
++	 */
++	public void modifyTestElement(TestElement el)
++	{
++	    super.configureTestElement(el);
++	    String xpathString = xpath.getText();
++	    //long assertionSize = 0;
++	    
++	  
++	    XPathAssertion assertion = (XPathAssertion) el;
++	    assertion.setValidating(validation.isSelected());
++	    assertion.setWhitespace(whitespace.isSelected());
++	    assertion.setJTidy(tidy.isSelected());
++	    assertion.setNegated(negated.isSelected());
++	    /* Should I really check this? If someone really wants an invalid xpath,
++	     * why should i stop them.... I am commenting it out. I offer them a button
++	     * to do the validation, so if they don't use it, it ain't my problem.
++	     * 	    if (validXPath(xpathString, false)) 
++	     * 
++	     * An XPath might need to be feed trough a function, in which case it 
++	     * is invalid now, but perhaps valid when executed.
++	     */
++	   	if (xpathString == null || xpathString.length() == 0)xpathString = "/";
++	   	assertion.setXPathString(xpathString);
++	}
++
++	/*
++	 * Set the options according to validness,
++	 * let the user know that tidy is not compatible with validation.
++	 */
++	private void tidySelected(){
++		if (tidy.isSelected()){
++	    	validation.setEnabled(false);
++	    	whitespace.setEnabled(false);
++	    }else{
++	    	validation.setEnabled(true);
++	    	whitespace.setEnabled(true);
++	    }
++	}
++	/**
++	 * Test weather an XPath is valid.  It seems the Xalan has no
++	 * easy way to tes this. so it creates a test document, then
++	 * tries to evaluate the xpath.   
++	 * 
++	 * @param xpathString XPath String to validate
++	 * @param showDialog weather to show a dialog
++	 * @return returns true if valid, valse otherwise.
++	 */
++	private boolean validXPath(String xpathString, boolean showDialog)  {
++		String ret = null;
++		boolean success= true;
++		try {
++			if (testDoc == null){
++				
++						testDoc = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
++						Element el = testDoc.createElement("root");
++						testDoc.appendChild(el);
++					
++			}
++			if(XPathAPI.eval(testDoc, xpathString) == null){
++				//We really should never get here
++				// because eval will through an exception
++				// if xpath is invalid, but whatever, better
++				// safe
++				log.warn("xpath eval was null ");
++				ret ="xpath eval was null";
++				success = false;
++			}
++	
++		} catch (ParserConfigurationException e) {
++			success = false;
++			ret = e.getLocalizedMessage();
++		} catch (TransformerException e) {
++			success = false;
++			ret =e.getLocalizedMessage();
++		} 
++		if(showDialog)       JOptionPane.showMessageDialog(
++                null,
++				(success) ? new StringBuffer(JMeterUtils.getResString("xpath_assertion_valid")).toString() : ret,
++				(success) ? JMeterUtils.getResString("xpath_assertion_valid") : JMeterUtils.getResString("xpath_assertion_failed"),
++                (success) ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.ERROR_MESSAGE );
++           
++		return success;
++		
++	}
++
++	
++}
+Index: xdocs/images/screenshots/xpath_assertion.png
+===================================================================
+RCS file: xdocs/images/screenshots/xpath_assertion.png
+diff -N xdocs/images/screenshots/xpath_assertion.png
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ xdocs/images/screenshots/xpath_assertion.png	1 Jan 1970 00:00:00 -0000
+@@ -0,0 +1,19 @@
++�PNG
++
++   
++IHDR  �   �   �h=   	oFFs   3   � z\j�   	pHYs    ��~�  �IDATx���?��a�p��X(Ha0 
++.(".L@OpantjDU�x*�xjx.�*d�\!�HR@�c
++�d!h��2h�/�Ѕa	0p�E _qE���!�3z��;��}ŉ��}�潙��͛�}�������   ��J��nm�]�   ��5   �e�:i�����MM   i22   ��   3�<   dF�  ���   �a   2#�  @f�y   Ȍ0   ��   3�<   dF�  ���   ���a�[_����V�2=�?�����j���c(�j�冷�2�_   �k��nQ�O ��!�UC�/   UQ.�oco;�Z�S��S�Jbm��5  �e�2����uK�tC�R����v{W�v�v�"�]�m޶����	  `��~b_Z�g)1�g���o��m5TO���  2�>2_��>�(kHͥ��<w�a��C�r��z�oR��k�z��M�-�m]�k�ܪ�z  �����m��)�� �n����꯶�u!=  ���#�uw������c�5����[�gt{�P�MW� �tD������ݖ��������ڰy�����]u�   ��.��ذ?�7���i��    QF��/�7>_�Iݫ1�6_c>;zq~��m��/c�  `�̏��hU���y�xۘ���C���7T�)<.  `(/]=�]�~�����b����ݍ��   Ҕ�O�  �r�   3�<   dF�  ���   �a   2#�  @f�y   �̊&��K���.kX۷7w7nj  �'�G�����v�E5ۙ��vV��^X�V�[�  0&����  �K�  ���   ��(a~}����Z�yrw��k����v�bJ��j�B�i�  <D�_����ѕ߾��J],,��Խ��O�M۶L]�   � ���H?=�?���Y�^}oy����{����P�޺e�m�r���W�h�����-�٭n���\��=�RW�>Kt�   J�0_��!��.�7���j9xW�W˩;)~b��guT�9Z�D�xuj����Xb�V  �M�3_����C��vL>dx�Xؿ��zŸa��� ��=̷�ם���2��(����!��_��Y   �rid����	��yu^�}ݱ�мܺq��h;  ���2��#z����%����ng  ��y�|���k^b�e���\�H���xO�)���ݞ߶̐����R7  ��^8�z4=�z�ҭ���Ť�ۛ�75M7EK~��､5`Q���?���WŞ>ۙ��v�	  czQ   @^�y   �L�3������   0a~`�V��^X���䃃�4	   ��@,   �q�<   dF�  ���   �a   2#�  @f�y   Ȍ0   ��   3+)Tb}����Z�������y�b�򻪚ˉ]�tJΫ  ���|9��E�r��+!��fŻ��w�5�[�w   �#���By��:�'
++6�̺yB��̹����
++Y��s6��|eD��ͭԭ��:8Y   ,��������~���x�ѼF��Y��m��z���8�  ���#���=�����y�|��?z����BƖ�տ�>�*��;�	�1�6vB�L  ��\<x������lg�2WƩtݫ!+G�cmj�~�z�4G]˄ϙ~�M  �?�{&F�#�3~"�y�����G�����?T�_�{·=  0���.��ê-3Ԝ   �"�0>b�-҇<��n�aO"��e�:�^�U�c�B�[߶kݭݚ��4  @���M��^�tkk�r1i�������E��q�?   �/^.N��   �*a   2#�  @f�y   Ȍ0   ��   3�<   dfe�E��  `�l���ݸ)�,s��^�ʼV�×?8x�%�  ,���l��zm���ɓ�d����t���k�ep����yu�e���   9)F�?�|p�޷�V�V�04a   �S�+����K�q#�  Dtj}eU+04a   *a�[�&   ��%�K��x��  �� <"lUiV�܍�>?w�ѕ߾��N  rvr��s7~�s7�?��ŏ�3T1g�<��/���432  ��gq�x�?�r��O~w�F��)�y�W��}�S~oy)m��V�b-�KO��[Traޘ<  �XNf�,������㲇g����K�����n5������_��Q���  Dt<%̯5.q�������t�]_{����(����j]�5Ӌr���R9��mkR�S-�y��k�2��  ,����,���������7߾�r�qb�����7S�Ok��w��:Ǟ޿&u��/q(�&�ɫ�lW�<  @Tq��ӕ垮�Ûo������[�ӑ���3��0��#H(̻[  X<������rw�_�������֧~x�<��wk�e��Ԥ�jQ�S��5J�=^W�  �j���m=�=<�����\D⽭_><;��Tg>]���:�^ԧ�M��$��#�  D4��Z.��+�|����󋟜\
++�Ŕb����ӫ%����_W��9�_-���G�_~2I$̻�  Xd�c^j?���'_L����ϫy]i�K���n��6|��ͯ���  ����3�G�_La}��  @8#�   Q-ڏ��a   �q�g�.��(a   *��3������l�s�ҭ���)5  �2=��_��h��s�۷7w7n�^[��z�����p  `aMg����Ú�ȼ   ��dswC3E?M   ��   3�<   dF�  ��$�;���L]��|  ��I(��oo���>%\�tk�Ϋ�  �E�\�?�~����]�Wu/��]XY_/hz�2=L���kQ�au�\��u�??�  Oza��S/�,�IӋ��7�`SW�4�e�Z	��8  �\�?���I�"~8|���R�w�պwՕY7O��4�ӭ��ukQW���	yuص��ϰ�RZۭ%|�m�t  ���f<=���g}�ƮaH
++)��wsTW�O1�m=�kr� �FH���&��b�m#�>�:�iϺ�j�m۪m���  0��F�~yrԳ����p�c�|�n���k-ꖛ�6�n�O{  uһ�~z2�YDVO��3��I{�1�<�H  1$�'����w!�z!�BȽ�l�"=  �fd>
++��9�k�J�  �.����;��#ZG �������տ�j���E:�h���W�z�bs�u�� �a%y����l��<�~�:w+�[im��v)�����֧O9��&� �8����o�.���� �%�oo�n��%�Ih  r��=�   @3a   2#�  @f�y   Ȍ0   ��   3���?�{FC  �P"����@  0"����l���  `X�  ���   �a   2#�  @f�y   Ȍ0   ��   3�<   dF�  ���   ���*��vae}����p�dz�<g1O�wU�/!��ne�ߪ���-�r�   �Hbd�.`��c|ݫ���EȺ̫>)��-V��|�@�  ���|�<�^��=z��EW�n�BJ�!d���5�K���u��3��a{�[K:�   �K�����	H����� �g�9�4A�Xz
++[E�i���ִOO��;  `�E���W��5���[?�ћo��TG8��7�W�ܿ&�O�Q~�Ҭs�Z5�]Ⱦ  m]<x������lGk�.�e���R�j�f��e�m/5ﳔr9�q�2��  ں{�����d�{�����=��Y��)h���-�>_!}�\)  �,�{櫑&�'ç)�
++��6�~r}  P'�ߙ��7��}R�g�W�"�Ƭgx���u�ЭB��R~����w  "J"̇��>O)�����mM�Y롖�����y�0  @��~g��U  H�0O��v�   �z    B�  ���   �a   2#�  @f�y   Ȍ0   ��   3�<   dF�  ���   �a   2#�  @f�y   Ȍ0   �Yɥ��/��ڻ<Ti۷7w7n�~�������	��ۛ����O	�/�ں���3ؿ Sfa����z�w1_ս��vae}����p�dz�<g�<��/����������Z��(/�N�&!殺�mY1�>>/�6��~���k��?!uv;������c,�����^n3���}~�ƣ+�}�ѕ�Nz�4��q]\�㛍@�}8K�pٿO�ߵ��\�̔?�붜�vռ���W�bh{|~�'��?-���q�޿��Ss+i�Զ�\z��G�����gǁ_��?����xλ~w��v�h�i�CcHM��ն畛�o�>�)�Y
++6ㄜq����y��;�փu%t�r��޺m�1��1�~|�����m/jn�ƪ����6����l�F!凯i�O����Xڿ�r߿B����	?����u��M�>���]�=:��a?�۶O����
++�����\�BfO�?�����o׋�����ϖ_�Q�b+��;ܴU�ɛw搚��99�4סyJ�A��@֭>��
++Y���]��N�dx
++�ǥ��E���-����1��Cm�!�F�W�ymc!-�m�_Ӑ�D���?���w�ݿ�mE�u��G�׭yJ���"��Z�����vk���)���_�}�?���OO������){[����٣�ɳE|�#�5���1�3��*�?Tη%�`<O���z>5��ܰ��}Bu��R�/˳G��UO���{�"m)|#]��Ĩ���Wn��OOf���6̗c�W|�������ED{�k:�v1�P��
++�>���x�?f�V�F.'G�Ƈ{����R>i{�ml�+�]��G���Ǉe޿��U@����dr2;�������+�|1=�LN&O�S5�Z�/�Q��'ֶ}ڶ̼��ۮ����qo��s7K�gi�(�7n�-�����+r<��2�yd�ﾛ��?�ק���?�|�di�o���n!.��Y7_���i��R9\�m������Q"���V���no�׭Ւ�e��X$�= ��蛿��o������oyz����ѿ����}pHȫmG������e��)�Q���Z��iۛCm'C�[����i�ymo}�}�v�}|��w��p�����nc�5ԧI����Q%�X��1��+������u��3k���]b�#^ʟ�C�vj�=M��GW��GW�_���w���}{sw�f����{���{�y���lg�?��SZQ�|��Яn����o�.���2�S�8R>>�ϲ�i���9��^[��6����.�/>�tT��-eV
++�g{�t�Z�-�0o,��g^�9>��r�r�����>�"�{�   a   2#�  @f�y   Ȍ0   ��   3�<   dF�  ���   �a   2#�  @fVb/�?�{FC  �P"����@  0"����l���  `X�  ���   �a   2#�  @f�y   Ȍ0   ��   3�<   dF�  ���   �a   2#�  @f�y   Ȍ0   ��   3�<   dF�  ���   �a   2#�  @f�y   Ȍ0   ��   3�<   dF�  ���   ���Q��y]L    IEND�B`�

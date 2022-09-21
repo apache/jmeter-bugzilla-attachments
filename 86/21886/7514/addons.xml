@@ -1,0 +1,75 @@
+<?xml version="1.0"?>
+<project name="JMeter" default="package-addons" basedir=".">
+  <description>
+    To build addons from source and create jar file:
+      ant -buildfile=addons.xml
+    To rebuild and install:
+      ant -buildfile=addons.xml rebuild
+    For more info:
+      ant -buildfile=addons.xml -projecthelp
+
+    To diagnose usage of deprecated APIs:
+      ant -buildfile=addons.xml -Ddeprecation=on clean compile
+  </description>
+
+    <!-- Where the Sources live -->
+  <property name="src.dir" value="src"/>
+  <property name="src.addons" value="src/addons"/>
+
+  <!-- Temporary build directories: where the .class live -->
+  <property name="build.dir" value="build"/>
+  <property name="build.addons" value="build/addons"/>
+
+  <!-- Where the build result .jars will be placed -->
+  <property name="jar.dest" value="lib/ext"/>
+  <property name="addons.jar" value="ApacheJMeter_addons.jar"/>
+
+  <!-- Compilation parameters -->
+  <property name="optimize" value="on"/>
+  <property name="deprecation" value="off"/>
+  <property name="target.java.version" value="1.2"/>
+  <property name="encoding" value="UTF-8"/>
+
+  <!-- Directory where these 3rd party libraries will live -->
+  <property name="lib.dir" value="lib"/>
+
+  <!-- Build classpath -->
+  <path id="classpath">
+    <fileset dir="${lib.dir}"  includes="*.jar"/>
+    <fileset dir="${jar.dest}" includes="*.jar" excludes="${addons.jar}"/>
+  </path>
+
+  <target name="compile-addons" description="Compile additional (local) classes.">
+    <mkdir dir="${build.addons}"/>
+    <javac srcdir="${src.addons}" destdir="${build.addons}" optimize="${optimize}" debug="on" target="${target.java.version}" deprecation="${deprecation}" encoding="${encoding}">
+      <include name="**/*.java"/>
+      <classpath>
+        <path refid="classpath"/>
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="package-addons" depends="compile-addons">
+    <mkdir dir="${jar.dest}"/>
+   	<!--
+   		N.B. by default Eclipse copies non-java files to the build directory,
+   		but Ant does not. Copy them here, so that this build file works under
+   		Eclipse without needing to set up any exclude rules.
+   	-->
+    <copy todir="${build.addons}">
+    	<fileset dir="${src.addons}"   includes="**/*.properties"/>
+    </copy>
+    <jar jarfile="${jar.dest}/${addons.jar}">
+    	<fileset dir="${build.addons}"/>
+   	</jar>
+  </target>
+
+  <target name="clean" description="Clean up to force a build from source.">
+    <delete file="${jar.dest}/ApacheJMeter_addons.jar"/>
+    <delete dir="${build.addons}"/>
+  </target>
+
+  <target name="rebuild" description="Rebuild from source."
+	depends="clean,package-addons"/>
+
+</project>

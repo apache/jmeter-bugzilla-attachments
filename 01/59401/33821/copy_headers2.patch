@@ -1,0 +1,77 @@
+Index: src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java
+===================================================================
+--- src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(revision 1741338)
++++ src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPHC4Impl.java	(working copy)
+@@ -59,6 +59,7 @@
+ import org.apache.http.client.HttpClient;
+ import org.apache.http.client.HttpRequestRetryHandler;
+ import org.apache.http.client.config.CookieSpecs;
++import org.apache.http.client.config.RequestConfig;
+ import org.apache.http.client.entity.UrlEncodedFormEntity;
+ import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
+ import org.apache.http.client.methods.HttpGet;
+@@ -185,6 +186,38 @@
+         }
+     };
+ 
++    // Hack to preserve original Content- Headers that may be lost under decompression
++    private static final String X_J_METER = "X-JMeter-";
++
++    private static final boolean XJMETER = JMeterUtils.getPropDefault("xjmeter",true);
++    static{
++        log.info("XJMETER=" + XJMETER);
++    }
++    private static final ResponseContentEncoding CONTENT_HEADERS = new ResponseContentEncoding(){
++        @Override
++        public void process(
++                final HttpResponse response,
++                final HttpContext context) throws HttpException, IOException {
++            final HttpEntity entity = response.getEntity();
++            final HttpClientContext clientContext = HttpClientContext.adapt(context);
++            if (XJMETER) {
++                final RequestConfig requestConfig = clientContext.getRequestConfig();
++                if (requestConfig.isContentCompressionEnabled() && entity != null && entity.getContentLength() != 0) {
++                    final Header ceheader = entity.getContentEncoding();
++                    if (ceheader != null) {
++                        for (Header hdr : response.getAllHeaders()) {
++                            final String name = hdr.getName();
++                            if (name.startsWith("Content-")) { // TODO this will catch a few too many
++                                response.setHeader(X_J_METER+name,hdr.getValue());                                    
++                            }
++                        }
++                    }
++                }
++            }
++            super.process(response, clientContext);
++        }
++    };
++
+     /**
+      * 1 HttpClient instance per combination of (HttpClient,HttpClientKey)
+      */
+@@ -563,7 +596,15 @@
+                 }
+             }
+         }
+-        return httpClient.execute(httpRequest, localContext);
++        HttpResponse response =  httpClient.execute(httpRequest, localContext);
++        for (Header h : response.getAllHeaders()) {
++            final String name = h.getName();
++            if (name.startsWith(X_J_METER)) {
++                response.removeHeader(h);
++                response.addHeader(name.substring(X_J_METER.length()), h.getValue());
++            }
++        }
++        return response;
+     }
+ 
+     /**
+@@ -750,7 +791,7 @@
+             }
+             // see https://issues.apache.org/jira/browse/HTTPCORE-397
+             ((AbstractHttpClient) httpClient).setReuseStrategy(DefaultClientConnectionReuseStrategy.INSTANCE);
+-            ((AbstractHttpClient) httpClient).addResponseInterceptor(new ResponseContentEncoding());
++            ((AbstractHttpClient) httpClient).addResponseInterceptor(CONTENT_HEADERS);
+             ((AbstractHttpClient) httpClient).addResponseInterceptor(METRICS_SAVER); // HACK
+             ((AbstractHttpClient) httpClient).addRequestInterceptor(METRICS_RESETTER); 
+             

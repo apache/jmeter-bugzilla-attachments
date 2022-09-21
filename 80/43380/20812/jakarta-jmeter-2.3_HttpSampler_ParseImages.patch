@@ -1,0 +1,23 @@
+Index: jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java
+===================================================================
+--- jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(revision 1)
++++ jakarta-jmeter-2.3/src/protocol/http/org/apache/jmeter/protocol/http/sampler/HTTPSamplerBase.java	(working copy)
+@@ -1237,8 +1237,16 @@
+ 					wasRedirected = true;
+ 				}
+ 			}
+-		}
+-		if (isImageParser() && (HTTPSampleResult.TEXT).equals(res.getDataType()) && res.isSuccessful()) {
++		}		
++		//if jmeter property "parse_images" defined, override checkbox values of httpsampler and http requestdefaults
++		boolean image_parser = false;
++		String use_property = JMeterUtils.getProperty("parse_images");
++		if (use_property != null) {
++			image_parser = Boolean.valueOf(use_property).booleanValue();
++		} else {
++			image_parser = isImageParser();
++		}		
++		if (image_parser && (HTTPSampleResult.TEXT).equals(res.getDataType()) && res.isSuccessful()) {			
+ 			if (frameDepth > MAX_FRAME_DEPTH) {
+ 				res.addSubResult(errorResult(new Exception("Maximum frame/iframe nesting depth exceeded."), res));
+ 			} else {
